@@ -213,6 +213,7 @@ qt_add_qml_module(QGroundControlControlsModule
 
         # src/UI/toolbar/
         BatteryIndicator.qml
+        FuelStatusIndicator.qml
         FlightModeIndicator.qml
         FlightModeMenuIndicator.qml
         FlyViewToolBar.qml

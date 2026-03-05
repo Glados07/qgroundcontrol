@@ -1,0 +1,57 @@
+{
+    "version":              1,
+    "fileType":             "FactMetaData",
+    "QGC.MetaData.Facts":
+[
+{
+    "name":             "id",
+    "shortDesc":        "Fuel ID",
+    "type":             "uint8",
+    "decimalPlaces":    0
+},
+{
+    "name":             "percentRemaining",
+    "shortDesc":        "Percent Remaining",
+    "type":             "uint8",
+    "decimalPlaces":    0,
+    "units":            "%"
+},
+{
+    "name":             "maximumFuel",
+    "shortDesc":        "Maximum Fuel",
+    "type":             "float",
+    "decimalPlaces":    1
+},
+{
+    "name":             "consumedFuel",
+    "shortDesc":        "Consumed Fuel",
+    "type":             "float",
+    "decimalPlaces":    1
+},
+{
+    "name":             "remainingFuel",
+    "shortDesc":        "Remaining Fuel",
+    "type":             "float",
+    "decimalPlaces":    1
+},
+{
+    "name":             "flowRate",
+    "shortDesc":        "Flow Rate",
+    "type":             "float",
+    "decimalPlaces":    2
+},
+{
+    "name":             "temperature",
+    "shortDesc":        "Temperature",
+    "type":             "float",
+    "decimalPlaces":    1,
+    "units":            "K"
+},
+{
+    "name":             "fuelType",
+    "shortDesc":        "Fuel Type",
+    "type":             "uint32",
+    "decimalPlaces":    0
+}
+]
+}

@@ -10,6 +10,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         VehicleDistanceSensorFactGroup.h
         VehicleEFIFactGroup.cc
         VehicleEFIFactGroup.h
+        VehicleFuelStatusFactGroup.cc
+        VehicleFuelStatusFactGroup.h
         VehicleEscStatusFactGroup.cc
         VehicleEscStatusFactGroup.h
         VehicleEstimatorStatusFactGroup.cc
