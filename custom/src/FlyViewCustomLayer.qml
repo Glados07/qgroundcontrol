@@ -41,6 +41,8 @@ Item {
     property string _messageTitle:          ""
     property string _messageText:           ""
     property real   _toolsMargin:           ScreenTools.defaultFontPixelWidth * 0.75
+    property real   _busVoltage:            _activeVehicle ? _activeVehicle.generator.busVoltage.rawValue : NaN
+    property bool   _busVoltageLow:         !isNaN(_busVoltage) && _busVoltage < 20
 
     function secondsToHHMMSS(timeS) {
         var sec_num = parseInt(timeS, 10);
@@ -87,6 +89,31 @@ Item {
         color: 'red'
 
         property real leftEdgeCenterInset: visible ? x + width : 0
+    }
+
+    //-------------------------------------------------------------------------
+    //-- Generator Bus Voltage Low Alert
+    Rectangle {
+        id:                         busVoltageAlert
+        visible:                    _busVoltageLow
+        anchors.top:                parent.top
+        anchors.topMargin:          parentToolInsets.topEdgeCenterInset + ScreenTools.defaultFontPixelHeight
+        anchors.horizontalCenter:   parent.horizontalCenter
+        width:                      busVoltageAlertRow.width + ScreenTools.defaultFontPixelWidth * 3
+        height:                     busVoltageAlertRow.height + ScreenTools.defaultFontPixelHeight
+        radius:                     ScreenTools.defaultFontPixelHeight * 0.5
+        color:                      qgcPal.alertBackground
+        border.color:               qgcPal.alertBorder
+        border.width:               2
+
+        QGCLabel {
+            id:                     busVoltageAlertRow
+            anchors.centerIn:       parent
+            text:                   qsTr("⚠ Generator Bus Voltage Low: %1 V").arg(_busVoltage.toFixed(1))
+            color:                  qgcPal.alertText
+            font.bold:              true
+            font.pointSize:         ScreenTools.mediumFontPointSize
+        }
     }
 
     //-------------------------------------------------------------------------
