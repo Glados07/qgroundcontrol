@@ -42,6 +42,8 @@ const QVariantList& CustomFirmwarePlugin::toolIndicators(const Vehicle* vehicle)
         _toolIndicatorList = FirmwarePlugin::toolIndicators(vehicle);
         // Then specifically remove the RC RSSI indicator.
         _toolIndicatorList.removeOne(QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/RCRSSIIndicator.qml")));
+        // Add custom Fuel Status indicator
+        _toolIndicatorList.append(QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/FuelStatusIndicator.qml")));
     }
     return _toolIndicatorList;
 }

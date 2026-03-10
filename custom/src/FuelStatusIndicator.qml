@@ -78,7 +78,7 @@ Item {
             anchors.bottom:     parent.bottom
             width:              height
             sourceSize.width:   width
-            source:             "/qmlimages/FuelIcon.svg"
+            source:             "/custom/img/FuelIcon.svg"
             fillMode:           Image.PreserveAspectFit
             color:              getFuelColor()
         }
