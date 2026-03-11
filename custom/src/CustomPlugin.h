@@ -83,6 +83,7 @@ private:
     CustomOptions*  _options = nullptr;
     QQmlApplicationEngine *_qmlEngine = nullptr;
     class CustomOverrideInterceptor *_selector = nullptr;
+    QTranslator     _customTranslator;
     QVariantList    _customSettingsList; // Not to be mixed up with QGCCorePlugin implementation
 };
 

@@ -90,3 +90,9 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin
     CACHE INTERNAL "" FORCE
 )
+
+# Custom translations - export TS files to be merged into main qt_add_translations
+file(GLOB CUSTOM_TS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts)
+if(CUSTOM_TS_SOURCES)
+    set(CUSTOM_TS_SOURCES ${CUSTOM_TS_SOURCES} CACHE INTERNAL "Custom translation .ts files")
+endif()

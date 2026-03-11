@@ -94,7 +94,17 @@ QGCCorePlugin *CustomPlugin::instance()
 
 void CustomPlugin::init()
 {
-
+    // Load custom translations for the current locale
+    // QLocale default is already set by QGCApplication::setLanguage() before this
+    const QLocale locale;
+    if (locale.name() != QStringLiteral("en_US")) {
+        if (_customTranslator.load(locale, QStringLiteral("custom_"), QString(), QStringLiteral(":/i18n"))) {
+            QCoreApplication::installTranslator(&_customTranslator);
+            qCDebug(CustomLog) << "Loaded custom translation for" << locale.name();
+        } else {
+            qCDebug(CustomLog) << "No custom translation found for" << locale.name();
+        }
+    }
 }
 
 void CustomPlugin::cleanup()

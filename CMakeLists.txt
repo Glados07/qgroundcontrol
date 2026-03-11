@@ -529,6 +529,9 @@ if(QGC_CUSTOM_BUILD)
 endif()
 
 file(GLOB TS_SOURCES ${CMAKE_SOURCE_DIR}/translations/qgc_*.ts)
+if(CUSTOM_TS_SOURCES)
+    list(APPEND TS_SOURCES ${CUSTOM_TS_SOURCES})
+endif()
 set_source_files_properties(${TS_SOURCES} PROPERTIES OUTPUT_LOCATION "${CMAKE_BINARY_DIR}/i18n")
 qt_add_translations(${CMAKE_PROJECT_NAME}
     # TS_FILE_BASE ${CMAKE_PROJECT_NAME}
