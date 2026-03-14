@@ -42,7 +42,21 @@ Item {
     property string _messageText:           ""
     property real   _toolsMargin:           ScreenTools.defaultFontPixelWidth * 0.75
     property real   _busVoltage:            _activeVehicle ? _activeVehicle.generator.busVoltage.rawValue : NaN
-    property bool   _busVoltageLow:         !isNaN(_busVoltage) && _busVoltage < 20
+    property bool   _busVoltageLow:         false
+
+    // Hysteresis to prevent flicker when voltage oscillates around threshold
+    QtObject {
+        id: _voltageHysteresis
+        property real voltage: _busVoltage
+        onVoltageChanged: {
+            if (!isNaN(voltage)) {
+                if (voltage < 20)       _busVoltageLow = true
+                else if (voltage > 20.4)  _busVoltageLow = false
+            } else {
+                _busVoltageLow = false
+            }
+        }
+    }
 
     function secondsToHHMMSS(timeS) {
         var sec_num = parseInt(timeS, 10);
@@ -97,7 +111,7 @@ Item {
         id:                         busVoltageAlert
         visible:                    _busVoltageLow
         anchors.top:                parent.top
-        anchors.topMargin:          parentToolInsets.topEdgeCenterInset + ScreenTools.defaultFontPixelHeight
+        anchors.topMargin:          parentToolInsets.topEdgeCenterInset + ScreenTools.defaultFontPixelHeight * 5
         anchors.horizontalCenter:   parent.horizontalCenter
         width:                      busVoltageAlertRow.width + ScreenTools.defaultFontPixelWidth * 3
         height:                     busVoltageAlertRow.height + ScreenTools.defaultFontPixelHeight
@@ -109,7 +123,7 @@ Item {
         QGCLabel {
             id:                     busVoltageAlertRow
             anchors.centerIn:       parent
-            text:                   qsTr("⚠ Generator Bus Voltage Low: %1 V").arg(_busVoltage.toFixed(1))
+            text:                   qsTr("⚠ Generator Bus Voltage Low: %1 V").arg(_busVoltage.toFixed(0))
             color:                  qgcPal.alertText
             font.bold:              true
             font.pointSize:         ScreenTools.mediumFontPointSize
