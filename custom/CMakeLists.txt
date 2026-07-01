@@ -7,6 +7,32 @@ set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
     CUSTOMHEADER="CustomPlugin.h"
     CUSTOMCLASS=CustomPlugin
 )
+# Viewer3D 使用 Qt Quick3D 渲染本地 3D 场景；Quick3DAssetUtils 用于 OBJ/glTF/GLB 运行时加载。
+find_package(Qt6 REQUIRED COMPONENTS Quick3D Quick3DAssetUtils)
+find_package(Qt6 COMPONENTS WebEngineQuick QUIET)
+
+# 顶层 CMake 会在根目录链接 CUSTOM_LIBRARIES，这里把 Qt imported target 提升为全局可见。
+if(TARGET Qt6::Quick3D)
+    set_target_properties(Qt6::Quick3D PROPERTIES IMPORTED_GLOBAL TRUE)
+endif()
+
+set(CUSTOM_VIEWER3D_EXTERNAL_LIBRARIES Qt6::Quick3DAssetUtils)
+if(TARGET Qt6::Quick3DAssetUtils)
+    set_target_properties(Qt6::Quick3DAssetUtils PROPERTIES IMPORTED_GLOBAL TRUE)
+endif()
+
+set(CUSTOM_VIEWER3D_GOOGLE_LIBRARIES)
+if(TARGET Qt6::WebEngineQuick)
+    set_target_properties(Qt6::WebEngineQuick PROPERTIES IMPORTED_GLOBAL TRUE)
+    list(APPEND CUSTOM_VIEWER3D_GOOGLE_LIBRARIES Qt6::WebEngineQuick)
+    set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        QGC_VIEWER3D_GOOGLE_WEBENGINE
+    )
+    message(STATUS "QGC: Viewer3D Google 3D Maps source enabled with Qt WebEngineQuick")
+else()
+    message(STATUS "QGC: Viewer3D Google 3D Maps source disabled: Qt6::WebEngineQuick was not found")
+endif()
 
 if(ANDROID)
     set(CUSTOM_ANDROID_DIR "${CMAKE_SOURCE_DIR}/custom/android")
@@ -51,6 +77,12 @@ set_source_files_properties(res/Custom/Widgets/CustomSignalStrength.qml PROPERTI
 set_source_files_properties(res/Custom/Widgets/CustomToolBarButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomToolBarButton.qml)
 set_source_files_properties(res/Custom/Widgets/CustomVehicleButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomVehicleButton.qml)
 
+
+file(GLOB_RECURSE VIEWER3D_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.hpp
+)
 qt_add_qml_module(CustomModule
     URI Custom.Widgets
     VERSION 1.0
@@ -76,11 +108,15 @@ set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.h
+    ${VIEWER3D_SOURCES}
     CACHE INTERNAL "" FORCE
 )
 
 set(CUSTOM_LIBRARIES
     CustomModule # Explicitly link QML module, needed by Qt 6.6.3, TODO: Remove when support for this version is dropped
+    Qt6::Quick3D
+    ${CUSTOM_VIEWER3D_EXTERNAL_LIBRARIES}
+    ${CUSTOM_VIEWER3D_GOOGLE_LIBRARIES}
     CACHE INTERNAL "" FORCE
 )
 
@@ -88,6 +124,7 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D
     CACHE INTERNAL "" FORCE
 )
 

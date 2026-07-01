@@ -15,11 +15,16 @@
         <file alias="vertical_speed.svg">res/Images/vertical_speed.svg</file>
         <file alias="dronecode-black.svg">res/Images/dronecode-black.svg</file>
         <file alias="dronecode-white.svg">res/Images/dronecode-white.svg</file>
+        <file alias="viewer3d_city_3d_map_icon.svg">src/Viewer3D/Images/city_3d_map_icon.svg</file>
     </qresource>
     <qresource prefix="/Custom/qmlimages">
         <file alias="PaperPlane.svg">res/Images/CustomVehicleIcon.svg</file>
     </qresource>
     <qresource prefix="/Custom/qml">
+        <!-- Viewer3D 入口层覆盖：与同事已有 QML 覆盖机制共用 /Custom/qml。 -->
+        <file alias="FlyViewSettings.qml">src/UI/preferences/FlyViewSettings.qml</file>
+        <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
+        <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/CustomGuidedActionsController.qml">src/CustomGuidedActionsController.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
@@ -28,5 +33,59 @@
     <qresource prefix="/Custom/res">
         <file alias="QGCLogoFull.svg">res/QGCLogoFull.svg</file>
         <file alias="qgroundcontrol.ico">res/icons/custom_qgroundcontrol.ico</file>
+    </qresource>
+    <qresource prefix="/qml">
+        <!-- Viewer3D 独立 QML 模块：不和入口层覆盖文件混放，后续可整体迁移。 -->
+        <file alias="Viewer3D/Viewer3D.qml">src/Viewer3D/Viewer3DQml/Viewer3D.qml</file>
+        <file alias="Viewer3D/Google3DMapView.qml">src/Viewer3D/Viewer3DQml/Google3DMapView.qml</file>
+        <file alias="Viewer3D/Google3DMapUnavailable.qml">src/Viewer3D/Viewer3DQml/Google3DMapUnavailable.qml</file>
+        <file alias="Viewer3D/qmldir">src/QmlControls/Viewer3D/qmldir</file>
+        <file alias="Viewer3D/Models3D/CameraLightModel.qml">src/Viewer3D/Viewer3DQml/Models3D/CameraLightModel.qml</file>
+        <file alias="Viewer3D/Models3D/Viewer3DModel.qml">src/Viewer3D/Viewer3DQml/Models3D/Viewer3DModel.qml</file>
+        <file alias="Viewer3D/Models3D/External3DMap.qml">src/Viewer3D/Viewer3DQml/Models3D/External3DMap.qml</file>
+        <file alias="Viewer3D/Models3D/qmldir">src/QmlControls/Viewer3D/Models3D/qmldir</file>
+        <file alias="Viewer3D/Models3D/Drones/DroneModelDjiF450.qml">src/Viewer3D/Viewer3DQml/Drones/DroneModelDjiF450.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/qmldir">src/QmlControls/Viewer3D/Models3D/Drones/qmldir</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_1/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_1/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_1/DroneModel_arm_1.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_1/DroneModel_arm_1.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_2/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_2/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_2/DroneModel_arm_2.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_2/DroneModel_arm_2.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_3/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_3/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_3/DroneModel_arm_3.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_3/DroneModel_arm_3.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_4/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_4/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_arm_4/DroneModel_arm_4.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_4/DroneModel_arm_4.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_1/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_1/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_1/DroneModel_BLDC_1.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_1/DroneModel_BLDC_1.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_2/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_2/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_2/DroneModel_BLDC_2.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_2/DroneModel_BLDC_2.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_3/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_3/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_3/DroneModel_BLDC_3.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_3/DroneModel_BLDC_3.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_4/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_4/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_BLDC_4/DroneModel_BLDC_4.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_4/DroneModel_BLDC_4.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller2_2/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_2/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller2_2/DroneModel_propeller2_2.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_2/DroneModel_propeller2_2.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller2_7/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_7/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller2_7/DroneModel_propeller2_7.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_7/DroneModel_propeller2_7.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller22_1/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_1/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller22_1/DroneModel_propeller22_1.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_1/DroneModel_propeller22_1.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller22_2/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_2/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_propeller22_2/DroneModel_propeller22_2.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_2/DroneModel_propeller22_2.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_Base_bottom_1/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_bottom_1/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_Base_bottom_1/DroneModel_Base_bottom_1.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_bottom_1/DroneModel_Base_bottom_1.qml</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_Base_Top_1/node.mesh">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_Top_1/node.mesh</file>
+        <file alias="Viewer3D/Models3D/Drones/Djif450/DroneModel_Base_Top_1/DroneModel_Base_Top_1.qml">src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_Top_1/DroneModel_Base_Top_1.qml</file>
+        <file alias="Viewer3D/Models3D/Waypoint3DModel.qml">src/Viewer3D/Viewer3DQml/Models3D/Waypoint3DModel.qml</file>
+        <file alias="Viewer3D/Models3D/Line3D.qml">src/Viewer3D/Viewer3DQml/Models3D/Line3D.qml</file>
+        <file alias="Viewer3D/Models3D/Viewer3DVehicleItems.qml">src/Viewer3D/Viewer3DQml/Models3D/Viewer3DVehicleItems.qml</file>
+        <file alias="Viewer3D/Viewer3DProgressBar.qml">src/Viewer3D/Viewer3DQml/Viewer3DProgressBar.qml</file>
+    </qresource>
+    <qresource prefix="/json">
+        <file alias="Viewer3D.SettingsGroup.json">src/Viewer3D/Viewer3D.SettingsGroup.json</file>
+    </qresource>
+    <qresource prefix="/ShaderVertex">
+        <file alias="earthMaterial.vert">src/Viewer3D/Shaders/earthMaterial.vert</file>
+    </qresource>
+    <qresource prefix="/ShaderFragment">
+        <file alias="earthMaterial.frag">src/Viewer3D/Shaders/earthMaterial.frag</file>
     </qresource>
 </RCC>

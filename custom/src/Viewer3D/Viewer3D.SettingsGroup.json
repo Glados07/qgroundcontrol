@@ -1,0 +1,98 @@
+{
+    "version":      1,
+    "fileType":  "FactMetaData",
+    "QGC.MetaData.Facts":
+[
+{
+    "name":             "enabled",
+    "shortDesc":        "Enable the 3D viewer",
+    "type":             "bool",
+    "default":          false
+},
+{
+    "name":             "useGoogle3DMapSource",
+    "shortDesc":        "Use the online Google 3D Maps source instead of local 3D sources.",
+    "type":             "bool",
+    "default":          false
+},
+{
+    "name":             "google3DMapsApiKey",
+    "shortDesc":        "Google Maps JavaScript API key used by the online Google 3D Maps source.",
+    "type":             "string",
+    "default":          ""
+},
+{
+    "name":             "useExternal3DMapSource",
+    "shortDesc":        "Use an externally generated 3D model map instead of the local OSM 3D map file.",
+    "type":             "bool",
+    "default":          false
+},
+{
+    "name":             "external3DMapFilePath",
+    "shortDesc":        "Path to an external 3D model map file. OBJ, glTF, GLB and Balsam QML load directly; FBX, DAE, STL and PLY are imported through Qt Balsam conversion.",
+    "type":             "string",
+    "default":          "Please select an external 3D model file"
+},
+{
+    "name":             "external3DMapOriginLatitude",
+    "shortDesc":        "Latitude of the external 3D map local origin in WGS84.",
+    "type":             "double",
+    "units":            "deg",
+    "default":          0
+},
+{
+    "name":             "external3DMapOriginLongitude",
+    "shortDesc":        "Longitude of the external 3D map local origin in WGS84.",
+    "type":             "double",
+    "units":            "deg",
+    "default":          0
+},
+{
+    "name":             "external3DMapOriginAltitude",
+    "shortDesc":        "Altitude of the external 3D map local origin.",
+    "type":             "double",
+    "units":            "m",
+    "default":          0
+},
+{
+    "name":             "external3DMapUnitToMeters",
+    "shortDesc":        "Meters represented by one model unit. Use 0.01 for Unreal centimeter exports and 1.0 for meter-based glTF/OBJ exports.",
+    "type":             "double",
+    "units":            "m/unit",
+    "default":          0.01
+},
+{
+    "name":             "external3DMapScale",
+    "shortDesc":        "Extra scale multiplier for the external 3D map after unit conversion.",
+    "type":             "double",
+    "default":          1
+},
+{
+    "name":             "external3DMapYaw",
+    "shortDesc":        "Yaw angle that rotates the external 3D map into QGC ENU coordinates. Zero means model +Y points north and +X points east.",
+    "type":             "double",
+    "units":            "deg",
+    "default":          0
+},
+{
+    "name":             "osmFilePath",
+    "shortDesc":        "Path to the OSM file for the 3D viewer.",
+    "type":             "string",
+    "default":          "Please select an OSM file"
+},
+{
+    "name":             "buildingLevelHeight",
+    "shortDesc":        "Average Height for each level of the buildings",
+    "type":             "double",
+    "units":            "m",
+    "default":          3
+},
+{
+    "name":             "altitudeBias",
+    "shortDesc":        "Altitude bias for vehicles in the 3D View",
+    "type":             "double",
+    "units":            "m",
+    "default":          0
+}
+]
+}

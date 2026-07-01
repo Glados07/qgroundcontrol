@@ -1,0 +1,42 @@
+{
+  "name": "Realistic Palo Alto Downtown WGS84 town map sample",
+  "description": "Textured external 3D town map with ground, roads, sidewalks, lane markings, crosswalks, buildings, cars, trees and street lamps.",
+  "source": "OpenStreetMap building/highway/park data queried through Overpass API",
+  "sourceStatus": "downloaded",
+  "sourceError": "",
+  "license": "OpenStreetMap data is licensed under ODbL 1.0; credit OpenStreetMap contributors when using derived data. Procedural textures are generated for this QGC sample.",
+  "sourceUrls": [
+    "https://www.openstreetmap.org/copyright",
+    "https://wiki.openstreetmap.org/wiki/Overpass_API",
+    "https://overpass-api.de/api/interpreter"
+  ],
+  "files": {
+    "obj": "realistic_town_wgs84_map.obj",
+    "mtl": "realistic_town_wgs84_map.mtl",
+    "fbx": "realistic_town_wgs84_map.fbx",
+    "textures": "textures/",
+    "source": "osm_overpass_source.json"
+  },
+  "qgcViewer3DSettings": {
+    "originLat": 37.4456,
+    "originLon": -122.16159999999999,
+    "originAlt": 9.0,
+    "modelUnitToMeters": 1.0,
+    "modelScale": 1.0,
+    "northYawAngle": 0.0,
+    "vehiclesAltitudeBias": 0.0
+  },
+  "axisConvention": "+X east, +Y north, +Z up; local ENU meters from WGS84 origin.",
+  "counts": {
+    "buildings": 170,
+    "roadSegments": 635,
+    "cars": 55,
+    "trees": 85,
+    "streetLamps": 42,
+    "vertices": 41066,
+    "uvs": 41066,
+    "faces": 10300
+  },
+  "recommendedQgcFile": "realistic_town_wgs84_map.obj",
+  "importantNote": "This is a generated external OBJ/FBX sample, not a photogrammetry scan or packaged UE5 .umap. FBX/OBJ do not carry portable WGS84 georeferencing; use qgcViewer3DSettings to place it."
+}

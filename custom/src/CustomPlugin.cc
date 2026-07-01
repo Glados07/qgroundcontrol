@@ -16,10 +16,14 @@
 #include "QGCMAVLink.h"
 #include "AppSettings.h"
 #include "BrandImageSettings.h"
+#include "External3DMapManager.h"
+#include "Viewer3DManager.h"
+#include "Viewer3DSettings.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QtCore/QApplicationStatic>
 #endif
+#include <QtCore/QFile>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlFile>
 
@@ -92,6 +96,11 @@ QGCCorePlugin *CustomPlugin::instance()
     return _customPluginInstance();
 }
 
+CustomPlugin *CustomPlugin::customInstance()
+{
+    return _customPluginInstance();
+}
+
 void CustomPlugin::init()
 {
     // Load custom translations for the current locale
@@ -105,15 +114,21 @@ void CustomPlugin::init()
             qCDebug(CustomLog) << "No custom translation found for" << locale.name();
         }
     }
+
+    // Viewer3D 初始化保持独立：这里只创建设置/导入管理器并注册 QML 类型。
+    _ensureViewer3DSettings();
+    _ensureExternal3DMapManager();
+    Viewer3DManager::registerQmlTypes();
 }
 
 void CustomPlugin::cleanup()
 {
-    if (_qmlEngine) {
+    if (_qmlEngine && _selector) {
         _qmlEngine->removeUrlInterceptor(_selector);
     }
 
     delete _selector;
+    _selector = nullptr;
 }
 
 void CustomPlugin::_advancedChanged(bool changed)
@@ -136,6 +151,54 @@ void CustomPlugin::_addSettingsEntry(const QString& title, const char* qmlFile, 
 QGCOptions* CustomPlugin::options()
 {
     return _options;
+}
+
+
+QObject *CustomPlugin::viewer3DSettings()
+{
+    return viewer3DSettingsFactGroup();
+}
+
+Viewer3DSettings *CustomPlugin::viewer3DSettingsFactGroup()
+{
+    _ensureViewer3DSettings();
+    return _viewer3DSettings;
+}
+
+QObject *CustomPlugin::external3DMapManager()
+{
+    return external3DMapManagerObject();
+}
+
+External3DMapManager *CustomPlugin::external3DMapManagerObject()
+{
+    _ensureExternal3DMapManager();
+    return _external3DMapManager;
+}
+
+bool CustomPlugin::google3DMapsAvailable() const
+{
+#if defined(QGC_VIEWER3D_GOOGLE_WEBENGINE)
+    // Google 3D Maps 使用 Qt WebEngine 承载在线 JavaScript 3D 地图；未编译 WebEngine 时 QML 会显示降级提示。
+    return true;
+#else
+    return false;
+#endif
+}
+
+void CustomPlugin::_ensureViewer3DSettings()
+{
+    if (!_viewer3DSettings) {
+        _viewer3DSettings = new Viewer3DSettings(this);
+    }
+}
+
+void CustomPlugin::_ensureExternal3DMapManager()
+{
+    _ensureViewer3DSettings();
+    if (!_external3DMapManager) {
+        _external3DMapManager = new External3DMapManager(_viewer3DSettings, this);
+    }
 }
 
 QString CustomPlugin::brandImageIndoor(void) const
@@ -376,8 +439,11 @@ QQmlApplicationEngine* CustomPlugin::createQmlApplicationEngine(QObject* parent)
     _qmlEngine->addImportPath("qrc:/Custom/Widgets");
     // TODO: Investigate _qmlEngine->setExtraSelectors({"custom"})
 
-    _selector = new CustomOverrideInterceptor();
-    _qmlEngine->addUrlInterceptor(_selector);
+    // 与同事分支原有覆盖风格一致：优先加载 qrc:/Custom/qml 下的入口层覆盖文件。
+    if (!_selector) {
+        _selector = new CustomOverrideInterceptor();
+        _qmlEngine->addUrlInterceptor(_selector);
+    }
 
     return _qmlEngine;
 }
@@ -399,6 +465,7 @@ QUrl CustomOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterc
         if (url.scheme() == QStringLiteral("qrc")) {
             const QString origPath = url.path();
             const QString overrideRes = QStringLiteral(":/Custom%1").arg(origPath);
+            // 只有 custom.qrc 中确实注册了同路径资源时才覆盖，避免影响 QGC 其他默认 QML。
             if (QFile::exists(overrideRes)) {
                 const QString relPath = overrideRes.mid(2);
                 QUrl result;

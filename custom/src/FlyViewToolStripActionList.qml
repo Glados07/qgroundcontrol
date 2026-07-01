@@ -18,6 +18,24 @@ ToolStripActionList {
     signal displayPreFlightChecklist
 
     model: [
+        // Viewer3D 入口按钮：这是本次迁移新增项；其余 GuidedAction 保持同事分支原有顺序和行为。
+        ToolStripAction {
+            property bool _is3DViewOpen:      viewer3DWindow.isOpen
+            property bool _viewer3DEnabled:   QGroundControl.corePlugin.viewer3DSettings.enabled.rawValue
+
+            id:             view3DIcon
+            visible:        _viewer3DEnabled
+            text:           _is3DViewOpen ? qsTr("Fly") : qsTr("3D View")
+            iconSource:     _is3DViewOpen ? "/Custom/qmlimages/PaperPlane.svg" : "/custom/img/viewer3d_city_3d_map_icon.svg"
+
+            onTriggered: {
+                if (_is3DViewOpen) {
+                    viewer3DWindow.close()
+                } else {
+                    viewer3DWindow.open()
+                }
+            }
+        },
         PreFlightCheckListShowAction { onTriggered: displayPreFlightChecklist() },
         GuidedActionTakeoff { },
         GuidedActionLand { },
@@ -30,6 +48,6 @@ ToolStripActionList {
             visible:    true
             enabled:    true
             actionID:   _guidedController._customController.actionCustomButton
-}
+        }
     ]
 }
