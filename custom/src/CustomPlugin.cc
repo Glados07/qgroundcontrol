@@ -16,9 +16,9 @@
 #include "QGCMAVLink.h"
 #include "AppSettings.h"
 #include "BrandImageSettings.h"
-#include "External3DMapManager.h"
-#include "Viewer3DManager.h"
-#include "Viewer3DSettings.h"
+#include "Viewer3D/External3DMapManager.h"
+#include "Viewer3D/Viewer3DManager.h"
+#include "Viewer3D/Viewer3DSettings.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QtCore/QApplicationStatic>

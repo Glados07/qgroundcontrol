@@ -20,7 +20,7 @@ class OsmParser;
 class CityMapGeometry : public QQuick3DGeometry
 {
     Q_OBJECT
-    Q_MOC_INCLUDE("OsmParser.h")
+    Q_MOC_INCLUDE("Viewer3D/OsmParser.h")
 
     Q_PROPERTY(QString modelName READ modelName WRITE setModelName NOTIFY modelNameChanged)
     Q_PROPERTY(OsmParser* osmParser READ osmParser WRITE setOsmParser NOTIFY osmParserChanged)
