@@ -8,22 +8,31 @@ set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
     CUSTOMCLASS=CustomPlugin
 )
 # Viewer3D 使用 Qt Quick3D 渲染本地 3D 场景；Quick3DAssetUtils 用于 OBJ/glTF/GLB 运行时加载。
-find_package(Qt6 REQUIRED COMPONENTS Quick3D Quick3DAssetUtils)
+# 必需 Qt 组件交给根目录 CMakeLists.txt:525 统一 find_package，确保 target 在根目录作用域可见。
+list(APPEND CUSTOM_QT_COMPONENTS
+    Quick3D
+    Quick3DAssetUtils
+)
+list(REMOVE_DUPLICATES CUSTOM_QT_COMPONENTS)
+set(CUSTOM_QT_COMPONENTS ${CUSTOM_QT_COMPONENTS} CACHE INTERNAL "" FORCE)
+
+# Google 3D 在线地图只作为可选能力；未安装 Qt WebEngine 时自动关闭在线源，不影响本地 3D 视图构建。
 find_package(Qt6 COMPONENTS WebEngineQuick QUIET)
 
-# 顶层 CMake 会在根目录链接 CUSTOM_LIBRARIES，这里把 Qt imported target 提升为全局可见。
-if(TARGET Qt6::Quick3D)
-    set_target_properties(Qt6::Quick3D PROPERTIES IMPORTED_GLOBAL TRUE)
-endif()
+function(_qgc_viewer3d_promote_local_imported_target target_name)
+    if(TARGET ${target_name})
+        get_property(_viewer3d_imported_targets DIRECTORY PROPERTY IMPORTED_TARGETS)
+        if("${target_name}" IN_LIST _viewer3d_imported_targets)
+            set_target_properties(${target_name} PROPERTIES IMPORTED_GLOBAL TRUE)
+        endif()
+    endif()
+endfunction()
 
 set(CUSTOM_VIEWER3D_EXTERNAL_LIBRARIES Qt6::Quick3DAssetUtils)
-if(TARGET Qt6::Quick3DAssetUtils)
-    set_target_properties(Qt6::Quick3DAssetUtils PROPERTIES IMPORTED_GLOBAL TRUE)
-endif()
 
 set(CUSTOM_VIEWER3D_GOOGLE_LIBRARIES)
 if(TARGET Qt6::WebEngineQuick)
-    set_target_properties(Qt6::WebEngineQuick PROPERTIES IMPORTED_GLOBAL TRUE)
+    _qgc_viewer3d_promote_local_imported_target(Qt6::WebEngineQuick)
     list(APPEND CUSTOM_VIEWER3D_GOOGLE_LIBRARIES Qt6::WebEngineQuick)
     set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
         APPEND PROPERTY COMPILE_DEFINITIONS

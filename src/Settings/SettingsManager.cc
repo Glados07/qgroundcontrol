@@ -31,9 +31,6 @@
 #include "UnitsSettings.h"
 #include "VideoSettings.h"
 #include "MavlinkSettings.h"
-#ifdef QGC_VIEWER3D
-#include "Viewer3DSettings.h"
-#endif
 
 #include <QtCore/qapplicationstatic.h>
 #include <QtQml/qqml.h>
@@ -88,9 +85,6 @@ void SettingsManager::init()
     _rtkSettings = new RTKSettings(this);
     _videoSettings = new VideoSettings(this);
     _mavlinkSettings = new MavlinkSettings(this);
-#ifdef QGC_VIEWER3D
-    _viewer3DSettings = new Viewer3DSettings(this);
-#endif
 }
 
 ADSBVehicleManagerSettings *SettingsManager::adsbVehicleManagerSettings() const { return _adsbVehicleManagerSettings; }
@@ -115,6 +109,3 @@ RTKSettings *SettingsManager::rtkSettings() const { return _rtkSettings; }
 UnitsSettings *SettingsManager::unitsSettings() const { return _unitsSettings; }
 VideoSettings *SettingsManager::videoSettings() const { return _videoSettings; }
 MavlinkSettings *SettingsManager::mavlinkSettings() const { return _mavlinkSettings; }
-#ifdef QGC_VIEWER3D
-Viewer3DSettings *SettingsManager::viewer3DSettings() const { return _viewer3DSettings; }
-#endif

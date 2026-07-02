@@ -104,7 +104,7 @@ private:
     QTranslator     _customTranslator;
     QVariantList    _customSettingsList; // Not to be mixed up with QGCCorePlugin implementation
 
-    // Viewer3D 保持为独立模块，生命周期挂在 CustomPlugin 下，避免和同事的飞控插件逻辑耦合。
+    // Viewer3D 保持为独立模块，生命周期挂在 CustomPlugin 下，避免和项目原有飞控插件逻辑耦合。
     Viewer3DSettings *_viewer3DSettings = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
 };

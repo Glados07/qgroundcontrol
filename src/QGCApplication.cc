@@ -73,9 +73,6 @@
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR
 #include "MAVLinkInspectorController.h"
 #endif
-#ifdef QGC_VIEWER3D
-#include "Viewer3DManager.h"
-#endif
 #ifndef QGC_NO_SERIAL_LINK
 #include "FirmwareUpgradeController.h"
 #include "SerialLink.h"
@@ -279,9 +276,6 @@ void QGCApplication::init()
     QGCCorePlugin::registerQmlTypes();
     GPSRtk::registerQmlTypes();
     JoystickManager::registerQmlTypes();
-#ifdef QGC_VIEWER3D
-    Viewer3DManager::registerQmlTypes();
-#endif
 
     qmlRegisterUncreatableType<GimbalController>("QGroundControl.Vehicle", 1, 0, "GimbalController", "Reference only");
 

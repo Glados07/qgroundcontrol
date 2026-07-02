@@ -42,8 +42,6 @@ target_sources(${CMAKE_PROJECT_NAME}
         VideoSettings.h
         MapsSettings.cc
         MapsSettings.h
-        Viewer3DSettings.cc
-        Viewer3DSettings.h
 )
 
 if(NOT QGC_DISABLE_APM_MAVLINK)

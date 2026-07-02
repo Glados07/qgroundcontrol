@@ -32,7 +32,6 @@ class RemoteIDSettings;
 class RTKSettings;
 class UnitsSettings;
 class VideoSettings;
-class Viewer3DSettings;
 class MavlinkSettings;
 
 Q_DECLARE_LOGGING_CATEGORY(SettingsManagerLog)
@@ -65,9 +64,6 @@ class SettingsManager : public QObject
     Q_MOC_INCLUDE("UnitsSettings.h")
     Q_MOC_INCLUDE("VideoSettings.h")
     Q_MOC_INCLUDE("MavlinkSettings.h")
-#ifdef QGC_VIEWER3D
-    Q_MOC_INCLUDE("Viewer3DSettings.h")
-#endif
     Q_PROPERTY(QObject *adsbVehicleManagerSettings      READ adsbVehicleManagerSettings     CONSTANT)
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     Q_PROPERTY(QObject *apmMavlinkStreamRateSettings    READ apmMavlinkStreamRateSettings   CONSTANT)
@@ -90,9 +86,6 @@ class SettingsManager : public QObject
     Q_PROPERTY(QObject *unitsSettings                   READ unitsSettings                  CONSTANT)
     Q_PROPERTY(QObject *videoSettings                   READ videoSettings                  CONSTANT)
     Q_PROPERTY(QObject *mavlinkSettings                 READ mavlinkSettings                CONSTANT)
-#ifdef QGC_VIEWER3D
-    Q_PROPERTY(QObject *viewer3DSettings                READ viewer3DSettings               CONSTANT)
-#endif
 public:
     SettingsManager(QObject *parent = nullptr);
     ~SettingsManager();
@@ -124,9 +117,6 @@ public:
     UnitsSettings *unitsSettings() const;
     VideoSettings *videoSettings() const;
     MavlinkSettings *mavlinkSettings() const;
-#ifdef QGC_VIEWER3D
-    Viewer3DSettings *viewer3DSettings() const;
-#endif
 
 private:
     ADSBVehicleManagerSettings *_adsbVehicleManagerSettings = nullptr;
@@ -151,7 +141,4 @@ private:
     UnitsSettings *_unitsSettings = nullptr;
     VideoSettings *_videoSettings = nullptr;
     MavlinkSettings *_mavlinkSettings = nullptr;
-#ifdef QGC_VIEWER3D
-    Viewer3DSettings *_viewer3DSettings = nullptr;
-#endif
 };

@@ -18,7 +18,7 @@ ToolStripActionList {
     signal displayPreFlightChecklist
 
     model: [
-        // Viewer3D 入口按钮：这是本次迁移新增项；其余 GuidedAction 保持同事分支原有顺序和行为。
+        // Viewer3D 入口按钮：这是本次迁移新增项；其余 GuidedAction 保持目标项目原有顺序和行为。
         ToolStripAction {
             property bool _is3DViewOpen:      viewer3DWindow.isOpen
             property bool _viewer3DEnabled:   QGroundControl.corePlugin.viewer3DSettings.enabled.rawValue

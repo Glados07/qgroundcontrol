@@ -439,7 +439,7 @@ QQmlApplicationEngine* CustomPlugin::createQmlApplicationEngine(QObject* parent)
     _qmlEngine->addImportPath("qrc:/Custom/Widgets");
     // TODO: Investigate _qmlEngine->setExtraSelectors({"custom"})
 
-    // 与同事分支原有覆盖风格一致：优先加载 qrc:/Custom/qml 下的入口层覆盖文件。
+    // 与目标项目原有覆盖风格一致：优先加载 qrc:/Custom/qml 下的入口层覆盖文件。
     if (!_selector) {
         _selector = new CustomOverrideInterceptor();
         _qmlEngine->addUrlInterceptor(_selector);

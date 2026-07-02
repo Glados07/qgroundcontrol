@@ -21,7 +21,7 @@
         <file alias="PaperPlane.svg">res/Images/CustomVehicleIcon.svg</file>
     </qresource>
     <qresource prefix="/Custom/qml">
-        <!-- Viewer3D 入口层覆盖：与同事已有 QML 覆盖机制共用 /Custom/qml。 -->
+        <!-- Viewer3D 入口层覆盖：与目标项目已有 QML 覆盖机制共用 /Custom/qml。 -->
         <file alias="FlyViewSettings.qml">src/UI/preferences/FlyViewSettings.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
