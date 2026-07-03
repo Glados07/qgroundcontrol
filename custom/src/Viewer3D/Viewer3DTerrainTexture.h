@@ -22,7 +22,7 @@ class OsmParser;
 class Viewer3DTerrainTexture : public QQuick3DTextureData
 {
     Q_OBJECT
-    Q_MOC_INCLUDE("Viewer3D/OsmParser.h")
+    Q_MOC_INCLUDE("custom/src/Viewer3D/OsmParser.h")
 
     Q_PROPERTY(OsmParser* osmParser READ osmParser WRITE setOsmParser NOTIFY osmParserChanged)
     Q_PROPERTY(QGeoCoordinate roiMinCoordinate READ roiMinCoordinate WRITE setRoiMinCoordinate NOTIFY roiMinCoordinateChanged)

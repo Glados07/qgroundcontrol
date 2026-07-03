@@ -21,8 +21,8 @@ class Viewer3DQmlBackend;
 class Viewer3DManager : public QObject
 {
     Q_OBJECT
-    Q_MOC_INCLUDE("Viewer3D/OsmParser.h")
-    Q_MOC_INCLUDE("Viewer3D/Viewer3DQmlBackend.h")
+    Q_MOC_INCLUDE("custom/src/Viewer3D/OsmParser.h")
+    Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DQmlBackend.h")
 
     Q_PROPERTY(OsmParser* osmParser MEMBER _osmParser CONSTANT)
     Q_PROPERTY(Viewer3DQmlBackend* qmlBackend MEMBER _qmlBackend CONSTANT)

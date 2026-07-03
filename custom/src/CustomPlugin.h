@@ -59,8 +59,8 @@ private:
 class CustomPlugin : public QGCCorePlugin
 {
     Q_OBJECT
-    Q_MOC_INCLUDE("Viewer3D/External3DMapManager.h")
-    Q_MOC_INCLUDE("Viewer3D/Viewer3DSettings.h")
+    Q_MOC_INCLUDE("custom/src/Viewer3D/External3DMapManager.h")
+    Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
     Q_PROPERTY(QObject *viewer3DSettings READ viewer3DSettings CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
     Q_PROPERTY(bool google3DMapsAvailable READ google3DMapsAvailable CONSTANT)
