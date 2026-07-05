@@ -141,13 +141,13 @@ Viewer3D 新增模块已迁入
 二次构建测试后补充确认：
 
 ```text
-1. Qt6 静态 QML 模块解析不完全等同于普通 qrc URL 加载，只靠 CustomOverrideInterceptor 不足以稳定替换模块内部同名 QML 类型。
+1. Qt6 静态 QML 模块解析不完全等同于普通 qrc URL 加载；入口层不要新增未注册唯一类型名，应使用 QGC 已注册类型名，并由 CustomOverrideInterceptor 覆盖同路径 custom 文件。
 2. Application Settings 外壳新增 custom/src/AppSettings.qml，Fly View 页面显式指向 qrc:/Custom/qml/QGroundControl/AppSettings/FlyViewSettings.qml。
-3. Fly View 工具条新增 custom/src/CustomFlyViewToolStrip.qml，通过唯一类型名 Viewer3DToolStripActionList 显式实例化 custom 的 FlyViewToolStripActionList.qml。
-4. custom/src/FlyView.qml 使用 Viewer3DFlyViewWidgetLayer 和 SecDevFlyViewCustomLayer 这两个唯一类型名，避免与 QGroundControl.FlightDisplay 模块中的同名 src 文件冲突。
+3. Fly View 工具条新增 custom/src/CustomFlyViewToolStrip.qml，并通过 custom.qrc 覆盖为 QGroundControl.FlightDisplay/FlyViewToolStrip.qml；内部继续使用 QGC 已注册的 FlyViewToolStripActionList 类型，由拦截器加载 custom 覆盖文件。
+4. custom/src/FlyView.qml 使用 QGC 已注册的 FlyViewWidgetLayer 和 FlyViewCustomLayer 类型名，实际文件由 /Custom/qml 同路径覆盖，避免新增未注册 QML 类型。
 5. CustomOverrideInterceptor 额外处理 QmldirFile、JavaScriptFile 和 /qt/qml 路径，作为模块解析场景下的兜底。
 6. Viewer3D 设置页的布尔开关直接写 Fact.rawValue，避免 enabled 开关在跨 custom QObject 绑定时出现 UI 状态回弹。
-7. 运行日志出现 `Viewer3DFlyViewWidgetLayer is not a type` 时，原因是 FlyView 已在 `qrc:/qml/QGroundControl/FlightDisplay` 模块路径下解析，但 custom 唯一类型只注册在 `/Custom/qml`；已在 `custom.qrc` 的 `/qml/QGroundControl/FlightDisplay` 下补充注册 Viewer3DFlyViewWidgetLayer、CustomFlyViewToolStrip、SecDevFlyViewCustomLayer、Viewer3DToolStripActionList。
+7. 运行日志出现 `Viewer3DFlyViewWidgetLayer is not a type` 时，原因不是 custom.qrc 没进包，而是 Qt6 静态 QML 模块不会把 qrc 中新增的唯一文件名自动注册成 `QGroundControl.FlightDisplay` 类型；修复方式是避免新增未注册类型名，入口层统一使用 FlyViewWidgetLayer、FlyViewCustomLayer、FlyViewToolStrip、FlyViewToolStripActionList 这些 QGC 已注册类型，并由 CustomOverrideInterceptor 加载 custom 同路径覆盖文件。
 ```
 
 ---

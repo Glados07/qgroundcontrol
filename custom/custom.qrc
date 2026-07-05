@@ -30,13 +30,10 @@
         <file alias="QGroundControl/AppSettings/Viewer3DSettingsGroup.qml">src/UI/preferences/Viewer3DSettingsGroup.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
-        <file alias="QGroundControl/FlightDisplay/Viewer3DFlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
-        <file alias="QGroundControl/FlightDisplay/CustomFlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
+        <file alias="QGroundControl/FlightDisplay/FlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
         <file alias="QGroundControl/FlightDisplay/CustomGuidedActionsController.qml">src/CustomGuidedActionsController.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
-        <file alias="QGroundControl/FlightDisplay/SecDevFlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
-        <file alias="QGroundControl/FlightDisplay/Viewer3DToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
         <file alias="FuelStatusIndicator.qml">src/FuelStatusIndicator.qml</file>
     </qresource>
     <qresource prefix="/Custom/res">
@@ -44,11 +41,6 @@
         <file alias="qgroundcontrol.ico">res/icons/custom_qgroundcontrol.ico</file>
     </qresource>
     <qresource prefix="/qml">
-        <!-- Viewer3D 入口层使用的 custom 唯一类型：FlyView 被 QGC 模块路径加载时，必须在 /qml/QGroundControl/FlightDisplay 下可见。 -->
-        <file alias="QGroundControl/FlightDisplay/Viewer3DFlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
-        <file alias="QGroundControl/FlightDisplay/CustomFlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
-        <file alias="QGroundControl/FlightDisplay/SecDevFlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
-        <file alias="QGroundControl/FlightDisplay/Viewer3DToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
         <!-- Viewer3D 独立 QML 模块：不和入口层覆盖文件混放，后续可整体迁移。 -->
         <file alias="Viewer3D/Viewer3D.qml">src/Viewer3D/Viewer3DQml/Viewer3D.qml</file>
         <file alias="Viewer3D/Google3DMapView.qml">src/Viewer3D/Viewer3DQml/Google3DMapView.qml</file>

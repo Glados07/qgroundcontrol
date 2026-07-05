@@ -1,7 +1,8 @@
 /****************************************************************************
  *
  * Custom Fly View tool strip for SecDev Viewer3D build.
- * 该文件显式加载 custom 的 FlyViewToolStripActionList，避免 Qt6 模块解析回到 src 旧文件。
+ * 该文件通过 custom.qrc 覆盖为 QGroundControl.FlightDisplay/FlyViewToolStrip.qml。
+ * 内部继续使用 QGC 已注册的 FlyViewToolStripActionList 类型，由拦截器加载 custom 覆盖文件。
  *
 ****************************************************************************/
 
@@ -14,7 +15,7 @@ ToolStrip {
 
     signal displayPreFlightChecklist
 
-    Viewer3DToolStripActionList {
+    FlyViewToolStripActionList {
         id: actionList
 
         onDisplayPreFlightChecklist: _root.displayPreFlightChecklist()

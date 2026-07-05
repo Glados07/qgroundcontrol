@@ -124,7 +124,7 @@ Item {
             property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
         }
 
-        Viewer3DFlyViewWidgetLayer {
+        FlyViewWidgetLayer {
             id:                     widgetLayer
             anchors.top:            parent.top
             anchors.bottom:         parent.bottom
@@ -138,7 +138,7 @@ Item {
             isViewer3DOpen:         viewer3DWindow.isOpen
         }
 
-        SecDevFlyViewCustomLayer {
+        FlyViewCustomLayer {
             id:                 customOverlay
             anchors.fill:       widgetLayer
             z:                  _fullItemZorder + 2
