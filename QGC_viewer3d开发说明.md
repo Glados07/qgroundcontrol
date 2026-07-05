@@ -147,6 +147,7 @@ Viewer3D 新增模块已迁入
 4. custom/src/FlyView.qml 使用 Viewer3DFlyViewWidgetLayer 和 SecDevFlyViewCustomLayer 这两个唯一类型名，避免与 QGroundControl.FlightDisplay 模块中的同名 src 文件冲突。
 5. CustomOverrideInterceptor 额外处理 QmldirFile、JavaScriptFile 和 /qt/qml 路径，作为模块解析场景下的兜底。
 6. Viewer3D 设置页的布尔开关直接写 Fact.rawValue，避免 enabled 开关在跨 custom QObject 绑定时出现 UI 状态回弹。
+7. 运行日志出现 `Viewer3DFlyViewWidgetLayer is not a type` 时，原因是 FlyView 已在 `qrc:/qml/QGroundControl/FlightDisplay` 模块路径下解析，但 custom 唯一类型只注册在 `/Custom/qml`；已在 `custom.qrc` 的 `/qml/QGroundControl/FlightDisplay` 下补充注册 Viewer3DFlyViewWidgetLayer、CustomFlyViewToolStrip、SecDevFlyViewCustomLayer、Viewer3DToolStripActionList。
 ```
 
 ---
