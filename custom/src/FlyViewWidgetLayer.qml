@@ -172,7 +172,7 @@ Item {
         }
     }
 
-    FlyViewToolStrip {
+    CustomFlyViewToolStrip {
         id:                     toolStrip
         anchors.leftMargin:     _toolsMargin + parentToolInsets.leftEdgeCenterInset
         anchors.topMargin:      _toolsMargin + parentToolInsets.topEdgeLeftInset

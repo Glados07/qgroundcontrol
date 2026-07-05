@@ -54,7 +54,9 @@ Viewer3D 核心保持独立模块
 ```text
 custom/src
   CustomPlugin.h / CustomPlugin.cc        # custom 总入口，加入 Viewer3D 设置、外部模型导入管理器、QML 类型注册
+  AppSettings.qml                         # Application Settings 外壳覆盖，Fly View 设置页显式导向 custom
   FlyView.qml                             # QGC FlyView 覆盖入口，挂载 Viewer3D 窗口
+  CustomFlyViewToolStrip.qml              # Fly View 工具条覆盖，显式加载 custom ActionList
   FlyViewToolStripActionList.qml          # QGC FlyView 左侧工具条覆盖，增加 3D View/Fly 按钮
   FlyViewWidgetLayer.qml                  # QGC FlyView Widget 层覆盖，3D 打开时隐藏 2D 地图比例尺
   UI/preferences/FlyViewSettings.qml       # Application Settings -> Fly View 覆盖页，保留目标分支原有设置项
@@ -110,9 +112,11 @@ qrc:/Custom/qml/QGroundControl/AppSettings/Viewer3DSettingsGroup.qml
 Viewer3D 新增模块已迁入
   custom/src/Viewer3D
   custom/src/QmlControls/Viewer3D
+  custom/src/AppSettings.qml
   custom/src/UI/preferences/FlyViewSettings.qml
   custom/src/UI/preferences/Viewer3DSettingsGroup.qml
   custom/src/FlyView.qml
+  custom/src/CustomFlyViewToolStrip.qml
   custom/src/FlyViewWidgetLayer.qml
 
 必须合并的入口文件已经合并
@@ -132,6 +136,17 @@ Viewer3D 新增模块已迁入
 3. src/UI/AppSettings/FlyViewSettings.qml 仍引用 QGroundControl.settingsManager.viewer3DSettings，但当前分支没有在 SettingsManager 暴露这个对象。
 4. 修复后 custom 覆盖页使用 QGroundControl.corePlugin.viewer3DSettings，并把 Viewer3D 设置组拆到 Viewer3DSettingsGroup.qml。
 5. Fly View 工具条图标使用 qrc:/custom/img/viewer3d_city_3d_map_icon.svg，按钮显示由 viewer3DSettings.enabled 控制。
+```
+
+二次构建测试后补充确认：
+
+```text
+1. Qt6 静态 QML 模块解析不完全等同于普通 qrc URL 加载，只靠 CustomOverrideInterceptor 不足以稳定替换模块内部同名 QML 类型。
+2. Application Settings 外壳新增 custom/src/AppSettings.qml，Fly View 页面显式指向 qrc:/Custom/qml/QGroundControl/AppSettings/FlyViewSettings.qml。
+3. Fly View 工具条新增 custom/src/CustomFlyViewToolStrip.qml，通过唯一类型名 Viewer3DToolStripActionList 显式实例化 custom 的 FlyViewToolStripActionList.qml。
+4. custom/src/FlyView.qml 使用 Viewer3DFlyViewWidgetLayer 和 SecDevFlyViewCustomLayer 这两个唯一类型名，避免与 QGroundControl.FlightDisplay 模块中的同名 src 文件冲突。
+5. CustomOverrideInterceptor 额外处理 QmldirFile、JavaScriptFile 和 /qt/qml 路径，作为模块解析场景下的兜底。
+6. Viewer3D 设置页的布尔开关直接写 Fact.rawValue，避免 enabled 开关在跨 custom QObject 绑定时出现 UI 状态回弹。
 ```
 
 ---

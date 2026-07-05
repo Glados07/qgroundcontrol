@@ -106,7 +106,7 @@ Loader {
 
     function setFactValue(fact, value) {
         if (fact) {
-            fact.value = value
+            fact.rawValue = value
         }
     }
 
@@ -117,27 +117,33 @@ Loader {
             Layout.fillWidth: true
             heading:          qsTr("3D View")
 
-            FactCheckBoxSlider {
+            QGCCheckBoxSlider {
                 Layout.fillWidth: true
                 text:             qsTr("Enabled")
-                fact:             root.enabledFact
+                checked:          factRaw(root.enabledFact, false)
                 visible:          factVisible(root.enabledFact)
+
+                onClicked: setFactValue(root.enabledFact, checked)
             }
 
-            FactCheckBoxSlider {
+            QGCCheckBoxSlider {
                 Layout.fillWidth: true
                 text:             qsTr("Use Google 3D Maps")
-                fact:             root.useGoogle3DMapSourceFact
+                checked:          factRaw(root.useGoogle3DMapSourceFact, false)
                 enabled:          factRaw(root.enabledFact, false)
                 visible:          factVisible(root.useGoogle3DMapSourceFact)
+
+                onClicked: setFactValue(root.useGoogle3DMapSourceFact, checked)
             }
 
-            FactCheckBoxSlider {
+            QGCCheckBoxSlider {
                 Layout.fillWidth: true
                 text:             qsTr("Use External 3D Model Map")
-                fact:             root.useExternal3DMapSourceFact
+                checked:          factRaw(root.useExternal3DMapSourceFact, false)
                 enabled:          factRaw(root.enabledFact, false) && !factRaw(root.useGoogle3DMapSourceFact, false)
                 visible:          factVisible(root.useExternal3DMapSourceFact) && !factRaw(root.useGoogle3DMapSourceFact, false)
+
+                onClicked: setFactValue(root.useExternal3DMapSourceFact, checked)
             }
 
             Connections {

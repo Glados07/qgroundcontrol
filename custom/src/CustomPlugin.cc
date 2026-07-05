@@ -24,6 +24,7 @@
 #include <QtCore/QApplicationStatic>
 #endif
 #include <QtCore/QFile>
+#include <QtCore/QStringList>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlFile>
 
@@ -462,17 +463,31 @@ QUrl CustomOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterc
     switch (type) {
     using DataType = QQmlAbstractUrlInterceptor::DataType;
     case DataType::QmlFile:
+    case DataType::JavaScriptFile:
+    case DataType::QmldirFile:
     case DataType::UrlString:
         if (url.scheme() == QStringLiteral("qrc")) {
             const QString origPath = url.path();
-            const QString overrideRes = QStringLiteral(":/Custom%1").arg(origPath);
+
+            // Qt6 QML 模块有时会用 /qml，有时会经由 /qt/qml 解析资源。
+            // 这里统一映射到 /Custom/qml 下的同路径覆盖文件。
+            QStringList overrideCandidates;
+            overrideCandidates << QStringLiteral(":/Custom%1").arg(origPath);
+            if (origPath.startsWith(QStringLiteral("/qt/qml/"))) {
+                overrideCandidates << QStringLiteral(":/Custom/qml/%1").arg(origPath.mid(QStringLiteral("/qt/qml/").size()));
+            } else if (origPath.startsWith(QStringLiteral("/QGroundControl/"))) {
+                overrideCandidates << QStringLiteral(":/Custom/qml%1").arg(origPath);
+            }
+
             // 只有 custom.qrc 中确实注册了同路径资源时才覆盖，避免影响 QGC 其他默认 QML。
-            if (QFile::exists(overrideRes)) {
-                const QString relPath = overrideRes.mid(2);
-                QUrl result;
-                result.setScheme(QStringLiteral("qrc"));
-                result.setPath('/' + relPath);
-                return result;
+            for (const QString& overrideRes: overrideCandidates) {
+                if (QFile::exists(overrideRes)) {
+                    const QString relPath = overrideRes.mid(2);
+                    QUrl result;
+                    result.setScheme(QStringLiteral("qrc"));
+                    result.setPath('/' + relPath);
+                    return result;
+                }
             }
         }
         break;

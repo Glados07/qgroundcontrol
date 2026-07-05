@@ -11,6 +11,7 @@ import QtQml.Models
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.FlightDisplay
 
 ToolStripActionList {
     id: _root
@@ -26,7 +27,8 @@ ToolStripActionList {
             id:             view3DIcon
             visible:        _viewer3DEnabled
             text:           _is3DViewOpen ? qsTr("Fly") : qsTr("3D View")
-            iconSource:     _is3DViewOpen ? "/Custom/qmlimages/PaperPlane.svg" : "/custom/img/viewer3d_city_3d_map_icon.svg"
+            iconSource:     _is3DViewOpen ? "qrc:/Custom/qmlimages/PaperPlane.svg" : "qrc:/custom/img/viewer3d_city_3d_map_icon.svg"
+            fullColorIcon:  !_is3DViewOpen
 
             onTriggered: {
                 if (_is3DViewOpen) {

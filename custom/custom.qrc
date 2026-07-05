@@ -23,15 +23,20 @@
     <qresource prefix="/Custom/qml">
         <!-- Viewer3D 入口层覆盖：与目标项目已有 QML 覆盖机制共用 /Custom/qml。 -->
         <file alias="FlyViewSettings.qml">src/UI/preferences/FlyViewSettings.qml</file>
+        <file alias="QGroundControl/Controls/AppSettings.qml">src/AppSettings.qml</file>
         <!-- 目标分支 App Settings 使用 QGroundControl/AppSettings 路径，必须注册同路径覆盖。 -->
         <file alias="QGroundControl/AppSettings/FlyViewSettings.qml">src/UI/preferences/FlyViewSettings.qml</file>
         <file alias="QGroundControl/AppSettings/SettingsPage.qml">../src/UI/AppSettings/SettingsPage.qml</file>
         <file alias="QGroundControl/AppSettings/Viewer3DSettingsGroup.qml">src/UI/preferences/Viewer3DSettingsGroup.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
+        <file alias="QGroundControl/FlightDisplay/Viewer3DFlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
+        <file alias="QGroundControl/FlightDisplay/CustomFlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
         <file alias="QGroundControl/FlightDisplay/CustomGuidedActionsController.qml">src/CustomGuidedActionsController.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
+        <file alias="QGroundControl/FlightDisplay/SecDevFlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
+        <file alias="QGroundControl/FlightDisplay/Viewer3DToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
         <file alias="FuelStatusIndicator.qml">src/FuelStatusIndicator.qml</file>
     </qresource>
     <qresource prefix="/Custom/res">
