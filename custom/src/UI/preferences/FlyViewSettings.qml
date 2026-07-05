@@ -35,22 +35,8 @@ SettingsPage {
     property Fact   _guidedMinimumAltitude:             _flyViewSettings.guidedMinimumAltitude
     property Fact   _guidedMaximumAltitude:             _flyViewSettings.guidedMaximumAltitude
     property Fact   _maxGoToLocationDistance:           _flyViewSettings.maxGoToLocationDistance
-    property var    _viewer3DSettings:                  QGroundControl.corePlugin.viewer3DSettings
-    property var    _viewer3DExternal3DMapManager:      QGroundControl.corePlugin.external3DMapManager
-    property Fact   _viewer3DEnabled:                   _viewer3DSettings.enabled
-    property Fact   _viewer3DUseGoogle3DMapSource:      _viewer3DSettings.useGoogle3DMapSource
-    property Fact   _viewer3DGoogle3DMapsApiKey:        _viewer3DSettings.google3DMapsApiKey
-    property Fact   _viewer3DUseExternal3DMapSource:    _viewer3DSettings.useExternal3DMapSource
-    property Fact   _viewer3DExternal3DMapFilePath:     _viewer3DSettings.external3DMapFilePath
-    property Fact   _viewer3DExternal3DMapOriginLat:    _viewer3DSettings.external3DMapOriginLatitude
-    property Fact   _viewer3DExternal3DMapOriginLon:    _viewer3DSettings.external3DMapOriginLongitude
-    property Fact   _viewer3DExternal3DMapOriginAlt:    _viewer3DSettings.external3DMapOriginAltitude
-    property Fact   _viewer3DExternal3DMapUnitToMeters: _viewer3DSettings.external3DMapUnitToMeters
-    property Fact   _viewer3DExternal3DMapScale:        _viewer3DSettings.external3DMapScale
-    property Fact   _viewer3DExternal3DMapYaw:          _viewer3DSettings.external3DMapYaw
-    property Fact   _viewer3DOsmFilePath:               _viewer3DSettings.osmFilePath
-    property Fact   _viewer3DBuildingLevelHeight:       _viewer3DSettings.buildingLevelHeight
-    property Fact   _viewer3DAltitudeBias:              _viewer3DSettings.altitudeBias
+    property Fact   _forwardFlightGoToLocationLoiterRad:  _flyViewSettings.forwardFlightGoToLocationLoiterRad
+    property Fact   _goToLocationRequiresConfirmInGuided: _flyViewSettings.goToLocationRequiresConfirmInGuided
     QGCFileDialogController { id: fileController }
 
     function mavlinkActionList() {
@@ -125,7 +111,9 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Guided Commands")
-        visible:            _guidedMinimumAltitude.visible || _guidedMaximumAltitude.visible || _maxGoToLocationDistance.visible
+        visible:            _guidedMinimumAltitude.visible || _guidedMaximumAltitude.visible ||
+                            _maxGoToLocationDistance.visible || _forwardFlightGoToLocationLoiterRad.visible ||
+                            _goToLocationRequiresConfirmInGuided.visible
 
         LabelledFactTextField {
             Layout.fillWidth:   true
@@ -145,6 +133,20 @@ SettingsPage {
             Layout.fillWidth:   true
             label:              qsTr("Go To Location Max Distance")
             fact:               _maxGoToLocationDistance
+            visible:            fact.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Loiter Radius in Forward Flight Guided Mode")
+            fact:               _forwardFlightGoToLocationLoiterRad
+            visible:            fact.visible
+        }
+
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
+            text:               qsTr("Require Confirmation for Go To Location in Guided Mode")
+            fact:               _goToLocationRequiresConfirmInGuided
             visible:            fact.visible
         }
     }
@@ -231,259 +233,18 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
+    // Viewer3D 设置组独立加载，便于后续继续移植或替换 3D 模块。
+    Loader {
+        id:                 viewer3DSettingsGroupLoader
         Layout.fillWidth:   true
-        heading:            qsTr("3D View")
-        visible:            _viewer3DSettings.visible
+        source:             "qrc:/Custom/qml/QGroundControl/AppSettings/Viewer3DSettingsGroup.qml"
 
-        FactCheckBoxSlider {
-            Layout.fillWidth:   true
-            text:               qsTr("Enabled")
-            fact:               _viewer3DEnabled
-            visible:            _viewer3DEnabled.visible
-        }
-
-        FactCheckBoxSlider {
-            Layout.fillWidth:   true
-            text:               qsTr("Use Google 3D Maps")
-            fact:               _viewer3DUseGoogle3DMapSource
-            enabled:            _viewer3DEnabled.rawValue
-            visible:            _viewer3DUseGoogle3DMapSource.visible
-        }
-
-        FactCheckBoxSlider {
-            Layout.fillWidth:   true
-            text:               qsTr("Use External 3D Model Map")
-            fact:               _viewer3DUseExternal3DMapSource
-            enabled:            _viewer3DEnabled.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue
-            visible:            _viewer3DUseExternal3DMapSource.visible && !_viewer3DUseGoogle3DMapSource.rawValue
-        }
-
-        Connections {
-            target: _viewer3DUseGoogle3DMapSource
-            function onRawValueChanged() {
-                if (_viewer3DUseGoogle3DMapSource.rawValue && _viewer3DUseExternal3DMapSource.rawValue) {
-                    _viewer3DUseExternal3DMapSource.value = false
-                }
+        onLoaded:       if (item) { item.width = width }
+        onWidthChanged: if (item) { item.width = width }
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.warn("Viewer3D settings group failed to load:", source)
             }
-        }
-
-        Connections {
-            target: _viewer3DUseExternal3DMapSource
-            function onRawValueChanged() {
-                if (_viewer3DUseExternal3DMapSource.rawValue && _viewer3DUseGoogle3DMapSource.rawValue) {
-                    _viewer3DUseGoogle3DMapSource.value = false
-                }
-            }
-        }
-
-        LabelledFactTextField {
-            Layout.fillWidth:   true
-            label:              qsTr("Google 3D Maps API Key")
-            fact:               _viewer3DGoogle3DMapsApiKey
-            enabled:            _viewer3DEnabled.rawValue && _viewer3DUseGoogle3DMapSource.rawValue
-            visible:            _viewer3DGoogle3DMapsApiKey.visible && _viewer3DUseGoogle3DMapSource.rawValue
-        }
-
-        ColumnLayout{
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth
-            enabled:            _viewer3DEnabled.rawValue && _viewer3DUseExternal3DMapSource.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue
-            visible:            _viewer3DUseExternal3DMapSource.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue
-
-            RowLayout{
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCLabel {
-                    wrapMode:   Text.WordWrap
-                    text:       qsTr("External 3D Model File:")
-                }
-
-                QGCTextField {
-                    id:                 external3DMapFileTextField
-                    height:             ScreenTools.defaultFontPixelWidth * 4.5
-                    unitsLabel:         ""
-                    showUnits:          false
-                    Layout.fillWidth:   true
-                    readOnly:           true
-                    text:               _viewer3DExternal3DMapFilePath.rawValue
-                }
-            }
-
-            RowLayout{
-                Layout.alignment:   Qt.AlignRight
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCButton {
-                    text: qsTr("Clear")
-
-                    onClicked: {
-                        external3DMapFileTextField.text = "Please select an external 3D model file"
-                        _viewer3DExternal3DMapFilePath.value = external3DMapFileTextField.text
-                        _viewer3DExternal3DMapManager.clearStatus()
-                    }
-                }
-
-                QGCButton {
-                    text: _viewer3DExternal3DMapManager.importing ? qsTr("Importing...") : qsTr("Select File")
-                    enabled: !_viewer3DExternal3DMapManager.importing
-
-                    onClicked: {
-                        var filename = _viewer3DExternal3DMapFilePath.rawValue
-                        const found = filename.match(/(.*)[\/\\]/)
-                        if (found) {
-                            filename = found[1] || ''
-                            external3DMapFileDialog.folder = (filename[0] === "/") ? filename.slice(1) : filename
-                        }
-                        external3DMapFileDialog.openForLoad()
-                    }
-
-                    QGCFileDialog {
-                        id:             external3DMapFileDialog
-                        nameFilters:    [qsTr("3D model files (*.obj *.gltf *.glb *.qml *.fbx *.dae *.stl *.ply)"), qsTr("Runtime loadable (*.obj *.gltf *.glb)"), qsTr("Balsam generated QML (*.qml)"), qsTr("Authoring files (*.fbx *.dae *.stl *.ply)")]
-                        title:          qsTr("Select external 3D model map")
-
-                        onAcceptedForLoad: (file) => {
-                            external3DMapFileTextField.text = file
-                            _viewer3DExternal3DMapManager.importModelFile(file)
-                        }
-                    }
-                }
-            }
-
-            QGCLabel {
-                Layout.fillWidth:   true
-                wrapMode:           Text.WordWrap
-                visible:            _viewer3DExternal3DMapManager.lastImportStatus.length > 0
-                text:               _viewer3DExternal3DMapManager.lastImportStatus
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("Origin Latitude")
-                fact:               _viewer3DExternal3DMapOriginLat
-                visible:            _viewer3DExternal3DMapOriginLat.visible
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("Origin Longitude")
-                fact:               _viewer3DExternal3DMapOriginLon
-                visible:            _viewer3DExternal3DMapOriginLon.visible
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("Origin Altitude")
-                fact:               _viewer3DExternal3DMapOriginAlt
-                visible:            _viewer3DExternal3DMapOriginAlt.visible
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("Model Unit To Meters")
-                fact:               _viewer3DExternal3DMapUnitToMeters
-                visible:            _viewer3DExternal3DMapUnitToMeters.visible
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("Model Scale")
-                fact:               _viewer3DExternal3DMapScale
-                visible:            _viewer3DExternal3DMapScale.visible
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth:   true
-                label:              qsTr("North/Yaw Angle")
-                fact:               _viewer3DExternal3DMapYaw
-                visible:            _viewer3DExternal3DMapYaw.visible
-            }
-        }
-
-        ColumnLayout{
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth
-            enabled:            _viewer3DEnabled.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue && !_viewer3DUseExternal3DMapSource.rawValue
-            visible:            _viewer3DOsmFilePath.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue && !_viewer3DUseExternal3DMapSource.rawValue
-
-            RowLayout{
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCLabel {
-                    wrapMode:   Text.WordWrap
-                    visible:    true
-                    text:       qsTr("3D Map File:")
-                }
-
-                QGCTextField {
-                    id:                 osmFileTextField
-                    height:             ScreenTools.defaultFontPixelWidth * 4.5
-                    unitsLabel:         ""
-                    showUnits:          false
-                    visible:            true
-                    Layout.fillWidth:   true
-                    readOnly:           true
-                    text:               _viewer3DOsmFilePath.rawValue
-                }
-            }
-
-            RowLayout{
-                Layout.alignment:   Qt.AlignRight
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCButton {
-                    text: qsTr("Clear")
-
-                    onClicked: {
-                        osmFileTextField.text = "Please select an OSM file"
-                        _viewer3DOsmFilePath.value = osmFileTextField.text
-                    }
-                }
-
-                QGCButton {
-                    text: qsTr("Select File")
-
-                    onClicked: {
-                        var filename = _viewer3DOsmFilePath.rawValue
-                        const found = filename.match(/(.*)[\/\\]/)
-                        if(found){
-                            filename = found[1]||''
-                            fileDialog.folder = (filename[0] === "/")?(filename.slice(1)):(filename)
-                        }
-                        fileDialog.openForLoad()
-                    }
-
-                    QGCFileDialog {
-                        id:             fileDialog
-                        nameFilters:    [qsTr("OpenStreetMap files (*.osm)")]
-                        title:          qsTr("Select map file")
-
-                        onAcceptedForLoad: (file) => {
-                            osmFileTextField.text = file
-                            _viewer3DOsmFilePath.value = osmFileTextField.text
-                        }
-                    }
-                }
-            }
-        }
-
-        LabelledFactTextField {
-            Layout.fillWidth:   true
-            label:              qsTr("Average Building Level Height")
-            fact:               _viewer3DBuildingLevelHeight
-            enabled:            _viewer3DEnabled.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue && !_viewer3DUseExternal3DMapSource.rawValue
-            visible:            _viewer3DBuildingLevelHeight.visible && !_viewer3DUseGoogle3DMapSource.rawValue && !_viewer3DUseExternal3DMapSource.rawValue
-        }
-
-        LabelledFactTextField {
-            Layout.fillWidth:   true
-            label:              qsTr("Vehicles Altitude Bias")
-            fact:               _viewer3DAltitudeBias
-            enabled:            _viewer3DEnabled.rawValue && !_viewer3DUseGoogle3DMapSource.rawValue
-            visible:            _viewer3DAltitudeBias.visible && !_viewer3DUseGoogle3DMapSource.rawValue
         }
     }
 }

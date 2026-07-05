@@ -1,6 +1,6 @@
 # QGC Viewer3D 开发说明
 
-适用项目：`F:\qgroundcontrol`，当前目标分支：`SecDev/ft/3D_map`
+适用项目：`F:\qgroundcontrol_viewer3d`，当前目标分支：`SecDev/ft/3D_map`
 
 核心结论：当前 Viewer3D 已经迁移到 `custom`。后续阅读、移植、优化 3D 功能，主线看 `custom`，不要再把 `src/Viewer3D` 当成功能入口。
 
@@ -20,7 +20,7 @@
 
 ### 0.1 目标
 
-当前文件说明的是已经合并后的目标项目：`F:\qgroundcontrol` / `SecDev/ft/3D_map`。目标项目原有的 FirmwarePlugin、AutoPilotPlugin、FuelStatusIndicator、FlyViewCustomLayer 等功能保持为主；Viewer3D 作为独立模块接入 custom。
+当前文件说明的是已经合并后的目标项目：`F:\qgroundcontrol_viewer3d` / `SecDev/ft/3D_map`。目标项目原有的 FirmwarePlugin、AutoPilotPlugin、FuelStatusIndicator、FlyViewCustomLayer 等功能保持为主；Viewer3D 作为独立模块接入 custom。
 
 ```text
 入口层遵循项目 custom 入口风格
@@ -43,7 +43,7 @@ Viewer3D 核心保持独立模块
 | 必须合并的 UI 覆盖 | `custom/src/FlyViewToolStripActionList.qml` | 只把 Viewer3D 按钮项合入目标项目同名文件 |
 | 必须合并的 UI 覆盖 | `custom/src/FlyView.qml` | 把 `import Viewer3D`、`Viewer3D {}` 窗口和 `mapControl.enabled` 逻辑合入目标项目 FlyView |
 | 必须合并的 UI 覆盖 | `custom/src/FlyViewWidgetLayer.qml` | 把 `isViewer3DOpen` 及 3D 打开时隐藏 2D 比例尺逻辑合入目标项目覆盖层 |
-| Viewer3D 设置页覆盖 | `custom/src/UI/preferences/FlyViewSettings.qml` | 若目标项目未改 Fly View 设置页，可直接带入；若已改，需要合并 3D View 设置组 |
+| Viewer3D 设置页覆盖 | `custom/src/UI/preferences/FlyViewSettings.qml`、`custom/src/UI/preferences/Viewer3DSettingsGroup.qml` | Fly View 设置页保留目标分支原有设置项，Viewer3D 设置组单独拆出，避免与目标项目原有设置页耦合 |
 | Viewer3D 独立模块 | `custom/src/Viewer3D/**` | 整体迁移，不与 FirmwarePlugin/AutoPilotPlugin 等飞控插件模块混放 |
 | Viewer3D QML module | `custom/src/QmlControls/Viewer3D/**` | 整体迁移，保持 `import Viewer3D` 可用 |
 | 资源注册 | `custom/custom.qrc` | 目标项目已有 `/Custom/qml`，合并时加入 Viewer3D 覆盖项、Viewer3D 模块项和 `/custom/img/viewer3d_city_3d_map_icon.svg` |
@@ -57,7 +57,8 @@ custom/src
   FlyView.qml                             # QGC FlyView 覆盖入口，挂载 Viewer3D 窗口
   FlyViewToolStripActionList.qml          # QGC FlyView 左侧工具条覆盖，增加 3D View/Fly 按钮
   FlyViewWidgetLayer.qml                  # QGC FlyView Widget 层覆盖，3D 打开时隐藏 2D 地图比例尺
-  UI/preferences/FlyViewSettings.qml      # Application Settings -> Fly View 中的 3D View 设置组
+  UI/preferences/FlyViewSettings.qml       # Application Settings -> Fly View 覆盖页，保留目标分支原有设置项
+  UI/preferences/Viewer3DSettingsGroup.qml # Viewer3D 设置组，独立承载 3D View 相关 Fact 控件
   Viewer3D/                               # Viewer3D 独立 C++/QML/资源模块
   QmlControls/Viewer3D/                   # Viewer3D QML module 的 qmldir
 ```
@@ -79,6 +80,23 @@ CustomOverrideInterceptor 检查
 ```
 
 这个机制与目标项目当前 custom 覆盖机制一致。区别是：Viewer3D 自己的模块不是覆盖 QGC 文件，而是新增模块，仍然注册在 `qrc:/qml/Viewer3D` 下，由 `import Viewer3D` 使用。
+
+Application Settings 的 Fly View 设置页在当前 Qt6 模块中的真实加载路径是：
+
+```text
+qrc:/qml/QGroundControl/AppSettings/FlyViewSettings.qml
+```
+
+因此 `custom/custom.qrc` 必须注册同路径覆盖：
+
+```text
+qrc:/Custom/qml/QGroundControl/AppSettings/FlyViewSettings.qml
+qrc:/Custom/qml/QGroundControl/AppSettings/SettingsPage.qml
+qrc:/Custom/qml/QGroundControl/AppSettings/Viewer3DSettingsGroup.qml
+```
+
+这里不能只注册旧路径 `qrc:/Custom/qml/FlyViewSettings.qml`。旧路径只保留兼容用途，当前分支实际依赖 `QGroundControl/AppSettings/FlyViewSettings.qml` 这一条覆盖链路。
+
 ### 0.5 本次移植后的实际状态
 
 ```text
@@ -93,6 +111,7 @@ Viewer3D 新增模块已迁入
   custom/src/Viewer3D
   custom/src/QmlControls/Viewer3D
   custom/src/UI/preferences/FlyViewSettings.qml
+  custom/src/UI/preferences/Viewer3DSettingsGroup.qml
   custom/src/FlyView.qml
   custom/src/FlyViewWidgetLayer.qml
 
@@ -104,6 +123,16 @@ Viewer3D 新增模块已迁入
 ```
 
 合并原则：项目原有 custom 功能负责飞控插件、品牌、主题、燃料状态、FlyView 自定义覆盖层；Viewer3D 负责 3D 地图、3D 模型导入、3D 飞机/航点/航线显示。后续开发仍按这个边界拆分，避免把 Viewer3D 逻辑写入 FirmwarePlugin 或 AutoPilotPlugin。
+
+本次排查确认的关键问题：
+
+```text
+1. 目标分支 App Settings 加载的是 qrc:/qml/QGroundControl/AppSettings/FlyViewSettings.qml。
+2. 之前 custom.qrc 只注册 qrc:/Custom/qml/FlyViewSettings.qml，覆盖路径不匹配，Fly View 设置页会继续落到 src 中的半迁移版本。
+3. src/UI/AppSettings/FlyViewSettings.qml 仍引用 QGroundControl.settingsManager.viewer3DSettings，但当前分支没有在 SettingsManager 暴露这个对象。
+4. 修复后 custom 覆盖页使用 QGroundControl.corePlugin.viewer3DSettings，并把 Viewer3D 设置组拆到 Viewer3DSettingsGroup.qml。
+5. Fly View 工具条图标使用 qrc:/custom/img/viewer3d_city_3d_map_icon.svg，按钮显示由 viewer3DSettings.enabled 控制。
+```
 
 ---
 ## 1. 功能总览

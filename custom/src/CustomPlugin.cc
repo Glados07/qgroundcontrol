@@ -436,14 +436,15 @@ void CustomPlugin::paletteOverride(const QString &colorName, QGCPalette::Palette
 QQmlApplicationEngine* CustomPlugin::createQmlApplicationEngine(QObject* parent)
 {
     _qmlEngine = QGCCorePlugin::createQmlApplicationEngine(parent);
+    connect(_qmlEngine, &QObject::destroyed, this, [this]() { _qmlEngine = nullptr; });
     _qmlEngine->addImportPath("qrc:/Custom/Widgets");
     // TODO: Investigate _qmlEngine->setExtraSelectors({"custom"})
 
     // 与目标项目原有覆盖风格一致：优先加载 qrc:/Custom/qml 下的入口层覆盖文件。
     if (!_selector) {
         _selector = new CustomOverrideInterceptor();
-        _qmlEngine->addUrlInterceptor(_selector);
     }
+    _qmlEngine->addUrlInterceptor(_selector);
 
     return _qmlEngine;
 }
