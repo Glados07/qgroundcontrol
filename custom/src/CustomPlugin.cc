@@ -16,6 +16,8 @@
 #include "QGCMAVLink.h"
 #include "AppSettings.h"
 #include "BrandImageSettings.h"
+#include "Gimbalcontrol/GimbalControlManager.h"
+#include "Gimbalcontrol/GimbalControlSettings.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/Viewer3DManager.h"
 #include "Viewer3D/Viewer3DSettings.h"
@@ -120,6 +122,10 @@ void CustomPlugin::init()
     _ensureViewer3DSettings();
     _ensureExternal3DMapManager();
     Viewer3DManager::registerQmlTypes();
+
+    // 思翼云台缩放控制模块独立初始化，不依赖 QGC 原生 MAVLink 云台控制链路。
+    _ensureGimbalControlSettings();
+    _ensureGimbalControlManager();
 }
 
 void CustomPlugin::cleanup()
@@ -187,6 +193,28 @@ bool CustomPlugin::google3DMapsAvailable() const
 #endif
 }
 
+QObject *CustomPlugin::gimbalControlSettings()
+{
+    return gimbalControlSettingsFactGroup();
+}
+
+GimbalControlSettings *CustomPlugin::gimbalControlSettingsFactGroup()
+{
+    _ensureGimbalControlSettings();
+    return _gimbalControlSettings;
+}
+
+QObject *CustomPlugin::gimbalControlManager()
+{
+    return gimbalControlManagerObject();
+}
+
+GimbalControlManager *CustomPlugin::gimbalControlManagerObject()
+{
+    _ensureGimbalControlManager();
+    return _gimbalControlManager;
+}
+
 void CustomPlugin::_ensureViewer3DSettings()
 {
     if (!_viewer3DSettings) {
@@ -199,6 +227,21 @@ void CustomPlugin::_ensureExternal3DMapManager()
     _ensureViewer3DSettings();
     if (!_external3DMapManager) {
         _external3DMapManager = new External3DMapManager(_viewer3DSettings, this);
+    }
+}
+
+void CustomPlugin::_ensureGimbalControlSettings()
+{
+    if (!_gimbalControlSettings) {
+        _gimbalControlSettings = new GimbalControlSettings(this);
+    }
+}
+
+void CustomPlugin::_ensureGimbalControlManager()
+{
+    _ensureGimbalControlSettings();
+    if (!_gimbalControlManager) {
+        _gimbalControlManager = new GimbalControlManager(_gimbalControlSettings, this);
     }
 }
 

@@ -28,12 +28,14 @@
         <file alias="QGroundControl/AppSettings/FlyViewSettings.qml">src/UI/preferences/FlyViewSettings.qml</file>
         <file alias="QGroundControl/AppSettings/SettingsPage.qml">../src/UI/AppSettings/SettingsPage.qml</file>
         <file alias="QGroundControl/AppSettings/Viewer3DSettingsGroup.qml">src/UI/preferences/Viewer3DSettingsGroup.qml</file>
+        <file alias="QGroundControl/AppSettings/GimbalControlSettingsGroup.qml">src/Gimbalcontrol/GimbalControlSettingsGroup.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
         <file alias="QGroundControl/FlightDisplay/CustomGuidedActionsController.qml">src/CustomGuidedActionsController.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStripActionList.qml">src/FlyViewToolStripActionList.qml</file>
+        <file alias="Gimbalcontrol/GimbalZoomControl.qml">src/Gimbalcontrol/GimbalZoomControl.qml</file>
         <file alias="FuelStatusIndicator.qml">src/FuelStatusIndicator.qml</file>
     </qresource>
     <qresource prefix="/Custom/res">
@@ -87,6 +89,7 @@
     </qresource>
     <qresource prefix="/json">
         <file alias="Viewer3D.SettingsGroup.json">src/Viewer3D/Viewer3D.SettingsGroup.json</file>
+        <file alias="GimbalControl.SettingsGroup.json">src/Gimbalcontrol/GimbalControl.SettingsGroup.json</file>
     </qresource>
     <qresource prefix="/ShaderVertex">
         <file alias="earthMaterial.vert">src/Viewer3D/Shaders/earthMaterial.vert</file>

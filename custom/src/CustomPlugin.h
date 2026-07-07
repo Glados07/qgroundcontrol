@@ -22,6 +22,8 @@ class CustomOptions;
 class CustomPlugin;
 class CustomSettings;
 class External3DMapManager;
+class GimbalControlManager;
+class GimbalControlSettings;
 class QQmlApplicationEngine;
 class Viewer3DSettings;
 
@@ -61,8 +63,12 @@ class CustomPlugin : public QGCCorePlugin
     Q_OBJECT
     Q_MOC_INCLUDE("custom/src/Viewer3D/External3DMapManager.h")
     Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
+    Q_MOC_INCLUDE("custom/src/Gimbalcontrol/GimbalControlManager.h")
+    Q_MOC_INCLUDE("custom/src/Gimbalcontrol/GimbalControlSettings.h")
     Q_PROPERTY(QObject *viewer3DSettings READ viewer3DSettings CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
+    Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
+    Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
     Q_PROPERTY(bool google3DMapsAvailable READ google3DMapsAvailable CONSTANT)
 public:
     explicit CustomPlugin(QObject *parent = nullptr);
@@ -89,6 +95,12 @@ public:
     External3DMapManager*   external3DMapManagerObject      ();
     bool                    google3DMapsAvailable           () const;
 
+    // 思翼云台缩放控制模块：独立于 QGC 原生 MAVLink GimbalController。
+    QObject*                gimbalControlSettings           ();
+    GimbalControlSettings*  gimbalControlSettingsFactGroup  ();
+    QObject*                gimbalControlManager            ();
+    GimbalControlManager*   gimbalControlManagerObject      ();
+
 private slots:
     void _advancedChanged(bool advanced);
 
@@ -96,6 +108,8 @@ private:
     void _addSettingsEntry(const QString& title, const char* qmlFile, const char* iconFile = nullptr);
     void _ensureViewer3DSettings();
     void _ensureExternal3DMapManager();
+    void _ensureGimbalControlSettings();
+    void _ensureGimbalControlManager();
 
 private:
     CustomOptions*  _options = nullptr;
@@ -107,6 +121,10 @@ private:
     // Viewer3D 保持为独立模块，生命周期挂在 CustomPlugin 下，避免和项目原有飞控插件逻辑耦合。
     Viewer3DSettings *_viewer3DSettings = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
+
+    // 思翼云台缩放控制保持在 Gimbalcontrol 模块中，避免和 Viewer3D/燃料监测/QGC 原生云台控制混合。
+    GimbalControlSettings *_gimbalControlSettings = nullptr;
+    GimbalControlManager *_gimbalControlManager = nullptr;
 };
 
 /*===========================================================================*/
