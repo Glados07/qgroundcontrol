@@ -48,7 +48,8 @@ Item {
 
     enum RegionOperation {
         FAA,
-        EU
+        EU,
+        China
     }
 
     function getRidColor() {

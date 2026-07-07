@@ -57,12 +57,14 @@ SettingsPage {
     property Fact operatorIDFact:       remoteIDSettings.operatorID
     property bool isEURegion:           regionFact.rawValue === RemoteIDSettings.RegionOperation.EU
     property bool isFAARegion:          regionFact.rawValue === RemoteIDSettings.RegionOperation.FAA
+    property bool isChinaRegion:        regionFact.rawValue === RemoteIDSettings.RegionOperation.China
     property real textFieldWidth:       ScreenTools.defaultFontPixelWidth * 24
     property real textLabelWidth:       ScreenTools.defaultFontPixelWidth * 30
 
     enum RegionOperation {
         FAA,
-        EU
+        EU,
+        China
     }
 
     enum LocationType {

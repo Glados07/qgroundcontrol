@@ -42,7 +42,8 @@ ToolIndicatorPage {
 
     enum RegionOperation {
         FAA,
-        EU
+        EU,
+        China
     }
 
     enum LocationType {

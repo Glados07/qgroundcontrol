@@ -65,7 +65,8 @@ public:
 
     enum Region {
         FAA,
-        EU
+        EU,
+        China
     };
 
 signals:

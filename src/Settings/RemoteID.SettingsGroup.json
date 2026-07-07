@@ -102,8 +102,8 @@
     "shortDesc":    "Region of operation",
     "longDesc":     "The region of operation the mission will take place in",
     "type":         "uint8",
-    "enumStrings":  "FAA,EU",
-    "enumValues":   "0,1",
+    "enumStrings":  "FAA,EU,China",
+    "enumValues":   "0,1,2",
     "default":      0
 },
 {
