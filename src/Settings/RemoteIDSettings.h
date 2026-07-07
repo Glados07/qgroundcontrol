@@ -38,5 +38,7 @@ public:
     DEFINE_SETTINGFACT(altitudeFixed)
     DEFINE_SETTINGFACT(classificationType)
     DEFINE_SETTINGFACT(categoryEU)
+    DEFINE_SETTINGFACT(categoryChina)
     DEFINE_SETTINGFACT(classEU)
+    DEFINE_SETTINGFACT(classChina)
 };

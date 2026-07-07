@@ -255,6 +255,10 @@ SettingsPage {
                 if (regionFact.rawValue === RemoteIDSettings.EU) {
                     sendOperatorIdFact.rawValue = true
                 }
+                if (regionFact.rawValue === RemoteIDSettings.China) {
+                    sendOperatorIdFact.rawValue = true
+                    remoteIDSettings.classificationType.rawValue = RemoteIDSettings.ClassificationType.EU
+                }
                 if (regionFact.rawValue === RemoteIDSettings.FAA) {
                     locationTypeFact.value = RemoteIDSettings.LocationType.LIVE
                 }
@@ -602,15 +606,16 @@ SettingsPage {
 
 
             SettingsGroupLayout {
-                heading:            qsTr("EU Vehicle Info")
-                visible:            isEURegion
+                heading:            isEURegion ? qsTr("EU Vehicle Info") : qsTr("China Vehicle Info")
+                visible:            isEURegion || isChinaRegion
                 Layout.fillWidth:   true
 
                 QGCCheckBoxSlider {
                     id:                 euProvideInfoSlider
-                    text:               qsTr("Provide Information")
+                    text:               qsTr("Provide Information%1").arg(isChinaRegion ? " (China Required)" : "")
                     checked:            _fact.rawValue === RemoteIDSettings.ClassificationType.EU
                     visible:            _fact.visible
+                    enabled:            !isChinaRegion
                     Layout.fillWidth:   true
                     onClicked:          _fact.rawValue = !_fact.rawValue
 
@@ -622,7 +627,7 @@ SettingsPage {
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible
+                    visible:            _fact.visible && isEURegion
                     enabled:            euProvideInfoSlider.checked
                     Layout.fillWidth:   true
 
@@ -630,14 +635,37 @@ SettingsPage {
                 }
 
                 LabelledFactComboBox {
+                    id:                 chinaCategoryCombo
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible
+                    visible:            _fact.visible && isChinaRegion
+                    enabled:            true
+                    Layout.fillWidth:   true
+
+                    property Fact _fact: remoteIDSettings.categoryChina
+                }
+
+                LabelledFactComboBox {
+                    label:              _fact.shortDescription
+                    fact:               _fact
+                    indexModel:         false
+                    visible:            _fact.visible && isEURegion
                     enabled:            euCategoryCombo.enabled
                     Layout.fillWidth:   true
 
                     property Fact _fact: remoteIDSettings.classEU
+                }
+
+                LabelledFactComboBox {
+                    label:              _fact.shortDescription
+                    fact:               _fact
+                    indexModel:         false
+                    visible:            _fact.visible && isChinaRegion
+                    enabled:            chinaCategoryCombo.enabled
+                    Layout.fillWidth:   true
+
+                    property Fact _fact: remoteIDSettings.classChina
                 }
             }
         }

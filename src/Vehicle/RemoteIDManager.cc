@@ -347,8 +347,8 @@ void RemoteIDManager::_sendSystem()
                                                     AREA_RADIUS,
                                                     MAVLINK_UNKNOWN_METERS,
                                                     MAVLINK_UNKNOWN_METERS,
-                                                    _settings->categoryEU()->rawValue().toUInt(),
-                                                    _settings->classEU()->rawValue().toUInt(),
+                                                    (_settings->region()->rawValue().toInt() == Region::China ? _settings->categoryChina()->rawValue().toUInt() : _settings->categoryEU()->rawValue().toUInt()),
+                                                    (_settings->region()->rawValue().toInt() == Region::China ? _settings->classChina()->rawValue().toUInt() : _settings->classEU()->rawValue().toUInt()),
                                                     _gcsGPSGood ? gcsPosition.altitude() : MAVLINK_UNKNOWN_METERS,
                                                     _timestamp2019()), // Time stamp needs to be since 00:00:00 1/1/2019
         _vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), msg);
