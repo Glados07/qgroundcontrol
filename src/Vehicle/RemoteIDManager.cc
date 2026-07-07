@@ -180,9 +180,9 @@ void RemoteIDManager::_sendMessages()
         _sendSelfIDMsg();
     }
 
-    // We only send the OperatorID if the pilot wants it or if the region we have set is europe.
+    // We only send the OperatorID if the pilot wants it or if the region we have set is europe or china.
     // To be able to send it, it needs to be filled correclty
-    if ((_settings->sendOperatorID()->rawValue().toBool() || (_settings->region()->rawValue().toInt() == Region::EU)) && _operatorIDGood) {
+    if ((_settings->sendOperatorID()->rawValue().toBool() || (_settings->region()->rawValue().toInt() == Region::EU) || (_settings->region()->rawValue().toInt() == Region::China)) && _operatorIDGood) {
         _sendOperatorID();
     }
 
@@ -408,7 +408,13 @@ void RemoteIDManager::checkOperatorID(const QString& operatorID)
     // after every letter rather than when editing is done.
     // We check whether it actually changed to avoid triggering this on startup.
     if (operatorID != _settings->operatorID()->rawValueString()) {
-        _settings->operatorIDValid()->setRawValue(_isEUOperatorIDValid(operatorID));
+        bool valid;
+        if (_settings->region()->rawValue().toInt() == Region::China) {
+            valid = _isChinaOperatorIDValid(operatorID);
+        } else {
+            valid = _isEUOperatorIDValid(operatorID);
+        }
+        _settings->operatorIDValid()->setRawValue(valid);
     }
 }
 
@@ -426,6 +432,10 @@ void RemoteIDManager::setOperatorID()
             _settings->operatorID()->setRawValue(operatorID.sliced(0, 16));
         }
 
+    } else if (_settings->region()->rawValue().toInt() == Region::China) {
+        // China: 1-8 ASCII characters, validated by checkOperatorID via _isChinaOperatorIDValid
+        _operatorIDGood = _settings->operatorIDValid()->rawValue() == true;
+
     } else {
         // Otherwise, we just check if there is anything entered
         _operatorIDGood =
@@ -433,6 +443,23 @@ void RemoteIDManager::setOperatorID()
     }
 
     emit operatorIDGoodChanged();
+}
+
+bool RemoteIDManager::_isChinaOperatorIDValid(const QString& operatorID) const
+{
+    // China GB standard: 1 to 8 ASCII characters (unicode <= 127).
+    // When fewer than 8 characters are provided the remainder is NULL-padded on send.
+    if (operatorID.isEmpty() || operatorID.length() > 8) {
+        qCDebug(RemoteIDManagerLog) << "China OperatorID must be 1-8 ASCII characters, got length" << operatorID.length();
+        return false;
+    }
+    for (const QChar& c : operatorID) {
+        if (c.unicode() > 127) {
+            qCDebug(RemoteIDManagerLog) << "China OperatorID contains non-ASCII character:" << c;
+            return false;
+        }
+    }
+    return true;
 }
 
 bool RemoteIDManager::_isEUOperatorIDValid(const QString& operatorID) const

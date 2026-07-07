@@ -201,7 +201,7 @@ ToolIndicatorPage {
                         source:             operatorIDFlag ? "/qmlimages/RidFlagBackgroundGreen.svg" : "/qmlimages/RidFlagBackgroundRed.svg"
                         fillMode:           Image.PreserveAspectFit
                         sourceSize.height:  height
-                        visible:            commsFlag && _activeVehicle ? (QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value || _regionOperation == RemoteIDIndicatorPage.EU) : false
+                        visible:            commsFlag && _activeVehicle ? (QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value || _regionOperation == RemoteIDIndicatorPage.EU || _regionOperation == RemoteIDIndicatorPage.China) : false
 
                         QGCLabel {
                             anchors.fill:           parent
@@ -310,13 +310,14 @@ ToolIndicatorPage {
             property Fact operatorIDFact:       remoteIDSettings.operatorID
             property bool isEURegion:           regionFact.rawValue == RemoteIDIndicatorPage.EU
             property bool isFAARegion:          regionFact.rawValue == RemoteIDIndicatorPage.FAA
+            property bool isChinaRegion:        regionFact.rawValue == RemoteIDIndicatorPage.China
             property real textFieldWidth:       ScreenTools.defaultFontPixelWidth * 24
             property real textLabelWidth:       ScreenTools.defaultFontPixelWidth * 30
 
             Connections {
                 target: regionFact
                 onRawValueChanged: {
-                    if (regionFact.rawValue === RemoteIDIndicatorPage.EU) {
+                    if (regionFact.rawValue === RemoteIDIndicatorPage.EU || regionFact.rawValue === RemoteIDIndicatorPage.China) {
                         sendOperatorIdFact.rawValue = true
                     }
                     if (regionFact.rawValue === RemoteIDIndicatorPage.FAA) {

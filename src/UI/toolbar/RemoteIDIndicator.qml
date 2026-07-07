@@ -82,7 +82,7 @@ Item {
         if (!gpsFlag || !basicIDFlag) {
             return RemoteIDIndicator.RIDState.WARNING
         }
-        if (regionOperation == RemoteIDIndicator.RegionOperation.EU || QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value) {
+        if (regionOperation == RemoteIDIndicator.RegionOperation.EU || regionOperation == RemoteIDIndicator.RegionOperation.China || QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value) {
             if (!operatorIDFlag) {
                 return RemoteIDIndicator.RIDState.WARNING
             }

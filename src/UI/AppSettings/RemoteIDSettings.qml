@@ -230,7 +230,7 @@ SettingsPage {
                         Layout.preferredWidth:  flagsWidth
                         color:                  _activeRID ? (_remoteIDManager.operatorIDGood ? qgcPal.colorGreen : qgcPal.colorRed) : qgcPal.colorGrey
                         radius:                 radiusFlags
-                        visible:                commsGood && _activeRID ? (QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value || _regionOperation == RemoteIDSettings.RegionOperation.EU) : false
+                        visible:                commsGood && _activeRID ? (QGroundControl.settingsManager.remoteIDSettings.sendOperatorID.value || _regionOperation == RemoteIDSettings.RegionOperation.EU || _regionOperation == RemoteIDSettings.RegionOperation.China) : false
 
                         QGCLabel {
                             anchors.fill:           parent
@@ -346,7 +346,7 @@ SettingsPage {
                 Layout.fillWidth:   true
 
                 FactCheckBoxSlider {
-                    text:               qsTr("Broadcast%1").arg(isEURegion ? " (EU Required)" : "")
+                    text:               qsTr("Broadcast%1").arg(isEURegion ? " (EU Required)" : (isChinaRegion ? " (China Required)" : ""))
                     fact:               sendOperatorIdFact
                     visible:            sendOperatorIdFact.visible
                     enabled:            isFAARegion
@@ -380,9 +380,9 @@ SettingsPage {
                         Layout.fillWidth:       true
                         text:                   operatorIDFact.valueString
                         visible:                operatorIDFact.visible
-                        maximumLength:          20                  // Maximum defined by Mavlink definition of OPEN_DRONE_ID_OPERATOR_ID message
+                        maximumLength:          isChinaRegion ? 8 : 20  // China GB: max 8 ASCII chars; otherwise MAVLink field max 20
 
-                        property bool operatorIDInvalid: ((_regionOperation === RemoteIDSettings.RegionOperation.EU || remoteIDSettings.sendOperatorID.value) &&
+                        property bool operatorIDInvalid: ((_regionOperation === RemoteIDSettings.RegionOperation.EU || _regionOperation === RemoteIDSettings.RegionOperation.China || remoteIDSettings.sendOperatorID.value) &&
                                                             _activeRID && !_remoteIDManager.operatorIDGood)
 
                         onOperatorIDInvalidChanged: {

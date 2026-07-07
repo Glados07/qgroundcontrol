@@ -103,6 +103,7 @@ private:
     void        _sendBasicID();
 
     bool _isEUOperatorIDValid(const QString& operatorID) const;
+    bool _isChinaOperatorIDValid(const QString& operatorID) const;
     QChar _calculateLuhnMod36(const QString& input) const;
 
     Vehicle*            _vehicle;
