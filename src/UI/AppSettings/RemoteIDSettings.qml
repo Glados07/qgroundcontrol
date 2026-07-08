@@ -314,11 +314,23 @@ SettingsPage {
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible
+                    visible:            _fact.visible && !isChinaRegion
                     enabled:            sendBasicIDSlider._fact.rawValue
                     Layout.fillWidth:   true
 
                     property Fact _fact: remoteIDSettings.basicIDType
+                }
+
+                LabelledFactComboBox {
+                    id:                 basicIDTypeChinaCombo
+                    label:              _fact.shortDescription
+                    fact:               _fact
+                    indexModel:         false
+                    visible:            _fact.visible && isChinaRegion
+                    enabled:            sendBasicIDSlider._fact.rawValue
+                    Layout.fillWidth:   true
+
+                    property Fact _fact: remoteIDSettings.basicIDTypeChina
                 }
 
                 LabelledFactComboBox {

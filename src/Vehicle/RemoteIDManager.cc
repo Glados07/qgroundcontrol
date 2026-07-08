@@ -60,6 +60,7 @@ RemoteIDManager::RemoteIDManager(Vehicle* vehicle)
     // Check changes in basic id settings as long as they are modified
     connect(_settings->basicID(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
     connect(_settings->basicIDType(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
+    connect(_settings->basicIDTypeChina(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
     connect(_settings->basicIDUaType(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
 
     // Assign vehicle sysid and compid. GCS must target these messages to autopilot, and autopilot will redirect them to RID device
@@ -383,7 +384,7 @@ void RemoteIDManager::_sendBasicID()
                                                     _targetSystem,
                                                     _targetComponent,
                                                     _id_or_mac_unknown,
-                                                    _settings->basicIDType()->rawValue().toUInt(),
+                                                    (_settings->region()->rawValue().toInt() == Region::China ? _settings->basicIDTypeChina()->rawValue().toUInt() : _settings->basicIDType()->rawValue().toUInt()),
                                                     _settings->basicIDUaType()->rawValue().toUInt(),
                                                     reinterpret_cast<const unsigned char*>(ba.constData())),
 
@@ -395,7 +396,8 @@ void RemoteIDManager::_checkGCSBasicID()
 {
     QString basicID = _settings->basicID()->rawValue().toString();
 
-    if (!basicID.isEmpty() && (_settings->basicIDType()->rawValue().toInt() >= 0) && (_settings->basicIDUaType()->rawValue().toInt() >= 0)) {
+    const int idType = (_settings->region()->rawValue().toInt() == Region::China) ? _settings->basicIDTypeChina()->rawValue().toInt() : _settings->basicIDType()->rawValue().toInt();
+    if (!basicID.isEmpty() && (idType >= 0) && (_settings->basicIDUaType()->rawValue().toInt() >= 0)) {
         _GCSBasicIDValid = true;
     } else {
         _GCSBasicIDValid = false;

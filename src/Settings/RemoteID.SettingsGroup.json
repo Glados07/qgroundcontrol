@@ -83,6 +83,14 @@
     "default":      2
 },
 {
+    "name":         "basicIDTypeChina",
+    "shortDesc":    "Basic ID Type",
+    "type":         "uint8",
+    "enumStrings":  "None,Unique Product ID,Pre-2024 Serial Number",
+    "enumValues":   "0,4,1",
+    "default":      0
+},
+{
     "name":         "basicIDUaType",
     "shortDesc":    "UA type",
     "type":         "uint8",
