@@ -20,6 +20,8 @@ void SiyiSdk::setEndpoint(const QString& host, quint16 port)
 {
     QHostAddress address(host);
     if (address.isNull()) {
+        _host = QHostAddress();
+        _port = 0;
         emit communicationError(tr("Invalid SIYI SDK host: %1").arg(host));
         return;
     }
@@ -44,8 +46,16 @@ void SiyiSdk::_readPendingDatagrams()
         QByteArray datagram;
         datagram.resize(static_cast<int>(_socket.pendingDatagramSize()));
         QHostAddress sender;
-        quint16 senderPort = 0;
-        _socket.readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        const qint64 bytesRead = _socket.readDatagram(datagram.data(), datagram.size(), &sender);
+        if (bytesRead <= 0) {
+            continue;
+        }
+        datagram.resize(static_cast<int>(bytesRead));
+
+        // 只处理当前配置相机返回的数据，避免同一网段其他思翼设备污染倍率状态。
+        if (sender != _host) {
+            continue;
+        }
 
         const auto decoded = SiyiProtocol::decodePacket(datagram);
         if (!decoded.valid) {

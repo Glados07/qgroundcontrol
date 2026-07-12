@@ -4,11 +4,11 @@
 
 当前整理分支：`SecDev/ft/gimbal`
 
-整理日期：2026-07-07
+整理日期：2026-07-12
 
 ## 1. 开发原则
 
-本项目的二次开发代码统一放在 `custom` 目录中。Viewer3D、思翼云台缩放、燃料状态显示等功能均作为 custom 模块接入，原则上不直接修改 QGC 原生 `src` 目录，便于后续在不同分支之间迁移。
+本项目的二次开发代码统一放在 `custom` 目录中。Viewer3D、思翼云台缩放、默认通信链路、燃料状态显示等功能均作为 custom 模块接入，原则上不直接修改 QGC 原生 `src` 目录，便于后续在不同分支之间迁移。
 
 当前 custom 代码采用三层入口：
 
@@ -22,7 +22,7 @@
 
 ```text
 custom/
-  CMakeLists.txt                         # custom 编译入口，启用 QGC_CUSTOM_BUILD，加入 Viewer3D/Gimbalcontrol 源码
+  CMakeLists.txt                         # custom 编译入口，收集 Viewer3D/Gimbalcontrol/CommunicationLink 源码
   custom.qrc                             # custom 资源入口，注册 QML 覆盖、设置 JSON、图标、Viewer3D 模型和 shader
   android/                               # Android custom 包模板覆盖目录
   cmake/CustomOverrides.cmake            # custom CMake 覆盖配置
@@ -35,7 +35,7 @@ custom/
   translations/                          # custom 翻译文件
   src/
     CustomPlugin.h
-    CustomPlugin.cc                      # custom 插件总入口，初始化 Viewer3D、云台缩放、翻译和 QML 覆盖
+    CustomPlugin.cc                      # custom 插件总入口，初始化默认链路、Viewer3D、云台缩放、翻译和 QML 覆盖
     AppSettings.qml                      # Application Settings 外壳覆盖入口
     AutoPilotPlugin/
       CustomAutoPilotPlugin.h
@@ -46,8 +46,10 @@ custom/
       CustomFirmwarePluginFactory.h
       CustomFirmwarePluginFactory.cc     # custom 固件插件工厂
     FuelStatusIndicator.qml              # 燃料/电池状态类指示器 QML
+    CommunicationLink/
+      DefaultCommunicationLinkInstaller.h/.cc # 幂等安装项目默认 UDP 通信链路
     FlyView.qml                          # Fly View 主界面覆盖，挂载 Viewer3D 主窗口
-    FlyViewWidgetLayer.qml               # Fly View 工具/控件覆盖层，挂载云台缩放控件
+    FlyViewWidgetLayer.qml               # Fly View 工具/控件覆盖层，不再直接挂载云台缩放控件
     FlyViewToolStripActionList.qml       # 左侧工具栏 Action 列表，加入 3D View/Fly 切换按钮
     CustomFlyViewToolStrip.qml           # Fly View 工具栏覆盖，加载 custom ActionList
     FlyViewCustomLayer.qml               # Fly View custom 图层扩展点
@@ -96,7 +98,8 @@ custom/
       GimbalControlManager.h/.cc         # 云台缩放业务管理器，给 QML 暴露 zoomIn/zoomOut
       SiyiProtocol.h/.cc                 # 思翼私有 SDK 协议封包和解析
       SiyiSdk.h/.cc                      # 思翼 UDP 通信封装
-      GimbalZoomControl.qml              # Fly View 左侧白色 +/- 缩放控件
+      GimbalFlyViewTopRightColumnLayout.qml # 覆盖右侧原生相机栏，负责私有缩放/原生控件切换
+      GimbalZoomControl.qml              # Fly View 右侧白色 +/- 缩放控件
       GimbalControlSettingsGroup.qml     # Application Settings -> Fly View 中的云台缩放设置组
 ```
 
@@ -125,9 +128,10 @@ custom/
 | `CUSTOM_RESOURCES` | 将 `custom/custom.qrc` 注入 QGC 资源 |
 | `VIEWER3D_SOURCES` | 递归收集 `custom/src/Viewer3D/*.cc/*.h/*.hpp` |
 | `GIMBALCONTROL_SOURCES` | 递归收集 `custom/src/Gimbalcontrol/*.cc/*.h` |
-| `CUSTOM_SOURCES` | 汇总 CustomPlugin、FirmwarePlugin、AutoPilotPlugin、Viewer3D、Gimbalcontrol 源码 |
+| `COMMUNICATION_LINK_SOURCES` | 递归收集 `custom/src/CommunicationLink/*.cc/*.h` |
+| `CUSTOM_SOURCES` | 汇总 CustomPlugin、FirmwarePlugin、AutoPilotPlugin、Viewer3D、Gimbalcontrol、CommunicationLink 源码 |
 | `CUSTOM_LIBRARIES` | 链接 `CustomModule`、`Qt6::Quick3D` 和可选 WebEngine |
-| `CUSTOM_INCLUDE_DIRECTORIES` | 加入 `custom/src`、`AutoPilotPlugin`、`FirmwarePlugin`、`Viewer3D`、`Gimbalcontrol` |
+| `CUSTOM_INCLUDE_DIRECTORIES` | 加入 `custom/src`、`AutoPilotPlugin`、`FirmwarePlugin`、`Viewer3D`、`Gimbalcontrol`、`CommunicationLink` |
 
 ### 3.2 `custom/custom.qrc`
 
@@ -151,7 +155,7 @@ QML 覆盖机制由 `CustomOverrideInterceptor` 完成。QGC 尝试加载 `qrc:/
 | 文件 | 作用 |
 |---|---|
 | `custom/src/CustomPlugin.h` | 声明 custom 插件、custom options、QML 暴露属性 |
-| `custom/src/CustomPlugin.cc` | 初始化翻译、Viewer3D、云台缩放、QML 覆盖拦截器和调色板 |
+| `custom/src/CustomPlugin.cc` | 初始化默认通信链路、翻译、Viewer3D、云台缩放、QML 覆盖拦截器和调色板 |
 
 向 QML 暴露的对象：
 
@@ -172,6 +176,7 @@ QML 覆盖机制由 `CustomOverrideInterceptor` 完成。QGC 尝试加载 `qrc:/
 | Fly View Options | 隐藏默认 instrument panel 和多机列表，使用 custom UI |
 | 调色板 | 覆盖 QGC 部分颜色，使 custom UI 保持一致 |
 | QML 覆盖 | `createQmlApplicationEngine` 中安装 `CustomOverrideInterceptor` |
+| 默认通信链路 | `init()` 中先补充缺失的 `local` UDP 链路，再由 QGC 原生 `LinkManager` 加载 |
 
 ## 5. Fly View 与 Application Settings 覆盖
 
@@ -182,7 +187,7 @@ QML 覆盖机制由 `CustomOverrideInterceptor` 完成。QGC 尝试加载 `qrc:/
 | `custom/src/FlyView.qml` | Fly View 主入口覆盖，加载 Viewer3D 场景，控制 2D 地图和 3D 视图切换 |
 | `custom/src/FlyViewToolStripActionList.qml` | 左侧工具栏按钮列表，加入 3D View/Fly 切换按钮 |
 | `custom/src/CustomFlyViewToolStrip.qml` | 工具栏容器覆盖，使工具栏使用 custom action list |
-| `custom/src/FlyViewWidgetLayer.qml` | Fly View 控件覆盖层，挂载思翼云台缩放控件，并在 3D 视图开启时隐藏 2D 地图比例尺 |
+| `custom/src/FlyViewWidgetLayer.qml` | Fly View 控件覆盖层；在 3D 视图开启时隐藏 2D 地图比例尺，云台缩放改由右侧布局覆盖文件挂载 |
 | `custom/src/FlyViewCustomLayer.qml` | custom Fly View 扩展图层 |
 | `custom/src/CustomGuidedActionsController.qml` | custom 引导动作控制器入口 |
 
@@ -286,18 +291,34 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 | 当前倍率查询 | 支持 `requestCurrentZoom()`，2 秒轮询当前倍率 |
 | 倍率范围限制 | 1080p 分辨率按 `1.0x` 到 `5.5x` 限制 |
 | 分度值设置 | 可在 Application Settings 中设置 `Zoom Step`，默认 `1.0x` |
-| Fly View UI | 左侧工具栏下方显示白色圆形 `+`、`-` 按钮和当前倍率 |
+| Fly View UI | 覆盖右侧原生相机栏，显示白色圆形 `+`、`-` 按钮、当前倍率和 SDK 状态 |
 
 ### 7.2 使用说明
 
 1. 连接飞控，并确保 QGC 可以识别 active vehicle。
-2. 电脑需要能访问思翼相机 SDK 网络地址，默认 `192.168.144.25:37260`。
-3. 打开 `Application Settings -> Fly View -> SIYI Gimbal Zoom`。
-4. 保持 `Enabled` 打开。
-5. 如设备地址不同，修改 `SDK Host` 和 `SDK Port`。
-6. 设置 `Zoom Step`，默认 `1.0x`。
-7. 回到 Fly View，左侧主工具栏下方会显示白色 `+`、`-` 缩放控件。
-8. 点击 `+` 增加倍率，点击 `-` 降低倍率。倍率会被限制在 `1.0x` 到 `5.5x`。
+2. A8 Mini 网口必须与电脑处于同一网段；TELEM2 只承载 MAVLink 云台通信，不能代替私有 SDK 的 UDP 网络连接。
+3. 电脑需要能访问思翼相机 SDK 网络地址，默认 `192.168.144.25:37260`。
+4. PX4 使用 TELEM2 时确认以下参数，保存后重启飞控：
+
+| PX4 参数 | 必需值 |
+|---|---|
+| `MAV_1_CONFIG` | `TELEM 2` |
+| `SER_TEL2_BAUD` | `115200` |
+| `MAV_1_MODE` | `Gimbal` |
+| `MAV_1_FLOW_CTRL` | `Off` |
+| `MAV_1_FORWARD` | `Enabled` |
+| `MNT_MODE_IN` | `MAVLink Gimbal Protocol v2` |
+| `MNT_MODE_OUT` | `MAVLink Gimbal Protocol v2` |
+
+5. A8 Mini 使用 1080p 视频模式，当前缩放业务范围为 `1.0x` 到 `5.5x`。
+6. 打开 `Application Settings -> Fly View -> SIYI Gimbal Zoom`。
+7. 保持 `Enabled` 打开。
+8. 如设备地址不同，修改 `SDK Host` 和 `SDK Port`。
+9. 设置 `Zoom Step`，默认 `1.0x`。
+10. 回到 Fly View，右侧原生拍照/录像控件位置会显示白色 `+`、`-` 缩放控件。
+11. 点击 `+` 增加倍率，点击 `-` 降低倍率。倍率会被限制在 `1.0x` 到 `5.5x`。
+12. `SDK` 状态点为绿色表示私有 SDK 已返回有效报文；橙色表示正在等待响应或网络不可达。
+13. 关闭 `Enabled` 后，右侧区域自动恢复 QGC 原生拍照/录像控件。
 
 显示条件：
 
@@ -324,7 +345,7 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 |---|---|---|
 | 最小倍率 | `1.0x` | `GimbalControlManager::kMinZoom` |
 | 最大倍率 | `5.5x` | `GimbalControlManager::kMaxZoom` |
-| SDK 响应超时 | `3000 ms` | `GimbalControlManager::_sdkResponseTimer` |
+| SDK 响应超时 | `1500 ms` | `GimbalControlManager::_sdkResponseTimer` |
 | 当前倍率轮询 | `2000 ms` | `GimbalZoomControl.qml` |
 
 ### 7.4 思翼协议说明
@@ -363,7 +384,8 @@ payload[1] = 倍率一位小数部分
 | `GimbalControlManager.h/.cc` | 业务管理器，负责倍率限制、分度值读取、调用 SDK、维护当前倍率和错误状态 |
 | `SiyiProtocol.h/.cc` | 思翼私有协议封包、CRC、响应解析 |
 | `SiyiSdk.h/.cc` | UDP 发送和接收封装 |
-| `GimbalZoomControl.qml` | Fly View 左侧缩放按钮 UI |
+| `GimbalFlyViewTopRightColumnLayout.qml` | 覆盖 QGC 右侧单机相机栏；启用模块时加载私有缩放控件，关闭时回退 `PhotoVideoControl` |
+| `GimbalZoomControl.qml` | Fly View 右侧白色缩放按钮、实时倍率和 SDK 响应状态 UI |
 | `GimbalControlSettingsGroup.qml` | Application Settings 中的云台缩放设置 UI |
 
 QML 调用接口：
@@ -387,7 +409,42 @@ QML 状态属性：
 | `sdkResponding` | SDK 是否在超时时间内响应 |
 | `lastError` | 最近一次通信或配置错误 |
 
-## 8. 燃料/电池状态显示模块
+## 8. 默认通信链路模块
+
+### 8.1 功能目的
+
+默认通信链路功能位于 `custom/src/CommunicationLink`。应用首次启动、配置被清理或升级后缺少目标链路时，custom 插件会自动向 QGC 标准链路配置中追加 `local`，用户不需要再次手动填写。
+
+该功能只负责创建和持久化默认配置，链路列表显示、编辑、手动连接和 UDP 收发仍由 QGC 原生 `LinkManager`、`UDPConfiguration` 处理。
+
+### 8.2 默认参数
+
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| 名称 | `local` | 检查时忽略大小写，已有 `local` 或 `Local` 均不会重复创建 |
+| 类型 | `UDP` | 使用 QGC 原生 UDP 链路 |
+| 本地端口 | `0` | 连接时由操作系统分配可用本地端口 |
+| 服务器地址 | `192.168.144.20:19856` | UDP 目标服务器及端口 |
+| 开始时自动连接 | `false` | 默认不在 QGC 启动时连接 |
+| 高延迟 | `false` | 按普通低延迟链路处理 |
+
+### 8.3 初始化规则
+
+1. `CustomPlugin::init()` 在 QGC 原生 `LinkManager::loadLinkConfigurationList()` 之前执行。
+2. `DefaultCommunicationLinkInstaller::ensureInstalled()` 读取 `LinkConfigurations/count` 和已有链路名称。
+3. 已存在名称为 `local` 或 `Local` 的链路时直接返回，不覆盖用户修改过的地址、端口或开关。
+4. 不存在时按 QGC 标准 QSettings 字段追加一个 UDP 链路并更新 `count`。
+5. 原生 `LinkManager` 随后加载该配置，所以它与用户在通信链路页面手动创建的链路行为一致。
+
+关键文件：
+
+| 文件 | 作用 |
+|---|---|
+| `custom/src/CommunicationLink/DefaultCommunicationLinkInstaller.h/.cc` | 检查并写入缺失的默认 UDP 链路 |
+| `custom/src/CustomPlugin.cc` | 在 custom 插件初始化阶段调用安装器 |
+| `custom/CMakeLists.txt` | 通过 `COMMUNICATION_LINK_SOURCES` 收集模块源码 |
+
+## 9. 燃料/电池状态显示模块
 
 该模块为当前 custom 中已有的 Fly View 指示器类功能，和 Viewer3D、Gimbalcontrol 分开维护。
 
@@ -400,7 +457,7 @@ QML 状态属性：
 
 后续如果要扩展燃料、电池、电源类监测功能，应继续放在独立文件或独立子目录中，不应混入 Viewer3D 或 Gimbalcontrol。
 
-## 9. 模块边界
+## 10. 模块边界
 
 | 模块 | 所在目录 | 是否独立 | 对外入口 |
 |---|---|---|---|
@@ -409,6 +466,7 @@ QML 状态属性：
 | Application Settings 覆盖 | `custom/src/UI/preferences` | 否，负责设置页入口 | QML 覆盖路径 `/Custom/qml/QGroundControl/AppSettings` |
 | Viewer3D | `custom/src/Viewer3D` | 是 | `viewer3DSettings`、`external3DMapManager`、`import Viewer3D` |
 | Gimbalcontrol | `custom/src/Gimbalcontrol` | 是 | `gimbalControlSettings`、`gimbalControlManager` |
+| CommunicationLink | `custom/src/CommunicationLink` | 是 | `DefaultCommunicationLinkInstaller::ensureInstalled()` |
 | 燃料/电池状态 | `custom/src/FuelStatusIndicator.qml` | 相对独立 | FirmwarePlugin 指示器入口 |
 
 迁移或合并时优先保持以下边界：
@@ -417,11 +475,12 @@ QML 状态属性：
 |---|---|
 | Viewer3D 不依赖 Gimbalcontrol | 3D 视图可单独迁移 |
 | Gimbalcontrol 不依赖 Viewer3D | 云台缩放只依赖 CustomPlugin 暴露和 Fly View 挂载点 |
+| CommunicationLink 不依赖界面模块 | 默认链路只写入 QGC 标准持久化配置，不依赖 Viewer3D 或 Gimbalcontrol |
 | 设置页只做组合 | `FlyViewSettings.qml` 只加载各模块设置组，不写具体业务逻辑 |
 | 资源按模块注册 | Viewer3D QML 放 `/qml/Viewer3D`，Gimbal QML 放 `/Custom/qml/Gimbalcontrol` |
 | QGC 原生 `src` 不作为二次开发入口 | 后续修改优先落在 `custom` |
 
-## 10. 当前开发状态
+## 11. 当前开发状态
 
 已完成：
 
@@ -434,7 +493,8 @@ QML 状态属性：
 | Google 3D Maps 可选能力判断 | 已通过 `google3DMapsAvailable` 暴露 |
 | 思翼 Python SDK 缩放相关协议转 C++ | 已完成 |
 | 思翼云台缩放设置页 | 已接入 Fly View 设置页，位置在 Viewer3D 设置组下方 |
-| 思翼云台缩放 Fly View UI | 已接入左侧工具栏下方 |
+| 思翼云台缩放 Fly View UI | 已覆盖右侧原生拍照/录像控件栏；模块关闭时自动回退原生控件 |
+| 默认 `local` UDP 通信链路 | 已接入 custom 初始化，缺失时自动创建且不重复覆盖 |
 | 燃料/电池状态指示器 | 保留在 custom 模块中 |
 
 已做的静态检查：
@@ -444,6 +504,7 @@ QML 状态属性：
 | `custom.qrc` 注册文件存在性 | 通过 |
 | `git diff --check` | 未发现空白错误，存在历史 CRLF/LF 提示 |
 | Viewer3D 旧未注册 QML 类型引用 | 已清理为 custom 注册路径 |
+| 默认 UDP 链路字段与 QGC 加载格式 | 已核对 `name/type/auto/high_latency/port/hostCount/host0/port0` |
 
 仍需实机或完整构建验证：
 
@@ -454,9 +515,9 @@ QML 状态属性：
 | Google 3D Maps | 需要构建环境包含 Qt WebEngineQuick，并配置可用 API Key |
 | 外部 3D 模型导入 | Balsam 转换依赖本机 Qt 工具链和模型格式 |
 
-## 11. 后续开发建议
+## 12. 后续开发建议
 
-### 11.1 新增 Viewer3D 功能
+### 12.1 新增 Viewer3D 功能
 
 建议修改位置：
 
@@ -468,7 +529,7 @@ QML 状态属性：
 | 增加外部模型导入能力 | `External3DMapManager.h/.cc` |
 | 增加图标或资源 | `custom/src/Viewer3D/Images` 并同步注册到 `custom.qrc` |
 
-### 11.2 新增云台功能
+### 12.2 新增云台功能
 
 建议修改位置：
 
@@ -479,21 +540,30 @@ QML 状态属性：
 | 增加业务状态和 QML 接口 | `GimbalControlManager.h/.cc` |
 | 增加云台参数 | `GimbalControl.SettingsGroup.json`、`GimbalControlSettings.h/.cc` |
 | 增加设置页控件 | `GimbalControlSettingsGroup.qml` |
-| 增加 Fly View 控件 | `GimbalZoomControl.qml` 或新增同目录 QML |
+| 增加 Fly View 控件 | `GimbalFlyViewTopRightColumnLayout.qml`、`GimbalZoomControl.qml` 或新增同目录 QML |
 
-### 11.3 常用检索命令
+### 12.3 修改默认通信链路
+
+| 需求 | 修改位置 |
+|---|---|
+| 修改默认名称、地址或端口 | `DefaultCommunicationLinkInstaller.cc` 中的 `kDefault*` 常量 |
+| 增加新的默认链路 | 在 `CommunicationLink` 中新增独立安装逻辑，继续保证名称或端点检查幂等 |
+| 强制迁移旧配置 | 增加明确版本标记；不要在每次启动时覆盖用户已编辑的链路 |
+
+### 12.4 常用检索命令
 
 ```powershell
 rg -n "viewer3DSettings|Viewer3DManager|External3DMapManager" custom
 rg -n "gimbalControlSettings|gimbalControlManager|SiyiProtocol|SiyiSdk" custom
+rg -n "DefaultCommunicationLinkInstaller|COMMUNICATION_LINK_SOURCES" custom
 rg -n "FuelStatusIndicator|FuelIcon" custom
 rg -n "QGroundControl/AppSettings/FlyViewSettings|QGroundControl/FlightDisplay/FlyView" custom/custom.qrc
 ```
 
-### 11.4 修改资源后的注意事项
+### 12.5 修改资源后的注意事项
 
 1. 新增 QML、JSON、图片、shader 后，需要同步检查是否已注册到 `custom/custom.qrc`。
-2. 新增 C++ 文件后，如果在 `Viewer3D` 或 `Gimbalcontrol` 目录下，当前 CMake 会通过 `GLOB_RECURSE` 自动收集。
+2. 新增 C++ 文件后，如果在 `Viewer3D`、`Gimbalcontrol` 或 `CommunicationLink` 目录下，当前 CMake 会通过 `GLOB_RECURSE` 自动收集。
 3. 新增 custom 模块时，建议建立独立子目录，不要混入 Viewer3D 或 Gimbalcontrol。
 4. 新增 QML 类型时，优先通过现有 QML 模块或 qrc 路径加载，避免直接修改 QGC 原生 `src`。
 5. 修改设置参数后，需要同步更新 SettingsGroup JSON、Settings 类、设置页 QML 和本文档参数表。

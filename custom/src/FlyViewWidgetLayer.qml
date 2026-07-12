@@ -194,19 +194,6 @@ Item {
         property real leftEdgeCenterInset:  leftEdgeTopInset
     }
 
-    Loader {
-        id:                     gimbalZoomControlLoader
-        anchors.horizontalCenter: toolStrip.horizontalCenter
-        anchors.top:            toolStrip.bottom
-        anchors.topMargin:      _toolsMargin
-        z:                      QGroundControl.zOrderWidgets
-        source:                 "qrc:/Custom/qml/Gimbalcontrol/GimbalZoomControl.qml"
-        active:                 !QGroundControl.videoManager.fullScreen
-
-        // 思翼云台缩放控件放在左侧主工具栏下方，与起飞/返航/3D View 按钮区分开。
-        visible:                active && item && item.visible
-    }
-
     GripperMenu {
         id: gripperOptions
     }

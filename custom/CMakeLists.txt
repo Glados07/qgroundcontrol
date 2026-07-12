@@ -97,6 +97,11 @@ file(GLOB_RECURSE GIMBALCONTROL_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol/*.h
 )
+
+file(GLOB_RECURSE COMMUNICATION_LINK_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink/*.h
+)
 qt_add_qml_module(CustomModule
     URI Custom.Widgets
     VERSION 1.0
@@ -124,6 +129,7 @@ set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.h
     ${VIEWER3D_SOURCES}
     ${GIMBALCONTROL_SOURCES}
+    ${COMMUNICATION_LINK_SOURCES}
     CACHE INTERNAL "" FORCE
 )
 
@@ -141,6 +147,7 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink
     CACHE INTERNAL "" FORCE
 )
 

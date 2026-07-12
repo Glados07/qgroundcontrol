@@ -31,6 +31,8 @@
         <file alias="QGroundControl/AppSettings/GimbalControlSettingsGroup.qml">src/Gimbalcontrol/GimbalControlSettingsGroup.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyView.qml">src/FlyView.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewWidgetLayer.qml">src/FlyViewWidgetLayer.qml</file>
+        <!-- 思翼缩放模块覆盖右侧原生拍照/录像栏，不修改 QGC src。 -->
+        <file alias="QGroundControl/FlightDisplay/FlyViewTopRightColumnLayout.qml">src/Gimbalcontrol/GimbalFlyViewTopRightColumnLayout.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStrip.qml">src/CustomFlyViewToolStrip.qml</file>
         <file alias="QGroundControl/FlightDisplay/CustomGuidedActionsController.qml">src/CustomGuidedActionsController.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>

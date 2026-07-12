@@ -1,73 +1,100 @@
 /****************************************************************************
  *
- * Fly View 左侧思翼云台相机缩放控件。
- * 控件只负责 UI 和点击事件，缩放范围、分度值和 UDP 发送由 C++ Manager 统一处理。
+ * 思翼 A8 Mini 私有 SDK 缩放控件。
+ * QML 仅负责界面、轮询和点击事件；倍率限制、分度值和 UDP 协议由 C++ 处理。
  *
  ****************************************************************************/
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
-Item {
+Rectangle {
     id: root
 
-    width:  ScreenTools.defaultFontPixelWidth * 7
-    height: buttonColumn.implicitHeight
+    property var manager:       QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
+    property var settings:      QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlSettings : null
+    property var activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
 
-    property var manager:  QGroundControl.corePlugin.gimbalControlManager
-    property var settings: QGroundControl.corePlugin.gimbalControlSettings
+    width:  ScreenTools.defaultFontPixelWidth * 10
+    height: controlColumn.implicitHeight + panelMargin * 2
+    radius: ScreenTools.defaultFontPixelHeight * 0.45
+    color:  Qt.rgba(0.05, 0.07, 0.09, 0.58)
 
-    visible: manager && settings &&
-             settings.enabled.rawValue &&
-             QGroundControl.multiVehicleManager.activeVehicle &&
-             !QGroundControl.videoManager.fullScreen
+    property real panelMargin: ScreenTools.defaultFontPixelHeight * 0.55
 
-    QGCPalette { id: qgcPal }
+    visible: Boolean(manager &&
+                     settings &&
+                     settings.enabled &&
+                     settings.enabled.rawValue &&
+                     activeVehicle &&
+                     !QGroundControl.videoManager.fullScreen)
 
     Timer {
         interval: 2000
         repeat: true
-        running: root.visible && root.manager && root.settings.enabled.rawValue
+        running: root.visible && root.manager
         triggeredOnStart: true
         onTriggered: root.manager.requestCurrentZoom()
     }
 
     Column {
-        id: buttonColumn
+        id: controlColumn
+
+        anchors.top: parent.top
+        anchors.topMargin: root.panelMargin
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: ScreenTools.defaultFontPixelHeight * 0.55
+        width: parent.width - root.panelMargin * 2
+        spacing: ScreenTools.defaultFontPixelHeight * 0.5
 
         ZoomRoundButton {
             buttonText: "+"
-            onClicked: root.manager ? root.manager.zoomIn() : undefined
-        }
-
-        ZoomRoundButton {
-            buttonText: "-"
-            onClicked: root.manager ? root.manager.zoomOut() : undefined
+            accessibleName: qsTr("Zoom in")
+            onClicked: root.manager.zoomIn()
         }
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            width:  ScreenTools.defaultFontPixelWidth * 5.2
-            height: ScreenTools.defaultFontPixelHeight * 1.55
+            width:  ScreenTools.defaultFontPixelWidth * 6
+            height: ScreenTools.defaultFontPixelHeight * 1.65
             radius: height / 2
-            color:  "#f7f9fc"
-            border.color: "#d8dde6"
+            color:  "#ffffff"
+            border.color: "#d5dbe3"
             border.width: 1
-            opacity: 0.96
 
             QGCLabel {
                 anchors.centerIn: parent
                 text: root.manager ? Number(root.manager.currentZoom).toFixed(1) + "x" : "--"
-                color: "#1f2937"
+                color: "#17202a"
                 font.bold: true
+                font.pointSize: ScreenTools.smallFontPointSize
+            }
+        }
+
+        ZoomRoundButton {
+            buttonText: "-"
+            accessibleName: qsTr("Zoom out")
+            onClicked: root.manager.zoomOut()
+        }
+
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width:  ScreenTools.defaultFontPixelWidth * 0.8
+                height: width
+                radius: width / 2
+                color: root.manager && root.manager.sdkResponding ? "#22c55e" : "#f59e0b"
+            }
+
+            QGCLabel {
+                text: "SDK"
+                color: "#ffffff"
                 font.pointSize: ScreenTools.smallFontPointSize
             }
         }
@@ -78,30 +105,38 @@ Item {
 
         signal clicked
         property string buttonText: "+"
+        property string accessibleName: ""
 
         anchors.horizontalCenter: parent.horizontalCenter
-        width:  ScreenTools.defaultFontPixelHeight * 3.3
+        width:  ScreenTools.defaultFontPixelHeight * 3.35
         height: width
         radius: width / 2
-        color: mouseArea.pressed ? "#e7edf6" : "#ffffff"
-        border.color: "#d8dde6"
-        border.width: Math.max(2, ScreenTools.defaultFontPixelWidth * 0.22)
-        opacity: enabled ? 0.98 : 0.45
-        enabled: root.manager && root.settings && root.settings.enabled.rawValue
+        color: mouseArea.pressed ? "#e7edf4" : "#ffffff"
+        border.color: mouseArea.containsMouse ? "#8b98a8" : "#d5dbe3"
+        border.width: Math.max(2, ScreenTools.defaultFontPixelWidth * 0.2)
+        enabled: Boolean(root.manager && root.manager.enabled)
+        opacity: enabled ? 1.0 : 0.45
 
-        Text {
+        Accessible.name: accessibleName
+        Accessible.role: Accessible.Button
+
+        QGCLabel {
             anchors.centerIn: parent
             text: zoomButton.buttonText
-            color: "#18212c"
+            color: "#17202a"
             font.bold: true
-            font.pixelSize: parent.height * 0.62
+            font.pixelSize: parent.height * 0.58
         }
 
         MouseArea {
             id: mouseArea
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: zoomButton.clicked()
         }
+
+        ToolTip.visible: mouseArea.containsMouse
+        ToolTip.text: accessibleName
     }
 }

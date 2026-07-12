@@ -16,6 +16,7 @@
 #include "QGCMAVLink.h"
 #include "AppSettings.h"
 #include "BrandImageSettings.h"
+#include "CommunicationLink/DefaultCommunicationLinkInstaller.h"
 #include "Gimbalcontrol/GimbalControlManager.h"
 #include "Gimbalcontrol/GimbalControlSettings.h"
 #include "Viewer3D/External3DMapManager.h"
@@ -106,6 +107,10 @@ CustomPlugin *CustomPlugin::customInstance()
 
 void CustomPlugin::init()
 {
+    // 在 QGC 原生 LinkManager 读取 QSettings 前补充缺失的项目默认 UDP 链路。
+    // 该操作幂等，不覆盖用户已经存在的 local/Local 配置。
+    DefaultCommunicationLinkInstaller::ensureInstalled();
+
     // Load custom translations for the current locale
     // QLocale default is already set by QGCApplication::setLanguage() before this
     const QLocale locale;

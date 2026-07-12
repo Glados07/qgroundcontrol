@@ -20,7 +20,8 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     Q_CHECK_PTR(_settings);
 
     _sdkResponseTimer.setSingleShot(true);
-    _sdkResponseTimer.setInterval(3000);
+    // 当前倍率每 2 秒轮询一次，响应超时必须短于轮询周期，避免计时器被连续重启而永不超时。
+    _sdkResponseTimer.setInterval(1500);
 
     connect(_sdk, &SiyiSdk::currentZoomReceived, this, &GimbalControlManager::_handleCurrentZoom);
     connect(_sdk, &SiyiSdk::packetReceived, this, [this]() { _setSdkResponding(true); });
@@ -93,6 +94,9 @@ bool GimbalControlManager::requestCurrentZoom()
 
 void GimbalControlManager::_settingsChanged()
 {
+    _sdkResponseTimer.stop();
+    _setSdkResponding(false);
+    _setLastError(QString());
     _configureSdkEndpoint();
     emit enabledChanged();
     if (enabled()) {
@@ -113,12 +117,15 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
 
 void GimbalControlManager::_handleCommunicationError(const QString& message)
 {
+    _sdkResponseTimer.stop();
+    _setSdkResponding(false);
     _setLastError(message);
 }
 
 void GimbalControlManager::_markSdkNotResponding()
 {
     _setSdkResponding(false);
+    _setLastError(tr("No response from the SIYI SDK endpoint."));
 }
 
 void GimbalControlManager::_configureSdkEndpoint()
