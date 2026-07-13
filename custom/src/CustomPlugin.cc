@@ -19,6 +19,7 @@
 #include "CommunicationLink/DefaultCommunicationLinkInstaller.h"
 #include "Gimbalcontrol/GimbalControlManager.h"
 #include "Gimbalcontrol/GimbalControlSettings.h"
+#include "Gimbalcontrol/GimbalVideoStreamSupport.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/Viewer3DManager.h"
 #include "Viewer3D/Viewer3DSettings.h"
@@ -131,6 +132,7 @@ void CustomPlugin::init()
     // 思翼云台缩放控制模块独立初始化，不依赖 QGC 原生 MAVLink 云台控制链路。
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
+    GimbalVideoStreamSupport::installA8MiniDefaults();
 }
 
 void CustomPlugin::cleanup()
@@ -218,6 +220,14 @@ GimbalControlManager *CustomPlugin::gimbalControlManagerObject()
 {
     _ensureGimbalControlManager();
     return _gimbalControlManager;
+}
+
+bool CustomPlugin::mavlinkMessage(Vehicle* vehicle, LinkInterface* link, const mavlink_message_t& message)
+{
+    Q_UNUSED(vehicle);
+    Q_UNUSED(link);
+
+    return !GimbalVideoStreamSupport::shouldFilterMavlinkMessage(_gimbalControlSettings, message);
 }
 
 void CustomPlugin::_ensureViewer3DSettings()

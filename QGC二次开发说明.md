@@ -4,7 +4,7 @@
 
 当前整理分支：`SecDev/ft/gimbal`
 
-整理日期：2026-07-12
+整理日期：2026-07-13
 
 ## 1. 开发原则
 
@@ -96,6 +96,7 @@ custom/
       GimbalControl.SettingsGroup.json   # 思翼云台缩放 Fact 参数定义
       GimbalControlSettings.h/.cc        # 云台缩放设置对象
       GimbalControlManager.h/.cc         # 云台缩放业务管理器，给 QML 暴露 zoomIn/zoomOut
+      GimbalVideoStreamSupport.h/.cc     # A8 Mini RTSP 默认值及 MAVLink 自动视频流过滤
       SiyiProtocol.h/.cc                 # 思翼私有 SDK 协议封包和解析
       SiyiSdk.h/.cc                      # 思翼 UDP 通信封装
       GimbalFlyViewTopRightColumnLayout.qml # 覆盖右侧原生相机栏，负责私有缩放/原生控件切换
@@ -292,6 +293,8 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 | 倍率范围限制 | 1080p 分辨率按 `1.0x` 到 `5.5x` 限制 |
 | 分度值设置 | 可在 Application Settings 中设置 `Zoom Step`，默认 `1.0x` |
 | Fly View UI | 覆盖右侧原生相机栏，显示白色圆形 `+`、`-` 按钮、当前倍率和 SDK 状态 |
+| 视频流手动模式 | 默认过滤 `VIDEO_STREAM_INFORMATION`，避免 QGC 锁定视频源设置 |
+| A8 Mini 视频默认值 | 首次运行默认选择 RTSP，并写入 `rtsp://192.168.144.25:8554/main.264` |
 
 ### 7.2 使用说明
 
@@ -315,10 +318,12 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 7. 保持 `Enabled` 打开。
 8. 如设备地址不同，修改 `SDK Host` 和 `SDK Port`。
 9. 设置 `Zoom Step`，默认 `1.0x`。
-10. 回到 Fly View，右侧原生拍照/录像控件位置会显示白色 `+`、`-` 缩放控件。
-11. 点击 `+` 增加倍率，点击 `-` 降低倍率。倍率会被限制在 `1.0x` 到 `5.5x`。
-12. `SDK` 状态点为绿色表示私有 SDK 已返回有效报文；橙色表示正在等待响应或网络不可达。
-13. 关闭 `Enabled` 后，右侧区域自动恢复 QGC 原生拍照/录像控件。
+10. 保持 `Use MAVLink automatic video stream` 关闭，使原生 Video 设置页可手动编辑；修改该项后重启 QGC。
+11. 在 `Application Settings -> Video` 确认 Source 为 `RTSP Video Stream`，RTSP URL 为 `rtsp://192.168.144.25:8554/main.264`。
+12. 回到 Fly View，右侧原生拍照/录像控件位置会显示白色 `+`、`-` 缩放控件。
+13. 点击 `+` 增加倍率，点击 `-` 降低倍率。倍率会被限制在 `1.0x` 到 `5.5x`。
+14. `SDK Ready` 和绿色状态点表示私有 SDK 已返回有效报文；`SDK Waiting` 和橙色表示正在等待响应或网络不可达。
+15. 关闭 `Enabled` 后，右侧区域自动恢复 QGC 原生拍照/录像控件，同时不再过滤 MAVLink 相机视频流信息。
 
 显示条件：
 
@@ -338,6 +343,7 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 | `sdkHost` | string | `192.168.144.25` | 合法 IP 地址 | 思翼 SDK UDP 主机地址 |
 | `sdkPort` | uint32 | `37260` | `1` 到 `65535` | 思翼 SDK UDP 端口 |
 | `zoomStep` | double | `1.0` | `0.1` 到 `4.5` | 每次点击 `+` 或 `-` 调整的倍率分度值，保留 1 位小数 |
+| `mavlinkAutoVideoStream` | bool | `false` | true/false | 是否允许 QGC 使用相机上报 URI 自动配置视频；开启后原生视频源设置会锁定 |
 
 业务层固定限制：
 
@@ -382,10 +388,11 @@ payload[1] = 倍率一位小数部分
 | `GimbalControl.SettingsGroup.json` | 定义 Enabled、SDK Host、SDK Port、Zoom Step 的 Fact 元数据 |
 | `GimbalControlSettings.h/.cc` | 将 JSON 中的参数注册为 SettingsGroup，供 C++ 和 QML 使用 |
 | `GimbalControlManager.h/.cc` | 业务管理器，负责倍率限制、分度值读取、调用 SDK、维护当前倍率和错误状态 |
+| `GimbalVideoStreamSupport.h/.cc` | 首次安装 A8 Mini RTSP 默认值；手动模式下过滤 `VIDEO_STREAM_INFORMATION`，避免原生视频页锁定 |
 | `SiyiProtocol.h/.cc` | 思翼私有协议封包、CRC、响应解析 |
 | `SiyiSdk.h/.cc` | UDP 发送和接收封装 |
-| `GimbalFlyViewTopRightColumnLayout.qml` | 覆盖 QGC 右侧单机相机栏；启用模块时加载私有缩放控件，关闭时回退 `PhotoVideoControl` |
-| `GimbalZoomControl.qml` | Fly View 右侧白色缩放按钮、实时倍率和 SDK 响应状态 UI |
+| `GimbalFlyViewTopRightColumnLayout.qml` | 覆盖 QGC 右侧单机相机栏；静态挂载私有缩放控件，关闭模块时回退 `PhotoVideoControl` |
+| `GimbalZoomControl.qml` | 具有稳定隐式尺寸的右侧白色缩放按钮、实时倍率和 SDK 响应状态 UI；SDK 离线时不再隐藏 |
 | `GimbalControlSettingsGroup.qml` | Application Settings 中的云台缩放设置 UI |
 
 QML 调用接口：
@@ -408,6 +415,38 @@ QML 状态属性：
 | `maximumZoom` | 最大倍率，固定 `5.5` |
 | `sdkResponding` | SDK 是否在超时时间内响应 |
 | `lastError` | 最近一次通信或配置错误 |
+
+### 7.6 视频自动锁定与 Ubuntu 虚拟机排查
+
+QGC 原生 `VideoManager::autoStreamConfigured()` 只要收到非空的 MAVLink `VIDEO_STREAM_INFORMATION.uri` 就返回 true，Video 设置页随后进入只读状态。该判断不测试 URI 是否能从当前操作系统访问，因此“设置被锁定”不等于“视频可以播放”。
+
+custom 当前默认采用手动视频模式：
+
+1. `mavlinkAutoVideoStream=false` 时，`CustomPlugin::mavlinkMessage()` 在消息进入 QGC 相机管理器前过滤 `VIDEO_STREAM_INFORMATION`。
+2. 首次运行通过 `GimbalVideoStreamSupport` 写入 A8 Mini RTSP 默认值；标记 `GimbalControl/a8MiniVideoDefaultsInstalled` 保证只初始化一次，不持续覆盖用户修改。
+3. 如需恢复 QGC 原生自动流行为，打开 `Use MAVLink automatic video stream` 并重启 QGC。
+
+Ubuntu 24.04 虚拟机无法显示、Windows 可以显示时，按以下顺序检查：
+
+```bash
+ip addr
+ip route
+ping -c 4 192.168.144.25
+nc -vz 192.168.144.25 8554
+gst-inspect-1.0 rtspsrc
+gst-inspect-1.0 avdec_h264
+gst-launch-1.0 rtspsrc location=rtsp://192.168.144.25:8554/main.264 latency=50 ! decodebin ! autovideosink
+```
+
+| 检查项 | 要求 |
+|---|---|
+| 虚拟机网卡 | 使用桥接模式，并桥接到实际连接云台的物理网口；NAT 模式通常不能访问主机的云台专用网段 |
+| Ubuntu 网口地址 | 与云台处于 `192.168.144.0/24`，例如 `192.168.144.10/24`，且不与其他接口冲突 |
+| RTSP 端口 | `192.168.144.25:8554` 可建立 TCP 连接 |
+| GStreamer | `rtspsrc` 和 H.264 解码器存在，独立 `gst-launch-1.0` 命令可以出图 |
+| 虚拟机图形 | 开启 3D 加速并保证 OpenGL 可用，否则 QGC 视频 sink 可能建立但无法渲染 |
+
+如果 `ping` 或 `nc` 失败，应先修复虚拟机桥接和 Ubuntu 静态 IP；这类网络不可达无法由 QGC 内部代码绕过。如果独立 GStreamer 命令失败，则修复 Ubuntu 的 RTSP/H.264 插件或解码环境后再测试 QGC。
 
 ## 8. 默认通信链路模块
 
@@ -494,6 +533,8 @@ QML 状态属性：
 | 思翼 Python SDK 缩放相关协议转 C++ | 已完成 |
 | 思翼云台缩放设置页 | 已接入 Fly View 设置页，位置在 Viewer3D 设置组下方 |
 | 思翼云台缩放 Fly View UI | 已覆盖右侧原生拍照/录像控件栏；模块关闭时自动回退原生控件 |
+| A8 Mini 视频流手动模式 | 已默认关闭 MAVLink 自动视频配置，原生 Video 设置页保持可编辑 |
+| A8 Mini RTSP 默认值 | 已按首次运行幂等写入 `rtsp://192.168.144.25:8554/main.264` |
 | 默认 `local` UDP 通信链路 | 已接入 custom 初始化，缺失时自动创建且不重复覆盖 |
 | 燃料/电池状态指示器 | 保留在 custom 模块中 |
 
@@ -512,6 +553,7 @@ QML 状态属性：
 |---|---|
 | Qt 完整构建 | 需要在本机 Qt 6.8.3 环境中执行完整 build |
 | SIYI 相机实机通信 | 需要连接思翼相机后验证 UDP 命令是否生效 |
+| Ubuntu 虚拟机视频 | 需要桥接实际云台网口并验证 RTSP 8554、GStreamer H.264 解码和 OpenGL 渲染 |
 | Google 3D Maps | 需要构建环境包含 Qt WebEngineQuick，并配置可用 API Key |
 | 外部 3D 模型导入 | Balsam 转换依赖本机 Qt 工具链和模型格式 |
 

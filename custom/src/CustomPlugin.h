@@ -87,6 +87,7 @@ public:
     bool                    adjustSettingMetaData           (const QString& settingsGroup, FactMetaData& metaData) final;
     void                    paletteOverride                 (const QString &colorName, QGCPalette::PaletteColorInfo_t& colorInfo) final;
     QQmlApplicationEngine*  createQmlApplicationEngine      (QObject* parent) final;
+    bool                    mavlinkMessage                  (Vehicle* vehicle, LinkInterface* link, const mavlink_message_t& message) final;
 
     // Viewer3D 对 QML 暴露的独立接口：设置、外部模型导入管理器和 Google 3D 能力。
     QObject*                viewer3DSettings                ();

@@ -22,4 +22,5 @@ public:
     DEFINE_SETTINGFACT(sdkHost)
     DEFINE_SETTINGFACT(sdkPort)
     DEFINE_SETTINGFACT(zoomStep)
+    DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
 };

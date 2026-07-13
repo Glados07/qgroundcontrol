@@ -31,6 +31,13 @@
             "max": 4.5,
             "decimalPlaces": 1,
             "default": 1.0
+        },
+        {
+            "name": "mavlinkAutoVideoStream",
+            "shortDesc": "Use MAVLink camera stream information",
+            "longDesc": "When enabled, QGC uses the video URI reported by MAVLink and locks manual video source editing. Restart QGC after changing this option.",
+            "type": "bool",
+            "default": false
         }
     ]
 }
