@@ -96,7 +96,7 @@ custom/
       GimbalControl.SettingsGroup.json   # 思翼云台缩放 Fact 参数定义
       GimbalControlSettings.h/.cc        # 云台缩放设置对象
       GimbalControlManager.h/.cc         # 云台缩放业务管理器，给 QML 暴露 zoomIn/zoomOut
-      GimbalVideoStreamSupport.h/.cc     # A8 Mini RTSP 默认值及 MAVLink 自动视频流过滤
+      GimbalVideoStreamSupport.h/.cc     # A8 Mini RTSP/TCP 默认值、超时迁移及 MAVLink 自动视频流过滤
       SiyiProtocol.h/.cc                 # 思翼私有 SDK 协议封包和解析
       SiyiSdk.h/.cc                      # 思翼 UDP 通信封装
       GimbalFlyViewTopRightColumnLayout.qml # 覆盖右侧原生相机栏，负责私有缩放/原生控件切换
@@ -294,7 +294,7 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 | 分度值设置 | 可在 Application Settings 中设置 `Zoom Step`，默认 `1.0x` |
 | Fly View UI | 覆盖右侧原生相机栏，显示白色圆形 `+`、`-` 按钮、当前倍率和 SDK 状态 |
 | 视频流手动模式 | 默认过滤 `VIDEO_STREAM_INFORMATION`，避免 QGC 锁定视频源设置 |
-| A8 Mini 视频默认值 | 首次运行默认选择 RTSP，并写入 `rtsp://192.168.144.25:8554/main.264` |
+| A8 Mini 视频默认值 | 默认选择 RTSP，写入强制 TCP 的 `rtspt://192.168.144.25:8554/main.264`，看门狗超时为 `20 s` |
 
 ### 7.2 使用说明
 
@@ -319,7 +319,7 @@ Viewer3D 是独立的 3D 视图模块，当前在 custom 中完成以下功能�
 8. 如设备地址不同，修改 `SDK Host` 和 `SDK Port`。
 9. 设置 `Zoom Step`，默认 `1.0x`。
 10. 保持 `Use MAVLink automatic video stream` 关闭，使原生 Video 设置页可手动编辑；修改该项后重启 QGC。
-11. 在 `Application Settings -> Video` 确认 Source 为 `RTSP Video Stream`，RTSP URL 为 `rtsp://192.168.144.25:8554/main.264`。
+11. 在 `Application Settings -> Video` 确认 Source 为 `RTSP Video Stream`，RTSP URL 为 `rtspt://192.168.144.25:8554/main.264`，RTSP Timeout 为 `20 s`。`rtspt` 是 GStreamer 的 RTSP-over-TCP URI，实际相机 IP、端口和路径不变。
 12. 回到 Fly View，右侧原生拍照/录像控件位置会显示白色 `+`、`-` 缩放控件。
 13. 点击 `+` 增加倍率，点击 `-` 降低倍率。倍率会被限制在 `1.0x` 到 `5.5x`。
 14. `SDK Ready` 和绿色状态点表示私有 SDK 已返回有效报文；`SDK Waiting` 和橙色表示正在等待响应或网络不可达。
@@ -388,7 +388,7 @@ payload[1] = 倍率一位小数部分
 | `GimbalControl.SettingsGroup.json` | 定义 Enabled、SDK Host、SDK Port、Zoom Step 的 Fact 元数据 |
 | `GimbalControlSettings.h/.cc` | 将 JSON 中的参数注册为 SettingsGroup，供 C++ 和 QML 使用 |
 | `GimbalControlManager.h/.cc` | 业务管理器，负责倍率限制、分度值读取、调用 SDK、维护当前倍率和错误状态 |
-| `GimbalVideoStreamSupport.h/.cc` | 首次安装 A8 Mini RTSP 默认值；手动模式下过滤 `VIDEO_STREAM_INFORMATION`，避免原生视频页锁定 |
+| `GimbalVideoStreamSupport.h/.cc` | 幂等安装并迁移 A8 Mini RTSP-over-TCP 默认值和 `20 s` 超时；手动模式下过滤 `VIDEO_STREAM_INFORMATION`，避免原生视频页锁定 |
 | `SiyiProtocol.h/.cc` | 思翼私有协议封包、CRC、响应解析 |
 | `SiyiSdk.h/.cc` | UDP 发送和接收封装 |
 | `GimbalFlyViewTopRightColumnLayout.qml` | 覆盖 QGC 右侧单机相机栏；静态挂载私有缩放控件，关闭模块时回退 `PhotoVideoControl` |
@@ -423,8 +423,11 @@ QGC 原生 `VideoManager::autoStreamConfigured()` 只要收到非空的 MAVLink 
 custom 当前默认采用手动视频模式：
 
 1. `mavlinkAutoVideoStream=false` 时，`CustomPlugin::mavlinkMessage()` 在消息进入 QGC 相机管理器前过滤 `VIDEO_STREAM_INFORMATION`。
-2. 首次运行通过 `GimbalVideoStreamSupport` 写入 A8 Mini RTSP 默认值；标记 `GimbalControl/a8MiniVideoDefaultsInstalled` 保证只初始化一次，不持续覆盖用户修改。
-3. 如需恢复 QGC 原生自动流行为，打开 `Use MAVLink automatic video stream` 并重启 QGC。
+2. 通过 `GimbalVideoStreamSupport` 写入 A8 Mini 视频默认值；版本标记 `GimbalControl/a8MiniVideoDefaultsVersion=2` 使旧版 `rtsp://192.168.144.25:8554/main.264` 只迁移一次到 `rtspt://`，其他相机地址不会被覆盖。
+3. A8 Mini 默认 RTSP 看门狗为 `20 s`。QGC 原生值 `8 s` 小于 GStreamer 默认的 UDP 失败后 TCP 回退时间与相机启动时间之和，在虚拟机中可能形成反复重启管线。
+4. 如需恢复 QGC 原生自动流行为，打开 `Use MAVLink automatic video stream` 并重启 QGC。
+
+`rtsp://192.168.144.25:8554/main.264` 地址本身正确，但 `ping` 只验证 ICMP 可达，不验证 TCP 8554、RTSP SETUP、RTP 媒体、H.264 解码和 OpenGL 显示。QGC 原生 `rtspsrc` 没有限定传输协议，默认先尝试 RTP/UDP，约 5 秒无媒体后才回退 TCP。虚拟机可能允许 ICMP 和 RTSP 控制连接，却无法接收 SETUP 动态分配的 RTP/UDP 端口。custom 使用 `rtspt://` 后，媒体数据与 RTSP 控制数据都复用 TCP 连接，可绕开该问题。
 
 Ubuntu 24.04 虚拟机无法显示、Windows 可以显示时，按以下顺序检查：
 
@@ -434,8 +437,11 @@ ip route
 ping -c 4 192.168.144.25
 nc -vz 192.168.144.25 8554
 gst-inspect-1.0 rtspsrc
+gst-inspect-1.0 rtph264depay
+gst-inspect-1.0 h264parse
 gst-inspect-1.0 avdec_h264
-gst-launch-1.0 rtspsrc location=rtsp://192.168.144.25:8554/main.264 latency=50 ! decodebin ! autovideosink
+gst-launch-1.0 -v rtspsrc location=rtspt://192.168.144.25:8554/main.264 latency=100 ! rtph264depay ! h264parse ! avdec_h264 ! fakesink sync=false
+gst-launch-1.0 -v rtspsrc location=rtspt://192.168.144.25:8554/main.264 latency=100 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink sync=false
 ```
 
 | 检查项 | 要求 |
@@ -443,10 +449,27 @@ gst-launch-1.0 rtspsrc location=rtsp://192.168.144.25:8554/main.264 latency=50 !
 | 虚拟机网卡 | 使用桥接模式，并桥接到实际连接云台的物理网口；NAT 模式通常不能访问主机的云台专用网段 |
 | Ubuntu 网口地址 | 与云台处于 `192.168.144.0/24`，例如 `192.168.144.10/24`，且不与其他接口冲突 |
 | RTSP 端口 | `192.168.144.25:8554` 可建立 TCP 连接 |
-| GStreamer | `rtspsrc` 和 H.264 解码器存在，独立 `gst-launch-1.0` 命令可以出图 |
+| GStreamer | `rtspsrc`、`rtph264depay`、`h264parse` 和 `avdec_h264` 均存在 |
 | 虚拟机图形 | 开启 3D 加速并保证 OpenGL 可用，否则 QGC 视频 sink 可能建立但无法渲染 |
 
-如果 `ping` 或 `nc` 失败，应先修复虚拟机桥接和 Ubuntu 静态 IP；这类网络不可达无法由 QGC 内部代码绕过。如果独立 GStreamer 命令失败，则修复 Ubuntu 的 RTSP/H.264 插件或解码环境后再测试 QGC。
+诊断结果对应关系：
+
+| 结果 | 原因和处理 |
+|---|---|
+| `ping` 成功但 `nc` 失败 | 只有 ICMP 可达，TCP 8554 被路由、防火墙或网卡绑定阻断 |
+| `fakesink` 无数据 | RTSP/RTP 传输层或 GStreamer RTSP 插件问题；先检查 `rtspt://` 是否能建立 PLAY 会话 |
+| `fakesink` 正常、`autovideosink` 失败 | Ubuntu 虚拟机图形/OpenGL 输出问题，不是相机通信问题 |
+| 独立命令出图、QGC 不出图 | 在 Video 设置中选择 `Force software decoder` 后重启 QGC，并抓取 QGC GStreamer 日志 |
+
+QGC 日志命令：
+
+```bash
+GST_DEBUG=2 ./Custom-QGroundControl \
+  --logging=qgc.videomanager.videomanager,qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver \
+  2>&1 | tee qgc-video.log
+```
+
+日志出现 `Stream timeout, no frames` 表示媒体数据未进入接收管线；出现 `Streaming started` 而没有 `Decoding started` 表示解码器/码流协商失败；两者都出现但界面仍黑屏，重点检查 `qml6glsink`、OpenGL 和虚拟机 3D 加速。
 
 ## 8. 默认通信链路模块
 
@@ -534,7 +557,7 @@ gst-launch-1.0 rtspsrc location=rtsp://192.168.144.25:8554/main.264 latency=50 !
 | 思翼云台缩放设置页 | 已接入 Fly View 设置页，位置在 Viewer3D 设置组下方 |
 | 思翼云台缩放 Fly View UI | 已覆盖右侧原生拍照/录像控件栏；模块关闭时自动回退原生控件 |
 | A8 Mini 视频流手动模式 | 已默认关闭 MAVLink 自动视频配置，原生 Video 设置页保持可编辑 |
-| A8 Mini RTSP 默认值 | 已按首次运行幂等写入 `rtsp://192.168.144.25:8554/main.264` |
+| A8 Mini RTSP 默认值 | 已幂等迁移到 RTSP-over-TCP 地址 `rtspt://192.168.144.25:8554/main.264`，超时为 `20 s` |
 | 默认 `local` UDP 通信链路 | 已接入 custom 初始化，缺失时自动创建且不重复覆盖 |
 | 燃料/电池状态指示器 | 保留在 custom 模块中 |
 
