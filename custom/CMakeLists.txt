@@ -85,6 +85,7 @@ set_source_files_properties(res/Custom/Widgets/CustomQuickButton.qml PROPERTIES 
 set_source_files_properties(res/Custom/Widgets/CustomSignalStrength.qml PROPERTIES QT_RESOURCE_ALIAS CustomSignalStrength.qml)
 set_source_files_properties(res/Custom/Widgets/CustomToolBarButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomToolBarButton.qml)
 set_source_files_properties(res/Custom/Widgets/CustomVehicleButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomVehicleButton.qml)
+set_source_files_properties(src/QmlControls/FuelStatusIndicatorPage.qml PROPERTIES QT_RESOURCE_ALIAS FuelStatusIndicatorPage.qml)
 
 
 file(GLOB_RECURSE VIEWER3D_SOURCES CONFIGURE_DEPENDS
@@ -105,6 +106,7 @@ qt_add_qml_module(CustomModule
         res/Custom/Widgets/CustomSignalStrength.qml
         res/Custom/Widgets/CustomToolBarButton.qml
         res/Custom/Widgets/CustomVehicleButton.qml
+        src/QmlControls/FuelStatusIndicatorPage.qml
     NO_PLUGIN
 )
 
@@ -137,8 +139,9 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     CACHE INTERNAL "" FORCE
 )
 
-# Custom translations - export TS files to be merged into main qt_add_translations
-file(GLOB CUSTOM_TS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts)
-if(CUSTOM_TS_SOURCES)
-    set(CUSTOM_TS_SOURCES ${CUSTOM_TS_SOURCES} CACHE INTERNAL "Custom translation .ts files")
-endif()
+# Export localized custom catalogs to the root qt_add_translations call.
+# custom.ts is the source template and is intentionally not compiled.
+file(GLOB CUSTOM_TS_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts"
+)
+set(CUSTOM_TS_SOURCES "${CUSTOM_TS_SOURCES}" PARENT_SCOPE)
