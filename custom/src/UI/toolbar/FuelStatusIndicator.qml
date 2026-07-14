@@ -49,6 +49,12 @@ Item {
         return isNaN(_pctRemaining) ? qsTr("n/a") : Math.round(_pctRemaining) + "%"
     }
 
+    TextMetrics {
+        id:     fuelTextMetrics
+        font:   fuelValueLabel.font
+        text:   "-100%"
+    }
+
     Row {
         id:             fuelIndicatorRow
         anchors.top:    parent.top
@@ -67,7 +73,9 @@ Item {
         }
 
         QGCLabel {
+            id:                     fuelValueLabel
             anchors.verticalCenter: parent.verticalCenter
+            width:                  fuelTextMetrics.width
             text:                   getFuelText()
             font.pointSize:         ScreenTools.mediumFontPointSize
             color:                  getFuelColor()
