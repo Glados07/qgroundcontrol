@@ -93,8 +93,9 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     CACHE INTERNAL "" FORCE
 )
 
-# Custom translations - export TS files to be merged into main qt_add_translations
-file(GLOB CUSTOM_TS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts)
-if(CUSTOM_TS_SOURCES)
-    set(CUSTOM_TS_SOURCES ${CUSTOM_TS_SOURCES} CACHE INTERNAL "Custom translation .ts files")
-endif()
+# Export localized custom catalogs to the root qt_add_translations call.
+# custom.ts is the source template and is intentionally not compiled.
+file(GLOB CUSTOM_TS_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts"
+)
+set(CUSTOM_TS_SOURCES "${CUSTOM_TS_SOURCES}" PARENT_SCOPE)

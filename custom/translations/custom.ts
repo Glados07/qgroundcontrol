@@ -49,7 +49,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlyViewCustomLayer.qml" line="112"/>
+        <location filename="../src/FlyViewCustomLayer.qml" line="126"/>
         <source>⚠ Generator Bus Voltage Low: %1 V</source>
         <translation type="unfinished"></translation>
     </message>
@@ -57,48 +57,55 @@
 <context>
     <name>FuelStatusIndicator</name>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="65"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="124"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="129"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="135"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="141"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="147"/>
-        <location filename="../src/FuelStatusIndicator.qml" line="153"/>
+        <location filename="../src/UI/toolbar/FuelStatusIndicator.qml" line="49"/>
         <source>n/a</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>FuelStatusIndicatorPage</name>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="118"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="44"/>
         <source>Fuel Status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="123"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="49"/>
         <source>Remaining</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="128"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="50"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="55"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="61"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="67"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="73"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="79"/>
+        <source>n/a</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="54"/>
         <source>Remaining Fuel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="134"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="60"/>
         <source>Maximum Fuel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="140"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="66"/>
         <source>Consumed Fuel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="146"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="72"/>
         <source>Flow Rate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FuelStatusIndicator.qml" line="152"/>
+        <location filename="../src/QmlControls/FuelStatusIndicatorPage.qml" line="78"/>
         <source>Temperature</source>
         <translation type="unfinished"></translation>
     </message>
