@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * 思翼 A8 Mini 私有 SDK 缩放控件。
- * 控件始终提供稳定尺寸；SDK 未响应时只禁用操作，不隐藏整个界面。
+ * 采用半透明浮层和稳定尺寸，只展示缩放操作与当前倍率。
  *
  ****************************************************************************/
 
@@ -16,16 +16,26 @@ Rectangle {
 
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
 
-    implicitWidth:  ScreenTools.defaultFontPixelWidth * 10
+    implicitWidth:  ScreenTools.defaultFontPixelWidth * 9.5
     implicitHeight: controlColumn.implicitHeight + panelMargin * 2
     width: implicitWidth
     height: implicitHeight
-    radius: ScreenTools.defaultFontPixelHeight * 0.45
-    color: "#b8141820"
-    border.color: "#80ffffff"
+    radius: Math.min(8, ScreenTools.defaultFontPixelHeight * 0.42)
+    color: "#99101822"
+    border.color: "#70ffffff"
     border.width: 1
 
-    property real panelMargin: ScreenTools.defaultFontPixelHeight * 0.55
+    property real panelMargin: ScreenTools.defaultFontPixelHeight * 0.62
+
+    // 内层高光边缘增加视频画面上的轮廓感，不影响鼠标事件。
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: Math.max(0, root.radius - 1)
+        color: "transparent"
+        border.color: "#24ffffff"
+        border.width: 1
+    }
 
     Timer {
         interval: 2000
@@ -42,27 +52,36 @@ Rectangle {
         anchors.topMargin: root.panelMargin
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - root.panelMargin * 2
-        spacing: ScreenTools.defaultFontPixelHeight * 0.5
+        spacing: ScreenTools.defaultFontPixelHeight * 0.58
 
         Rectangle {
             id: zoomInButton
 
             anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelHeight * 3.35
+            width: ScreenTools.defaultFontPixelHeight * 3.45
             height: width
             radius: width / 2
-            color: zoomInMouseArea.pressed ? "#e7edf4" : "#ffffff"
-            border.color: zoomInMouseArea.containsMouse ? "#738195" : "#d5dbe3"
-            border.width: Math.max(2, ScreenTools.defaultFontPixelWidth * 0.2)
+            color: zoomInMouseArea.pressed ? "#dce4ec" : (zoomInMouseArea.containsMouse ? "#ffffff" : "#f2ffffff")
+            border.color: zoomInMouseArea.containsMouse ? "#ffffff" : "#a8ffffff"
+            border.width: 1
             enabled: Boolean(root.manager && root.manager.enabled)
             opacity: enabled ? 1.0 : 0.55
+            scale: zoomInMouseArea.pressed ? 0.95 : 1.0
+
+            Behavior on scale {
+                NumberAnimation { duration: 90 }
+            }
+
+            Behavior on color {
+                ColorAnimation { duration: 100 }
+            }
 
             QGCLabel {
                 anchors.centerIn: parent
                 text: "+"
-                color: "#17202a"
+                color: "#101820"
                 font.bold: true
-                font.pixelSize: parent.height * 0.58
+                font.pixelSize: parent.height * 0.56
             }
 
             MouseArea {
@@ -77,17 +96,17 @@ Rectangle {
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelWidth * 6
-            height: ScreenTools.defaultFontPixelHeight * 1.65
+            width: ScreenTools.defaultFontPixelWidth * 5.8
+            height: ScreenTools.defaultFontPixelHeight * 1.58
             radius: height / 2
-            color: "#ffffff"
-            border.color: "#d5dbe3"
+            color: "#e8ffffff"
+            border.color: "#80ffffff"
             border.width: 1
 
             QGCLabel {
                 anchors.centerIn: parent
                 text: root.manager ? Number(root.manager.currentZoom).toFixed(1) + "x" : "--"
-                color: "#17202a"
+                color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize
             }
@@ -97,21 +116,30 @@ Rectangle {
             id: zoomOutButton
 
             anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelHeight * 3.35
+            width: ScreenTools.defaultFontPixelHeight * 3.45
             height: width
             radius: width / 2
-            color: zoomOutMouseArea.pressed ? "#e7edf4" : "#ffffff"
-            border.color: zoomOutMouseArea.containsMouse ? "#738195" : "#d5dbe3"
-            border.width: Math.max(2, ScreenTools.defaultFontPixelWidth * 0.2)
+            color: zoomOutMouseArea.pressed ? "#dce4ec" : (zoomOutMouseArea.containsMouse ? "#ffffff" : "#f2ffffff")
+            border.color: zoomOutMouseArea.containsMouse ? "#ffffff" : "#a8ffffff"
+            border.width: 1
             enabled: Boolean(root.manager && root.manager.enabled)
             opacity: enabled ? 1.0 : 0.55
+            scale: zoomOutMouseArea.pressed ? 0.95 : 1.0
+
+            Behavior on scale {
+                NumberAnimation { duration: 90 }
+            }
+
+            Behavior on color {
+                ColorAnimation { duration: 100 }
+            }
 
             QGCLabel {
                 anchors.centerIn: parent
                 text: "-"
-                color: "#17202a"
+                color: "#101820"
                 font.bold: true
-                font.pixelSize: parent.height * 0.58
+                font.pixelSize: parent.height * 0.56
             }
 
             MouseArea {
@@ -124,23 +152,5 @@ Rectangle {
             }
         }
 
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: ScreenTools.defaultFontPixelWidth * 0.55
-
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: ScreenTools.defaultFontPixelWidth * 0.8
-                height: width
-                radius: width / 2
-                color: root.manager && root.manager.sdkResponding ? "#22c55e" : "#f59e0b"
-            }
-
-            QGCLabel {
-                text: root.manager && root.manager.sdkResponding ? qsTr("SDK Ready") : qsTr("SDK Waiting")
-                color: "#ffffff"
-                font.pointSize: ScreenTools.smallFontPointSize
-            }
-        }
     }
 }

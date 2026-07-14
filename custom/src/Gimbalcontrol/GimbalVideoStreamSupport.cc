@@ -22,10 +22,10 @@ Q_LOGGING_CATEGORY(GimbalVideoStreamLog, "gcs.custom.gimbal.videostream")
 constexpr const char* kSettingsGroup = "GimbalControl";
 constexpr const char* kDefaultsInstalledKey = "a8MiniVideoDefaultsInstalled";
 constexpr const char* kDefaultsVersionKey = "a8MiniVideoDefaultsVersion";
-constexpr int kCurrentDefaultsVersion = 2;
+constexpr int kCurrentDefaultsVersion = 3;
 constexpr quint32 kA8MiniRtspTimeoutSeconds = 20;
-constexpr const char* kA8MiniLegacyRtspUrl = "rtsp://192.168.144.25:8554/main.264";
-constexpr const char* kA8MiniRtspUrl = "rtspt://192.168.144.25:8554/main.264";
+constexpr const char* kA8MiniLegacyTcpUrl = "rtspt://192.168.144.25:8554/main.264";
+constexpr const char* kA8MiniRtspUrl = "rtsp://192.168.144.25:8554/main.264";
 
 } // namespace
 
@@ -52,12 +52,12 @@ void GimbalVideoStreamSupport::installA8MiniDefaults()
         return;
     }
 
-    // rtspt 是 GStreamer 的 RTSP-over-TCP URI，避免虚拟机丢失动态 RTP/UDP 回包。
-    // 仅迁移空值和旧版 A8 Mini 默认地址，不覆盖用户配置的其他相机地址。
+    // Ubuntu 实测中 rtspt 未能完成 SDP 建链，因此不改写厂商规定的标准 RTSP 地址。
+    // 仅迁移空值和版本 2 写入的地址，不覆盖用户配置的其他相机地址。
     const QString configuredUrl = videoSettings->rtspUrl()->rawValue().toString().trimmed();
-    const bool isLegacyA8MiniUrl = configuredUrl.compare(
-        QString::fromLatin1(kA8MiniLegacyRtspUrl), Qt::CaseInsensitive) == 0;
-    if (configuredUrl.isEmpty() || isLegacyA8MiniUrl) {
+    const bool isLegacyA8MiniTcpUrl = configuredUrl.compare(
+        QString::fromLatin1(kA8MiniLegacyTcpUrl), Qt::CaseInsensitive) == 0;
+    if (configuredUrl.isEmpty() || isLegacyA8MiniTcpUrl) {
         videoSettings->rtspUrl()->setRawValue(QString::fromLatin1(kA8MiniRtspUrl));
     }
 
@@ -65,7 +65,7 @@ void GimbalVideoStreamSupport::installA8MiniDefaults()
     const bool isA8MiniUrl = effectiveUrl.compare(
         QString::fromLatin1(kA8MiniRtspUrl), Qt::CaseInsensitive) == 0;
     if (isA8MiniUrl && videoSettings->rtspTimeout()->rawValue().toUInt() < kA8MiniRtspTimeoutSeconds) {
-        // QGC 原生默认值为 8 秒，可能在云台上电或 TCP 建链尚未完成时提前重启管线。
+        // QGC 原生默认值为 8 秒，可能在云台上电和 RTSP 服务初始化完成前提前重启管线。
         videoSettings->rtspTimeout()->setRawValue(kA8MiniRtspTimeoutSeconds);
     }
 
