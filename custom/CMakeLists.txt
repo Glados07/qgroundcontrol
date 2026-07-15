@@ -73,18 +73,18 @@ list(APPEND CUSTOM_RESOURCES
 )
 set(QGC_RESOURCES ${QGC_RESOURCES} ${CUSTOM_RESOURCES} CACHE STRING "Paths to .qrc Resources" FORCE)
 
-set(QML_IMPORT_PATH ${QML_IMPORT_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/res" CACHE STRING "Extra qml import paths" FORCE)
-
 qt_add_library(CustomModule STATIC)
 
-set_source_files_properties(res/Custom/Widgets/CustomArtificialHorizon.qml PROPERTIES QT_RESOURCE_ALIAS CustomArtificialHorizon.qml)
-set_source_files_properties(res/Custom/Widgets/CustomAttitudeWidget.qml PROPERTIES QT_RESOURCE_ALIAS CustomAttitudeWidget.qml)
-set_source_files_properties(res/Custom/Widgets/CustomIconButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomIconButton.qml)
-set_source_files_properties(res/Custom/Widgets/CustomOnOffSwitch.qml PROPERTIES QT_RESOURCE_ALIAS CustomOnOffSwitch.qml)
-set_source_files_properties(res/Custom/Widgets/CustomQuickButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomQuickButton.qml)
-set_source_files_properties(res/Custom/Widgets/CustomSignalStrength.qml PROPERTIES QT_RESOURCE_ALIAS CustomSignalStrength.qml)
-set_source_files_properties(res/Custom/Widgets/CustomToolBarButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomToolBarButton.qml)
-set_source_files_properties(res/Custom/Widgets/CustomVehicleButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomVehicleButton.qml)
+set(CUSTOM_QMLCONTROLS_DIR src/QmlControls)
+set(CUSTOM_FLIGHTMAP_WIDGETS_DIR src/FlightMap/Widgets)
+set_source_files_properties(${CUSTOM_FLIGHTMAP_WIDGETS_DIR}/CustomArtificialHorizon.qml PROPERTIES QT_RESOURCE_ALIAS CustomArtificialHorizon.qml)
+set_source_files_properties(${CUSTOM_FLIGHTMAP_WIDGETS_DIR}/CustomAttitudeWidget.qml PROPERTIES QT_RESOURCE_ALIAS CustomAttitudeWidget.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomIconButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomIconButton.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomOnOffSwitch.qml PROPERTIES QT_RESOURCE_ALIAS CustomOnOffSwitch.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomQuickButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomQuickButton.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomSignalStrength.qml PROPERTIES QT_RESOURCE_ALIAS CustomSignalStrength.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomToolBarButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomToolBarButton.qml)
+set_source_files_properties(${CUSTOM_QMLCONTROLS_DIR}/CustomVehicleButton.qml PROPERTIES QT_RESOURCE_ALIAS CustomVehicleButton.qml)
 
 
 file(GLOB_RECURSE VIEWER3D_SOURCES CONFIGURE_DEPENDS
@@ -93,43 +93,43 @@ file(GLOB_RECURSE VIEWER3D_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.hpp
 )
 
-file(GLOB_RECURSE GIMBALCONTROL_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol/*.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol/*.h
+file(GLOB_RECURSE GIMBAL_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal/*.h
 )
 
-file(GLOB_RECURSE COMMUNICATION_LINK_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink/*.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink/*.h
+file(GLOB_RECURSE COMMS_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms/*.h
 )
 qt_add_qml_module(CustomModule
     URI Custom.Widgets
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
-        res/Custom/Widgets/CustomArtificialHorizon.qml
-        res/Custom/Widgets/CustomAttitudeWidget.qml
-        res/Custom/Widgets/CustomIconButton.qml
-        res/Custom/Widgets/CustomOnOffSwitch.qml
-        res/Custom/Widgets/CustomQuickButton.qml
-        res/Custom/Widgets/CustomSignalStrength.qml
-        res/Custom/Widgets/CustomToolBarButton.qml
-        res/Custom/Widgets/CustomVehicleButton.qml
+        ${CUSTOM_FLIGHTMAP_WIDGETS_DIR}/CustomArtificialHorizon.qml
+        ${CUSTOM_FLIGHTMAP_WIDGETS_DIR}/CustomAttitudeWidget.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomIconButton.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomOnOffSwitch.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomQuickButton.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomSignalStrength.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomToolBarButton.qml
+        ${CUSTOM_QMLCONTROLS_DIR}/CustomVehicleButton.qml
     NO_PLUGIN
 )
 
 set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugins/CustomAutoPilotPlugin.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugins/CustomAutoPilotPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.h
     ${VIEWER3D_SOURCES}
-    ${GIMBALCONTROL_SOURCES}
-    ${COMMUNICATION_LINK_SOURCES}
+    ${GIMBAL_SOURCES}
+    ${COMMS_SOURCES}
     CACHE INTERNAL "" FORCE
 )
 
@@ -143,11 +143,11 @@ set(CUSTOM_LIBRARIES
 
 set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugins
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbalcontrol
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/CommunicationLink
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms
     CACHE INTERNAL "" FORCE
 )
 

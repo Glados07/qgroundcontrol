@@ -15,8 +15,6 @@ import QGroundControl.FlightDisplay
 import QGroundControl.FlightMap
 import QGroundControl.ScreenTools
 
-import "qrc:/Custom/qml/Gimbalcontrol" as GimbalUi
-
 ColumnLayout {
     id: root
 
@@ -35,7 +33,7 @@ ColumnLayout {
     }
 
     // 静态创建缩放控件，避免 Ubuntu/Qt 6 下 Loader 初始尺寸为 0 时只留下透明占位。
-    GimbalUi.GimbalZoomControl {
+    GimbalZoomControl {
         id:                     gimbalZoomControl
         visible:                root._usePrivateZoomControl
         Layout.alignment:       Qt.AlignTop | Qt.AlignRight

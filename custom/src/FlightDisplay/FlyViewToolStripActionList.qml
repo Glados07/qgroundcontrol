@@ -27,7 +27,7 @@ ToolStripActionList {
             id:             view3DIcon
             visible:        _viewer3DEnabled
             text:           _is3DViewOpen ? qsTr("Fly") : qsTr("3D View")
-            iconSource:     _is3DViewOpen ? "qrc:/Custom/qmlimages/PaperPlane.svg" : "qrc:/custom/img/viewer3d_city_3d_map_icon.svg"
+            iconSource:     _is3DViewOpen ? "qrc:/Custom/qmlimages/PaperPlane.svg" : "qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg"
             fullColorIcon:  !_is3DViewOpen
 
             onTriggered: {

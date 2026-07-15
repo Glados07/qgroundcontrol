@@ -63,8 +63,8 @@ class CustomPlugin : public QGCCorePlugin
     Q_OBJECT
     Q_MOC_INCLUDE("custom/src/Viewer3D/External3DMapManager.h")
     Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
-    Q_MOC_INCLUDE("custom/src/Gimbalcontrol/GimbalControlManager.h")
-    Q_MOC_INCLUDE("custom/src/Gimbalcontrol/GimbalControlSettings.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlManager.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
     Q_PROPERTY(QObject *viewer3DSettings READ viewer3DSettings CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
     Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
@@ -123,7 +123,7 @@ private:
     Viewer3DSettings *_viewer3DSettings = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
 
-    // 思翼云台缩放控制保持在 Gimbalcontrol 模块中，避免和 Viewer3D/燃料监测/QGC 原生云台控制混合。
+    // 思翼云台缩放后端归入 Gimbal 模块，与 Viewer3D、Comms 和 QGC 原生源码保持清晰边界。
     GimbalControlSettings *_gimbalControlSettings = nullptr;
     GimbalControlManager *_gimbalControlManager = nullptr;
 };

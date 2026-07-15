@@ -248,7 +248,7 @@ SettingsPage {
         }
     }
 
-    // 思翼云台缩放设置组放在 3D View 设置下方，保持 Viewer3D 和 Gimbalcontrol 两个模块边界清晰。
+    // 思翼云台缩放设置组放在 3D View 设置下方，保持 Viewer3D 和 Gimbal 两个模块边界清晰。
     Loader {
         id:                 gimbalControlSettingsGroupLoader
         Layout.fillWidth:   true

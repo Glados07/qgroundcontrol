@@ -51,7 +51,7 @@ Item {
         //-- Instrument Dial
         Image {
             id:                 instrumentDial
-            source:             "/custom/img/attitude_dial.svg"
+            source:             "qrc:/Custom/qmlimages/attitude_dial.svg"
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.fill:       parent
@@ -68,7 +68,7 @@ Item {
             id:                 pointer
             height:             size * 0.0625
             width:              height
-            source:             "/custom/img/attitude_pointer.svg"
+            source:             "qrc:/Custom/qmlimages/attitude_pointer.svg"
             antialiasing:       true
             fillMode:           Image.PreserveAspectFit
             sourceSize.height:  height
@@ -91,7 +91,7 @@ Item {
         Image {
             id:                 crossHair
             anchors.centerIn:   parent
-            source:             "/custom/img/attitude_crosshair.svg"
+            source:             "qrc:/Custom/qmlimages/attitude_crosshair.svg"
             mipmap:             true
             width:              size * 0.75
             sourceSize.width:   width

@@ -192,7 +192,7 @@ Item {
         id:                         compassArrowIndicator
         height:                     _indicatorsHeight
         width:                      height
-        source:                     "/custom/img/compass_pointer.svg"
+        source:                     "qrc:/Custom/qmlimages/compass_pointer.svg"
         fillMode:                   Image.PreserveAspectFit
         sourceSize.height:          height
         anchors.top:                compassBar.bottom
@@ -247,7 +247,7 @@ Item {
             anchors.centerIn:   compassBezel
             height:             compassBezel.height * 0.75
             width:              height
-            source:             "/custom/img/compass_needle.svg"
+            source:             "qrc:/Custom/qmlimages/compass_needle.svg"
             fillMode:           Image.PreserveAspectFit
             sourceSize.height:  height
             transform: [
