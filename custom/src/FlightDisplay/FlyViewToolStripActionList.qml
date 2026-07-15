@@ -27,7 +27,7 @@ ToolStripActionList {
             id:             view3DIcon
             visible:        _viewer3DEnabled
             text:           _is3DViewOpen ? qsTr("Fly") : qsTr("3D View")
-            iconSource:     _is3DViewOpen ? "qrc:/Custom/qmlimages/PaperPlane.svg" : "qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg"
+            iconSource:     _is3DViewOpen ? "qrc:/qmlimages/PaperPlane.svg" : "qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg"
             fullColorIcon:  !_is3DViewOpen
 
             onTriggered: {
@@ -44,12 +44,6 @@ ToolStripActionList {
         GuidedActionRTL { },
         GuidedActionPause { },
         FlyViewAdditionalActionsButton { },
-        GuidedToolStripAction {
-            text:       _guidedController._customController.customButtonTitle
-            iconSource: "/res/gear-white.svg"
-            visible:    true
-            enabled:    true
-            actionID:   _guidedController._customController.actionCustomButton
-        }
+        GuidedActionGripper { }
     ]
 }

@@ -1,20 +1,6 @@
+# 保持二次开发版本的应用名和既有 QSettings 路径稳定。
 set(QGC_APP_NAME "Custom-QGroundControl" CACHE STRING "App Name" FORCE)
 
-set(QGC_MACOS_ICON_PATH "${CMAKE_SOURCE_DIR}/custom/res" CACHE PATH "MacOS Icon Path" FORCE)
-set(QGC_APPIMAGE_ICON_PATH "${CMAKE_SOURCE_DIR}/custom/res/icons/custom_qgroundcontrol.png" CACHE FILEPATH "AppImage Icon Path" FORCE)
-
-if(EXISTS ${CMAKE_SOURCE_DIR}/custom/deploy/windows/installheader.bmp)
-    set(QGC_WINDOWS_INSTALL_HEADER_PATH "${CMAKE_SOURCE_DIR}/custom/deploy/windows/installheader.bmp" CACHE FILEPATH "Windows Install Header Path" FORCE)
-endif()
-
-if(EXISTS ${CMAKE_SOURCE_DIR}/custom/deploy/windows/WindowsQGC.ico)
-    set(QGC_WINDOWS_ICON_PATH "${CMAKE_SOURCE_DIR}/custom/deploy/windows/WindowsQGC.ico" CACHE FILEPATH "Windows Icon Path" FORCE)
-endif()
-
-# Build a single flight stack by disabling APM support
-set(QGC_DISABLE_APM_MAVLINK ON CACHE BOOL "Disable APM Dialect" FORCE)
-set(QGC_DISABLE_APM_PLUGIN ON CACHE BOOL "Disable APM Plugin" FORCE)
-set(QGC_DISABLE_APM_PLUGIN_FACTORY ON CACHE BOOL "Disable APM Plugin Factory" FORCE)
-
-# We implement our own PX4 plugin factory
-set(QGC_DISABLE_PX4_PLUGIN_FACTORY ON CACHE BOOL "Disable PX4 Plugin Factory" FORCE)
+# 原生 Viewer3D 后端仍依赖未接入 SettingsManager 的旧设置类。
+# custom 仅编译扩展实现，并按需复用 src/Viewer3D 中无差异的公共源文件，避免重复符号。
+set(QGC_VIEWER3D OFF CACHE BOOL "Use custom Viewer3D integration" FORCE)

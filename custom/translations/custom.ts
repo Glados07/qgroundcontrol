@@ -2,55 +2,10 @@
 <!DOCTYPE TS>
 <TS version="2.1">
 <context>
-    <name>CustomGuidedActionsController</name>
-    <message>
-        <location filename="../src/CustomGuidedActionsController.qml" line="17"/>
-        <source>Custom</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/CustomGuidedActionsController.qml" line="19"/>
-        <source>Example of a custom action.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>CustomOnOffSwitch</name>
-    <message>
-        <location filename="../src/QmlControls/CustomOnOffSwitch.qml" line="41"/>
-        <source>Off</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/CustomOnOffSwitch.qml" line="55"/>
-        <source>On</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>CustomVehicleButton</name>
-    <message>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="72"/>
-        <source>Vehicle </source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="72"/>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="79"/>
-        <source>None</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>FlyViewCustomLayer</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="28"/>
-        <source>NO GPS</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="112"/>
-        <source>⚠ Generator Bus Voltage Low: %1 V</source>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="73"/>
+        <source>Generator Bus Voltage Low: %1 V</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

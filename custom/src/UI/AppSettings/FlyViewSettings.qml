@@ -21,6 +21,7 @@ import QGroundControl.ScreenTools
 import QGroundControl.MultiVehicleManager
 import QGroundControl.Palette
 import QGroundControl.Controllers
+import QGroundControl.AppSettings
 
 SettingsPage {
     property var    _settingsManager:                   QGroundControl.settingsManager

@@ -2,56 +2,11 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
 <context>
-    <name>CustomGuidedActionsController</name>
-    <message>
-        <location filename="../src/CustomGuidedActionsController.qml" line="17"/>
-        <source>Custom</source>
-        <translation>自定义</translation>
-    </message>
-    <message>
-        <location filename="../src/CustomGuidedActionsController.qml" line="19"/>
-        <source>Example of a custom action.</source>
-        <translation>自定义操作示例。</translation>
-    </message>
-</context>
-<context>
-    <name>CustomOnOffSwitch</name>
-    <message>
-        <location filename="../src/QmlControls/CustomOnOffSwitch.qml" line="41"/>
-        <source>Off</source>
-        <translation>关</translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/CustomOnOffSwitch.qml" line="55"/>
-        <source>On</source>
-        <translation>开</translation>
-    </message>
-</context>
-<context>
-    <name>CustomVehicleButton</name>
-    <message>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="72"/>
-        <source>Vehicle </source>
-        <translation>飞行器 </translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="72"/>
-        <location filename="../src/QmlControls/CustomVehicleButton.qml" line="79"/>
-        <source>None</source>
-        <translation>无</translation>
-    </message>
-</context>
-<context>
     <name>FlyViewCustomLayer</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="28"/>
-        <source>NO GPS</source>
-        <translation>无GPS</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="112"/>
-        <source>⚠ Generator Bus Voltage Low: %1 V</source>
-        <translation>⚠ 燃料电池电压过低: %1 V</translation>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="73"/>
+        <source>Generator Bus Voltage Low: %1 V</source>
+        <translation>燃料电池母线电压过低：%1 V</translation>
     </message>
 </context>
 <context>
