@@ -32,15 +32,24 @@ ColumnLayout {
         Layout.preferredWidth:  _rightPanelWidth
     }
 
-    // 静态创建缩放控件，避免 Ubuntu/Qt 6 下 Loader 初始尺寸为 0 时只留下透明占位。
-    GimbalZoomControl {
-        id:                     gimbalZoomControl
-        visible:                root._usePrivateZoomControl
+    // 新增 QML 未注册到原生 FlightDisplay 模块，必须通过 custom QRC 地址显式加载。
+    // preferredWidth/Height 跟随实际控件，避免 Loader 在布局中形成零尺寸透明占位。
+    Loader {
+        id:                     gimbalZoomControlLoader
+        active:                 root._usePrivateZoomControl
+        visible:                active
+        source:                 "qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalZoomControl.qml"
         Layout.alignment:       Qt.AlignTop | Qt.AlignRight
-        Layout.preferredWidth:  implicitWidth
-        Layout.preferredHeight: implicitHeight
+        Layout.preferredWidth:  item ? item.implicitWidth : 0
+        Layout.preferredHeight: item ? item.implicitHeight : 0
 
         property real rightEdgeCenterInset: visible ? parent.width - x : 0
+
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.warn("Gimbal zoom control failed to load:", source)
+            }
+        }
     }
 
     // 模块关闭时保留 QGC 原生拍照/录像功能，避免影响其他相机使用场景。

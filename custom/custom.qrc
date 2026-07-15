@@ -6,7 +6,7 @@
 
     <qresource prefix="/Custom/qml">
         <!-- 只注册有二次开发差异的 QML；其余类型继续使用 QGC 原生模块。 -->
-        <file alias="QGroundControl/Controls/FuelStatusIndicator.qml">src/QmlControls/FuelStatusIndicator.qml</file>
+        <file alias="QGroundControl/Controls/FuelStatusIndicator.qml">src/UI/toolbar/FuelStatusIndicator.qml</file>
         <file alias="QGroundControl/AppSettings/FlyViewSettings.qml">src/UI/AppSettings/FlyViewSettings.qml</file>
         <file alias="QGroundControl/AppSettings/Viewer3DSettingsGroup.qml">src/UI/AppSettings/Viewer3DSettingsGroup.qml</file>
         <file alias="QGroundControl/AppSettings/GimbalControlSettingsGroup.qml">src/UI/AppSettings/GimbalControlSettingsGroup.qml</file>

@@ -17,7 +17,7 @@ import QGroundControl.ScreenTools
 import QGroundControl.Palette
 
 //-------------------------------------------------------------------------
-//-- Fuel Status Indicator
+//-- 顶部燃料状态指示器
 Item {
     id:             control
     anchors.top:    parent.top

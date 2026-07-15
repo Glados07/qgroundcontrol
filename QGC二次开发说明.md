@@ -72,14 +72,15 @@ custom/
       SiyiSdk.h
       SiyiSdk.cc
     QmlControls/
-      FuelStatusIndicator.qml
       Viewer3D/Models3D/qmldir
     UI/
       AppSettings/
         FlyViewSettings.qml
         Viewer3DSettingsGroup.qml
         GimbalControlSettingsGroup.qml
-      toolbar/Images/Fuel.svg
+      toolbar/
+        FuelStatusIndicator.qml
+        Images/Fuel.svg
     Viewer3D/
       CityMapGeometry.cc
       CustomViewer3DManager.h
@@ -144,7 +145,7 @@ custom/
 |---|---|
 | `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | 只实现燃料电池母线低电压告警。低于 20.0 V 显示，回升到 20.4 V 以上关闭；完整透传 QGC 原生 tool insets，不再包含示例指南针和姿态仪。 |
 | `custom/src/FlightDisplay/FlyViewToolStripActionList.qml` | 在 QGC 原生起飞、返航、暂停、附加动作和夹爪动作之前增加 Viewer3D 切换按钮。关闭 3D 时使用白色 3D 图标，打开后使用原生 PaperPlane 图标返回 Fly。 |
-| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | 当存在活动飞行器且 Gimbal `enabled=true` 时，用私有 SDK 缩放栏覆盖原生 PhotoVideoControl；关闭模块时恢复 QGC 原生拍照/录像控件。 |
+| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | 当存在活动飞行器且 Gimbal `enabled=true` 时，通过明确的 custom QRC URL 加载私有 SDK 缩放栏并覆盖原生 PhotoVideoControl；Loader 尺寸绑定控件隐式尺寸，避免透明零尺寸占位；关闭模块时恢复 QGC 原生拍照/录像控件。 |
 | `custom/src/FlightDisplay/GimbalZoomControl.qml` | 半透明白色云台缩放 UI，提供加号、当前倍率和减号；调用 `gimbalControlManager.zoomIn/zoomOut()`；不再显示 `SDK Waiting` 文本。 |
 
 未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
@@ -169,11 +170,11 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/QmlControls/FuelStatusIndicator.qml` | 读取活动飞行器 `fuelStatus`，顶部显示剩余百分比和分级颜色；点击后显示剩余量、最大量、消耗量、流量、温度和燃料类型单位。 |
 | `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 在原生 Viewer3D.Models3D 类型清单中增加 `External3DMap`，其他类型名称保持 QGC 原生一致。 |
 | `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生 Fly View 设置组，移除原生旧 Viewer3D 设置块，在底部加载 custom Viewer3D 和 Gimbal 设置组。显式导入原生 `QGroundControl.AppSettings`，因此不需要复制 `SettingsPage.qml`。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 提供 Viewer3D 启用、Google/外部/OSM 地图源、文件选择、WGS84 原点、单位、比例、yaw、建筑层高和高度偏移 UI。 |
 | `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | 提供思翼缩放开关、SDK IP/端口、缩放分度值和 MAVLink 自动视频流开关。 |
+| `custom/src/UI/toolbar/FuelStatusIndicator.qml` | 对齐 QGC `src/UI/toolbar` 结构，读取活动飞行器 `fuelStatus`，顶部显示剩余百分比和分级颜色；点击后显示剩余量、最大量、消耗量、流量、温度和燃料类型单位。运行时资源别名保持不变。 |
 | `custom/src/UI/toolbar/Images/Fuel.svg` | FuelStatusIndicator 使用的燃料顶部栏矢量图标。 |
 
 ### 4.6 Viewer3D C++ 扩展
@@ -412,6 +413,8 @@ Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支
 8. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
 9. 首次运行出现 `local` 链路，已有同名链路不会重复或被覆盖。
 10. 原生 PX4/APM 飞行模式、车辆设置、RC RSSI 和状态指示器正常。
+
+运行日志出现 `GimbalZoomControl is not a type`，表示新增 QML 被当作原生 `QGroundControl.FlightDisplay` 模块类型直接实例化，但原生 qmldir 没有注册该类型。当前实现由 `FlyViewTopRightColumnLayout.qml` 使用完整 custom QRC URL 的 Loader 加载，并绑定控件隐式尺寸；修改后应重新构建 QRC。若仍看到旧错误，需删除旧构建目录后重新配置，避免使用缓存中的 `custom.qrc`。
 
 常用静态检查：
 
