@@ -1,0 +1,43 @@
+{
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts": [
+        {
+            "name": "enabled",
+            "shortDesc": "Enable SIYI gimbal zoom control",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "sdkHost",
+            "shortDesc": "SIYI SDK UDP host",
+            "type": "string",
+            "default": "192.168.144.25"
+        },
+        {
+            "name": "sdkPort",
+            "shortDesc": "SIYI SDK UDP port",
+            "type": "uint32",
+            "min": 1,
+            "max": 65535,
+            "default": 37260
+        },
+        {
+            "name": "zoomStep",
+            "shortDesc": "Zoom step",
+            "type": "double",
+            "units": "x",
+            "min": 0.1,
+            "max": 4.5,
+            "decimalPlaces": 1,
+            "default": 1.0
+        },
+        {
+            "name": "mavlinkAutoVideoStream",
+            "shortDesc": "Use MAVLink camera stream information",
+            "longDesc": "When enabled, QGC uses the video URI reported by MAVLink and locks manual video source editing. Restart QGC after changing this option.",
+            "type": "bool",
+            "default": false
+        }
+    ]
+}

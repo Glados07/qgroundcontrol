@@ -15,8 +15,7 @@ import QGroundControl.Controls
 import QGroundControl.MultiVehicleManager
 import QGroundControl.ScreenTools
 
-//-------------------------------------------------------------------------
-//-- Fuel Status Indicator Page
+// Fuel 顶部状态指示器对应的独立详情页。
 ToolIndicatorPage {
     showExpand: false
 
@@ -27,7 +26,7 @@ ToolIndicatorPage {
     property int  _fuelType:      _hasFuel ? _fuelStatus.fuelType.rawValue : 0
 
     function getFuelUnit() {
-        // fuelType: 0=Unknown, 1=Liquid, 2=Gas
+        // fuelType: 0=未知，1=液体，2=气体。
         if (_fuelType === 1) {
             return "ml"
         } else if (_fuelType === 2) {

@@ -5,44 +5,36 @@
  * QGroundControl is licensed according to the terms in the file
  * COPYING.md in the root of the source code directory.
  *
- * @file
- *   @brief Custom Firmware Plugin Factory (PX4)
- *   @author Gus Grubba <gus@auterion.com>
- *
- */
+ ****************************************************************************/
 
 #include "CustomFirmwarePluginFactory.h"
+
 #include "CustomFirmwarePlugin.h"
 
 CustomFirmwarePluginFactory CustomFirmwarePluginFactoryImp;
 
-CustomFirmwarePluginFactory::CustomFirmwarePluginFactory()
-    : _pluginInstance(nullptr)
-{
-
-}
+CustomFirmwarePluginFactory::CustomFirmwarePluginFactory() = default;
 
 QList<QGCMAVLink::FirmwareClass_t> CustomFirmwarePluginFactory::supportedFirmwareClasses() const
 {
-    QList<QGCMAVLink::FirmwareClass_t> firmwareClasses;
-    firmwareClasses.append(QGCMAVLink::FirmwareClassPX4);
-    return firmwareClasses;
+    return {QGCMAVLink::FirmwareClassPX4};
 }
 
-QList<QGCMAVLink::VehicleClass_t> CustomFirmwarePluginFactory::supportedVehicleClasses(void) const
+QList<QGCMAVLink::VehicleClass_t> CustomFirmwarePluginFactory::supportedVehicleClasses() const
 {
-    QList<QGCMAVLink::VehicleClass_t> vehicleClasses;
-    vehicleClasses.append(QGCMAVLink::VehicleClassMultiRotor);
-    return vehicleClasses;
+    return {QGCMAVLink::VehicleClassMultiRotor};
 }
 
-FirmwarePlugin* CustomFirmwarePluginFactory::firmwarePluginForAutopilot(MAV_AUTOPILOT autopilotType, MAV_TYPE /*vehicleType*/)
+FirmwarePlugin *CustomFirmwarePluginFactory::firmwarePluginForAutopilot(MAV_AUTOPILOT autopilotType, MAV_TYPE vehicleType)
 {
-    if (autopilotType == MAV_AUTOPILOT_PX4) {
-        if (!_pluginInstance) {
-            _pluginInstance = new CustomFirmwarePlugin;
-        }
-        return _pluginInstance;
+    Q_UNUSED(vehicleType);
+
+    if (autopilotType != MAV_AUTOPILOT_PX4) {
+        return nullptr;
     }
-    return nullptr;
+
+    if (!_pluginInstance) {
+        _pluginInstance = new CustomFirmwarePlugin;
+    }
+    return _pluginInstance;
 }

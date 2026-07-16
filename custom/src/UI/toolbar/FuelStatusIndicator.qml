@@ -12,15 +12,15 @@ import QtQuick
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.MultiVehicleManager
-import QGroundControl.ScreenTools
 import QGroundControl.Palette
+import QGroundControl.ScreenTools
 
 import Custom.Widgets
 
-//-------------------------------------------------------------------------
-//-- Fuel Status Indicator
+// 顶部工具栏只显示 Fuel 图标和剩余百分比，详细数据由独立页面承载。
 Item {
-    id:             control
+    id: control
+
     anchors.top:    parent.top
     anchors.bottom: parent.bottom
     width:          fuelIndicatorRow.width
@@ -50,13 +50,15 @@ Item {
     }
 
     TextMetrics {
-        id:     fuelTextMetrics
-        font:   fuelValueLabel.font
-        text:   "-100%"
+        id: fuelTextMetrics
+
+        font: fuelValueLabel.font
+        text: "-100%"
     }
 
     Row {
-        id:             fuelIndicatorRow
+        id: fuelIndicatorRow
+
         anchors.top:    parent.top
         anchors.bottom: parent.bottom
         visible:        _hasFuel
@@ -67,13 +69,14 @@ Item {
             anchors.bottom:     parent.bottom
             width:              height
             sourceSize.width:   width
-            source:             "/custom/img/FuelIcon.svg"
+            source:             "qrc:/custom/img/FuelIcon.svg"
             fillMode:           Image.PreserveAspectFit
             color:              getFuelColor()
         }
 
         QGCLabel {
-            id:                     fuelValueLabel
+            id: fuelValueLabel
+
             anchors.verticalCenter: parent.verticalCenter
             width:                  fuelTextMetrics.width
             text:                   getFuelText()
