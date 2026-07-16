@@ -2,13 +2,13 @@
 
 适用工程：`F:\qgroundcontrol_viewer3d`
 
-当前分支：`SecDev/ft/arrange`
+当前分支：`SecDev/ft/gimbal`
 
-最后更新：2026-07-15
+最后更新：2026-07-16
 
 ## 1. 当前状态
 
-二次开发代码全部位于 `custom`，没有修改 QGC 原生 `src`。当前已接入四个功能模块：
+二次开发主体位于 `custom`；另按 `SecDev/feature` 要求保留两处受控 `src` 修改。当前已接入五个功能模块：
 
 | 模块 | 已完成功能 |
 |---|---|
@@ -16,21 +16,21 @@
 | Gimbal | 思翼 A8 Mini 私有 UDP SDK、1.0x-5.5x 缩放、可调分度值、右侧缩放控件、视频流默认配置和 MAVLink 自动流开关 |
 | Fuel | 顶部燃料状态、燃料详情、20.0 V 触发且 20.4 V 恢复的母线低电压告警 |
 | Comms | 首次运行自动补充 `local` UDP 链路，目标 `192.168.144.20:19856` |
+| PX4 定制 | 自定义 FirmwarePlugin/AutoPilotPlugin、仅支持 PX4 多旋翼、限制飞行模式和车辆设置页、Fuel 指示器排序 |
 
-本轮架构整理后，`custom` 从 171 个文件缩减到 82 个文件。已去除：
+本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 90 个文件。仍然不引入：
 
 - QGC `custom-example` 的六个未使用 `Custom*.qml` 控件。
 - 示例自定义动作、示例姿态仪、指南针和未使用工具栏图标。
 - 示例品牌、平台安装图、Android 覆盖包和全局配色。
-- 限制飞行模式、隐藏车辆设置、关闭 APM、替换 PX4 工厂的示例插件逻辑。
 - 与 `src/Viewer3D` 字节完全相同的 C++、QML、qmldir、shader 和示例 OSM 副本。
 - 不再需要的 `AppSettings.qml` 整页副本；原生 AppSettings 通过 URL 拦截器直接加载 custom Fly View 设置页。
 
-Fuel 现在通过 `CustomPlugin::toolBarIndicators()` 追加，不再需要自定义 FirmwarePlugin。因此 PX4/APM 原生插件、原生飞行模式、车辆设置页、RC RSSI 和 PX4 专用状态指示器均保持 QGC 默认行为。
+feature 要求的 PX4 定制逻辑已恢复：自定义 Factory 替代原生 PX4 Factory，关闭 APM，Fuel 由 `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后，并移除 RC RSSI。该行为是项目功能，不再按 custom-example 冗余处理。
 
 ## 2. 开发边界
 
-1. 不直接修改 `src`。
+1. 除 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需改动外，不修改其他 `src` 文件。
 2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`。
 3. 只有需要改变原生行为时才保存同名覆盖 QML；没有差异的文件继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
@@ -40,7 +40,7 @@ Fuel 现在通过 `CustomPlugin::toolBarIndicators()` 追加，不再需要自�
 
 ## 3. custom 完整目录结构
 
-当前共 82 个文件：
+当前共 90 个文件：
 
 ```text
 custom/
@@ -51,9 +51,17 @@ custom/
   src/
     CustomPlugin.h
     CustomPlugin.cc
+    AutoPilotPlugin/
+      CustomAutoPilotPlugin.h
+      CustomAutoPilotPlugin.cc
     Comms/
       DefaultCommunicationLinkInstaller.h
       DefaultCommunicationLinkInstaller.cc
+    FirmwarePlugin/
+      CustomFirmwarePlugin.h
+      CustomFirmwarePlugin.cc
+      CustomFirmwarePluginFactory.h
+      CustomFirmwarePluginFactory.cc
     FlightDisplay/
       FlyViewCustomLayer.qml
       FlyViewToolStripActionList.qml
@@ -72,6 +80,7 @@ custom/
       SiyiSdk.h
       SiyiSdk.cc
     QmlControls/
+      FuelStatusIndicatorPage.qml
       Viewer3D/Models3D/qmldir
     UI/
       AppSettings/
@@ -80,7 +89,7 @@ custom/
         GimbalControlSettingsGroup.qml
       toolbar/
         FuelStatusIndicator.qml
-        Images/Fuel.svg
+        Images/FuelIcon.svg
     Viewer3D/
       CityMapGeometry.cc
       CustomViewer3DManager.h
@@ -115,6 +124,7 @@ custom/
         realistic_town_wgs84_map.obj
         textures/*.png
   translations/
+    README.md
     custom.ts
     custom_zh_CN.ts
     custom-lupdate.sh
@@ -126,20 +136,31 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | 启用 `QGC_CUSTOM_BUILD` 和 `CustomPlugin`；声明 Quick3D、Quick3DAssetUtils、可选 WebEngineQuick；收集 Viewer3D、Gimbal、Comms 源码；直接复用无差异的 `src/Viewer3D` 公共源文件；导出 custom 资源和翻译。 |
-| `custom/custom.qrc` | 注册 56 个运行时资源。只覆盖实际有差异的 QML；Viewer3D 基线 QML、生成式模型 QML、qmldir 和 shader 直接引用 `../src`；custom 仅保存扩展 QML、图标和不同的 mesh。 |
-| `custom/cmake/CustomOverrides.cmake` | 保持应用名 `Custom-QGroundControl` 和已有 QSettings 路径；将原生 `QGC_VIEWER3D` 后端关闭，防止原生旧设置后端与 custom 扩展后端重复编译。不会关闭 APM 或 PX4 原生插件。 |
+| `custom/CMakeLists.txt` | 启用 `QGC_CUSTOM_BUILD` 和 `CustomPlugin`；构建只包含 Fuel 详情页的 `Custom.Widgets` 模块；加入 AutoPilot/Firmware、Viewer3D、Gimbal、Comms 源码；声明 Quick3D、可选 WebEngineQuick、资源和翻译。 |
+| `custom/custom.qrc` | 注册 56 个运行时资源。Fuel 图标位于 `/custom/img/FuelIcon.svg`，工具栏组件位于 `/Custom/qml/QGroundControl/Toolbar/FuelStatusIndicator.qml`；Viewer3D 无差异资源继续引用 `../src`。 |
+| `custom/cmake/CustomOverrides.cmake` | 保持应用名和 QSettings 路径；关闭原生 Viewer3D 后端；关闭 APM dialect/plugin/factory 和原生 PX4 Factory，使 custom PX4 Factory 成为唯一 PX4 Factory。 |
 
 ### 4.2 CustomPlugin 与通信链路
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/CustomPlugin.h` | 声明 custom 核心插件、Viewer3D/Gimbal QML 属性、Fuel 顶部栏入口、MAVLink 消息过滤入口和 QML URL 拦截器。 |
-| `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D、Gimbal 和 A8 Mini 视频默认值；向原生应用级顶部栏追加 Fuel；安装 `/Custom/qml` 覆盖拦截器；不再修改品牌、配色、飞行模式和车辆设置。 |
+| `custom/src/CustomPlugin.h` | 声明 custom 核心插件、Viewer3D/Gimbal QML 属性、MAVLink 消息过滤入口和 QML URL 拦截器。Fuel 改由车辆 FirmwarePlugin 管理。 |
+| `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D、Gimbal 和 A8 Mini 视频默认值并安装 `/Custom/qml` 覆盖拦截器；不再重复追加 Fuel。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明默认通信链路的幂等安装接口。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | 在 LinkManager 读取设置前检查 `LinkConfigurations`。不存在 `local`/`Local` 时写入 UDP 链路：本地端口 0、远端 `192.168.144.20:19856`、不开机自动连接、非高延迟；已有同名链路时不覆盖。 |
 
-### 4.3 FlightDisplay QML
+### 4.3 PX4 FirmwarePlugin 与 AutoPilotPlugin
+
+| 文件 | 详细作用 |
+|---|---|
+| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.h` | 声明项目 PX4 Factory，只公开 PX4 firmware class 和多旋翼 vehicle class。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc` | 创建全局 Factory 注册对象；收到 PX4 飞行器时返回单例 `CustomFirmwarePlugin`，其他固件返回空并由 QGC 通用逻辑处理。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.h` | 声明 PX4 固件行为覆盖：AutoPilotPlugin、车辆工具栏、云台能力和可用飞行模式。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.cc` | 创建 CustomAutoPilotPlugin；移除 RC RSSI；将 Fuel 插到 Battery 后；声明 pitch/yaw 云台能力；只允许 Loiter、RTL、Mission 作为可设置飞行模式。 |
+| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.h` | 声明定制 PX4 车辆设置页列表，并监听高级模式变化。 |
+| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc` | 普通模式只提供 Safety；高级模式提供 Airframe、Sensors、Radio、Flight Modes、Power、Motors、Safety 和 Tuning。 |
+
+### 4.4 FlightDisplay QML
 
 | 文件 | 详细作用 |
 |---|---|
@@ -150,7 +171,7 @@ custom/
 
 未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
 
-### 4.4 Gimbal 后端
+### 4.5 Gimbal 后端
 
 | 文件 | 详细作用 |
 |---|---|
@@ -166,18 +187,19 @@ custom/
 | `custom/src/Gimbal/SiyiSdk.h` | 声明 UDP SDK 封装、终端地址、绝对缩放和倍率查询接口。 |
 | `custom/src/Gimbal/SiyiSdk.cc` | 使用 `QUdpSocket` 向 A8 Mini SDK 端口发包，读取数据报并交给 SiyiProtocol 解析，向管理器发出倍率和错误信号。 |
 
-### 4.5 Application Settings、Fuel 和 qmldir
+### 4.6 Application Settings、Fuel 和 qmldir
 
 | 文件 | 详细作用 |
 |---|---|
+| `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 独立详情页，显示剩余比例、剩余/最大/已消耗燃料、流量、温度和液体/气体单位。由精简 `Custom.Widgets` 模块注册。 |
 | `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 在原生 Viewer3D.Models3D 类型清单中增加 `External3DMap`，其他类型名称保持 QGC 原生一致。 |
 | `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生 Fly View 设置组，移除原生旧 Viewer3D 设置块，在底部加载 custom Viewer3D 和 Gimbal 设置组。显式导入原生 `QGroundControl.AppSettings`，因此不需要复制 `SettingsPage.qml`。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 提供 Viewer3D 启用、Google/外部/OSM 地图源、文件选择、WGS84 原点、单位、比例、yaw、建筑层高和高度偏移 UI。 |
 | `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | 提供思翼缩放开关、SDK IP/端口、缩放分度值和 MAVLink 自动视频流开关。 |
-| `custom/src/UI/toolbar/FuelStatusIndicator.qml` | 对齐 QGC `src/UI/toolbar` 结构，读取活动飞行器 `fuelStatus`，顶部显示剩余百分比和分级颜色；点击后显示剩余量、最大量、消耗量、流量、温度和燃料类型单位。运行时资源别名保持不变。 |
-| `custom/src/UI/toolbar/Images/Fuel.svg` | FuelStatusIndicator 使用的燃料顶部栏矢量图标。 |
+| `custom/src/UI/toolbar/FuelStatusIndicator.qml` | 顶部只显示 Fuel 图标和剩余百分比；有 Fuel 遥测时显示，点击后创建 `FuelStatusIndicatorPage`。 |
+| `custom/src/UI/toolbar/Images/FuelIcon.svg` | FuelStatusIndicator 使用的气瓶矢量图标，QRC 路径为 `/custom/img/FuelIcon.svg`。 |
 
-### 4.6 Viewer3D C++ 扩展
+### 4.7 Viewer3D C++ 扩展
 
 | 文件 | 详细作用 |
 |---|---|
@@ -195,7 +217,7 @@ custom/
 | `custom/src/Viewer3D/External3DMapManager.cc` | 直接加载 OBJ/glTF/GLB/QML；对 FBX/DAE/STL/PLY 调用 Qt Balsam 转换；保存可加载 URL 并输出明确错误。 |
 | `custom/src/Viewer3D/Images/city_3d_map_icon.svg` | Viewer3D 工具栏白色图标，资源路径为 `qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg`。 |
 
-### 4.7 Viewer3D custom QML
+### 4.8 Viewer3D custom QML
 
 | 文件 | 详细作用 |
 |---|---|
@@ -209,7 +231,7 @@ custom/
 
 以下基础 QML 不在 custom 保存：`CameraLightModel.qml`、`Line3D.qml`、`Waypoint3DModel.qml`、`Viewer3DProgressBar.qml` 和 14 个 F450 部件 QML。它们由 `custom.qrc` 直接引用 `src/Viewer3D`。
 
-### 4.8 F450 运行时 mesh
+### 4.9 F450 运行时 mesh
 
 这些 mesh 与当前 `src` 版本不同，属于 custom 运行时资产，因此保留。每个文件由同名原生部件 QML加载：
 
@@ -232,7 +254,7 @@ custom/
 
 未注册的 `DroneModel_arm_1/meshes/node.mesh` 辅助副本已经删除。
 
-### 4.9 外部 WGS84 城镇样例
+### 4.10 外部 WGS84 城镇样例
 
 | 文件 | 详细作用 |
 |---|---|
@@ -254,13 +276,14 @@ custom/
 | `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/sidewalk_concrete.png` | 人行道混凝土纹理。 |
 | `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/tree_leaf.png` | 低多边形树冠叶片纹理。 |
 
-### 4.10 翻译
+### 4.11 翻译
 
 | 文件 | 详细作用 |
 |---|---|
+| `custom/translations/README.md` | 说明 custom 翻译模板、语言目录、Qt Linguist 和 `LUPDATE` 的维护流程。 |
 | `custom/translations/custom.ts` | custom 可翻译源文本清单；已移除示例动作、示例开关和示例车辆按钮文本。 |
-| `custom/translations/custom_zh_CN.ts` | Fuel 和母线低电压告警的中文翻译。 |
-| `custom/translations/custom-lupdate.sh` | 使用 `LUPDATE` 环境变量或 `PATH` 中的 Qt 6 `lupdate` 扫描 `custom/src` 并更新 custom TS；不依赖固定用户目录。 |
+| `custom/translations/custom_zh_CN.ts` | Fuel 工具栏、Fuel 独立详情页和母线低电压告警的中文翻译。 |
+| `custom/translations/custom-lupdate.sh` | 使用 `LUPDATE` 或 `PATH` 中的 Qt 6 `lupdate` 扫描 `custom/src`，同时刷新模板和全部 `custom_*.ts` 语言目录。 |
 
 ## 5. 复用的 QGC 原生 Viewer3D 文件
 
@@ -294,7 +317,18 @@ custom/
 
 这些文件升级 QGC 时会自动跟随 `src`，不需要在 custom 手工同步。
 
-## 6. Viewer3D 参数
+## 6. 受控 src 修改
+
+`SecDev/feature` 相对 gimbal 的 `src` 修改只有以下两处，已经完整移植：
+
+| 文件 | 修改原因 |
+|---|---|
+| `src/CMakeLists.txt` | 原生 PX4 Factory 被关闭时仍链接 `AutoPilotPluginsPX4Module`，保证 VehicleSummary 和 CustomAutoPilotPlugin 使用的 PX4 QML 页面存在。 |
+| `src/Vehicle/VehicleSetup/VehicleSummary.qml` | 注释 APM QML import；当前构建关闭 APM 模块，继续导入会造成运行时 `module QGroundControl.AutoPilotPlugins.APM is not installed`。 |
+
+除这两处外，feature 没有其他 `src` 差异，本次也没有修改其他原生源码。
+
+## 7. Viewer3D 参数
 
 | Fact | 类型/默认值 | 说明 |
 |---|---|---|
@@ -315,7 +349,7 @@ custom/
 
 地图源优先级：Google 开启时使用 Google；否则外部模型开启时使用外部模型；两者都关闭时使用本地 OSM。
 
-## 7. Gimbal 参数与使用
+## 8. Gimbal 参数与使用
 
 | Fact | 范围/默认值 | 说明 |
 |---|---|---|
@@ -346,7 +380,7 @@ custom/
 
 TELEM2 参数负责飞控与云台 MAVLink；custom 缩放命令由电脑直接发往 `192.168.144.25:37260/UDP`，两条链路相互独立。
 
-## 8. Fuel 与默认链路
+## 9. Fuel 与默认链路
 
 FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FUEL_STATUS` 数据时控件不占用可见空间；有数据后显示百分比。液体燃料使用 ml，气体燃料使用 MPa。
 
@@ -367,7 +401,17 @@ FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FU
 | 开始时自动连接 | 关闭 |
 | 高延迟 | 关闭 |
 
-## 9. 关键运行链路
+## 10. 关键运行链路
+
+```text
+PX4 HEARTBEAT
+  -> CustomFirmwarePluginFactory（仅 PX4 + MultiRotor）
+  -> CustomFirmwarePlugin
+     -> CustomAutoPilotPlugin 控制车辆设置页
+     -> toolIndicators 移除 RC RSSI、插入 Fuel
+     -> updateAvailableFlightModes 限制可设置模式
+     -> hasGimbal 声明 pitch/yaw 能力
+```
 
 ```text
 QGCApplication
@@ -397,7 +441,7 @@ Fly View
   -> custom FlyViewCustomLayer.qml 增加母线告警
 ```
 
-## 10. 构建与验证
+## 11. 构建与验证
 
 Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支或改动 QRC/CMake 后执行干净配置和构建。
 
@@ -412,7 +456,9 @@ Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支
 7. RTSP 视频可显示；Ubuntu/虚拟机代理需将 `192.168.144.25` 加入忽略列表。
 8. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
 9. 首次运行出现 `local` 链路，已有同名链路不会重复或被覆盖。
-10. 原生 PX4/APM 飞行模式、车辆设置、RC RSSI 和状态指示器正常。
+10. 仅识别 PX4 多旋翼；APM 不出现在支持列表中。
+11. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
+12. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
 
 运行日志出现 `GimbalZoomControl is not a type`，表示新增 QML 被当作原生 `QGroundControl.FlightDisplay` 模块类型直接实例化，但原生 qmldir 没有注册该类型。当前实现由 `FlyViewTopRightColumnLayout.qml` 使用完整 custom QRC URL 的 Loader 加载，并绑定控件隐式尺寸；修改后应重新构建 QRC。若仍看到旧错误，需删除旧构建目录后重新配置，避免使用缓存中的 `custom.qrc`。
 
@@ -420,6 +466,6 @@ Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支
 
 ```powershell
 rg --files custom
-rg -n "CustomIconButton|CustomOnOffSwitch|Custom.Widgets|CustomFirmwarePlugin" custom
+rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton" custom
 git diff --check
 ```

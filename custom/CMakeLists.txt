@@ -45,6 +45,22 @@ list(APPEND CUSTOM_RESOURCES
 )
 set(QGC_RESOURCES ${QGC_RESOURCES} ${CUSTOM_RESOURCES} CACHE STRING "Paths to .qrc Resources" FORCE)
 
+# Fuel 详情页沿用 feature 分支的 Custom.Widgets 类型名，但只注册项目实际使用的页面。
+# 不恢复 custom-example 的按钮、开关、姿态仪等无关示例控件。
+qt_add_library(CustomModule STATIC)
+set_source_files_properties(
+    src/QmlControls/FuelStatusIndicatorPage.qml
+    PROPERTIES QT_RESOURCE_ALIAS FuelStatusIndicatorPage.qml
+)
+qt_add_qml_module(CustomModule
+    URI Custom.Widgets
+    VERSION 1.0
+    RESOURCE_PREFIX /qml
+    QML_FILES
+        src/QmlControls/FuelStatusIndicatorPage.qml
+    NO_PLUGIN
+)
+
 # 只收集 custom 真正修改或新增的 Viewer3D 实现。
 file(GLOB_RECURSE VIEWER3D_CUSTOM_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.cc
@@ -84,6 +100,12 @@ file(GLOB_RECURSE COMMS_SOURCES CONFIGURE_DEPENDS
 set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePluginFactory.h
     ${VIEWER3D_CUSTOM_SOURCES}
     ${VIEWER3D_NATIVE_SOURCES}
     ${GIMBAL_SOURCES}
@@ -92,6 +114,7 @@ set(CUSTOM_SOURCES
 )
 
 set(CUSTOM_LIBRARIES
+    CustomModule
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
     ${CUSTOM_VIEWER3D_GOOGLE_LIBRARIES}
@@ -100,6 +123,8 @@ set(CUSTOM_LIBRARIES
 
 set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms
@@ -107,8 +132,8 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     CACHE INTERNAL "" FORCE
 )
 
-# custom 翻译由根目录 qt_add_translations 合并生成。
-file(GLOB CUSTOM_TS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts)
-if(CUSTOM_TS_SOURCES)
-    set(CUSTOM_TS_SOURCES ${CUSTOM_TS_SOURCES} CACHE INTERNAL "Custom translation .ts files")
-endif()
+# custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。
+file(GLOB CUSTOM_TS_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts"
+)
+set(CUSTOM_TS_SOURCES "${CUSTOM_TS_SOURCES}" PARENT_SCOPE)

@@ -1,19 +1,29 @@
-#!/bin/bash
-# Extract translatable strings from custom sources
-# Usage: Run this script when you add/change qsTr() strings in custom/ sources
+#!/usr/bin/env bash
+# Extract translatable strings from custom sources and update locale catalogs.
+# Usage: Run this script when qsTr() strings or QML file locations change.
+
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+if [[ -z "${LUPDATE:-}" ]]; then
+    LUPDATE="$(command -v lupdate || true)"
+fi
 
-LUPDATE="${LUPDATE:-lupdate}"
-
-echo "Extracting custom translatable strings..."
-if ! command -v "$LUPDATE" >/dev/null 2>&1; then
-    echo "lupdate not found: $LUPDATE" >&2
-    echo "Set LUPDATE to the Qt 6 lupdate executable before running this script." >&2
+if [[ -z "$LUPDATE" || ! -x "$LUPDATE" ]]; then
+    echo "Error: lupdate was not found. Add it to PATH or set LUPDATE to its executable path." >&2
     exit 1
 fi
 
-"$LUPDATE" ../src -ts custom.ts -no-obsolete
+shopt -s nullglob
+LOCALE_TS_FILES=("$SCRIPT_DIR"/custom_*.ts)
+shopt -u nullglob
 
-echo "Done. Now update custom_*.ts files with translations."
+echo "Updating custom translation template..."
+"$LUPDATE" "$SCRIPT_DIR/../src" -ts "$SCRIPT_DIR/custom.ts" -no-obsolete
+
+if ((${#LOCALE_TS_FILES[@]})); then
+    echo "Updating custom locale catalogs..."
+    "$LUPDATE" "$SCRIPT_DIR/../src" -ts "${LOCALE_TS_FILES[@]}" -no-obsolete
+fi
+
+echo "Done. Review translated catalogs for entries marked type=\"unfinished\"."

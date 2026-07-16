@@ -60,7 +60,7 @@ void CustomPlugin::init()
         }
     }
 
-    // Viewer3D 与云台均由 CustomPlugin 管理生命周期，不接管 QGC 原生插件体系。
+    // Viewer3D 与云台由 CustomPlugin 管理；PX4 车辆行为由 CustomFirmwarePlugin 接管。
     _ensureViewer3DSettings();
     _ensureExternal3DMapManager();
     CustomViewer3DManager::registerQmlTypes();
@@ -79,18 +79,6 @@ void CustomPlugin::cleanup()
     QCoreApplication::removeTranslator(&_customTranslator);
     delete _selector;
     _selector = nullptr;
-}
-
-const QVariantList &CustomPlugin::toolBarIndicators()
-{
-    if (_toolBarIndicatorList.isEmpty()) {
-        // 复用 QGC 原生应用级指示器，只增加燃料状态，不替换 PX4/APM 的车辆指示器。
-        _toolBarIndicatorList = QGCCorePlugin::toolBarIndicators();
-        _toolBarIndicatorList.append(QVariant::fromValue(
-            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/Controls/FuelStatusIndicator.qml"))));
-    }
-
-    return _toolBarIndicatorList;
 }
 
 QObject *CustomPlugin::viewer3DSettings()

@@ -9,7 +9,6 @@
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QTranslator>
 #include <QtCore/QUrl>
-#include <QtCore/QVariantList>
 #include <QtQml/QQmlAbstractUrlInterceptor>
 
 #include "QGCCorePlugin.h"
@@ -45,7 +44,6 @@ public:
 
     void init() final;
     void cleanup() final;
-    const QVariantList &toolBarIndicators() final;
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
     bool mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message) final;
 
@@ -69,7 +67,6 @@ private:
     QQmlApplicationEngine *_qmlEngine = nullptr;
     class CustomOverrideInterceptor *_selector = nullptr;
     QTranslator _customTranslator;
-    QVariantList _toolBarIndicatorList;
 
     Viewer3DSettings *_viewer3DSettings = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
