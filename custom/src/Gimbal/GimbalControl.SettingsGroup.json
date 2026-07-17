@@ -42,7 +42,7 @@
         {
             "name": "forceAndroidH265HardwareDecoder",
             "shortDesc": "Force Android H.265 hardware decoder",
-            "longDesc": "On Android, prioritize a compatible vendor MediaCodec decoder for H.265 and disable software H.265 fallback only when vendor hardware is available. Restart QGC after changing this option.",
+            "longDesc": "On Android, register a low-latency hvc1-to-byte-stream adapter and prioritize a compatible vendor MediaCodec H.265 decoder. Software decoder ranks remain available for fallback. Restart QGC after changing this option.",
             "type": "bool",
             "default": true,
             "qgcRebootRequired": true

@@ -14,12 +14,12 @@
 |---|---|
 | Viewer3D | 2D/3D 切换、本地 OSM 三维建筑、外部 OBJ/glTF/GLB/Balsam 模型、WGS84 原点配准、可选 Google 3D Maps、飞机/任务/航线三维显示 |
 | Gimbal | 思翼 A8 Mini 私有 UDP SDK、1.0x-5.5x 缩放、可调分度值、右侧缩放控件、视频流默认配置和 MAVLink 自动流开关 |
-| Video | Android H.265 厂商 MediaCodec 硬解优先；只有确认硬解可用后才禁用 H.265 软解回退，否则保留原 rank；提供 A8 Mini 低延迟默认值和解码器选择日志 |
+| Video | Android H.265 `hvc1 -> byte-stream/au -> 厂商 MediaCodec` custom 解码适配器；硬解输出只保留最新 2 帧，保留安全软件回退，并记录实际 decoder、协商 caps 和首个 raw frame |
 | Fuel | 顶部燃料状态、燃料详情、20.0 V 触发且 20.4 V 恢复的母线低电压告警 |
 | Comms | 首次运行自动补充 `local` UDP 链路，目标 `192.168.144.20:19856` |
 | PX4 定制 | 自定义 FirmwarePlugin/AutoPilotPlugin、仅支持 PX4 多旋翼、限制飞行模式和车辆设置页、Fuel 指示器排序 |
 
-本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 93 个文件。仍然不引入：
+本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 95 个文件。仍然不引入：
 
 - QGC `custom-example` 的六个未使用 `Custom*.qml` 控件。
 - 示例自定义动作、示例姿态仪、指南针和未使用工具栏图标。
@@ -41,7 +41,7 @@ feature 要求的 PX4 定制逻辑已恢复：自定义 Factory 替代原生 PX4
 
 ## 3. custom 完整目录结构
 
-当前共 93 个文件：
+当前共 95 个文件：
 
 ```text
 custom/
@@ -95,6 +95,8 @@ custom/
     VideoManager/
       VideoReceiver/
         GStreamer/
+          AndroidH265HardwareDecoderAdapter.h
+          AndroidH265HardwareDecoderAdapter.cc
           AndroidVideoDecoderPolicy.h
           AndroidVideoDecoderPolicy.cc
     Viewer3D/
@@ -152,7 +154,7 @@ custom/
 | 文件 | 详细作用 |
 |---|---|
 | `custom/src/CustomPlugin.h` | 声明 custom 核心插件、Viewer3D/Gimbal QML 属性、MAVLink 消息过滤入口和 QML URL 拦截器。Fuel 改由车辆 FirmwarePlugin 管理。 |
-| `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D 和 Gimbal；在 VideoReceiver 创建前按设置应用 Android H.265 解码策略，再安装 A8 Mini 视频默认值和 `/Custom/qml` 覆盖拦截器；不再重复追加 Fuel。 |
+| `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D 和 Gimbal；在 GStreamer 完成初始化且 `decodebin3` 创建播放管线前应用 Android H.265 解码策略，再安装 A8 Mini 视频默认值和 `/Custom/qml` 覆盖拦截器；不再重复追加 Fuel。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明默认通信链路的幂等安装接口。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | 在 LinkManager 读取设置前检查 `LinkConfigurations`。不存在 `local`/`Local` 时写入 UDP 链路：本地端口 0、远端 `192.168.144.20:19856`、不开机自动连接、非高延迟；已有同名链路时不覆盖。 |
 
@@ -198,8 +200,10 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明 Android H.265 解码策略入口；必须在 GStreamer 初始化完成、VideoReceiver 创建之前调用。 |
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.cc` | 仅在 Android + GStreamer 且设置开启时枚举与当前 parser `hvc1` 输出兼容的 H.265 decoder。排除 Google OMX、C2 Android、C2 Google、C2 Goldfish 和 FFmpeg 软件实现；发现真实厂商硬解后，将其 rank 提升到不低于 `GST_RANK_PRIMARY + 1`，并将 H.265 软件解码 rank 设为 `GST_RANK_NONE`。没有兼容厂商硬解时保持全部原 rank；H.264 和桌面平台不受该 rank 策略影响。日志类别为 `gcs.custom.video.androidvideodecoderpolicy`。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明 custom GStreamer H.265 decoder factory 的注册入口、factory 名称和已选择的厂商 MediaCodec factory 查询接口。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 动态注册高优先级 `qgcandroidh265hwdec`。外部 sink 接受原生 QGC 强制输出的 `hvc1`，内部通过 `h265parse` 转为 `byte-stream,alignment=au` 后连接预检成功的厂商 `amcviddec-*`；排除 Google/Android/Goldfish、secure、`*.sw.dec`、Qualcomm `*swvdec`、software/FFmpeg decoder，并优先厂商单独暴露的 `lowlatency`/`low_latency` 组件。硬解后的 raw queue 使用 downstream-leaky、2 帧上限，避免 GL 显示端反压持续累积；记录实际 decoder、输入 caps 和首个 raw frame。日志类别为 `gcs.custom.video.androidh265hardwaredecoderadapter`。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明 Android H.265 解码策略入口；必须在 GStreamer 初始化完成、`decodebin3` 创建播放管线之前调用。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.cc` | 仅在 Android + GStreamer 且设置开启时注册上述适配器并枚举 H.265 decoder。适配器使用 `GST_RANK_PRIMARY + 100`，高于原生软件强制值；若设备原生硬解可直接接受 `hvc1`，将其提升到 `GST_RANK_PRIMARY + 2`。软件 ranks 保持原值作为显式安全回退；没有可用厂商硬解时不注册适配器。H.264 和桌面平台不受影响。日志类别为 `gcs.custom.video.androidvideodecoderpolicy`。 |
 
 ### 4.7 Application Settings、Fuel 和 qmldir
 
@@ -373,16 +377,23 @@ custom/
 | `sdkPort` | 1-65535 / `37260` | A8 Mini 私有 UDP SDK 端口。 |
 | `zoomStep` | 0.1-4.5 / `1.0x` | 每次点击加减的倍率分度值。 |
 | `mavlinkAutoVideoStream` | bool / `false` | 是否接受 MAVLink 相机流 URI 并允许其锁定视频源。修改后重启 QGC。 |
-| `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。优先真实厂商 MediaCodec H.265 硬解；修改后重启 QGC。 |
+| `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。注册 `hvc1 -> byte-stream/au` 适配器并优先真实厂商 MediaCodec H.265 硬解；无可用硬解时保留软件回退。修改后重启 QGC。 |
 
 RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一定为 H.264；QGC 依据 RTSP SDP 中的 `H264`/`H265` 编码声明组建管线。Android 策略只过滤 `video/x-h265` decoder，不修改 H.264 decoder rank。
 
-开启强制硬解后，策略在 GStreamer 初始化后、`decodebin3` 创建前执行：
+开启强制硬解后，策略在 GStreamer 初始化后、`decodebin3` 创建播放管线前执行：
 
-- 排除 Google OMX、C2 Android、C2 Google、C2 Goldfish 和 FFmpeg 软件 MediaCodec wrapper。
-- 仅将与当前 parser `hvc1` 输出兼容的厂商 H.265 硬解视为有效候选；找到后将其 rank 提升到至少 `GST_RANK_PRIMARY + 1`，再将当前 H.265 软解设为 `GST_RANK_NONE`。
-- 找不到真实硬解时不改动任何 rank，保留软件回退并输出告警，避免直接黑屏。
+- 原生 Stable V5.0 在 `parsebin` 阶段把 H.265 强制为 `hvc1`；部分 Android 厂商 MediaCodec 只声明接受 Annex-B `byte-stream,alignment=au`，因此仅修改原厂 decoder rank 无法让它进入候选集合。
+- custom 枚举厂商 `amcviddec-*`，排除 Google OMX、C2 Android、C2 Google、C2 Goldfish、secure、`*.sw.dec`、Qualcomm `*swvdec`、software/FFmpeg decoder；若系统同时暴露名称带 `lowlatency`、`low_latency` 或 `low-latency` 的专用组件则优先尝试，再按原 rank 逐个执行“元素可创建、静态管线可链接且 decoder 可进入 READY”预检。
+- 当前项目固定的 GStreamer 1.22.12 `amcvideodec` 没有暴露可由应用设置的 low-latency 属性，因此 custom 不能通过 `g_object_set` 伪造 Android `KEY_LOW_LATENCY`；本实现使用厂商专用低延迟组件（存在时）、真实硬解、GL-compatible raw caps 和限长输出队列控制延迟。
+- 找到可用候选后注册 `qgcandroidh265hwdec`，它的外部 sink 接受 `hvc1`，内部执行 `h265parse(config-interval=-1) -> byte-stream/au -> 厂商 MediaCodec`。适配器 rank 为 `GST_RANK_PRIMARY + 100`，会覆盖原生 `Force software decoder` 保存值产生的 rank 257。
+- 若设备厂商解码器本身直接接受 `hvc1`，不经过适配器也可使用；该直接硬解 rank 至少提升到 `GST_RANK_PRIMARY + 2`，同样高于原生软件强制值。
+- 适配器内部不创建软件解码器。所有原生软件 ranks 保留；适配器无法注册或在自动建链阶段不能使用时，`decodebin3` 仍可选择外层软件 decoder，避免无兼容硬解设备直接黑屏。MediaCodec 收到具体 profile/level 后才发生的运行期配置失败不保证自动切换，需依据首帧日志和完整 logcat 判断。
+- 厂商 decoder 后的 raw queue 设为 downstream-leaky、最多 2 帧、字节/时间不设上限；显示端阻塞时丢弃旧 raw frame，不丢压缩 H.265 AU，不破坏参考帧链。
+- `hvc1 -> byte-stream` 只发生在 tee 后的播放解码支路，录像支路继续使用原生 `hvc1`，不会因本次适配器改变封装格式。
 - Android 首次安装默认值时，仅当 A8 Mini URL 匹配且用户从未保存 `Video/lowLatencyMode` 才将它设为 `true`；用户已有的开关选择始终保留。
+
+只有日志出现 `Android H.265 decoder produced its first raw frame ... hardware confirmed`，才证明经过上述软件组件黑名单筛选的厂商 MediaCodec 已经实际输出画面；其中 `glMemoryOutput true` 还表示解码输出与 QGC GL 显示链协商为 GLMemory。仅看到 factory、rank 或输入 caps 不等于解码成功。这里的 `hardware confirmed` 是本 custom 基于厂商 factory 筛选后的运行证据，不等同于 Android API 29 `MediaCodecInfo.isHardwareAccelerated()` 的系统级认证。
 
 使用流程：
 
@@ -448,9 +459,16 @@ QGCApplication
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
      -> GimbalControlSettings / GimbalControlManager
      -> AndroidVideoDecoderPolicy::apply()
+        -> 枚举并预检 byte-stream/au 厂商 amcviddec-*
+        -> 注册高 rank qgcandroidh265hwdec
      -> GimbalVideoStreamSupport 安装 A8 Mini 默认值
   -> VideoManager::init()
-     -> 创建 VideoReceiver / decodebin3，使用已更新的 H.265 decoder rank
+     -> 创建 VideoReceiver / decodebin3
+        -> 原生 parsebin 输出 hvc1
+        -> qgcandroidh265hwdec
+           -> h265parse -> byte-stream/au
+           -> 厂商 amcviddec-* -> raw leaky queue（2 帧）
+        -> qgcvideosinkbin / qml6glsink
   -> CustomPlugin::createQmlApplicationEngine()
      -> CustomOverrideInterceptor
         -> /Custom/qml 中存在才覆盖
@@ -489,6 +507,22 @@ Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支
 
 Android arm64 Release 建议与当前 CI 环境保持一致：Qt 6.8.3 Android kit、JDK 17、Android SDK 35、NDK r26b 和 `arm64-v8a`。若遥控器安装的是 32 位 APK，还需单独构建并验证 `armeabi-v7a`。
 
+Ubuntu 上建议使用独立构建目录执行 Android arm64 干净配置：
+
+```bash
+/opt/Qt/6.8.3/android_arm64_v8a/bin/qt-cmake \
+  -S . \
+  -B ../build-qgc-android-arm64 \
+  -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DQT_HOST_PATH=/opt/Qt/6.8.3/gcc_64 \
+  -DQT_ANDROID_ABIS=arm64-v8a \
+  -DQT_ANDROID_BUILD_ALL_ABIS=OFF \
+  -DQGC_STABLE_BUILD=OFF
+
+cmake --build ../build-qgc-android-arm64 --parallel
+```
+
 重点验证：
 
 1. Application Settings -> Fly View 同时显示 Viewer3D 和 SIYI Gimbal Zoom，且不再显示两个视频流开关。
@@ -500,18 +534,30 @@ Android arm64 Release 建议与当前 CI 环境保持一致：Qt 6.8.3 Android k
 7. Gimbal Disabled 时恢复原生拍照/录像控件。
 8. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将 `192.168.144.25` 加入忽略列表。
 9. Android 使用云台 H.264 编码回归测试，画面、延迟和断流重连均不退化。
-10. Android 使用云台 H.265 编码连续播放至少 10 分钟，延迟不随时间增长；同时测试应用前后台切换和断流重连。
-11. 真机日志中确认存在厂商 `amcviddec-*` H.265 硬解，它的 rank 大于等于 257，`avdec_h265`、Google/C2 软解 rank 为 0。
-12. 在没有 H.265 硬解的 Android 设备上，日志应告警“未找到硬解”且软解 rank 保持原值，不应直接黑屏。
-13. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
-14. 首次运行出现 `local` 链路，已有同名链路不会重复或被覆盖。
-15. 仅识别 PX4 多旋翼；APM 不出现在支持列表中。
-16. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
-17. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
+10. Android 使用云台 H.265 编码连续播放至少 10 分钟，分别记录开始、5 分钟和 10 分钟的端到端延迟，确认延迟不持续增长；同时测试应用前后台切换和断流重连。
+11. 真机日志中确认 `qgcandroidh265hwdec` 使用厂商 `amcviddec-*`，其输入 caps 为 `stream-format=byte-stream,alignment=au`，并出现首个 raw frame 的 `hardware confirmed` 日志；不能再用 rank 单独判断硬解是否成功。
+12. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
+13. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
+14. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
+15. 首次运行出现 `local` 链路，已有同名链路不会重复或被覆盖。
+16. 仅识别 PX4 多旋翼；APM 不出现在支持列表中。
+17. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
+18. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
 
-Android 调试时关注日志类别 `gcs.custom.video.androidvideodecoderpolicy`。正常硬解日志会列出厂商 `amcviddec-*` 为 `hardware`，并列出每个 H.265 decoder 的 `oldRank -> newRank`。可用 QGC Application Messages 或 `adb logcat` 查看。
+Android 调试时同时关注 `gcs.custom.video.androidvideodecoderpolicy` 和 `gcs.custom.video.androidh265hardwaredecoderadapter`。可用 QGC Application Messages 或 `adb logcat` 查看：
 
-若 rank 日志正确但真机出现 `not-negotiated`、`Failed to configure codec` 或 `Codec only supports GL output but downstream does not`，说明该设备 MediaCodec 的 H.265 `stream-format`/GL 输出与当前管线协商失败；这与“软解速度不足”不是同一问题，需保留完整 logcat 再针对该遥控器做 caps 兼容。
+```bash
+adb logcat -v threadtime | grep -Ei \
+  "androidvideodecoderpolicy|androidh265hardwaredecoderadapter|qgcandroidh265hwdec|amcviddec|avdec_h265|byte-stream|hvc1|not-negotiated|configure codec"
+```
+
+关键日志分三层判断：
+
+1. `Registered qgcandroidh265hwdec ... hvc1 -> byte-stream/au conversion`：适配器及厂商 factory 已找到并注册；候选预检日志中的 `lowLatencyVariant true` 表示选中了厂商专用低延迟组件。
+2. `selected actual decoder ... negotiated sink caps ... byte-stream ... alignment=au`：播放管线已经把 Annex-B AU 送入该 MediaCodec。
+3. `produced its first raw frame ... hardware confirmed`：经过软件黑名单筛选的厂商 MediaCodec 已经真实输出首帧，这是 QGC 管线侧最强的运行证据；`glMemoryOutput true` 表示同时走通 GLMemory 显示路径。系统级硬件属性仍以 Android API 29 `isHardwareAccelerated()` 为准。
+
+若只有前两层而没有第三层，或出现 `not-negotiated`、`Failed to configure codec`、profile/level 不支持等错误，说明厂商 MediaCodec 在收到真机流参数后配置失败；应保留完整 logcat，不能把它误判成“rank 已正确所以硬解成功”。
 
 运行日志出现 `GimbalZoomControl is not a type`，表示新增 QML 被当作原生 `QGroundControl.FlightDisplay` 模块类型直接实例化，但原生 qmldir 没有注册该类型。当前实现由 `FlyViewTopRightColumnLayout.qml` 使用完整 custom QRC URL 的 Loader 加载，并绑定控件隐式尺寸；修改后应重新构建 QRC。若仍看到旧错误，需删除旧构建目录后重新配置，避免使用缓存中的 `custom.qrc`。
 
