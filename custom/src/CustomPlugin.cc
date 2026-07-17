@@ -11,6 +11,7 @@
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
 #include "QGCLoggingCategory.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/CustomViewer3DManager.h"
 #include "Viewer3D/Viewer3DSettings.h"
@@ -67,6 +68,8 @@ void CustomPlugin::init()
 
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
+    AndroidVideoDecoderPolicy::apply(
+        _gimbalControlSettings->forceAndroidH265HardwareDecoder()->rawValue().toBool());
     GimbalVideoStreamSupport::installA8MiniDefaults();
 }
 

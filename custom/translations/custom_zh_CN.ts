@@ -65,4 +65,42 @@
         <translation>温度</translation>
     </message>
 </context>
+<context>
+    <name>VideoSettings</name>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
+        <source>Video Stream Integration</source>
+        <translation>视频流集成</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
+        <translation>控制 MAVLink 视频源选择和 Android H.265 硬件解码。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <source>Use MAVLink automatic video stream</source>
+        <translation>使用 MAVLink 自动视频流</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
+        <translation>若要手动编辑视频源，请关闭此选项。更改后请重启 QGC。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="108"/>
+        <source>Force hardware decoding for Android H.265</source>
+        <translation>强制 Android H.265 硬件解码</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="114"/>
+        <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
+        <translation>如果设备提供兼容的厂商 MediaCodec，则用其解码 H.265；否则保留软件解码。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
+        <source>Restart QGC after changing this option.</source>
+        <translation>更改此选项后请重启 QGC。</translation>
+    </message>
+</context>
 </TS>

@@ -65,4 +65,42 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>VideoSettings</name>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
+        <source>Video Stream Integration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <source>Use MAVLink automatic video stream</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="108"/>
+        <source>Force hardware decoding for Android H.265</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="114"/>
+        <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
+        <source>Restart QGC after changing this option.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

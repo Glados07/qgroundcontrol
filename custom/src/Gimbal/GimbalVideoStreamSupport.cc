@@ -22,7 +22,7 @@ Q_LOGGING_CATEGORY(GimbalVideoStreamLog, "gcs.custom.gimbal.videostream")
 constexpr const char* kSettingsGroup = "GimbalControl";
 constexpr const char* kDefaultsInstalledKey = "a8MiniVideoDefaultsInstalled";
 constexpr const char* kDefaultsVersionKey = "a8MiniVideoDefaultsVersion";
-constexpr int kCurrentDefaultsVersion = 3;
+constexpr int kCurrentDefaultsVersion = 4;
 constexpr quint32 kA8MiniRtspTimeoutSeconds = 20;
 constexpr const char* kA8MiniLegacyTcpUrl = "rtspt://192.168.144.25:8554/main.264";
 constexpr const char* kA8MiniRtspUrl = "rtsp://192.168.144.25:8554/main.264";
@@ -68,6 +68,17 @@ void GimbalVideoStreamSupport::installA8MiniDefaults()
         // QGC 原生默认值为 8 秒，可能在云台上电和 RTSP 服务初始化完成前提前重启管线。
         videoSettings->rtspTimeout()->setRawValue(kA8MiniRtspTimeoutSeconds);
     }
+
+#if defined(Q_OS_ANDROID)
+    // Android 遥控器播放 A8 Mini 实时流时默认关闭时钟同步，避免 H.265 迟帧继续累积延迟。
+    // 仅在用户从未保存该设置时安装默认值，已有显式选择始终保留。
+    settings.beginGroup(QString::fromLatin1(VideoSettings::settingsGroup));
+    const bool hasLowLatencySetting = settings.contains(QString::fromLatin1(VideoSettings::lowLatencyModeName));
+    settings.endGroup();
+    if (isA8MiniUrl && !hasLowLatencySetting) {
+        videoSettings->lowLatencyMode()->setRawValue(true);
+    }
+#endif
 
     const QString currentSource = videoSourceFact->rawValue().toString();
     if (currentSource.isEmpty() ||

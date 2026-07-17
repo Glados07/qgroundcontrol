@@ -10,7 +10,6 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
-import QGroundControl.ScreenTools
 
 Loader {
     id: root
@@ -53,21 +52,6 @@ Loader {
                 label: qsTr("Zoom Step")
                 fact: root.gimbalControlSettings.zoomStep
                 enabled: root.gimbalControlSettings.enabled.rawValue
-            }
-
-            FactCheckBoxSlider {
-                Layout.fillWidth: true
-                text: qsTr("Use MAVLink automatic video stream")
-                fact: root.gimbalControlSettings.mavlinkAutoVideoStream
-                enabled: root.gimbalControlSettings.enabled.rawValue
-            }
-
-            QGCLabel {
-                Layout.fillWidth: true
-                text: qsTr("Keep this option off to edit the video source manually. Restart QGC after changing it.")
-                wrapMode: Text.WordWrap
-                font.pointSize: ScreenTools.smallFontPointSize
-                opacity: 0.72
             }
         }
     }

@@ -23,4 +23,5 @@ public:
     DEFINE_SETTINGFACT(sdkPort)
     DEFINE_SETTINGFACT(zoomStep)
     DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
+    DEFINE_SETTINGFACT(forceAndroidH265HardwareDecoder)
 };
