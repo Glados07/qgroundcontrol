@@ -45,12 +45,15 @@ list(APPEND CUSTOM_RESOURCES
 )
 set(QGC_RESOURCES ${QGC_RESOURCES} ${CUSTOM_RESOURCES} CACHE STRING "Paths to .qrc Resources" FORCE)
 
-# Fuel 详情页沿用 feature 分支的 Custom.Widgets 类型名，但只注册项目实际使用的页面。
-# 不恢复 custom-example 的按钮、开关、姿态仪等无关示例控件。
+# Register only the reusable custom QML controls used by this project.
 qt_add_library(CustomModule STATIC)
 set_source_files_properties(
     src/QmlControls/FuelStatusIndicatorPage.qml
     PROPERTIES QT_RESOURCE_ALIAS FuelStatusIndicatorPage.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/GeneratorBusVoltageAlert.qml
+    PROPERTIES QT_RESOURCE_ALIAS GeneratorBusVoltageAlert.qml
 )
 qt_add_qml_module(CustomModule
     URI Custom.Widgets
@@ -58,6 +61,7 @@ qt_add_qml_module(CustomModule
     RESOURCE_PREFIX /qml
     QML_FILES
         src/QmlControls/FuelStatusIndicatorPage.qml
+        src/FlightDisplay/GeneratorBusVoltageAlert.qml
     NO_PLUGIN
 )
 

@@ -2,9 +2,9 @@
 <!DOCTYPE TS>
 <TS version="2.1">
 <context>
-    <name>FlyViewCustomLayer</name>
+    <name>GeneratorBusVoltageAlert</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="73"/>
+        <location filename="../src/FlightDisplay/GeneratorBusVoltageAlert.qml" line="59"/>
         <source>Generator Bus Voltage Low: %1 V</source>
         <translation type="unfinished"></translation>
     </message>
