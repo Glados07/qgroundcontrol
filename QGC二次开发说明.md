@@ -4,11 +4,11 @@
 
 当前分支：`SecDev/ft/rtsp`
 
-最后更新：2026-07-17
+最后更新：2026-07-20
 
 ## 1. 当前状态
 
-二次开发主体位于 `custom`；另按 `SecDev/feature` 要求保留两处受控 `src` 修改。当前已接入六个功能模块：
+二次开发主体位于 `custom`；另按 `SecDev/feature` 要求保留两处受控 `src` 修改。当前已接入七个功能模块：
 
 | 模块 | 已完成功能 |
 |---|---|
@@ -17,13 +17,14 @@
 | Video | Android H.265 `hvc1 -> byte-stream/au -> 厂商 MediaCodec` custom 解码适配器；硬解输出只保留最新 2 帧，保留安全软件回退，并记录实际 decoder、协商 caps 和首个 raw frame |
 | Fuel | 顶部燃料状态、燃料详情、20.0 V 触发且 20.4 V 恢复的母线低电压告警 |
 | Comms | 首次运行自动补充 `local` UDP 链路，目标 `192.168.144.20:19856` |
+| Android USB | custom 同路径覆盖 USB 串口管理器；修复权限、Activity 重建、关闭重开、拔插重枚举和资源回滚，只向 QGC 暴露已匹配的串口驱动，并为标准 CDC-ACM 飞控提供保守兜底识别 |
 | PX4 定制 | 自定义 FirmwarePlugin/AutoPilotPlugin、仅支持 PX4 多旋翼、限制飞行模式和车辆设置页、Fuel 指示器排序 |
 
-本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 95 个文件。仍然不引入：
+本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 96 个文件。仍然不引入：
 
 - QGC `custom-example` 的六个未使用 `Custom*.qml` 控件。
 - 示例自定义动作、示例姿态仪、指南针和未使用工具栏图标。
-- 示例品牌、平台安装图、Android 覆盖包和全局配色。
+- 示例品牌、平台安装图和全局配色。
 - 与 `src/Viewer3D` 字节完全相同的 C++、QML、qmldir、shader 和示例 OSM 副本。
 - 不再需要的 `AppSettings.qml` 根页副本；原生 AppSettings 通过 URL 拦截器直接加载 custom Fly View 和 Video 设置页。
 
@@ -32,16 +33,17 @@ feature 要求的 PX4 定制逻辑已恢复：自定义 Factory 替代原生 PX4
 ## 2. 开发边界
 
 1. 除 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需改动外，不修改其他 `src` 文件。
-2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`、`VideoManager/VideoReceiver/GStreamer`。
+2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`、`VideoManager/VideoReceiver/GStreamer`；Android Java 同名覆盖按根目录 `android` 的文件树放在 `custom/android`。
 3. 只有需要改变原生行为时才保存同名覆盖 QML；没有差异的文件继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
 5. custom QML 覆盖使用 `/Custom/qml` 前缀，Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
 6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal 和链路设置。
 7. 复杂协议、坐标转换和跨模块行为使用中文注释；普通布局和赋值不增加无意义注释。
+8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。
 
 ## 3. custom 完整目录结构
 
-当前共 95 个文件：
+当前共 96 个文件：
 
 ```text
 custom/
@@ -49,6 +51,9 @@ custom/
   custom.qrc
   cmake/
     CustomOverrides.cmake
+  android/
+    src/org/mavlink/qgroundcontrol/
+      QGCUsbSerialManager.java
   src/
     CustomPlugin.h
     CustomPlugin.cc
@@ -145,7 +150,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | 启用 `QGC_CUSTOM_BUILD` 和 `CustomPlugin`；构建只包含 Fuel 详情页的 `Custom.Widgets` 模块；加入 AutoPilot/Firmware、Viewer3D、Gimbal、Comms 和 VideoManager/GStreamer custom 源码；声明 Quick3D、可选 WebEngineQuick、资源和翻译。 |
+| `custom/CMakeLists.txt` | 启用 `QGC_CUSTOM_BUILD` 和 `CustomPlugin`；Android 时在构建目录重建原生模板与 `custom/android` overlay，并强制 `QGC_ANDROID_PACKAGE_SOURCE_DIR` 指向唯一合并目录；校验生成的 USB 管理器包含 custom 标记；其余构建包含 Fuel `Custom.Widgets`、AutoPilot/Firmware、Viewer3D、Gimbal、Comms、VideoManager/GStreamer、Quick3D、可选 WebEngineQuick、资源和翻译。 |
 | `custom/custom.qrc` | 注册 57 个运行时资源。AppSettings 同名覆盖页位于 `/Custom/qml/QGroundControl/AppSettings`；Fuel 图标位于 `/custom/img/FuelIcon.svg`，工具栏组件位于 `/Custom/qml/QGroundControl/Toolbar/FuelStatusIndicator.qml`；Viewer3D 无差异资源继续引用 `../src`。 |
 | `custom/cmake/CustomOverrides.cmake` | 保持应用名和 QSettings 路径；关闭原生 Viewer3D 后端；关闭 APM dialect/plugin/factory 和原生 PX4 Factory，使 custom PX4 Factory 成为唯一 PX4 Factory。 |
 
@@ -157,6 +162,12 @@ custom/
 | `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D 和 Gimbal；在 GStreamer 完成初始化且 `decodebin3` 创建播放管线前应用 Android H.265 解码策略，再安装 A8 Mini 视频默认值和 `/Custom/qml` 覆盖拦截器；不再重复追加 Fuel。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明默认通信链路的幂等安装接口。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | 在 LinkManager 读取设置前检查 `LinkConfigurations`。不存在 `local`/`Local` 时写入 UDP 链路：本地端口 0、远端 `192.168.144.20:19856`、不开机自动连接、非高延迟；已有同名链路时不覆盖。 |
+
+#### 4.2.1 Android USB 串口管理器
+
+| 文件 | 详细作用 |
+|---|---|
+| `custom/android/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java` | 保持 QGC JNI 固定类名和全部 public static 接口，替换 Android 构建中的原生同名实现。发现态 `drivers` 与打开态 `deviceResourcesMap` 分离：普通关闭只释放 I/O manager、端口和文件描述符并保留 driver；detach、空扫描或 cleanup 才移除 driver，因此同一根线可直接关闭再打开。扫描为空时仍清理陈旧 driver；detach、open 失败和 I/O 创建失败均走幂等资源回滚；Activity cleanup 完整注销接收器、释放端口并清空静态状态，下一次 initialize 可重新注册。设备枚举只返回 prober 已识别且已授权的串口，避免思翼遥控器内置视频 USB 在无权限读取序列号时中断整个枚举。默认 usb-serial-for-android prober 之外，仅对同时具有 CDC communication/data interface 的设备创建 `CdcAcmSerialDriver` 兜底。日志标记为 `QGCUsbSerial-Custom`，记录 raw USB 数、匹配 driver、权限、打开/关闭、状态计数和未匹配接口。 |
 
 ### 4.3 PX4 FirmwarePlugin 与 AutoPilotPlugin
 
@@ -345,7 +356,7 @@ custom/
 | `src/CMakeLists.txt` | 原生 PX4 Factory 被关闭时仍链接 `AutoPilotPluginsPX4Module`，保证 VehicleSummary 和 CustomAutoPilotPlugin 使用的 PX4 QML 页面存在。 |
 | `src/Vehicle/VehicleSetup/VehicleSummary.qml` | 注释 APM QML import；当前构建关闭 APM 模块，继续导入会造成运行时 `module QGroundControl.AutoPilotPlugins.APM is not installed`。 |
 
-除这两处外，feature 没有其他 `src` 差异。本次 Android H.265 修复完全位于 `custom`，未新增任何 `src` 修改。
+除这两处外，feature 没有其他 `src` 差异。Android H.265 与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现，未新增任何 `src` 修改。
 
 ## 7. Viewer3D 参数
 
@@ -417,7 +428,48 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 
 TELEM2 参数负责飞控与云台 MAVLink；custom 缩放命令由电脑直接发往 `192.168.144.25:37260/UDP`，两条链路相互独立。
 
-## 9. Fuel 与默认链路
+## 9. Android USB 飞控连接
+
+该修复没有新增设置 Fact，Android 构建中默认生效，也不受 `mavlinkAutoVideoStream`、`forceAndroidH265HardwareDecoder` 或 Gimbal Enabled 影响。QGC 原生的“自动连接 Pixhawk”仍负责最终创建 MAVLink 串口链路。
+
+连接流程：
+
+1. 遥控器 USB 口必须工作在 OTG/Host 数据模式；飞控亮绿灯只证明 VBUS 供电，不能证明 D+/D- 数据线、Host 角色或 Android 枚举成功。
+2. Application Settings -> Comm Links -> AutoConnect 中保持 Pixhawk 开启；该项默认开启。飞控 VID/PID 或描述不在 `USBBoardInfo.json` 识别范围时，可在 Comm Links 手动新建 Serial 链路并选择已枚举端口。
+3. 第一次连接或重装 APK 后允许 QGC 的 USB 权限。授权请求发出后 15 秒内不会重复弹窗；若系统丢失授权结果广播，超时后允许重新请求。明确拒绝后则保持抑制，需要拔插飞控或重启 QGC 再次触发授权。
+4. 关闭思翼地面站、串口终端等可能占用同一 USB endpoint 的应用；Android USB 设备连接为独占打开，其他应用未释放时 QGC 会记录 `No USB device connection` 或 open 异常。
+5. 允许权限后等待 QGC 两轮串口扫描。原生 LinkManager 为避开 bootloader 重枚举会延迟自动连接，不应以飞控刚上电后一秒内没有车辆图标判断失败。
+
+custom 管理器的状态规则：
+
+- `drivers` 只表示“Android 当前仍能看见并已由串口 prober 匹配的物理设备”；`deviceResourcesMap` 只表示“QGC 当前实际打开的端口”。
+- QGC 主动断开时停止异步 I/O、关闭端口并清除文件描述符，但保留 driver；下一轮可直接 reopen。
+- 物理拔出或扫描发现设备消失时，先完整释放打开资源，再从枚举中移除 driver；即使 Android 漏发 detach 广播，空扫描也会清掉陈旧状态。custom 不从 Android 线程用裸 `QSerialPortPrivate*` 调 `nativeDeviceHasDisconnected`，而是让原生 SerialWorker 的端口可用性定时器在其所属 Qt 线程发现端口已消失并调用 `QSerialPort::close()`，避免悬空指针和跨线程关闭 Qt 对象。
+- Activity 销毁时释放所有端口、注销 receiver 并把静态 manager/prober/context 复位；Activity 重建后重新初始化，不会因旧 `usbManager` 非空而跳过注册。
+- `availableDevicesInfo()` 不再遍历遥控器上的所有原始 USB 设备，只返回已匹配且已授权的串口。因此内置视频、存储等非串口 USB 不会进入 `QSerialPortInfo`，无权限读取它们的 serial number 也不会让整次枚举抛异常。
+- 打开失败、I/O manager 创建失败、关闭、拔出和 cleanup 共用幂等释放路径；不会留下仍占用 endpoint、携带旧 `classPtr`/I/O manager 的半打开 resource。普通 close 后只有 driver、没有 resource 是设计允许的“已发现但未打开”状态。
+
+实际运行链路：
+
+```text
+QGCActivity.onCreate
+  -> custom QGCUsbSerialManager.initialize
+     -> 注册 attach / detach / permission receiver
+     -> UsbSerialProber.getDefaultProber
+     -> 标准 CDC communication + data interface 保守兜底
+     -> 请求 Android USB 权限
+  -> availableDevicesInfo（仅 matched + permission granted）
+  -> AndroidSerial / QGCSerialPortInfo
+  -> USBBoardInfo.json 判断 Pixhawk/SiK/RTK
+  -> LinkManager 延迟 AutoConnect
+  -> open：创建本次连接 resource -> port.open -> I/O manager
+  -> QSerialPortPrivate 设置真实 baud/data/stop/parity 并启动异步读取
+  -> MAVLink heartbeat -> Vehicle
+```
+
+日志诊断边界：`Android USB Host sees no device` 表示应用层根本没有收到设备，需检查遥控器端口模式、OTG/数据线、转接头和系统 USB Host 支持，Java 补丁无法把供电线变成数据线；`USB device visible but no serial driver matched` 表示 Android 已枚举，但接口不是默认支持的 USB 串口或不是标准 CDC-ACM，应保留日志中的 VID、PID 和 `class/subclass/protocol` 后再添加精确驱动映射。
+
+## 10. Fuel 与默认链路
 
 FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FUEL_STATUS` 数据时控件不占用可见空间；有数据后显示百分比。液体燃料使用 ml，气体燃料使用 MPa。
 
@@ -438,7 +490,7 @@ FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FU
 | 开始时自动连接 | 关闭 |
 | 高延迟 | 关闭 |
 
-## 10. 关键运行链路
+## 11. 关键运行链路
 
 ```text
 PX4 HEARTBEAT
@@ -501,7 +553,7 @@ Fly View
   -> custom FlyViewCustomLayer.qml 增加母线告警
 ```
 
-## 11. 构建与验证
+## 12. 构建与验证
 
 Ubuntu 24.04 推荐使用项目要求的 CMake 3.25+ 和 Qt 6.8.x，切换分支或改动 QRC/CMake 后执行干净配置和构建。
 
@@ -523,6 +575,16 @@ Ubuntu 上建议使用独立构建目录执行 Android arm64 干净配置：
 cmake --build ../build-qgc-android-arm64 --parallel
 ```
 
+第一次加入 Android overlay 后必须新建 Android 构建目录，或只删除旧 Android 构建产物后重新 configure，不能只执行增量 APK 打包。配置日志应出现 `QGC: Overlaying custom Android package files`；并检查：
+
+```bash
+grep '^QGC_ANDROID_PACKAGE_SOURCE_DIR' ../build-qgc-android-arm64/CMakeCache.txt
+grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
+  ../build-qgc-android-arm64/custom/android/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java
+```
+
+第一条必须指向当前 build 下的 `custom/android`，第二条必须命中 custom 标记；否则安装的 APK 仍可能使用原生 Java 类。
+
 重点验证：
 
 1. Application Settings -> Fly View 同时显示 Viewer3D 和 SIYI Gimbal Zoom，且不再显示两个视频流开关。
@@ -543,6 +605,12 @@ cmake --build ../build-qgc-android-arm64 --parallel
 16. 仅识别 PX4 多旋翼；APM 不出现在支持列表中。
 17. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
 18. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
+19. Android 冷启动前已插入飞控，以及 QGC 启动后再插入飞控，两种顺序均可自动连接；无权限时只请求一次，当前 attach 会话已有权限时不重复弹窗。
+20. 同一根 USB 线不拔，QGC 主动断开/重新连接至少 20 次；不得出现 `Attempt to open unknown device` 或重复端口，每次 close 日志回到 `openResources=0`，下一次 open 为 `openResources=1`，driver 和 pending permission 数量不持续增长。
+21. 保持 MAVLink 已连接时拔出/插回至少 20 次，并覆盖飞控 bootloader 到 application 的重枚举；每轮都先释放旧端口再创建新端口。
+22. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
+23. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
+24. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
 
 Android 调试时同时关注 `gcs.custom.video.androidvideodecoderpolicy` 和 `gcs.custom.video.androidh265hardwaredecoderadapter`。可用 QGC Application Messages 或 `adb logcat` 查看：
 
@@ -558,6 +626,20 @@ adb logcat -v threadtime | grep -Ei \
 3. `produced its first raw frame ... hardware confirmed`：经过软件黑名单筛选的厂商 MediaCodec 已经真实输出首帧，这是 QGC 管线侧最强的运行证据；`glMemoryOutput true` 表示同时走通 GLMemory 显示路径。系统级硬件属性仍以 Android API 29 `isHardwareAccelerated()` 为准。
 
 若只有前两层而没有第三层，或出现 `not-negotiated`、`Failed to configure codec`、profile/level 不支持等错误，说明厂商 MediaCodec 在收到真机流参数后配置失败；应保留完整 logcat，不能把它误判成“rank 已正确所以硬解成功”。
+
+Android USB 调试使用独立的 logcat 过滤：
+
+```bash
+adb logcat -v threadtime | grep -Ei \
+  "QGCUsbSerial-Custom|qgc.android.androidserial|qserialport_android|SerialLink|UsbHostManager|USB_PERMISSION|USB_DEVICE_(ATTACHED|DETACHED)|Attempt to open unknown|No USB device connection"
+```
+
+看到 `Initialized custom-usb-v1` 可确认 APK 已使用 custom overlay。随后按顺序判断：
+
+1. `USB topology changed: Android Host sees 0 device(s)`：Android 未枚举，先处理 OTG Host、USB 口角色或数据线。
+2. `USB device visible but no serial driver matched`：设备已枚举但驱动未匹配，保存同一行 VID/PID 和 interfaces。
+3. `Requesting permission` 后必须有 `Permission granted`；若 denied，拔插或重启后重新授权。
+4. `Discovered ...`、`Reporting N authorized USB serial device(s) to QGC`（`N >= 1`）和 `USB serial port opened` 依次出现，表示 Java 枚举、Qt 端口发现和实际独占打开均成功；此后仍无飞行器再检查 AutoConnect Pixhawk、USBBoardInfo 识别和 MAVLink heartbeat。
 
 运行日志出现 `GimbalZoomControl is not a type`，表示新增 QML 被当作原生 `QGroundControl.FlightDisplay` 模块类型直接实例化，但原生 qmldir 没有注册该类型。当前实现由 `FlyViewTopRightColumnLayout.qml` 使用完整 custom QRC URL 的 Loader 加载，并绑定控件隐式尺寸；修改后应重新构建 QRC。若仍看到旧错误，需删除旧构建目录后重新配置，避免使用缓存中的 `custom.qrc`。
 

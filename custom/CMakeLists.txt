@@ -7,6 +7,87 @@ set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
     CUSTOMCLASS=CustomPlugin
 )
 
+# Android 的 JNI 固定查找 org.mavlink.qgroundcontrol.QGCUsbSerialManager。
+# 将原生 Android 模板复制到构建目录，再用 custom/android 的同路径文件覆盖；Gradle
+# 最终只会看到一个同名 Java 类，修复逻辑因此无需散落到根 android/ 或 src/。
+if(ANDROID)
+    set(_qgc_default_android_dir "${CMAKE_SOURCE_DIR}/android")
+    set(_qgc_custom_android_dir "${CMAKE_CURRENT_SOURCE_DIR}/android")
+    set(_qgc_final_android_dir "${CMAKE_CURRENT_BINARY_DIR}/android")
+
+    file(GLOB_RECURSE _qgc_default_android_files CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        "${_qgc_default_android_dir}/src/*"
+        "${_qgc_default_android_dir}/res/*"
+        "${_qgc_default_android_dir}/gradle/*"
+        "${_qgc_default_android_dir}/*.gradle"
+        "${_qgc_default_android_dir}/gradle.properties"
+        "${_qgc_default_android_dir}/gradlew*"
+        "${_qgc_default_android_dir}/AndroidManifest.xml"
+    )
+    file(GLOB_RECURSE _qgc_custom_android_files CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        "${_qgc_custom_android_dir}/*"
+    )
+    list(FILTER _qgc_custom_android_files EXCLUDE REGEX "/(\\.gradle|build)/")
+    list(FILTER _qgc_custom_android_files EXCLUDE REGEX "/local\\.properties$")
+
+    if(_qgc_custom_android_files)
+        cmake_path(IS_PREFIX CMAKE_BINARY_DIR "${_qgc_final_android_dir}" NORMALIZE _qgc_final_android_in_binary)
+        cmake_path(IS_PREFIX _qgc_default_android_dir "${_qgc_final_android_dir}" NORMALIZE _qgc_final_in_default_source)
+        cmake_path(IS_PREFIX _qgc_custom_android_dir "${_qgc_final_android_dir}" NORMALIZE _qgc_final_in_custom_source)
+        if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR
+            OR NOT _qgc_final_android_in_binary
+            OR _qgc_final_in_default_source
+            OR _qgc_final_in_custom_source
+        )
+            message(FATAL_ERROR
+                "QGC: Android custom overlay requires an out-of-source build; refusing to remove a source directory"
+            )
+        endif()
+
+        # GLOB 的 CONFIGURE_DEPENDS 负责发现增删；显式文件依赖负责已有 Java/Gradle
+        # 文件内容变化时重新 configure，从而刷新构建目录中的 overlay。
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            ${_qgc_default_android_files}
+            ${_qgc_custom_android_files}
+        )
+
+        message(STATUS "QGC: Overlaying custom Android package files")
+        # 这是构建目录中的生成副本；每次 configure 重建可避免已删除的 overlay 文件残留。
+        file(REMOVE_RECURSE "${_qgc_final_android_dir}")
+        file(MAKE_DIRECTORY "${_qgc_final_android_dir}")
+        file(COPY "${_qgc_default_android_dir}/." DESTINATION "${_qgc_final_android_dir}"
+            PATTERN ".gradle" EXCLUDE
+            PATTERN "build" EXCLUDE
+            PATTERN "local.properties" EXCLUDE
+        )
+        file(COPY "${_qgc_custom_android_dir}/." DESTINATION "${_qgc_final_android_dir}"
+            PATTERN ".gradle" EXCLUDE
+            PATTERN "build" EXCLUDE
+            PATTERN "local.properties" EXCLUDE
+        )
+
+        set(_qgc_usb_manager_overlay
+            "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java"
+        )
+        if(NOT EXISTS "${_qgc_usb_manager_overlay}")
+            message(FATAL_ERROR "QGC: Custom Android USB serial manager overlay was not generated")
+        endif()
+        file(READ "${_qgc_usb_manager_overlay}" _qgc_usb_manager_overlay_header LIMIT 4096)
+        if(NOT _qgc_usb_manager_overlay_header MATCHES "QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1")
+            message(FATAL_ERROR "QGC: Generated Android package does not contain the custom USB serial manager")
+        endif()
+
+        set(QGC_ANDROID_PACKAGE_SOURCE_DIR "${_qgc_final_android_dir}"
+            CACHE PATH "Path to the merged custom Android package template" FORCE
+        )
+        message(STATUS "QGC: Android package template path: ${QGC_ANDROID_PACKAGE_SOURCE_DIR}")
+    else()
+        set(QGC_ANDROID_PACKAGE_SOURCE_DIR "${_qgc_default_android_dir}"
+            CACHE PATH "Path to the default Android package template" FORCE
+        )
+    endif()
+endif()
+
 # Viewer3D 本地场景需要 Quick3D；AssetUtils 用于 OBJ/glTF/GLB 运行时加载。
 list(APPEND CUSTOM_QT_COMPONENTS
     Quick3D
