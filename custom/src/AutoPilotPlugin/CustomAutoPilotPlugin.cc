@@ -9,6 +9,7 @@
 
 #include "CustomAutoPilotPlugin.h"
 
+#include "Actuators.h"
 #include "ParameterManager.h"
 #include "QGCCorePlugin.h"
 #include "Vehicle.h"
@@ -64,9 +65,12 @@ const QVariantList &CustomAutoPilotPlugin::vehicleComponents()
             _powerComponent->setupTriggerSignals();
             _components.append(QVariant::fromValue(reinterpret_cast<VehicleComponent *>(_powerComponent)));
 
-            _motorComponent = new MotorComponent(_vehicle, this);
-            _motorComponent->setupTriggerSignals();
-            _components.append(QVariant::fromValue(reinterpret_cast<VehicleComponent *>(_motorComponent)));
+            if (_vehicle->actuators()) {
+                _vehicle->actuators()->init();
+                _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
+                _actuatorComponent->setupTriggerSignals();
+                _components.append(QVariant::fromValue(static_cast<VehicleComponent *>(_actuatorComponent)));
+            }
         }
 
         // 安全设置始终保留，普通模式下只向用户开放该页面。
