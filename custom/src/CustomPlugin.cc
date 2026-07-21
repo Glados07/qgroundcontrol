@@ -6,11 +6,14 @@
 
 #include "CustomPlugin.h"
 
+#include "AppSettings.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
+#include "FactMetaData.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
 #include "QGCLoggingCategory.h"
+#include "Settings/FlyViewCustomSettings.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/CustomViewer3DManager.h"
@@ -66,6 +69,8 @@ void CustomPlugin::init()
     _ensureExternal3DMapManager();
     CustomViewer3DManager::registerQmlTypes();
 
+    _ensureFlyViewCustomSettings();
+
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     AndroidVideoDecoderPolicy::apply(
@@ -115,6 +120,17 @@ bool CustomPlugin::google3DMapsAvailable() const
 #endif
 }
 
+QObject *CustomPlugin::flyViewCustomSettings()
+{
+    return flyViewCustomSettingsFactGroup();
+}
+
+FlyViewCustomSettings *CustomPlugin::flyViewCustomSettingsFactGroup()
+{
+    _ensureFlyViewCustomSettings();
+    return _flyViewCustomSettings;
+}
+
 QObject *CustomPlugin::gimbalControlSettings()
 {
     return gimbalControlSettingsFactGroup();
@@ -145,6 +161,21 @@ bool CustomPlugin::mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const m
     return !GimbalVideoStreamSupport::shouldFilterMavlinkMessage(_gimbalControlSettings, message);
 }
 
+bool CustomPlugin::adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData)
+{
+    const bool visible = QGCCorePlugin::adjustSettingMetaData(settingsGroup, metaData);
+
+#ifdef Q_OS_ANDROID
+    if (settingsGroup == AppSettings::settingsGroup &&
+        metaData.name() == AppSettings::appFontPointSizeName) {
+        // QGC's regular Android baseline is 14 pt; the native integer setting displays 12/14 as 86%.
+        metaData.setRawDefaultValue(12U); //设置默认缩放字号12pt
+    }
+#endif
+
+    return visible;
+}
+
 void CustomPlugin::_ensureViewer3DSettings()
 {
     if (!_viewer3DSettings) {
@@ -157,6 +188,13 @@ void CustomPlugin::_ensureExternal3DMapManager()
     _ensureViewer3DSettings();
     if (!_external3DMapManager) {
         _external3DMapManager = new External3DMapManager(_viewer3DSettings, this);
+    }
+}
+
+void CustomPlugin::_ensureFlyViewCustomSettings()
+{
+    if (!_flyViewCustomSettings) {
+        _flyViewCustomSettings = new FlyViewCustomSettings(this);
     }
 }
 

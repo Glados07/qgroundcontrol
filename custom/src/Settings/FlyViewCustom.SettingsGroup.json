@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts": [
+        {
+            "name": "showHeadingCompassBar",
+            "shortDesc": "Show heading compass bar",
+            "longDesc": "Show a horizontal heading compass bar at the bottom center of Fly View.",
+            "type": "bool",
+            "default": true
+        }
+    ]
+}

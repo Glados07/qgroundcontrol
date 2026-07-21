@@ -14,6 +14,7 @@
 #include "QGCCorePlugin.h"
 
 class External3DMapManager;
+class FlyViewCustomSettings;
 class GimbalControlManager;
 class GimbalControlSettings;
 class QQmlApplicationEngine;
@@ -26,11 +27,13 @@ class CustomPlugin : public QGCCorePlugin
     Q_OBJECT
     Q_MOC_INCLUDE("custom/src/Viewer3D/External3DMapManager.h")
     Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
+    Q_MOC_INCLUDE("custom/src/Settings/FlyViewCustomSettings.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlManager.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
 
     Q_PROPERTY(QObject *viewer3DSettings READ viewer3DSettings CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
+    Q_PROPERTY(QObject *flyViewCustomSettings READ flyViewCustomSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
     Q_PROPERTY(bool google3DMapsAvailable READ google3DMapsAvailable CONSTANT)
@@ -44,6 +47,7 @@ public:
 
     void init() final;
     void cleanup() final;
+    bool adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData) final;
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
     bool mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message) final;
 
@@ -53,6 +57,9 @@ public:
     External3DMapManager *external3DMapManagerObject();
     bool google3DMapsAvailable() const;
 
+    QObject *flyViewCustomSettings();
+    FlyViewCustomSettings *flyViewCustomSettingsFactGroup();
+
     QObject *gimbalControlSettings();
     GimbalControlSettings *gimbalControlSettingsFactGroup();
     QObject *gimbalControlManager();
@@ -61,6 +68,7 @@ public:
 private:
     void _ensureViewer3DSettings();
     void _ensureExternal3DMapManager();
+    void _ensureFlyViewCustomSettings();
     void _ensureGimbalControlSettings();
     void _ensureGimbalControlManager();
 
@@ -70,6 +78,7 @@ private:
 
     Viewer3DSettings *_viewer3DSettings = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
+    FlyViewCustomSettings *_flyViewCustomSettings = nullptr;
     GimbalControlSettings *_gimbalControlSettings = nullptr;
     GimbalControlManager *_gimbalControlManager = nullptr;
 };

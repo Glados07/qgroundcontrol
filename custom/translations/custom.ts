@@ -10,6 +10,14 @@
     </message>
 </context>
 <context>
+    <name>FlyViewSettings</name>
+    <message>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="233"/>
+        <source>Show Heading Compass Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>FuelStatusIndicator</name>
     <message>
         <location filename="../src/UI/toolbar/FuelStatusIndicator.qml" line="49"/>
