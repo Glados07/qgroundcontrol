@@ -67,9 +67,15 @@ const QVariantList &CustomAutoPilotPlugin::vehicleComponents()
 
             if (_vehicle->actuators()) {
                 _vehicle->actuators()->init();
+            }
+            if (_vehicle->actuators() && _vehicle->actuators()->showUi()) {
                 _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
                 _actuatorComponent->setupTriggerSignals();
                 _components.append(QVariant::fromValue(static_cast<VehicleComponent *>(_actuatorComponent)));
+            } else {
+                _motorComponent = new MotorComponent(_vehicle, this, this);
+                _motorComponent->setupTriggerSignals();
+                _components.append(QVariant::fromValue(static_cast<VehicleComponent *>(_motorComponent)));
             }
         }
 
