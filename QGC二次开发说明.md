@@ -4,46 +4,132 @@
 
 当前分支：`SecDev/ft/rtsp`
 
-最后更新：2026-07-20
+最后更新：2026-07-21
 
-## 1. 当前状态
+## 1. 当前开发进度
 
-二次开发主体位于 `custom`；另按 `SecDev/feature` 要求保留两处受控 `src` 修改。当前已接入七个功能模块：
+### 1.1 总体进度
 
-| 模块 | 已完成功能 |
-|---|---|
-| Viewer3D | 2D/3D 切换、本地 OSM 三维建筑、外部 OBJ/glTF/GLB/Balsam 模型、WGS84 原点配准、可选 Google 3D Maps、飞机/任务/航线三维显示 |
-| Gimbal | 思翼 A8 Mini 私有 UDP SDK、1.0x-5.5x 缩放、可调分度值、右侧缩放控件、视频流默认配置和 MAVLink 自动流开关 |
-| Video | Android H.265 `hvc1 -> byte-stream/au -> 厂商 MediaCodec` custom 解码适配器；硬解输出只保留最新 2 帧，保留安全软件回退，并记录实际 decoder、协商 caps 和首个 raw frame |
-| Fuel | 顶部燃料状态、燃料详情、20.0 V 触发且 20.4 V 恢复的母线低电压告警 |
-| Comms | 首次运行自动补充 `local` UDP 链路，目标 `192.168.144.20:19856` |
-| Android USB | custom 同路径覆盖 USB 串口管理器；修复权限、Activity 重建、关闭重开、拔插重枚举和资源回滚，只向 QGC 暴露已匹配的串口驱动，并为标准 CDC-ACM 飞控提供保守兜底识别 |
-| PX4 定制 | 自定义 FirmwarePlugin/AutoPilotPlugin、仅支持 PX4 多旋翼、限制飞行模式和车辆设置页、Fuel 指示器排序 |
+当前开发分支为 `SecDev/ft/rtsp`，二次开发已形成九个面向用户的功能模块和一套 `custom` 工程化集成架构：
 
-本轮以整理后的 gimbal 为基线选择性移植 feature，`custom` 当前共 96 个文件。仍然不引入：
+1. Viewer3D 三维飞行视图。
+2. 思翼 A8 Mini 云台控制。
+3. RTSP 视频流集成与 Android H.265 低延迟硬件解码。
+4. 飞行界面底部航向罗盘条。
+5. Android 遥控器默认界面缩放。
+6. Android USB 飞控连接。
+7. Fuel 燃料状态与低电压告警。
+8. 默认通信链路安装。
+9. PX4 FirmwarePlugin/AutoPilotPlugin 定制。
 
-- QGC `custom-example` 的六个未使用 `Custom*.qml` 控件。
-- 示例自定义动作、示例姿态仪、指南针和未使用工具栏图标。
-- 示例品牌、平台安装图和全局配色。
-- 与 `src/Viewer3D` 字节完全相同的 C++、QML、qmldir、shader 和示例 OSM 副本。
-- 不再需要的 `AppSettings.qml` 根页副本；原生 AppSettings 通过 URL 拦截器直接加载 custom Fly View 和 Video 设置页。
+各模块当前所处阶段如下：
 
-feature 要求的 PX4 定制逻辑已恢复：自定义 Factory 替代原生 PX4 Factory，关闭 APM，Fuel 由 `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后，并移除 RC RSSI。该行为是项目功能，不再按 custom-example 冗余处理。
+- **已集成**：Viewer3D、思翼云台、Fuel、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
+- **代码已集成，待目标遥控器真机回归验收**：底部航向罗盘条、Android 86% 界面缩放缺省值、Android H.265 低延迟硬解和 Android USB 串口管理器。代码已经进入当前工作树，但仍需按第 12 章完成目标遥控器上的净安装、布局、性能、日志、延迟、反复拔插和重连测试，不能仅凭静态接入、代码注册或 decoder rank 判定验收通过。
+- **已有实测基础**：Ubuntu 24.04 下 A8 Mini 云台控制及 H.265 RTSP 播放正常；Android 下同一云台使用 H.264 编码播放正常。
+- **功能边界**：本次实现的是 QGC 根据活动飞行器 `Vehicle.heading` 绘制的航向罗盘条，不是思翼视频码流内的 OSD，也不表示航点方向、航线偏差或下一航段。
+
+### 1.2 Viewer3D 三维飞行视图（已集成）
+
+- 在 Fly View 工具条增加 2D/3D 切换入口，并保持切换状态和图标状态一致。
+- 支持 QGC 本地 OSM 三维建筑、外部三维模型和可选 Google 3D Maps 三种地图来源。
+- 外部模型可直接加载 OBJ、glTF、GLB 和 QML；FBX、DAE、STL、PLY 通过 Qt Balsam 转换后加载。
+- 支持配置外部模型的 WGS84 原点、模型单位、比例、yaw、建筑层高和高度偏移，使模型坐标与真实经纬度坐标对齐。
+- 在三维场景中显示飞行器、任务点和航线，并完成外部模型模式下的 AMSL 高度配准。
+- 提供 Viewer3D 设置持久化、Google WebEngine 缺失提示、模型加载状态及错误反馈。
+
+### 1.3 思翼 A8 Mini 云台控制（已集成）
+
+- 在 `custom` 中实现思翼私有 UDP SDK 和协议封装，包括帧组装、CRC16、固定为 0 的协议 sequence 字段、倍率设置及倍率查询；当前实现没有递增命令序号。
+- 支持 1.0x-5.5x 绝对缩放、可配置缩放分度值、倍率范围钳制和乐观 UI 更新。
+- 右侧缩放控件激活时，每 2 秒查询一次云台当前倍率，并提供 SDK 响应状态、1.5 秒超时和错误信息。
+- 在飞行界面右侧增加加号、当前倍率、减号组成的缩放控件；关闭 Gimbal 功能时恢复 QGC 原生拍照/录像控件。
+- 在 Fly View 设置页提供云台启用、SDK IP、SDK 端口和缩放步长设置。
+
+### 1.4 RTSP 与 Android H.265 视频链路（代码已集成，待真机验收）
+
+- 为 A8 Mini 安装 RTSP 默认地址 `rtsp://192.168.144.25:8554/main.264`、20 秒超时和 Android 低延迟默认值；实际 H.264/H.265 编码类型仍由 RTSP SDP 协商确定，不由 URL 后缀强制指定。
+- 支持手动视频源与 MAVLink 相机流信息两种接入方式；`Use MAVLink automatic video stream` 和 `Force Android H.265 hardware decoder` 已统一放入 Application Settings -> Video -> Video Stream Integration，并在所有平台显示。
+- Android H.265 优先选择经过筛选的厂商 `amcviddec-*` MediaCodec；若厂商 decoder 原生接受 `hvc1`，则提升其 rank 并直接解码。
+- 若厂商 decoder 只接受 Annex-B，则使用 custom 适配器接收 QGC 播放支路的 `hvc1`，通过 GStreamer `h265parse` 转换为 `video/x-h265,stream-format=byte-stream,alignment=au` 后再送入该 MediaCodec。
+- 排除 Google/Android/Goldfish、secure、软件、FFmpeg 及厂商软件变体，优先选择厂商单独提供的 `lowlatency`/`low_latency` 解码组件。
+- 硬解输出队列采用 downstream-leaky 且最多保留 2 帧，显示端反压时主动丢弃旧帧，防止延迟随播放时间持续累积。
+- 记录候选 factory、实际 decoder、协商输入 caps 和首个 raw frame；只有厂商 MediaCodec 实际输出首帧后，才能在 QGC 管线侧确认硬解链路已经跑通。
+- 没有兼容厂商硬解时不注册适配器，并保留原生软件解码 rank 作为安全回退，避免设备直接黑屏；因此该开关代表优先并验证硬解，而不是在所有硬件上无条件禁止软件回退。
+- H.264 和非 Android 平台不受该策略影响；播放支路的格式转换不修改原生 `hvc1` 录像支路。
+
+### 1.5 飞行界面底部航向罗盘条（代码已集成，待界面回归）
+
+- 从 `custom-example` 选择性移植底部横向航向条、中央航向数值框和固定指针，不移植右下圆形罗盘、姿态仪及其无关资源。
+- 罗盘条读取活动飞行器 `Vehicle.heading.rawValue`，显示 N、NE、E、SE、S、SW、W、NW 方位及中央当前航向角；不存在活动飞行器或航向无效时不显示。
+- 使用 11 个相对方位 Label 实现连续滚动和 359°/0° 跨界，替代示例的 720 个 Label，降低 Android 上每次航向更新的 QML 重算量。
+- 新增 `FlyView/showHeadingCompassBar` 持久化 Fact，默认开启、无需重启；开关位于 Application Settings -> Fly View -> Instrument Panel。
+- `FlyViewCustomLayer` 通过显式 custom QRC Loader 加载罗盘条；位置与 custom-example 一致贴近飞行界面底边，左右底部 inset 会限制宽度以避让 PIP、虚拟摇杆和右下仪表区，并只增加 `bottomEdgeCenterInset`。罗盘条是纯显示层，不截获其下方地图的拖动、缩放或触摸事件；关闭开关时完整透传原生 insets。
+- 普通地图主视图、视频主视图和 Viewer3D 使用同一 custom overlay；QGC 原生全屏视频模式会隐藏整个 custom overlay，因此该模式下罗盘条随之隐藏。
+
+### 1.6 Android 遥控器默认界面缩放（代码已集成，待净安装验证）
+
+- 在 `custom/src/UI/AppSettings` 保存同路径 `GeneralSettings.qml`，由 custom URL 拦截器覆盖原生通用设置页；页面内容保持当前 `src` 的 General、Units、Brand Image 和整数 UI Scaling 行为，不创建重复 Fact。
+- `CustomPlugin::adjustSettingMetaData()` 仅在 Android 构建中把 `appFontPointSize` 的元数据缺省值改为 12 pt；目标遥控器采用 14 pt 平台基准，原生页面计算 `12 / 14 × 100` 后四舍五入显示为 86%。
+- `-`/`+` 继续按照 QGC 原生行为每次调整 1 pt，页面显示的百分比由整数点数除以平台基准后取整，不提供任意 1% 步进。
+- 该逻辑只在根级 QSettings 键 `appFontPointSize` 不存在时提供缺省值。已有安装以及用户后续手动选择的缩放值始终优先，不会在每次启动时被强制改回 86%。
+- 新安装、清除应用数据或执行“清除全部设置”后，常规 Android 遥控器使用 86% 缺省值；Ubuntu、Windows、macOS、iOS 等非 Android 平台不执行覆盖，保持 QGC 原生 100% 缺省缩放。
+- QGC 对物理宽度小于 120 mm 的极小 Android 屏幕使用 11 pt 平台基准，整数点数无法表达 86%；12 pt 缺省值针对当前采用 14 pt 基准的目标遥控器。
+
+### 1.7 Android USB 飞控连接（代码已集成，待真机验收）
+
+- 按原生 Android 文件树在 `custom/android` 中同名覆盖 `QGCUsbSerialManager.java`，保持 QGC JNI 类名和 public static 接口不变。
+- 分离已发现 driver 与已打开端口资源，普通关闭只释放端口和 I/O 资源，保留可再次打开的 driver，解决同一根 USB 线不拔时无法重新连接的问题。
+- 补全冷启动已插入、运行中插入、权限申请/拒绝、拔出、重新枚举、Activity 重建及应用清理的生命周期处理。
+- detach、每次扫描确认某设备消失、打开失败和 I/O 创建失败都执行幂等资源回滚，避免旧driver、文件描述符或权限请求持续残留。
+- 只向QGC返回已由默认prober或保守CDC-ACM兜底匹配、已获权限且至少包含一个串口的USB设备；未匹配串口、也不具备CDC COMM/ACM+CDC_DATA双接口的思翼内置设备不会进入端口列表。
+- 在usb-serial-for-android默认prober之外，仅对同时具有CDC communication/ACM和CDC data interface的标准CDC-ACM设备提供兜底；当前只暴露每个USB设备的第一个串口port0。
+- 增加 `QGCUsbSerial-Custom` 分层日志，用于区分 Android Host 未枚举、驱动未匹配、权限失败、Qt 未发现端口和 MAVLink heartbeat 缺失。
+
+### 1.8 Fuel 燃料状态与告警（已集成）
+
+- 在顶部工具栏 Battery 后插入 Fuel 指示器，并移除 RC RSSI 指示器；没有 Fuel 遥测时自动隐藏。
+- 工具栏显示燃料图标和剩余百分比，详情页显示剩余量、最大量、已消耗量、流量、温度及液体/气体单位。
+- 在 Fly View 增加燃料电池母线低电压告警：低于 20.0 V 触发，恢复到 20.4 V 以上关闭，通过回差避免临界电压附近反复闪烁。
+
+### 1.9 默认通信链路（已集成）
+
+- 每次启动均在 LinkManager 读取设置前检查已有链路；不存在 `local`/`Local` 时，自动补建名为 `local` 的 UDP 链路。
+- 默认远端为 `192.168.144.20:19856`，本地端口为 0，不自动连接且不标记为高延迟链路。
+- 安装逻辑保持幂等；用户已经创建同名链路时不重复添加，也不覆盖用户现有参数。
+
+### 1.10 PX4 飞控定制（已集成）
+
+- 使用 custom PX4 Factory 替代原生 PX4 Factory，并关闭 APM Factory。Factory 的能力列表声明 PX4 + MultiRotor；当前 `firmwarePluginForAutopilot()` 只检查 `MAV_AUTOPILOT_PX4`、没有检查 `vehicleType`，所以运行时其他 PX4 机型也会进入 `CustomFirmwarePlugin`，不能把它描述成已经强制拒绝非多旋翼。
+- 使用 `CustomFirmwarePlugin` 和 `CustomAutoPilotPlugin` 接入定制车辆能力、工具栏及车辆设置页。
+- 普通模式只显示 Safety；高级模式显示 Airframe、Sensors、Radio、Flight Modes、Power、Motors、Safety 和 Tuning。
+- 可由定制列表设置的飞行模式限制为 Loiter、RTL 和 Mission，并通过 `hasGimbal()` 静态声明 pitch/yaw 云台能力；该返回值不检测思翼设备、SDK 连接或云台实际响应状态。
+- Fuel 指示器由 `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后，避免把项目功能误当作 `custom-example` 示例资源。
+
+### 1.11 custom 架构、设置和翻译（已集成）
+
+- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 102 个文件。
+- 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、QML URL 拦截和 Android overlay 接入。
+- General、Fly View 和 Video 设置页均按 `src/UI/AppSettings` 文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
+- Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
+- 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
+- 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
+- custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；当前两个 TS 都只有 5 个 context、18 条 message，覆盖母线告警、航向罗盘条、Fuel 和 Video Integration，Viewer3D、Gimbal 及部分 C++ `tr()` 新文本仍需刷新目录，不能把当前 TS 描述为完整覆盖。
 
 ## 2. 开发边界
 
 1. 除 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需改动外，不修改其他 `src` 文件。
-2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`、`VideoManager/VideoReceiver/GStreamer`；Android Java 同名覆盖按根目录 `android` 的文件树放在 `custom/android`。
-3. 只有需要改变原生行为时才保存同名覆盖 QML；没有差异的文件继续使用 `src`。
+2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`FlightMap/Images`、`Settings`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`、`VideoManager/VideoReceiver/GStreamer`；Android Java 同名覆盖按根目录 `android` 的文件树放在 `custom/android`。
+3. Application Settings 的 General、Fly View 和 Video 页面由项目在 custom 显式接管并保存同名覆盖；其他没有差异、也不需要项目接管的 QML 继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
 5. custom QML 覆盖使用 `/Custom/qml` 前缀，Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
-6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal 和链路设置。
+6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 航向罗盘条和链路设置。
 7. 复杂协议、坐标转换和跨模块行为使用中文注释；普通布局和赋值不增加无意义注释。
 8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。
 
 ## 3. custom 完整目录结构
 
-当前共 96 个文件：
+当前共 102 个文件：
 
 ```text
 custom/
@@ -69,10 +155,13 @@ custom/
       CustomFirmwarePluginFactory.h
       CustomFirmwarePluginFactory.cc
     FlightDisplay/
+      FlyViewCompassBar.qml
       FlyViewCustomLayer.qml
       FlyViewToolStripActionList.qml
       FlyViewTopRightColumnLayout.qml
       GimbalZoomControl.qml
+    FlightMap/
+      Images/compassPointer.svg
     Gimbal/
       GimbalControl.SettingsGroup.json
       GimbalControlManager.h
@@ -88,8 +177,13 @@ custom/
     QmlControls/
       FuelStatusIndicatorPage.qml
       Viewer3D/Models3D/qmldir
+    Settings/
+      FlyViewCustom.SettingsGroup.json
+      FlyViewCustomSettings.h
+      FlyViewCustomSettings.cc
     UI/
       AppSettings/
+        GeneralSettings.qml
         FlyViewSettings.qml
         VideoSettings.qml
         Viewer3DSettingsGroup.qml
@@ -146,48 +240,52 @@ custom/
 
 ## 4. 每个文件的作用
 
+本章按“文件本身实现什么、由谁创建或调用、读取什么数据、最终影响什么功能”逐文件描述。阅读时需要特别区分：`*.SettingsGroup.json` 只定义 Fact 元数据；`*Settings.h` 声明稳定接口，`*Settings.cc` 创建 Fact 并接入 QSettings；`UI/AppSettings/*.qml` 只提供设置界面；Manager/Policy C++ 执行业务编排；`FlightDisplay/*.qml` 执行飞行界面运行时显示；`*.svg/*.png/*.mesh` 只是被上层加载的图形或几何数据；QRC/CMake 决定文件能否进入应用，但不执行业务。每行同时说明“不负责什么”，用于避免把相邻层的职责重复实现到错误目录。
+
 ### 4.1 构建入口
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | 启用 `QGC_CUSTOM_BUILD` 和 `CustomPlugin`；Android 时在构建目录重建原生模板与 `custom/android` overlay，并强制 `QGC_ANDROID_PACKAGE_SOURCE_DIR` 指向唯一合并目录；校验生成的 USB 管理器包含 custom 标记；其余构建包含 Fuel `Custom.Widgets`、AutoPilot/Firmware、Viewer3D、Gimbal、Comms、VideoManager/GStreamer、Quick3D、可选 WebEngineQuick、资源和翻译。 |
-| `custom/custom.qrc` | 注册 57 个运行时资源。AppSettings 同名覆盖页位于 `/Custom/qml/QGroundControl/AppSettings`；Fuel 图标位于 `/custom/img/FuelIcon.svg`，工具栏组件位于 `/Custom/qml/QGroundControl/Toolbar/FuelStatusIndicator.qml`；Viewer3D 无差异资源继续引用 `../src`。 |
-| `custom/cmake/CustomOverrides.cmake` | 保持应用名和 QSettings 路径；关闭原生 Viewer3D 后端；关闭 APM dialect/plugin/factory 和原生 PX4 Factory，使 custom PX4 Factory 成为唯一 PX4 Factory。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android H.265 等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick 并定义 Google 3D 能力；翻译只导出 `custom_*.ts`，英文 `custom.ts` 模板不编译。Android configure 时把根 `android` 模板复制到 build 目录，再用 `custom/android` 同路径覆盖，校验 USB custom 标记并让 Gradle 只使用唯一合并源目录。外部 WGS84 样例目录不参与构建或安装。 |
+| `custom/custom.qrc` | custom RCC 运行时资源清单，共 61 个 `<file>`：2 个 `/custom/img` 图标、1 个 `/Custom/qmlimages` 图标、11 个 `/Custom/qml` 同路径覆盖 QML、42 个 `/qml/Viewer3D` 模块资源、3 个 `/json` Settings 元数据和2个地形 shader。Viewer3D 的42项由22个 custom资源和20个直接引用的原生资源组成；URL拦截器只处理 `/Custom/qml` 覆盖。它只决定资源被打包后的URL，不编译C++、不保存设置值；Fuel详情页由 `qt_add_qml_module` 注册，翻译 `.qm` 由CMake生成，外部WGS84样例不在本QRC中。磁盘上存在但未由QRC/QML模块/安装规则注册的文件不会进入应用包。 |
+| `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
 ### 4.2 CustomPlugin 与通信链路
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/CustomPlugin.h` | 声明 custom 核心插件、Viewer3D/Gimbal QML 属性、MAVLink 消息过滤入口和 QML URL 拦截器。Fuel 改由车辆 FirmwarePlugin 管理。 |
-| `custom/src/CustomPlugin.cc` | 初始化默认链路、翻译、Viewer3D 和 Gimbal；在 GStreamer 完成初始化且 `decodebin3` 创建播放管线前应用 Android H.265 解码策略，再安装 A8 Mini 视频默认值和 `/Custom/qml` 覆盖拦截器；不再重复追加 Fuel。 |
-| `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明默认通信链路的幂等安装接口。 |
-| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | 在 LinkManager 读取设置前检查 `LinkConfigurations`。不存在 `local`/`Local` 时写入 UDP 链路：本地端口 0、远端 `192.168.144.20:19856`、不开机自动连接、非高延迟；已有同名链路时不覆盖。 |
+| `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤和 QML engine创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
+| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()` 在 LinkManager加载前安装默认UDP链路，安装 custom翻译，创建并持有 Viewer3D/FlyView/Gimbal设置和管理器，注册 Viewer3D QML类型，在 GStreamer已初始化而 `decodebin3` 尚未建管线时应用 Android H.265策略，并安装 A8 Mini视频缺省值；`adjustSettingMetaData()` 仅在 Android且根 `appFontPointSize` 尚无保存值时提供12 pt缺省；`mavlinkMessage()`按自动视频流开关过滤相机流信息；`createQmlApplicationEngine()`安装 URL拦截器，仅当对应 custom资源存在时覆盖原生QML。所有设置对象以本插件为父对象并通过Q_PROPERTY供QML复用。 |
+| `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明无状态的 `DefaultCommunicationLinkInstaller::ensureInstalled()` 静态接口。调用者只有 `CustomPlugin::init()`；头文件不创建或连接链路，目的是把“写入项目缺省通信配置”与 CustomPlugin生命周期代码分离。 |
+| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的幂等实现。在原生 LinkManager读取 `LinkConfigurations` 前遍历已有配置，名称以不区分大小写方式匹配 `local` 即立即返回；不存在时按原生 QSettings结构追加一个 UDP配置：本地端口0、单一远端 `192.168.144.20:19856`、不自动连接、非高延迟，并更新count和同步磁盘。它只安装可编辑的配置，不直接打开socket；后续加载、连接、修改和删除仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
 
 #### 4.2.1 Android USB 串口管理器
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/android/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java` | 保持 QGC JNI 固定类名和全部 public static 接口，替换 Android 构建中的原生同名实现。发现态 `drivers` 与打开态 `deviceResourcesMap` 分离：普通关闭只释放 I/O manager、端口和文件描述符并保留 driver；detach、空扫描或 cleanup 才移除 driver，因此同一根线可直接关闭再打开。扫描为空时仍清理陈旧 driver；detach、open 失败和 I/O 创建失败均走幂等资源回滚；Activity cleanup 完整注销接收器、释放端口并清空静态状态，下一次 initialize 可重新注册。设备枚举只返回 prober 已识别且已授权的串口，避免思翼遥控器内置视频 USB 在无权限读取序列号时中断整个枚举。默认 usb-serial-for-android prober 之外，仅对同时具有 CDC communication/data interface 的设备创建 `CdcAcmSerialDriver` 兜底。日志标记为 `QGCUsbSerial-Custom`，记录 raw USB 数、匹配 driver、权限、打开/关闭、状态计数和未匹配接口。 |
+| `custom/android/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java` | Android USB串口生命周期的同名overlay实现，保持 `org.mavlink.qgroundcontrol` 包名、JNI类名和全部public static签名；CMake只把它覆盖到构建目录，不修改根 `android`。`QGCActivity`调用initialize/cleanup，Qt AndroidSerial/QSerialPortInfo经JNI调用枚举、open/close、读写和串口参数，Java listener再把数据/异常回调Qt。状态分为发现态 `drivers`、打开态 `deviceResourcesMap`、权限请求时间和本次attach拒绝集合，并由同一锁串行化；普通close只停I/O、关闭port/fd、失效listener并保留driver，所以不拔线可重开，任何重新扫描确认设备消失、detach或cleanup都会释放并移除陈旧状态。扫描先用默认prober，未匹配时仅对同时具备CDC COMM/ACM和CDC_DATA接口的设备创建保守 `CdcAcmSerialDriver`；只向Qt报告已匹配、有权限且至少有一个port的设备，当前每设备只打开 `ports.get(0)`。权限请求15秒内去重，明确拒绝后当前attach会话不再弹，detach/cleanup清除；打开失败的每一步都走幂等回滚，不强制中间9600波特率，真实参数由Qt随后下发。custom故意不在receiver线程直接用raw Qt指针通知断开，而让Qt工作线程通过端口列表消失完成close。日志标签 `QGCUsbSerial-Custom` 能证明overlay和定位枚举/权限/open状态；Java成功打开后仍必须经过USBBoardInfo/AutoConnect、SerialLink和MAVLink heartbeat才会出现Vehicle，飞控绿灯只表示VBUS供电。 |
 
 ### 4.3 PX4 FirmwarePlugin 与 AutoPilotPlugin
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.h` | 声明项目 PX4 Factory，只公开 PX4 firmware class 和多旋翼 vehicle class。 |
-| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc` | 创建全局 Factory 注册对象；收到 PX4 飞行器时返回单例 `CustomFirmwarePlugin`，其他固件返回空并由 QGC 通用逻辑处理。 |
-| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.h` | 声明 PX4 固件行为覆盖：AutoPilotPlugin、车辆工具栏、云台能力和可用飞行模式。 |
-| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.cc` | 创建 CustomAutoPilotPlugin；移除 RC RSSI；将 Fuel 插到 Battery 后；声明 pitch/yaw 云台能力；只允许 Loiter、RTL、Mission 作为可设置飞行模式。 |
-| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.h` | 声明定制 PX4 车辆设置页列表，并监听高级模式变化。 |
-| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc` | 普通模式只提供 Safety；高级模式提供 Airframe、Sensors、Radio、Flight Modes、Power、Motors、Safety 和 Tuning。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.h` | 声明 `FirmwarePluginFactory` 子类及其全局注册实例，只向 QGC报告 `FirmwareClassPX4 + VehicleClassMultiRotor` 支持范围，并保存一个 `CustomFirmwarePlugin` 单例指针。该 Factory 是 HEARTBEAT识别到飞控后选择项目固件行为的入口，不处理具体飞行模式或UI。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePluginFactory.cc` | 实现并在静态初始化阶段创建 `CustomFirmwarePluginFactoryImp`，使QGC Factory注册机制能发现它；`firmwarePluginForAutopilot()` 只对 `MAV_AUTOPILOT_PX4` 延迟创建并返回同一个 `CustomFirmwarePlugin`，其他autopilot返回空。该函数当前 `Q_UNUSED(vehicleType)`，因此能力列表虽只声明MultiRotor，运行选择阶段并不会拒绝其他PX4 `MAV_TYPE`；若产品必须强制仅多旋翼，需要在本函数增加vehicleType判断。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.h` | 声明 `PX4FirmwarePlugin` 的项目行为覆盖接口：为每辆 Vehicle创建哪个 AutoPilotPlugin、顶部车辆指示器列表、云台轴能力和动态飞行模式属性。成员 `_toolIndicatorList` 缓存定制后的QML URL列表，避免每次查询重复构造。 |
+| `custom/src/FirmwarePlugin/CustomFirmwarePlugin.cc` | 实现 PX4车辆级定制。为车辆创建 `CustomAutoPilotPlugin`；从原生工具栏列表移除 RC RSSI，并把 custom Fuel 指示器稳定插入 Battery 后；`hasGimbal()`静态声明仅 pitch/yaw可用，但不检测思翼设备、UDP SDK连接或云台响应；构造及 `updateAvailableFlightModes()`重新标注机型适用性，并只让 Loiter、RTL、Mission 保持 `canBeSet=true`。它不发送模式切换命令，而是限制QGC向用户公开的可选模式。 |
+| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.h` | 声明 `PX4AutoPilotPlugin` 子类，覆盖 `vehicleComponents()` 返回车辆 Setup 页面模型，并提供高级模式变化槽；`_components` 缓存当前页面对象。该层控制“车辆设置页面有哪些”，不控制飞行界面工具条或实际PX4参数值。 |
+| `custom/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc` | 在参数准备完成后按需创建 Setup组件并调用各组件 `setupTriggerSignals()`：普通模式只创建 Safety；高级模式依次创建 Airframe、Sensors、Radio、Flight Modes、Power、Motors、Safety、Tuning。监听 `showAdvancedUIChanged` 后清空缓存并发出 `vehicleComponentsChanged()`，使UI立即重建；参数未就绪或版本错误时不生成页面。 |
 
-### 4.4 FlightDisplay QML
+### 4.4 FlightDisplay QML 与图像资源
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | 只实现燃料电池母线低电压告警。低于 20.0 V 显示，回升到 20.4 V 以上关闭；完整透传 QGC 原生 tool insets，不再包含示例指南针和姿态仪。 |
-| `custom/src/FlightDisplay/FlyViewToolStripActionList.qml` | 在 QGC 原生起飞、返航、暂停、附加动作和夹爪动作之前增加 Viewer3D 切换按钮。关闭 3D 时使用白色 3D 图标，打开后使用原生 PaperPlane 图标返回 Fly。 |
-| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | 当存在活动飞行器且 Gimbal `enabled=true` 时，通过明确的 custom QRC URL 加载私有 SDK 缩放栏并覆盖原生 PhotoVideoControl；Loader 尺寸绑定控件隐式尺寸，避免透明零尺寸占位；关闭模块时恢复 QGC 原生拍照/录像控件。 |
-| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 半透明白色云台缩放 UI，提供加号、当前倍率和减号；调用 `gimbalControlManager.zoomIn/zoomOut()`；不再显示 `SDK Waiting` 文本。 |
+| `custom/src/FlightDisplay/FlyViewCompassBar.qml` | 罗盘条本体和绘制算法。直接读取活动飞行器 `Vehicle.heading.rawValue`，验证并归一化到 `[0°, 360°)`，使用中心附近 11 个 45°相对标签计算 N/NE/E/SE/S/SW/W/NW 的横向位置，中央显示四舍五入的整数航向并用 `compassPointer.svg` 绘制固定指针。它不读取显示开关、不保存设置、不判断是否应被加载；外层 `FlyViewCustomLayer.qml` 负责生命周期和显示条件。组件没有鼠标拦截层，因此不会吞掉下方地图手势。 |
+| `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | Fly View custom overlay 的编排层，同时管理罗盘条与燃料电池母线告警。它从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 读取用户意愿，再结合 overlay 可见、活动飞行器存在和 heading 有效四个条件，通过明确 QRC URL加载 `FlyViewCompassBar.qml`；用左右底部 tool inset 的最大值形成对称安全边距，避让 PIP/摇杆/仪表，并把“罗盘条高度+底边 margin”的完整占用深度合并进 `bottomEdgeCenterInset`，关闭时透传原生 inset。同一文件还监听 `vehicle.generator.busVoltage`，低于20.0 V置告警、超过20.4 V清除，形成回差；`mapControl` 当前只是兼容接口，未参与逻辑。 |
+| `custom/src/FlightDisplay/FlyViewToolStripActionList.qml` | Fly View 左侧工具条动作模型的同路径覆盖。保留检查单、起飞、降落、返航、暂停、附加动作和夹爪的原生顺序，在最前面新增仅当 `viewer3DSettings.enabled=true` 才可见的 2D/3D 切换动作；动作调用现有 `viewer3DWindow.open()/close()`，打开 3D 时用 PaperPlane 表示返回 Fly，关闭时用 custom 城市图标表示进入 3D。 |
+| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View 右侧中部控件容器的同路径覆盖。始终保留 `TerrainProgress`；有活动飞行器且 Gimbal `enabled=true` 时用明确 QRC URL加载 `GimbalZoomControl.qml`，关闭时改回原生 `PhotoVideoControl`，所以私有缩放模块不会永久移除拍照/录像功能。两个 Loader 按实际 item 的隐式尺寸参与布局，避免零尺寸透明占位；它们声明的 `rightEdgeCenterInset` 当前未被父层汇总，实际右侧占位仍由外层 `_rightPanelWidth` 和 ColumnLayout宽度决定。 |
+| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 思翼私有 UDP SDK 的用户操作面板，而不是视频变焦渲染器。它从 `corePlugin.gimbalControlManager` 读取 `currentZoom`，显示加号、当前倍率和减号；点击按钮调用 `zoomIn()/zoomOut()`，后端按 `zoomStep` 计算、钳制到 1.0x-5.5x 并发送绝对倍率命令。控件可见且管理器启用时每 2 秒调用 `requestCurrentZoom()` 校准显示值；实际范围控制、超时和网络通信在 `GimbalControlManager/SiyiSdk`。 |
+| `custom/src/FlightMap/Images/compassPointer.svg` | 罗盘条中央固定三角指针的纯矢量资源，不含角度或交互逻辑。按原生 `src/FlightMap/Images` 资源分类保存，由 `custom.qrc` 注册为 `qrc:/custom/img/compassPointer.svg`，`FlyViewCompassBar.qml` 通过 `QGCColoredImage` 加载并按当前主题文本颜色着色。 |
 
 未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
 
@@ -195,168 +293,203 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | 定义 `enabled`、`sdkHost`、`sdkPort`、`zoomStep`、`mavlinkAutoVideoStream` 和 `forceAndroidH265HardwareDecoder` 六个持久化 Fact；Android H.265 硬解默认开启并要求重启生效。 |
-| `custom/src/Gimbal/GimbalControlSettings.h` | 声明 Gimbal SettingsGroup 和六个 Fact 访问器。 |
-| `custom/src/Gimbal/GimbalControlSettings.cc` | 加载 `/json/GimbalControl.SettingsGroup.json` 并注册六个设置 Fact。 |
-| `custom/src/Gimbal/GimbalControlManager.h` | 暴露 `currentZoom`、`zoomStep`、`sdkResponding`、`lastError` 和缩放请求接口给 QML；定义 1.0x-5.5x 限制。 |
-| `custom/src/Gimbal/GimbalControlManager.cc` | 连接设置与 SDK；执行加减倍率、范围钳制、乐观 UI 更新、当前倍率轮询和 1.5 秒响应超时。 |
-| `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明 A8 Mini 视频默认设置安装和 MAVLink 相机流消息过滤接口。 |
-| `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | 默认设置 RTSP 地址 `rtsp://192.168.144.25:8554/main.264` 和 20 秒超时，编码方式仍由 RTSP SDP 判定；默认值版本为 4，Android 使用 A8 Mini URL 且用户从未保存 `lowLatencyMode` 时默认开启低延迟，已有选择不覆盖；根据 `mavlinkAutoVideoStream` 决定是否允许 MAVLink 相机流信息锁定视频源。 |
-| `custom/src/Gimbal/SiyiProtocol.h` | 声明思翼私有协议帧头、命令字、CRC16、组包和解包接口。 |
-| `custom/src/Gimbal/SiyiProtocol.cc` | 实现思翼帧序号、长度、CRC16、绝对倍率编码、倍率查询命令和响应解析。 |
-| `custom/src/Gimbal/SiyiSdk.h` | 声明 UDP SDK 封装、终端地址、绝对缩放和倍率查询接口。 |
-| `custom/src/Gimbal/SiyiSdk.cc` | 使用 `QUdpSocket` 向 A8 Mini SDK 端口发包，读取数据报并交给 SiyiProtocol 解析，向管理器发出倍率和错误信号。 |
+| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义6个Fact及约束：`enabled=true`、数值IP `sdkHost=192.168.144.25`、`sdkPort=37260`（1-65535）、`zoomStep=1.0x`（0.1-4.5）、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`；后两项标记需重启。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`；硬解开关虽在所有平台存在，策略只在Android+GStreamer路径执行。 |
+| `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用6个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证属性名称稳定；不创建UDP socket、不发送云台命令，也不选择视频解码器。 |
+| `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现6个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
+| `custom/src/Gimbal/GimbalControlManager.h` | 思翼缩放业务的QML门面和运行态声明。`enabled/zoomStep`来源于持久化Fact，`currentZoom`、`sdkResponding`、`lastError`只存在于当前进程；暴露 `zoomIn()`、`zoomOut()`、`setZoom()`、`requestCurrentZoom()`，并定义业务允许范围1.0x-5.5x、响应超时和状态变化信号。它不包含协议帧字节实现。 |
+| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin` 创建一次并持有 `SiyiSdk`。QML请求倍率时按1.0x-5.5x钳制，发送0x0f绝对倍率，发送成功后先乐观更新UI，再立即发送0x18回读并启动1.5秒单次超时；真实回包会校正倍率、置 `sdkResponding=true`并清错，发送/解析错误写入 `lastError`。enabled/host/port变化会清响应状态并重配endpoint，开启时立即查询；本文件没有2秒周期Timer，周期查询位于 `GimbalZoomControl.qml`。 |
+| `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明两个无对象状态的启动期适配接口：安装A8 Mini视频缺省设置，以及判断一条MAVLink消息是否应被过滤。它不创建 VideoReceiver、不连接RTSP，也不参与H.265解码。 |
+| `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | `CustomPlugin::init()` 每次启动调用的幂等迁移和消息策略实现。版本键 `[GimbalControl]/a8MiniVideoDefaultsVersion=4` 控制迁移：只在URL为空或旧拼写时设置A8 RTSP地址，只在A8 URL且timeout过小时提升到20秒，只在视频源为空/Disabled/No Video时选RTSP；Android仅在用户从未保存 `[Video]/lowLatencyMode` 且URL匹配时写true，已有选择不覆盖。过滤逻辑仅针对 `VIDEO_STREAM_INFORMATION`：Gimbal开启且 `mavlinkAutoVideoStream=false` 时阻止它进入原生自动视频配置，其余消息放行。 |
+| `custom/src/Gimbal/SiyiProtocol.h` | 思翼私有协议的纯静态编解码接口。定义绝对倍率命令0x0f、查询倍率命令0x18、解码结果结构以及CRC16/组帧/拆帧函数；不继承QObject，不访问网络、QSettings或UI。 |
+| `custom/src/Gimbal/SiyiProtocol.cc` | 实现协议字节格式：`55 66`帧头、control 0x01、小端payload长度、当前固定为0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。绝对倍率编码为整数byte+十分位byte，协议层限制0-99.9并截到1位小数；解码先验证最小长度、帧头、声明长度和CRC，再提取命令/序号/payload并还原倍率。业务1.0x-5.5x限制由Manager完成，不能把固定seq误解为递增序号。 |
+| `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层的接口声明，提供数值IP/端口endpoint配置、绝对倍率发送、当前倍率查询及 `packetReceived/currentZoomReceived/communicationError` 信号。它只负责数据报传输与协议调用，不负责业务范围、重试、1.5秒超时或设置持久化。 |
+| `custom/src/Gimbal/SiyiSdk.cc` | 将 `SiyiProtocol` 帧通过 `QUdpSocket::writeDatagram()` 发到配置endpoint；`setEndpoint()`使用 `QHostAddress`，所以当前实现只接受数值IP，解析失败会清空endpoint并发错误。`readyRead`遍历数据报，只接受来源地址等于配置host的数据（当前不校验来源端口），交给Protocol做长度/CRC/命令解析后发出packet和倍率信号；短写、无效endpoint或解析错误通过 `communicationError`交给Manager。 |
+
+云台缩放完整调用链为：`GimbalControlSettings` 保存 endpoint/步长/开关 -> `GimbalZoomControl.qml` 接收用户点击并每2秒发起查询 -> `GimbalControlManager` 执行业务范围、乐观更新和1.5秒等待 -> `SiyiSdk` 发送/接收 UDP -> `SiyiProtocol` 组帧、CRC和倍率解析 -> 回包信号沿 `SiyiSdk -> Manager -> QML` 校正显示。RTSP视频不经过这条UDP缩放链路。
 
 ### 4.6 Android 视频解码策略
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明 custom GStreamer H.265 decoder factory 的注册入口、factory 名称和已选择的厂商 MediaCodec factory 查询接口。 |
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 动态注册高优先级 `qgcandroidh265hwdec`。外部 sink 接受原生 QGC 强制输出的 `hvc1`，内部通过 `h265parse` 转为 `byte-stream,alignment=au` 后连接预检成功的厂商 `amcviddec-*`；排除 Google/Android/Goldfish、secure、`*.sw.dec`、Qualcomm `*swvdec`、software/FFmpeg decoder，并优先厂商单独暴露的 `lowlatency`/`low_latency` 组件。硬解后的 raw queue 使用 downstream-leaky、2 帧上限，避免 GL 显示端反压持续累积；记录实际 decoder、输入 caps 和首个 raw frame。日志类别为 `gcs.custom.video.androidh265hardwaredecoderadapter`。 |
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明 Android H.265 解码策略入口；必须在 GStreamer 初始化完成、`decodebin3` 创建播放管线之前调用。 |
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.cc` | 仅在 Android + GStreamer 且设置开启时注册上述适配器并枚举 H.265 decoder。适配器使用 `GST_RANK_PRIMARY + 100`，高于原生软件强制值；若设备原生硬解可直接接受 `hvc1`，将其提升到 `GST_RANK_PRIMARY + 2`。软件 ranks 保持原值作为显式安全回退；没有可用厂商硬解时不注册适配器。H.264 和桌面平台不受影响。日志类别为 `gcs.custom.video.androidvideodecoderpolicy`。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明进程级 custom H.265 decoder factory接口：固定factory名、注册函数、已选内部厂商MediaCodec factory查询，以及policy与adapter共用的厂商名称过滤函数。它只是适配器注册API，不实现H.265算法，也不调用Android `MediaCodecInfo.isHardwareAccelerated()`做系统级硬件认证。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 在启动阶段枚举能接受 `video/x-h265,stream-format=byte-stream,alignment=au` 的 `amcviddec-*`，排除secure、software/FFmpeg、`*.sw.dec`、Qualcomm `*swvdec`、OMX Google及C2 Android/Google/Goldfish，优先名称含low-latency变体的组件，再按原rank/名称排序；预检只证明元素可创建、静态链可链接且bin能进READY，不证明真实profile/level已解码。选中后缓存厂商factory并以rank `PRIMARY+100=356` 注册 `qgcandroidh265hwdec`。每个实例内部为：外部hvc1 ghost sink -> `h265parse(config-interval=-1)` -> Annex-B byte-stream/AU capsfilter -> 厂商MediaCodec -> downstream-leaky raw queue（最多2 buffer）-> `video/x-raw(ANY)` ghost src；probe记录真实输入caps和首个raw buffer的caps/PTS/bytes/GLMemory。首帧日志只证明经过名称筛选的factory已产出raw frame，不等同Android API硬件认证，也不保证画面已到QML sink。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明一次性的Android H.265 factory rank/适配策略入口。正确调用窗口是 `VideoManager`构造已完成 `GStreamer::initialize()` 之后、`VideoManager::init()` 创建VideoReceiver和 `decodebin3`之前；过早无法枚举插件，过晚则已建管线不会重新选择decoder。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.cc` | `CustomPlugin::init()` 从 `forceAndroidH265HardwareDecoder` 读取一次并调用的策略实现，因此开关要求重启。仅Android+`QGC_GST_STREAMING`且GStreamer已初始化时生效：先尝试注册上述hvc1适配器，再枚举H.265 decoder并按静态sink caps判断hvc1/byte-stream兼容；适配器至少rank356，经过厂商名称筛选且直接接受hvc1的MediaCodec至少提升到 `PRIMARY+2=258`，高于原生Force Software将 `avdec_h265`设成的257。其他软件factory rank不删除也不置0，只保留回退资格，不能承诺所有真机运行期协商失败都一定无黑屏回退。逐候选日志记录分类、caps兼容和rank变化；H.264及非Android不受影响。 |
 
-### 4.7 Application Settings、Fuel 和 qmldir
+Android H.265选择链为：`CustomPlugin::init()`读取重启后生效的Fact -> `AndroidVideoDecoderPolicy` 在管线创建前调整factory候选/rank -> `decodebin3`依据caps与rank选择decoder。直接兼容hvc1的厂商MediaCodec可直接入选；只兼容Annex-B的厂商decoder由 `qgcandroidh265hwdec` 包装，实际数据路径为 `hvc1 -> h265parse -> video/x-h265,stream-format=byte-stream,alignment=au -> 厂商MediaCodec -> 最多2帧的leaky raw队列 -> video/x-raw -> 原生QGC显示链`。rank只能影响选择优先级；确认运行链路必须看实际factory和首个raw buffer日志，不能只看READY预检。
+
+### 4.7 Application Settings、通用默认值、Fly View custom Settings、Fuel 和 qmldir
+
+General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整数 Fact；Android 12 pt 缺省值由 4.2 节的 `CustomPlugin` metadata hook 在 Fact 创建时提供。页面不负责写入缺省值，也不新增 SettingsGroup 或 JSON，避免只有打开 General 页面后设置才生效。
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 独立详情页，显示剩余比例、剩余/最大/已消耗燃料、流量、温度和液体/气体单位。由精简 `Custom.Widgets` 模块注册。 |
-| `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 在原生 Viewer3D.Models3D 类型清单中增加 `External3DMap`，其他类型名称保持 QGC 原生一致。 |
-| `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生 Fly View 设置组，移除原生旧 Viewer3D 设置块，在底部加载 custom Viewer3D 和 Gimbal 设置组。显式导入原生 `QGroundControl.AppSettings`，因此不需要复制 `SettingsPage.qml`。 |
-| `custom/src/UI/AppSettings/VideoSettings.qml` | 与原生 Video 设置页同名覆盖，完整保留 Video Source、Connection、Settings 和 Local Video Storage，在 Connection 后增加独立的 Video Stream Integration 设置组。该组在所有平台显示 MAVLink 自动视频流、Android H.265 强制硬解开关和重启提示；硬解策略本身仍只在 Android 生效。 |
-| `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 提供 Viewer3D 启用、Google/外部/OSM 地图源、文件选择、WGS84 原点、单位、比例、yaw、建筑层高和高度偏移 UI。 |
-| `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | Fly View 页面中的思翼缩放设置组，仅提供缩放开关、SDK IP/端口和缩放分度值；视频源及解码策略已经迁移到 custom Video 设置页。 |
-| `custom/src/UI/toolbar/FuelStatusIndicator.qml` | 顶部只显示 Fuel 图标和剩余百分比；有 Fuel 遥测时显示，点击后创建 `FuelStatusIndicatorPage`。 |
-| `custom/src/UI/toolbar/Images/FuelIcon.svg` | FuelStatusIndicator 使用的气瓶矢量图标，QRC 路径为 `/custom/img/FuelIcon.svg`。 |
+| `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 顶部指示器点击后创建的详情页。输入为活动飞行器 `fuelStatus` Fact，按燃料类型选择 ml 或 MPa，显示剩余比例、剩余量、最大量、已消耗量、流量和温度；它只负责详情展示，不决定工具栏图标是否出现。该类型由精简的 `Custom.Widgets` QML 模块注册，创建入口在 `FuelStatusIndicator.qml`。 |
+| `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 声明 `Viewer3D.Models3D` QML 模块，并把 `CameraLightModel`、`Line3D`、`External3DMap`、`Viewer3DModel`、`Viewer3DVehicleItems`、`Waypoint3DModel` 六个类型映射到对应 QML。`CameraLightModel`、`Line3D`、`Waypoint3DModel` 继续由 QRC 引用原生源码，另外三个带项目差异的场景类型映射到 custom 文件。它只解决 `import Viewer3D.Models3D` 后的类型发现，不创建场景、不加载模型，也不保存设置；`QGroundControl.Viewer3D` 是 C++ 类型模块，不能与本模块名混用。 |
+| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 只定义航向罗盘条显示开关 `showHeadingCompassBar` 的 Fact 元数据：类型为 bool、缺省为 `true`、无需重启。它不绘制罗盘条，也不保存当前用户值；`FlyViewCustomSettings.cc` 根据资源名加载它，实际选择保存为 `FlyView/showHeadingCompassBar`。 |
+| `custom/src/Settings/FlyViewCustomSettings.h` | 声明 `FlyViewCustomSettings : SettingsGroup`，并通过 `DEFINE_SETTINGFACT(showHeadingCompassBar)` 生成稳定的 `Fact*` Q_PROPERTY、延迟创建指针和访问器。该类是 C++/QML 之间的设置接口层，只表达“用户是否允许显示罗盘条”，不包含航向计算或绘制代码。 |
+| `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述 SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把用户值写入原生 `FlyView` QSettings 分组；注册 reference-only QML 类型并实现 `showHeadingCompassBar()` 的延迟 Fact 创建。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
+| `custom/src/UI/AppSettings/GeneralSettings.qml` | Application Settings -> General 的同路径 custom 覆盖页。完整保留原生 Language、Color Scheme、GCS位置流、音频、Android SD Card、清除设置、数据路径、Units和Brand Image。UI Scaling直接绑定原生整数 `appFontPointSize`，按 `appFontPointSize / ScreenTools.platformFontPointSize × 100` 四舍五入显示，`-`/`+` 每次修改1 pt并由原生 `SettingsFact` 保存；页面本身不写缺省值。`SettingsFact` 构造期间先调用 `CustomPlugin::adjustSettingMetaData()` 把 Android raw default改为12 pt，再读取已有QSettings或该缺省值，因此未打开本页面也会生效；非Android默认仍为100%。 |
+| `custom/src/UI/AppSettings/FlyViewSettings.qml` | Application Settings -> Fly View 的同路径覆盖页。保留全部原生 Fly View 设置，从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 取得 Fact，在 Instrument Panel 中用 `FactCheckBoxSlider` 提供“显示航向罗盘条”开关；切换会由 `SettingsFact` 自动持久化并被 `FlyViewCustomLayer.qml` 立即观察。页面底部还装载 Viewer3D 与思翼云台设置组，本文件不绘制罗盘条。 |
+| `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生 Video Source、Connection、播放设置和录像存储组，再读取 `GimbalControlSettings` 中的两个视频集成 Fact，增加 `Use MAVLink automatic video stream` 与 `Force Android H.265 hardware decoder` 开关及重启提示；自动流开关只有 Gimbal Enabled 时允许操作，硬解开关在所有平台可见但仅 Android策略使用。本页只改Fact，真正的MAVLink消息过滤由 `GimbalVideoStreamSupport` 执行，解码器选择由 `AndroidVideoDecoderPolicy` 执行。 |
+| `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 由 `FlyViewSettings.qml` 显式加载的 Viewer3D 设置面板。只有设置对象及14个所需Fact可用时才创建内容；Google与外部模型两个开关相互排斥，两者都关闭时隐式进入本地OSM模式。页面编辑API Key、外部模型文件、WGS84原点、单位换算、比例、yaw、OSM路径、建筑层高和车辆高度偏移；外部文件选择交给 `External3DMapManager.importModelFile()` 检查/转换并返回状态，本文件不创建或渲染三维场景。页面的 Clear只修改保存的路径值，不删除磁盘文件。 |
+| `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | 由 `FlyViewSettings.qml` 加载的思翼私有UDP缩放设置面板。绑定 `GimbalControlSettings` 的 `enabled`、`sdkHost`、`sdkPort`、`zoomStep`；关闭 Enabled 时地址、端口和步长输入禁用，Fact变化由 `SettingsFact` 自动持久化并使 `GimbalControlManager` 重配终端，Fly View右侧也据此在私有缩放栏与原生拍照/录像控件间切换。RTSP来源、MAVLink自动流和H.265解码设置不在本页，而在 `VideoSettings.qml`。 |
+| `custom/src/UI/toolbar/FuelStatusIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后的顶部工具栏组件。监听活动飞行器 `fuelStatus.telemetryAvailable`，无 `FUEL_STATUS` 数据时隐藏且不占可见空间，有数据时显示 `FuelIcon.svg` 与剩余百分比；点击后通过主窗口弹出 `FuelStatusIndicatorPage.qml`。它不生成 Fuel 遥测，也不负责母线低电压告警。 |
+| `custom/src/UI/toolbar/Images/FuelIcon.svg` | Fuel 顶部指示器使用的气瓶矢量图形，只提供可缩放轮廓，不包含状态逻辑；由 `custom.qrc` 注册为 `qrc:/custom/img/FuelIcon.svg`，`FuelStatusIndicator.qml` 根据主题对其着色和显示。 |
+
+航向罗盘条的文件连接关系固定为：`FlyViewCustom.SettingsGroup.json` 定义开关元数据 -> `FlyViewCustomSettings.h/.cc` 创建、读取、保存并向 QML 暴露开关 -> `FlyViewSettings.qml` 提供用户开关 -> `FlyViewCustomLayer.qml` 将开关与活动飞行器/有效航向组合成最终显示条件 -> `FlyViewCompassBar.qml` 只负责绘制。任何一个文件都不能单独完成完整功能。
 
 ### 4.8 Viewer3D C++ 扩展
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/Viewer3D/Viewer3D.SettingsGroup.json` | 定义 14 个 Viewer3D Fact 的类型、默认值和单位。 |
-| `custom/src/Viewer3D/Viewer3DSettings.h` | 声明 custom Viewer3D SettingsGroup，在原生四项基础上增加 Google 和外部模型参数。 |
-| `custom/src/Viewer3D/Viewer3DSettings.cc` | 加载 custom Viewer3D 元数据并注册全部 Fact。 |
-| `custom/src/Viewer3D/CustomViewer3DManager.h` | 声明 custom Viewer3D QML 类型注册器，持有 OsmParser 和扩展后的 Viewer3DQmlBackend。采用 Custom 前缀，避免与原生 `Viewer3DManager` C++ 类混淆。 |
-| `custom/src/Viewer3D/CustomViewer3DManager.cc` | 创建 Parser/Backend，并把 custom 类以 QML 名称 `Viewer3DManager` 注册到 `QGroundControl.Viewer3D`，保持现有 QML API 不变。 |
-| `custom/src/Viewer3D/CityMapGeometry.cc` | 复用原生 CityMapGeometry 声明和几何算法，但从 `CustomPlugin::viewer3DSettingsFactGroup()` 获取设置。 |
-| `custom/src/Viewer3D/OsmParser.cc` | 复用原生 OSM 解析流程，但绑定 custom Viewer3DSettings。 |
-| `custom/src/Viewer3D/Viewer3DTerrainGeometry.cc` | 复用原生地形网格算法，但绑定 custom Viewer3DSettings。 |
-| `custom/src/Viewer3D/Viewer3DQmlBackend.h` | 在原生 QML 后端上增加外部模型地图原点、设置变化响应和参考点恢复接口。 |
-| `custom/src/Viewer3D/Viewer3DQmlBackend.cc` | 在外部模型模式下使用用户配置的 WGS84 原点；退出外部模式后优先恢复 OSM 参考点，再回退飞行器坐标。 |
-| `custom/src/Viewer3D/External3DMapManager.h` | 声明外部模型路径检查、Balsam 转换、状态和错误信息接口。 |
-| `custom/src/Viewer3D/External3DMapManager.cc` | 直接加载 OBJ/glTF/GLB/QML；对 FBX/DAE/STL/PLY 调用 Qt Balsam 转换；保存可加载 URL 并输出明确错误。 |
-| `custom/src/Viewer3D/Images/city_3d_map_icon.svg` | Viewer3D 工具栏白色图标，资源路径为 `qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg`。 |
+| `custom/src/Viewer3D/Viewer3D.SettingsGroup.json` | 只定义 14 个 Viewer3D Fact 的元数据：总开关、Google 地图及 API Key、外部模型路径与 WGS84 原点、单位到米换算、附加比例、yaw、本地 OSM 路径、建筑层高和车辆高度偏移。它提供类型、单位、说明和缺省值，不保存用户当前值、不加载地图，也不创建渲染对象；`Viewer3DSettings.cc` 通过资源 `:/json/Viewer3D.SettingsGroup.json` 使用它。 |
+| `custom/src/Viewer3D/Viewer3DSettings.h` | 声明 `Viewer3DSettings : SettingsGroup` 及上述 14 个 `Fact*` 访问器。它是 `CustomPlugin`、Application Settings QML、坐标后端和场景 QML 共享的稳定设置接口，只声明属性，不包含 JSON 缺省值、文件导入或渲染逻辑。 |
+| `custom/src/Viewer3D/Viewer3DSettings.cc` | 通过 `DECLARE_SETTINGGROUP(Viewer3D, "Viewer3D")` 把 14 个用户值读写到 `Viewer3D` QSettings 分组，实现所有 Fact 的延迟创建，并把 `Viewer3DSettings` 以 reference-only 类型注册到 `QGroundControl.Viewer3D`。实际实例由 `CustomPlugin` 创建，QML 通过 `corePlugin.viewer3DSettings` 访问，不能在 QML 中自行 new。 |
+| `custom/src/Viewer3D/CustomViewer3DManager.h` | 声明 QML 可创建的 Viewer3D 运行时管理对象，向场景暴露一个 `OsmParser` 和一个 `Viewer3DQmlBackend`，并声明统一的 C++/QML 类型注册入口。类名增加 `Custom` 是为避免与原生 C++ `Viewer3DManager` 冲突；对 QML 暴露时仍使用兼容名称。 |
+| `custom/src/Viewer3D/CustomViewer3DManager.cc` | 构造时创建 `Viewer3DQmlBackend` 和 `OsmParser`，再调用 backend `init()` 连接 OSM/车辆/设置参考点链路；注册 `Viewer3DQmlBackend`、`OsmParser`、`GeoCoordinateType`、`CityMapGeometry`、`Viewer3DTerrainGeometry`、`Viewer3DTerrainTexture`，并把本类以 `Viewer3DManager` 注册到 `QGroundControl.Viewer3D`，从而不修改现有场景 QML 的类型名。 |
+| `custom/src/Viewer3D/CityMapGeometry.cc` | 监听 custom `osmFilePath`，在路径或 parser 变化时清空旧几何并让 `OsmParser` 解析文件；收到地图或建筑层高变化后取出建筑三角形顶点，写成仅含 position 的 `QQuick3DGeometry` triangle vertex buffer。它负责本地 OSM 建筑几何，不负责地形瓦片贴图、外部模型或 Google 地图。 |
+| `custom/src/Viewer3D/OsmParser.cc` | 管理原生 `OsmParserThread` 的异步文件解析，读取 custom `buildingLevelHeight`，接收地图 GPS 参考点和建筑轮廓；对带内洞的建筑轮廓使用 earcut 三角剖分，再生成屋顶、地板和内外墙顶点。与原生版本的项目差异是设置来源改为 `CustomPlugin::viewer3DSettingsFactGroup()`；输出供 `CityMapGeometry` 和坐标 backend 使用。 |
+| `custom/src/Viewer3D/Viewer3DTerrainGeometry.cc` | 根据瓦片 ROI、参考经纬度和行列数生成带 position、normal、UV 的 Quick3D 地形三角网，供地图瓦片纹理贴附；参考点变化时重建，OSM 路径变化时清空旧场景。它复用原生头文件和算法接口，但读取 custom Viewer3D 设置，不生成 OSM 建筑，也不参与外部模型加载。 |
+| `custom/src/Viewer3D/Viewer3DQmlBackend.h` | 声明 QML 只读 `gpsRef`、内部参考点来源状态，以及活动飞行器、OSM parser、外部模型设置变化的处理接口。它维护的是 WGS84 到本地 ENU 的参考原点，不声明模型导入器、相机或渲染节点。 |
+| `custom/src/Viewer3D/Viewer3DQmlBackend.cc` | 维护本地 Quick3D 场景的坐标参考点：外部模型模式优先固定使用用户填写的 WGS84 原点；关闭外部模式后优先恢复 OSM 提供的参考点，没有有效 OSM 时回退活动飞行器首次有效坐标。监听 Google/外部源开关和原点三项 Fact，变化后重新选择参考点；Google Web 地图使用独立 WebEngine 链路，不采用该本地 ENU 原点。 |
+| `custom/src/Viewer3D/External3DMapManager.h` | 声明设置页调用的外部模型导入接口，暴露 `importing`、`lastImportStatus`、直接加载/需转换格式判断、Balsam 可执行文件查询和支持格式文本。它只定义文件选择与转换任务状态，不声明 Quick3D 模型或任何渲染对象。 |
+| `custom/src/Viewer3D/External3DMapManager.cc` | 对 OBJ/glTF/GLB/QML 验证本地文件存在后，只把绝对路径写入 `external3DMapFilePath`；对 FBX/DAE/STL/PLY 启动 Qt Balsam，输出到应用数据目录 `Viewer3DExternalMaps/<名称>_<源路径哈希>`，找到生成 QML 后再写回设置。Balsam 按 `QGC_VIEWER3D_BALSAM`、应用目录、Qt binaries、PATH 查找，同一源重新导入前清理旧输出，并把启动/转换错误写入 `lastImportStatus`。本文件不直接加载或渲染模型，真正加载在 `External3DMap.qml`。 |
+| `custom/src/Viewer3D/Images/city_3d_map_icon.svg` | 只提供白色分层地图/城市轮廓矢量图，注册为 `qrc:/Custom/qmlimages/Viewer3D/City3DMapIcon.svg`，由 `FlyViewToolStripActionList.qml` 在“进入 3D”动作上显示。文件没有 Enabled 状态、点击处理或场景切换逻辑。 |
 
 ### 4.9 Viewer3D custom QML
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/Viewer3D/Viewer3DQml/Viewer3D.qml` | Viewer3D 根组件；使用 custom settings；在 Google Web 视图、本地 Quick3D 场景和依赖缺失提示之间切换。 |
-| `custom/src/Viewer3D/Viewer3DQml/Google3DMapView.qml` | 通过 Qt WebEngine 和 Google Maps JavaScript API 显示在线三维地图，以活动飞行器或地图中心作为初始坐标。 |
-| `custom/src/Viewer3D/Viewer3DQml/Google3DMapUnavailable.qml` | Google 3D 已开启但构建中没有 WebEngineQuick 时显示依赖不可用提示。 |
-| `custom/src/Viewer3D/Viewer3DQml/Models3D/External3DMap.qml` | 加载 External3DMapManager 输出的模型 URL，应用模型单位、额外比例和 yaw，并显示加载状态或阻塞错误。 |
-| `custom/src/Viewer3D/Viewer3DQml/Models3D/Viewer3DModel.qml` | 本地 Quick3D 主场景；在 OSM 建筑与外部模型之间切换，组合相机、地形、飞行器、任务点和交互控制。 |
-| `custom/src/Viewer3D/Viewer3DQml/Models3D/Viewer3DVehicleItems.qml` | 将飞行器和任务坐标转换到局部三维坐标；外部模型模式使用 AMSL 高度减模型原点高度。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/DroneModelDjiF450.qml` | F450 飞行器总装；增加外部模型地图下的 AMSL 高度配准，组合 14 个原生部件 QML 和 custom mesh。 |
+| `custom/src/Viewer3D/Viewer3DQml/Viewer3D.qml` | Viewer3D 生命周期和地图源路由根组件。`open()` 只在总开关开启时创建 `Viewer3DManager` 并加载视图；`close()` 隐藏视图但保留对象，再次打开可复用状态；用户关闭 Viewer3D Enabled 时才停用 manager Loader。Google 开启时选择 `Google3DMapView.qml` 或无 WebEngine 提示页，否则选择本地 `Viewer3DModel.qml`，并把同一个 manager 注入已加载场景。 |
+| `custom/src/Viewer3D/Viewer3DQml/Google3DMapView.qml` | 使用 `WebEngineView` 加载运行时生成的 Google Maps JavaScript API HTML，并创建 `Map3DElement` Hybrid 三维地图。初始中心优先取活动飞行器，否则取 QGC 地图中心；API Key 或坐标无效时显示说明，并避免车辆每次位置更新都重新加载网页。该页面不使用本地 Quick3D backend，也不绘制本地 F450、任务点或任务航线。 |
+| `custom/src/Viewer3D/Viewer3DQml/Google3DMapUnavailable.qml` | 仅在用户选择 Google 3D、但构建配置没有 `WebEngineQuick` 时由根 Loader 加载，显示静态依赖缺失说明。它不联网、不尝试调用 Google API，也不自动回退加载本地 OSM/外部模型。 |
+| `custom/src/Viewer3D/Viewer3DQml/Models3D/External3DMap.qml` | 外部模型的实际 Quick3D 加载节点：把本地路径转换为 file URL，OBJ/glTF/GLB 交给 `RuntimeLoader`，Balsam 生成的 QML 交给 `Loader3D`；FBX/DAE/STL/PLY 原文件只提示先在设置页转换。按 `unitToMeters × userScale × 10` 对齐 QGC 场景尺度并绕 Z 轴应用 yaw；向 `Viewer3DModel.qml` 暴露缺文件、格式、加载错误和原点为 0,0 的状态文本，其中 0,0 只是配准警告，有效模型仍会继续渲染。 |
+| `custom/src/Viewer3D/Viewer3DQml/Models3D/Viewer3DModel.qml` | 本地 Quick3D 根场景。创建相机、灯光及鼠标/触摸平移、旋转、缩放交互；根据设置在 OSM 建筑+瓦片地形与 `External3DMap` 之间切换，叠加影像下载进度或外部模型状态。它为每个飞行器加载车辆、任务点和任务航段，并在 backend `gpsRef` 改变时重置相机，确保场景局部坐标与新参考点一致。 |
+| `custom/src/Viewer3D/Viewer3DQml/Models3D/Viewer3DVehicleItems.qml` | 为一架飞行器生成 F450 模型、可接受的 Waypoint/Takeoff/RTL/ROI 任务点和相邻任务航段。使用 `GeoCoordinateType` 将 WGS84 转为局部 ENU；外部模型模式用任务点 AMSL 海拔减模型原点海拔，OSM 模式沿用任务高度。任务列表、GPS 参考点或 Home 改变时清空并重建相应 ListModel。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/DroneModelDjiF450.qml` | F450 总装和遥测姿态组件。把车辆经纬度转换到局部 ENU，应用 heading/roll/pitch、位置与角度平滑动画；外部模型模式使用车辆 AMSL 减模型原点海拔完成垂直配准。组件组合 4 个机臂、4 个电机、上下板和 4 个螺旋桨部件；零件几何来自下节 custom mesh，螺旋桨动画由 armed/flying 状态驱动。 |
 
 以下基础 QML 不在 custom 保存：`CameraLightModel.qml`、`Line3D.qml`、`Waypoint3DModel.qml`、`Viewer3DProgressBar.qml` 和 14 个 F450 部件 QML。它们由 `custom.qrc` 直接引用 `src/Viewer3D`。
 
 ### 4.10 F450 运行时 mesh
 
-这些 mesh 与当前 `src` 版本不同，属于 custom 运行时资产，因此保留。每个文件由同名原生部件 QML加载：
+以下 14 个 `.mesh` 是 Qt Quick3D 二进制几何数据，只保存对应 F450 零件的顶点/索引等网格，不包含材质、局部变换、旋转动画、车辆遥测或业务逻辑。它们注册到 `qrc:/qml/Viewer3D/Models3D/Drones/Djif450/<零件名>/node.mesh`，由 QRC 复用的同名原生零件 QML 加载，再由 custom `DroneModelDjiF450.qml` 总装。14 个文件与当前 `src` 同名 mesh 的内容不同，所以保留 custom 副本，不能直接改为引用原生 mesh。
 
 | 文件 | 作用 |
 |---|---|
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_1/node.mesh` | 第 1 个 F450 机臂几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_2/node.mesh` | 第 2 个 F450 机臂几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_3/node.mesh` | 第 3 个 F450 机臂几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_4/node.mesh` | 第 4 个 F450 机臂几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_bottom_1/node.mesh` | F450 机身下板几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_Top_1/node.mesh` | F450 机身上板几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_1/node.mesh` | 第 1 个无刷电机几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_2/node.mesh` | 第 2 个无刷电机几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_3/node.mesh` | 第 3 个无刷电机几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_4/node.mesh` | 第 4 个无刷电机几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_2/node.mesh` | 第 1 组 propeller2 螺旋桨几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_7/node.mesh` | 第 2 组 propeller2 螺旋桨几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_1/node.mesh` | 第 1 组 propeller22 螺旋桨几何。 |
-| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_2/node.mesh` | 第 2 组 propeller22 螺旋桨几何。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_1/node.mesh` | 为 `DroneModel_arm_1.qml` 提供第 1 个 F450 机臂的二进制几何；机臂位置、方向和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_2/node.mesh` | 为 `DroneModel_arm_2.qml` 提供第 2 个 F450 机臂的二进制几何；机臂位置、方向和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_3/node.mesh` | 为 `DroneModel_arm_3.qml` 提供第 3 个 F450 机臂的二进制几何；机臂位置、方向和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_4/node.mesh` | 为 `DroneModel_arm_4.qml` 提供第 4 个 F450 机臂的二进制几何；机臂位置、方向和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_bottom_1/node.mesh` | 为 `DroneModel_Base_bottom_1.qml` 提供 F450 机身下板的二进制几何；下板材质和装配位置由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_Top_1/node.mesh` | 为 `DroneModel_Base_Top_1.qml` 提供 F450 机身上板的二进制几何；上板材质和装配位置由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_1/node.mesh` | 为 `DroneModel_BLDC_1.qml` 提供第 1 个无刷电机的二进制几何；电机变换和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_2/node.mesh` | 为 `DroneModel_BLDC_2.qml` 提供第 2 个无刷电机的二进制几何；电机变换和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_3/node.mesh` | 为 `DroneModel_BLDC_3.qml` 提供第 3 个无刷电机的二进制几何；电机变换和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_4/node.mesh` | 为 `DroneModel_BLDC_4.qml` 提供第 4 个无刷电机的二进制几何；电机变换和材质由同名 QML 定义。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_2/node.mesh` | 为 `DroneModel_propeller2_2.qml` 提供对应 rotor 的二进制螺旋桨几何；armed/flying 驱动的旋转动画在复用的同名 QML 中实现。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_7/node.mesh` | 为 `DroneModel_propeller2_7.qml` 提供对应 rotor 的二进制螺旋桨几何；armed/flying 驱动的旋转动画在复用的同名 QML 中实现。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_1/node.mesh` | 为 `DroneModel_propeller22_1.qml` 提供对应反向 rotor 的二进制螺旋桨几何；旋向、安装变换和动画在同名 QML 中实现。 |
+| `custom/src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_2/node.mesh` | 为 `DroneModel_propeller22_2.qml` 提供对应反向 rotor 的二进制螺旋桨几何；旋向、安装变换和动画在同名 QML 中实现。 |
 
 未注册的 `DroneModel_arm_1/meshes/node.mesh` 辅助副本已经删除。
 
 ### 4.11 外部 WGS84 城镇样例
 
+本目录 17 个文件都是源码树中的手动导入/配准测试资产，未注册进 `custom.qrc`，也没有安装规则，因此不会自动进入 Android APK 或桌面安装包。测试 OBJ 时必须保持 OBJ、MTL 与 `textures` 的相对目录不变；测试 FBX 时要从设置页触发 Balsam。README 和两个 JSON 只供开发者追溯来源、人工填写参数，QGC 运行时不会自动读取。
+
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/README.md` | 样例导入步骤、坐标约定、推荐参数、资产来源和限制。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/osm_overpass_source.json` | 生成城镇模型所用的 Overpass 查询、bbox、下载时间和原始来源信息。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/qgc_viewer3d_import_settings.json` | 样例 WGS84 原点、ENU 轴、单位、比例、yaw 和资产统计。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.obj` | 推荐直接加载的带 UV 城镇模型。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.mtl` | OBJ 的道路、草地、立面、屋顶、商铺和树木材质定义。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.fbx` | 同场景 FBX，用于验证 Balsam 转换链路。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/asphalt_worn.png` | 道路磨损沥青纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_brick_windows.png` | 砖墙窗户立面纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_light_windows.png` | 浅色墙面窗户立面纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_modern_windows.png` | 现代玻璃窗格立面纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_tan_windows.png` | 棕黄色墙面窗户立面纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/grass_mixed.png` | 草地和绿化区域纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/roof_flat_gray.png` | 灰色平屋顶纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/roof_tile_red.png` | 红色瓦片屋顶纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/shopfront_facade.png` | 商铺橱窗和沿街店面纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/sidewalk_concrete.png` | 人行道混凝土纹理。 |
-| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/tree_leaf.png` | 低多边形树冠叶片纹理。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/README.md` | 面向开发者说明推荐导入文件、设置页操作、WGS84 原点、ENU 轴向、单位/比例/yaw、模型统计、ODbL 数据来源和已知限制；它是人工操作文档，运行时不读取。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/osm_overpass_source.json` | 保存生成城镇模型所用的 Overpass URL、查询语句、bbox、下载时间和完整原始响应（当前 1328 个 element），用于来源追溯和重新生成资产；它不是 Viewer3D `osmFilePath` 可直接选择的 OSM 地图输入。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/qgc_viewer3d_import_settings.json` | 保存本样例推荐的 WGS84 原点、ENU 轴、单位到米、比例、yaw、资产统计、文件清单和许可信息；内容需要开发者人工填入 Viewer3D 设置页，QGC 不会自动导入该 JSON。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.obj` | 推荐由 `RuntimeLoader` 直接加载的城镇模型；几何已转换为以指定 WGS84 原点为基准的本地 ENU 米制坐标，包含 UV，并通过 `mtllib` 相对引用同目录 MTL 与纹理。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.mtl` | 定义草地、道路、人行道、建筑立面/屋顶、商铺、树木等材质，并通过相对 `map_Kd` 路径引用下方 11 张 PNG；OBJ 要正常显示纹理必须保留本文件及 `textures` 相对目录。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/realistic_town_wgs84_map.fbx` | 与 OBJ 相同场景的 ASCII FBX 7.4 创作格式，只用于验证 `External3DMapManager` 的 Qt Balsam 转换链路；它不是 `RuntimeLoader` 直接支持的输入。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/asphalt_worn.png` | `realistic_town_wgs84_map.mtl` 中 `mat_asphalt` 道路材质的磨损沥青漫反射贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_brick_windows.png` | MTL 中 `mat_facade_brick` 的砖墙窗户立面贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_light_windows.png` | MTL 中 `mat_facade_light` 的浅色墙面窗户立面贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_modern_windows.png` | MTL 中 `mat_facade_modern` 的现代玻璃窗格立面贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/facade_tan_windows.png` | MTL 中 `mat_facade_tan` 的棕黄色墙面窗户立面贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/grass_mixed.png` | MTL 中 `mat_grass` 的地面/公园草地贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/roof_flat_gray.png` | MTL 中 `mat_roof_gray` 与 `mat_roof_flat` 共用的灰色平屋顶贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/roof_tile_red.png` | MTL 中 `mat_roof_red` 的红瓦屋顶贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/shopfront_facade.png` | MTL 中 `mat_shopfront` 的商铺橱窗和沿街店面贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/sidewalk_concrete.png` | MTL 中 `mat_sidewalk` 的人行道混凝土贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
+| `custom/src/Viewer3D/ExternalWGS84_UE5_MapSample/textures/tree_leaf.png` | MTL 中 `mat_tree_leaf` 的低多边形树冠叶片贴图；由 MTL 相对路径加载，不是独立 QRC 资源。 |
 
 ### 4.12 翻译
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/translations/README.md` | 说明 custom 翻译模板、语言目录、Qt Linguist 和 `LUPDATE` 的维护流程。 |
-| `custom/translations/custom.ts` | custom 可翻译源文本清单；包含 Video Stream Integration 中的 MAVLink 自动视频流和 Android H.265 硬解设置文本，已移除示例动作、示例开关和示例车辆按钮文本。 |
-| `custom/translations/custom_zh_CN.ts` | Fuel 工具栏、Fuel 独立详情页、母线低电压告警和 Video Stream Integration 设置的中文翻译。 |
-| `custom/translations/custom-lupdate.sh` | 使用 `LUPDATE` 或 `PATH` 中的 Qt 6 `lupdate` 扫描 `custom/src`，同时刷新模板和全部 `custom_*.ts` 语言目录。 |
+| `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
+| `custom/translations/custom.ts` | `lupdate` 生成的英文源字符串模板，供各语言目录对齐 context/source，CMake 不把它编译为运行时 `.qm`。当前实际为 5 个 context、18 条 message，覆盖母线低电压告警、航向罗盘条、Fuel 和 Video Integration；Viewer3D、Gimbal 及部分 C++ `tr()` 新文本尚未全部刷新，因此它不是当前全部 custom 文本的完整清单。 |
+| `custom/translations/custom_zh_CN.ts` | 简体中文 locale 目录；CMake 将其编译成 `custom_zh_CN.qm` 放入 `:/i18n`，`CustomPlugin` 在匹配中文 locale 时安装对应 translator。当前与模板相同的 5 个 context、18 条 message 都已有中文译文，但覆盖边界同样只到母线告警、罗盘条、Fuel 和 Video Integration，不代表 Viewer3D/Gimbal 已完整汉化。 |
+| `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 
 ## 5. 复用的 QGC 原生 Viewer3D 文件
 
 ### 5.1 C++ 复用
 
-`custom/CMakeLists.txt` 直接编译以下无差异源文件，custom 不保存副本：
+`custom/CMakeLists.txt` 直接编译以下 15 个无项目差异的原生文件，custom 不保存副本；带项目差异的对应 `.cc` 才保存在第 4.8 节的 custom 路径。
 
-| 原生文件 | 用途 |
+| 原生文件 | 具体复用作用 |
 |---|---|
-| `src/Viewer3D/CityMapGeometry.h` | OSM 建筑几何类声明。 |
-| `src/Viewer3D/earcut.hpp` | 多边形三角剖分。 |
-| `src/Viewer3D/OsmParser.h` | OSM Parser 类声明。 |
-| `src/Viewer3D/OsmParserThread.h/.cc` | 后台 OSM 解析线程。 |
-| `src/Viewer3D/Viewer3DQmlVariableTypes.h` | C++/QML 共享坐标类型。 |
-| `src/Viewer3D/Viewer3DTerrainGeometry.h` | 地形几何类声明。 |
-| `src/Viewer3D/Viewer3DTerrainTexture.h/.cc` | 地图瓦片纹理生成。 |
-| `src/Viewer3D/Viewer3DTileQuery.h/.cc` | 瓦片范围、下载和拼接。 |
-| `src/Viewer3D/Viewer3DTileReply.h/.cc` | 单瓦片网络请求。 |
-| `src/Viewer3D/Viewer3DUtils.h/.cc` | WGS84/ECEF/ENU 坐标转换。 |
+| `src/Viewer3D/CityMapGeometry.h` | 声明 `CityMapGeometry : QQuick3DGeometry` 的 `modelName`、`osmParser` 属性、OSM路径状态和几何更新接口；第4.8节 custom `CityMapGeometry.cc` 实现该类并把设置来源切到 custom。 |
+| `src/Viewer3D/earcut.hpp` | Mapbox Earcut 的 header-only 多边形三角剖分实现；custom `OsmParser.cc` 用它把建筑外轮廓及内洞转换成屋顶/地板三角形索引，不负责读取OSM或渲染。 |
+| `src/Viewer3D/OsmParser.h` | 声明主线程侧 `OsmParser` 门面、地图参考点/边界、建筑层高、异步 worker 指针、建筑转mesh接口及 `mapChanged/gpsRefChanged` 信号；实现位于 custom `OsmParser.cc`。 |
+| `src/Viewer3D/OsmParserThread.h` | 声明后台解析线程和 `BuildingType_t` 数据结构，保存节点、建筑外/内轮廓、局部坐标、建筑高度/层数、地图bbox和GPS参考点，并定义 `fileParsed` 完成信号。 |
+| `src/Viewer3D/OsmParserThread.cc` | 在独立线程打开OSM XML，解析node、way与relation，把经纬度轮廓转换为参考点下的局部坐标，提取建筑高度/层数和地图边界，完成后向 `OsmParser` 发出有效/无效结果；它不生成Quick3D顶点。 |
+| `src/Viewer3D/Viewer3DQmlVariableTypes.h` | 以header-only方式定义QML类型 `GeoCoordinateType`：输入 `gpsRef` 和 WGS84 `coordinate`，调用 `Viewer3DUtils` 输出局部 `QVector3D`，供车辆、任务点和航段场景复用。 |
+| `src/Viewer3D/Viewer3DTerrainGeometry.h` | 声明地形 `QQuick3DGeometry` 的网格行列、ROI边界、参考坐标、顶点/法线/UV缓存和重建接口；算法实现使用 custom `Viewer3DTerrainGeometry.cc`。 |
+| `src/Viewer3D/Viewer3DTerrainTexture.h` | 声明 `QQuick3DTextureData` 包装层及 OSM parser、ROI、tileCount、下载进度、纹理/几何完成状态，作为本地OSM场景和瓦片查询器之间的QML可见接口。 |
+| `src/Viewer3D/Viewer3DTerrainTexture.cc` | 监听Flight Map地图类型和OSM解析完成，创建 `MapTileQuery` 下载覆盖建筑bbox的瓦片，把拼接图写成Quick3D `RGBA32F` texture data，并把实际瓦片ROI、网格尺寸及下载进度反馈给场景。 |
+| `src/Viewer3D/Viewer3DTileQuery.h` | 声明多瓦片请求协调器、单次查询的tile列表/拼接画布、tile统计结构、Web Mercator像素/瓦片换算和完成/进度信号；不直接发HTTP请求。 |
+| `src/Viewer3D/Viewer3DTileQuery.cc` | 从最高zoom向下选择不超过200张瓦片的级别，为每个tile创建 `Viewer3DTileReply`，把256×256响应拼到一张纹理图；遇到空瓦片会降低zoom重试，并向地形纹理层报告覆盖坐标、tile数量和总体进度。 |
+| `src/Viewer3D/Viewer3DTileReply.h` | 声明一次地图瓦片网络请求的坐标/mapId/数据结构、网络对象、10秒计时器和 `tileDone/tileEmpty/tileError/tileGiveUp` 结果信号。 |
+| `src/Viewer3D/Viewer3DTileReply.cc` | 通过QGC地图provider生成单tile URL并用 `QNetworkAccessManager` 下载；识别Bing“No Tile”占位图为空瓦片，网络/超时触发重试，连续超时后通知上层放弃。它只返回单张tile，不决定zoom或拼图。 |
+| `src/Viewer3D/Viewer3DUtils.h` | 声明 WGS84 geodetic、ECEF、ENU/局部坐标双向转换函数及角度常量，供 parser、地形和QML坐标包装类型共享。 |
+| `src/Viewer3D/Viewer3DUtils.cc` | 实现椭球经纬高到ECEF、ECEF到ENU、ENU回ECEF/WGS84的数学转换；Viewer3D用它让地图参考点、飞行器和任务坐标落入同一局部三维坐标系。 |
 
 ### 5.2 QML 和资源复用
 
-`custom.qrc` 直接引用：
+`custom.qrc` 直接引用以下 22 个无差异原生资源。这些资源升级QGC时会随 `src` 更新，不需要在custom保存副本；表中的运行时URL由 `custom.qrc` 的alias决定。
 
-- `src/QmlControls/Viewer3D/qmldir`
-- `src/QmlControls/Viewer3D/Models3D/Drones/qmldir`
-- `CameraLightModel.qml`、`Line3D.qml`、`Waypoint3DModel.qml`
-- `Viewer3DProgressBar.qml`
-- 14 个 F450 部件 QML
-- `earthMaterial.vert`、`earthMaterial.frag`
-
-这些文件升级 QGC 时会自动跟随 `src`，不需要在 custom 手工同步。
+| 原生文件 | 具体复用作用 |
+|---|---|
+| `src/QmlControls/Viewer3D/qmldir` | 声明 `Viewer3D` QML模块中的 `Viewer3D` 与 `Viewer3DProgressBar` 类型；QRC同名alias使前者实际命中custom根组件、后者命中下方原生进度条。 |
+| `src/QmlControls/Viewer3D/Models3D/Drones/qmldir` | 声明 `Viewer3D.Models3D.Drones` 模块及 `DroneModelDjiF450` 类型；QRC把该类型对应文件alias到custom总装QML。它只负责类型发现。 |
+| `src/Viewer3D/Viewer3DQml/Models3D/CameraLightModel.qml` | 创建六个方向光和三层相机旋转/平移节点，暴露tilt、pan、zoom及 `resetCamera()`；`Viewer3DModel.qml` 用它承载本地场景相机和照明。 |
+| `src/Viewer3D/Viewer3DQml/Models3D/Line3D.qml` | 输入两个三维端点、线宽和颜色，计算向量长度与四元数旋转，用缩放后的Cylinder连接两点；`Viewer3DVehicleItems.qml` 用它绘制任务航段。 |
+| `src/Viewer3D/Viewer3DQml/Models3D/Waypoint3DModel.qml` | 把任务点局部坐标和高度偏移放大到场景尺度，用Cone及文字显示Waypoint/Takeoff/RTL/ROI标记、序号和颜色；任务筛选及坐标计算在custom车辆场景文件。 |
+| `src/Viewer3D/Viewer3DQml/Viewer3DProgressBar.qml` | 根据 `progressValue` 显示/隐藏下载进度浮层、ProgressBar和整数百分比文字；只显示进度，实际瓦片下载由C++地形纹理链完成。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_1/DroneModel_arm_1.qml` | 加载QRC同目录的custom `node.mesh`，定义第1机臂的局部节点、材质和装配变换；不读取车辆姿态。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_2/DroneModel_arm_2.qml` | 加载QRC同目录的custom `node.mesh`，定义第2机臂的局部节点、材质和装配变换；不读取车辆姿态。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_3/DroneModel_arm_3.qml` | 加载QRC同目录的custom `node.mesh`，定义第3机臂的局部节点、材质和装配变换；不读取车辆姿态。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_arm_4/DroneModel_arm_4.qml` | 加载QRC同目录的custom `node.mesh`，定义第4机臂的局部节点、材质和装配变换；不读取车辆姿态。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_bottom_1/DroneModel_Base_bottom_1.qml` | 加载custom下板mesh并定义机身下板材质/局部变换，由F450总装组件实例化。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_Base_Top_1/DroneModel_Base_Top_1.qml` | 加载custom上板mesh并定义机身上板材质/局部变换，由F450总装组件实例化。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_1/DroneModel_BLDC_1.qml` | 加载第1无刷电机custom mesh并定义其材质与安装变换；电机本身不执行飞行状态逻辑。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_2/DroneModel_BLDC_2.qml` | 加载第2无刷电机custom mesh并定义其材质与安装变换；电机本身不执行飞行状态逻辑。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_3/DroneModel_BLDC_3.qml` | 加载第3无刷电机custom mesh并定义其材质与安装变换；电机本身不执行飞行状态逻辑。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_BLDC_4/DroneModel_BLDC_4.qml` | 加载第4无刷电机custom mesh并定义其材质与安装变换；电机本身不执行飞行状态逻辑。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_2/DroneModel_propeller2_2.qml` | 加载对应custom螺旋桨mesh；总装传入 `flightMode` 时沿Y轴持续旋转，定义这一rotor的材质、安装位置和旋向。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller2_7/DroneModel_propeller2_7.qml` | 加载对应custom螺旋桨mesh；总装传入 `flightMode` 时沿Y轴持续旋转，定义这一rotor的材质、安装位置和旋向。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_1/DroneModel_propeller22_1.qml` | 加载对应反向rotor的custom mesh，按 `flightMode` 驱动Y轴旋转；负责该桨的材质、变换和相反旋向。 |
+| `src/Viewer3D/Viewer3DQml/Drones/Djif450/DroneModel_propeller22_2/DroneModel_propeller22_2.qml` | 加载对应反向rotor的custom mesh，按 `flightMode` 驱动Y轴旋转；负责该桨的材质、变换和相反旋向。 |
+| `src/Viewer3D/Shaders/earthMaterial.vert` | 地形材质顶点shader，把输入 `UV0` 传给fragment阶段；不改变顶点位置，供本地OSM瓦片纹理材质使用。 |
+| `src/Viewer3D/Shaders/earthMaterial.frag` | 地形材质fragment shader，从 `someTextureMap` 按UV采样瓦片颜色，将饱和度调为1.5后写入 `BASE_COLOR`；不下载或拼接瓦片。 |
 
 ## 6. 受控 src 修改
 
-`SecDev/feature` 相对 gimbal 的 `src` 修改只有以下两处，已经完整移植：
+当前分支 `SecDev/ft/rtsp` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
 
 | 文件 | 修改原因 |
 |---|---|
 | `src/CMakeLists.txt` | 原生 PX4 Factory 被关闭时仍链接 `AutoPilotPluginsPX4Module`，保证 VehicleSummary 和 CustomAutoPilotPlugin 使用的 PX4 QML 页面存在。 |
 | `src/Vehicle/VehicleSetup/VehicleSummary.qml` | 注释 APM QML import；当前构建关闭 APM 模块，继续导入会造成运行时 `module QGroundControl.AutoPilotPlugins.APM is not installed`。 |
 
-除这两处外，feature 没有其他 `src` 差异。Android H.265 与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现，未新增任何 `src` 修改。
+除这两处外，当前二次开发功能没有其他 `src` 差异。底部航向罗盘条、Android H.265 与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现，未新增任何 `src` 修改。
 
 ## 7. Viewer3D 参数
 
@@ -379,7 +512,44 @@ custom/
 
 地图源优先级：Google 开启时使用 Google；否则外部模型开启时使用外部模型；两者都关闭时使用本地 OSM。
 
-## 8. Gimbal 与视频参数及使用
+## 8. Application General、Fly View、Gimbal 与视频参数及使用
+
+### 8.1 Android 遥控器默认界面缩放
+
+| 原生 Fact | Android custom 缺省值 | QSettings 键 | 说明 |
+|---|---|---|---|
+| `appFontPointSize` | `12 pt` | 根级 `appFontPointSize` | 目标遥控器的平台基准为 14 pt，General 页面按 `12 / 14 × 100` 四舍五入显示为 86%。 |
+
+实现使用 `QGCCorePlugin` 提供给 custom build 的 `adjustSettingMetaData()` 扩展点，只在 `Q_OS_ANDROID` 下调整原生 Fact 的 `rawDefaultValue`。`SettingsFact` 随后调用 `settings.value("appFontPointSize", 12)`：键不存在才采用 12，键已存在则读取用户保存值。因此这是“Android 新安装/重置后的缺省值”，不是“每次启动强制值”。非 Android 构建不修改该元数据；原生缺省值 0 会在 `ScreenTools` 初始化时替换为平台字号，即 100%。
+
+使用规则：
+
+1. 全新安装 APK、清除应用数据或清除全部 QGC 设置后，打开 Application Settings -> General，采用 14 pt 基准的目标遥控器应显示 86%。
+2. 用户在 General 页面使用 `-`/`+` 修改时，每次仍增减 1 pt；显示百分比按整数点数与平台字号的比值取整。新值写入根级 QSettings，重启或保留应用数据升级 APK 后继续使用用户值。
+3. 已经保存过其他缩放值的 Android 旧安装不会因升级自动改成 86%；如需使用新缺省值，可手动调到 12 pt 对应的 86%，或清除设置。
+4. Ubuntu、Windows、macOS、iOS 等非 Android 构建不执行该覆盖，新安装/重置后保持 QGC 原生 100% 缺省缩放；用户已保存的其他比例仍然优先。
+5. 物理宽度小于 120 mm 的极小 Android 设备使用 11 pt 平台基准，整数点数无法得到 86%；本项目 12 pt 缺省值针对当前走 14 pt 分支的思翼遥控器。
+
+该方案按项目原则在 custom 保存 `GeneralSettings.qml` 同路径覆盖页，但不在页面初始化时写默认值。默认值仍由 custom C++ metadata hook 提前注入；页面只负责展示和修改原生 Fact，因此完整保留 QGC 原生整数点数选择及持久化机制。
+
+### 8.2 底部航向罗盘条
+
+| Fact | 类型/默认值 | 说明 |
+|---|---|---|
+| `showHeadingCompassBar` | bool / `true` | 显示飞行界面底部中央的航向罗盘条；保存于 `FlyView` QSettings 分组，切换后立即生效，无需重启。 |
+
+使用流程：
+
+1. 打开 Application Settings -> Fly View -> Instrument Panel。
+2. 使用 `Show Heading Compass Bar` 开关控制显示；简体中文界面对应“显示航向罗盘条”。
+3. 返回 Fly View 并连接飞控。只有活动飞行器的 `heading` 有效时才显示罗盘条，未连接飞控不会以 0° 伪造航向。
+4. 中央数值和固定三角指针表示当前机头航向，N/NE/E/SE/S/SW/W/NW 方位随航向连续移动；该数据不包含航点方向和航线偏差。
+
+实现从 `custom-example/FlyViewCustomLayer.qml` 中选择性提取横向航向条。示例通过 720 个 `QGCLabel` 切换可见性模拟滚动，本实现使用以当前 45° 区间为基准的 11 个相对方位 Label，保持 359°/0° 连续过渡并降低 Android QML 更新开销。罗盘条通过 `FlyViewCustomLayer` 的 Loader 显式加载并贴近 Fly View 底边，左右底部 inset 用于缩小小屏可用宽度、避让 PIP/摇杆/右下仪表；显示时只扩展 `bottomEdgeCenterInset`，关闭时恢复原生 inset。组件不放置 `DeadMouseArea`，因此不会吞掉其覆盖区域的地图拖动、滚轮缩放或 Android 触摸手势。
+
+QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay，所以该模式下罗盘条和母线告警均不显示；普通地图、普通视频主窗口和 Viewer3D 不受影响。
+
+### 8.3 Gimbal 与视频参数
 
 | Fact | 范围/默认值 | 说明 |
 |---|---|---|
@@ -494,12 +664,29 @@ FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FU
 
 ```text
 PX4 HEARTBEAT
-  -> CustomFirmwarePluginFactory（仅 PX4 + MultiRotor）
+  -> CustomFirmwarePluginFactory
+     -> 能力列表声明 PX4 + MultiRotor
+     -> 当前运行选择只检查 MAV_AUTOPILOT_PX4，未检查 MAV_TYPE
   -> CustomFirmwarePlugin
      -> CustomAutoPilotPlugin 控制车辆设置页
      -> toolIndicators 移除 RC RSSI、插入 Fuel
      -> updateAvailableFlightModes 限制可设置模式
      -> hasGimbal 声明 pitch/yaw 能力
+```
+
+```text
+SettingsManager 创建 AppSettings::appFontPointSize
+  -> SettingsFact 调用 CustomPlugin::adjustSettingMetaData
+     -> 先保留 QGCCorePlugin 原生 metadata 调整
+     -> Android：rawDefaultValue = 12 pt
+     -> 非 Android：不覆盖，保留原生 0
+  -> QSettings 根级 appFontPointSize
+     -> 已存在：使用用户保存的整数点数
+     -> Android 且不存在：使用 12 pt 缺省值
+     -> 非 Android 且不存在：ScreenTools 使用平台字号
+  -> General / UI Scaling
+     -> 目标遥控器：12 / 14，显示 86%
+     -> 非 Android 原生缺省：平台字号 / 平台字号，显示 100%
 ```
 
 ```text
@@ -509,6 +696,7 @@ QGCApplication
   -> CustomPlugin::init()
      -> DefaultCommunicationLinkInstaller
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
+     -> FlyViewCustomSettings（FlyView/showHeadingCompassBar）
      -> GimbalControlSettings / GimbalControlManager
      -> AndroidVideoDecoderPolicy::apply()
         -> 枚举并预检 byte-stream/au 厂商 amcviddec-*
@@ -528,9 +716,21 @@ QGCApplication
 ```
 
 ```text
+Application Settings / General
+  -> 原生 AppSettings.qml 请求 GeneralSettings.qml
+  -> CustomOverrideInterceptor 映射到 custom GeneralSettings.qml
+  -> 页面读取原生 AppSettings::appFontPointSize
+     -> Android 新缺省 12 pt，在目标遥控器显示 86%
+     -> 非 Android 原生缺省显示 100%
+  -> -/+ 每次修改 1 pt，并由原生 SettingsFact 持久化
+```
+
+```text
 Application Settings / Fly View
   -> 原生 AppSettings.qml 请求 FlyViewSettings.qml
   -> CustomOverrideInterceptor 映射到 custom FlyViewSettings.qml
+  -> Instrument Panel
+     -> showHeadingCompassBar（即时生效）
   -> Viewer3DSettingsGroup.qml
   -> GimbalControlSettingsGroup.qml
 ```
@@ -550,7 +750,12 @@ Fly View
   -> 原生 FlyView.qml / FlyViewWidgetLayer.qml / FlyViewToolStrip.qml
   -> custom FlyViewToolStripActionList.qml 增加 3D 入口
   -> custom FlyViewTopRightColumnLayout.qml 替换云台缩放栏
-  -> custom FlyViewCustomLayer.qml 增加母线告警
+  -> custom FlyViewCustomLayer.qml
+     -> showHeadingCompassBar && Vehicle.heading 有效
+        -> 显式 Loader 加载 FlyViewCompassBar.qml
+        -> 11 个相对方位 Label + 当前航向数值 + 固定指针
+        -> 合并 bottomEdgeCenterInset
+     -> 燃料电池母线低电压告警
 ```
 
 ## 12. 构建与验证
@@ -587,7 +792,7 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
 
 重点验证：
 
-1. Application Settings -> Fly View 同时显示 Viewer3D 和 SIYI Gimbal Zoom，且不再显示两个视频流开关。
+1. Application Settings -> Fly View -> Instrument Panel 显示 `Show Heading Compass Bar`，页面同时保留 Viewer3D 和 SIYI Gimbal Zoom，且不再显示两个视频流开关。
 2. Application Settings -> Video 保留全部原生设置组，并在所有平台显示 Video Stream Integration 及两个开关；H.265 强制硬解设置仅在 Android 生效。
 3. Viewer3D Enabled 持久化，重启后图标状态正确。
 4. 3D 图标白色，2D/3D 可往返切换。
@@ -601,8 +806,8 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
 12. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
 13. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
 14. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
-15. 首次运行出现 `local` 链路，已有同名链路不会重复或被覆盖。
-16. 仅识别 PX4 多旋翼；APM 不出现在支持列表中。
+15. 缺少 `local` 链路时下次启动自动补建，已有同名链路不会重复或被覆盖。
+16. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
 17. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
 18. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
 19. Android 冷启动前已插入飞控，以及 QGC 启动后再插入飞控，两种顺序均可自动连接；无权限时只请求一次，当前 attach 会话已有权限时不重复弹窗。
@@ -611,6 +816,13 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
 22. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
 23. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
 24. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
+25. `Show Heading Compass Bar` 开关无需重启即可立即显示/隐藏，重启 QGC 后保持用户选择；没有活动飞行器或 `heading` 为 NaN 时不显示伪造的 0°/N。
+26. 使用模拟或真机航向覆盖 N、NE、E、SE、S、SW、W、NW，并重点检查 359° -> 0° -> 1° 连续过渡，中央数值、固定指针和移动方位必须一致。
+27. 在地图主窗口、视频主窗口、地图/视频 PIP 互换、虚拟摇杆、右下仪表盘、Viewer3D、横竖屏和小屏布局下检查罗盘条底边位置、宽度及 `bottomEdgeCenterInset`，不得与 PIP、摇杆或右下仪表重叠；在罗盘条区域拖动和缩放地图必须仍然有效；全屏视频模式按原生语义隐藏。
+28. Android H.265 连续播放测试期间同时保持罗盘条开启并改变航向，确认 11 个方位 Label 的更新不造成新增卡顿或持续帧率下降。
+29. 在采用 14 pt 平台基准的目标 Android 遥控器上清除应用数据或净安装 APK，首次进入 Application Settings -> General 时 UI Scaling 应显示 86%，运行中的 `appFontPointSize` Fact 应为整数 12 pt。
+30. 在 Android 上使用原生 `-`/`+` 修改整数点数并重启 QGC、覆盖安装保留数据的新 APK，必须保持用户值而不是恢复 86%；执行“清除全部设置”后才恢复 12 pt 缺省值。分别净安装 Ubuntu、Windows、macOS/iOS 构建，默认应保持原生 100%。
+31. 物理宽度小于 120 mm 的极小 Android 设备单独确认平台基准和页面显示值；其 11 pt 基准无法用整数点数精确表示 86%，不得把固定 12 pt 一概描述为所有 Android 屏幕的 86%。
 
 Android 调试时同时关注 `gcs.custom.video.androidvideodecoderpolicy` 和 `gcs.custom.video.androidh265hardwaredecoderadapter`。可用 QGC Application Messages 或 `adb logcat` 查看：
 
@@ -643,10 +855,13 @@ adb logcat -v threadtime | grep -Ei \
 
 运行日志出现 `GimbalZoomControl is not a type`，表示新增 QML 被当作原生 `QGroundControl.FlightDisplay` 模块类型直接实例化，但原生 qmldir 没有注册该类型。当前实现由 `FlyViewTopRightColumnLayout.qml` 使用完整 custom QRC URL 的 Loader 加载，并绑定控件隐式尺寸；修改后应重新构建 QRC。若仍看到旧错误，需删除旧构建目录后重新配置，避免使用缓存中的 `custom.qrc`。
 
+`FlyViewCompassBar.qml` 同样不加入原生 FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 使用 `qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml` 显式加载。若设置开关存在但界面不显示，先检查 Application Messages 中的 `Fly View compass bar failed to load`，再确认 `custom.qrc` 已重新编译、存在活动飞行器且 `Vehicle.heading` 不是 NaN。
+
 常用静态检查：
 
 ```powershell
 rg --files custom
-rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton" custom
+rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|FlyViewCustomSettings|showHeadingCompassBar" custom
+rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```

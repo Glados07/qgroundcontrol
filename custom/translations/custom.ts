@@ -4,8 +4,16 @@
 <context>
     <name>FlyViewCustomLayer</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="73"/>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="108"/>
         <source>Generator Bus Voltage Low: %1 V</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewSettings</name>
+    <message>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="233"/>
+        <source>Show Heading Compass Bar</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

@@ -4,9 +4,17 @@
 <context>
     <name>FlyViewCustomLayer</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="73"/>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="108"/>
         <source>Generator Bus Voltage Low: %1 V</source>
         <translation>燃料电池母线电压过低：%1 V</translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewSettings</name>
+    <message>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="233"/>
+        <source>Show Heading Compass Bar</source>
+        <translation>显示航向罗盘条</translation>
     </message>
 </context>
 <context>

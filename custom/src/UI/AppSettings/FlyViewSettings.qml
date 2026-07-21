@@ -26,6 +26,7 @@ import QGroundControl.AppSettings
 SettingsPage {
     property var    _settingsManager:                   QGroundControl.settingsManager
     property var    _flyViewSettings:                   _settingsManager.flyViewSettings
+    property var    _flyViewCustomSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
     property var    _mavlinkActionsSettings:            _settingsManager.mavlinkActionsSettings
     property Fact   _virtualJoystick:                   _settingsManager.appSettings.virtualJoystick
     property Fact   _virtualJoystickAutoCenterThrottle: _settingsManager.appSettings.virtualJoystickAutoCenterThrottle
@@ -33,6 +34,7 @@ SettingsPage {
     property Fact   _enableMultiVehiclePanel:           _settingsManager.appSettings.enableMultiVehiclePanel
     property Fact   _showAdditionalIndicatorsCompass:   _flyViewSettings.showAdditionalIndicatorsCompass
     property Fact   _lockNoseUpCompass:                 _flyViewSettings.lockNoseUpCompass
+    property Fact   _showHeadingCompassBar:             _flyViewCustomSettings ? _flyViewCustomSettings.showHeadingCompassBar : null
     property Fact   _guidedMinimumAltitude:             _flyViewSettings.guidedMinimumAltitude
     property Fact   _guidedMaximumAltitude:             _flyViewSettings.guidedMaximumAltitude
     property Fact   _maxGoToLocationDistance:           _flyViewSettings.maxGoToLocationDistance
@@ -217,7 +219,21 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Instrument Panel")
-        visible:            _showAdditionalIndicatorsCompass.visible || _lockNoseUpCompass.visible
+        visible:            _showAdditionalIndicatorsCompass.visible ||
+                            _lockNoseUpCompass.visible ||
+                            Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible)
+
+        Loader {
+            id:                 headingCompassBarToggleLoader
+            Layout.fillWidth:   true
+            active:             _showHeadingCompassBar !== null
+            visible:            active
+
+            sourceComponent: FactCheckBoxSlider {
+                text:           qsTr("Show Heading Compass Bar")
+                fact:           _showHeadingCompassBar
+            }
+        }
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
