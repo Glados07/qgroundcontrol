@@ -27,8 +27,6 @@ Item {
     property real _heading: _activeVehicle ? Number(_activeVehicle.heading.rawValue) : NaN
     property bool _headingValid: isFinite(_heading)
     property real _toolsMargin: ScreenTools.defaultFontPixelWidth * 0.75
-    property real _horizontalSafetyInset: Math.max(parentToolInsets.leftEdgeBottomInset,
-                                                   parentToolInsets.rightEdgeBottomInset)
 
     // 罗盘条只占用底部中央区域；关闭时完整透传 QGC 原生 inset。
     QGCToolInsets {
@@ -56,10 +54,12 @@ Item {
         source: "qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        // 与 custom-example 一致固定在飞行界面底边；左右 inset 负责避让 PIP、摇杆和仪表区。
+        // 保持 custom-example 的固定可读宽度。底部角落 inset 是地图重居中的占位提示，
+        // 不能取单侧最大值后从左右各扣一次，否则放大 PIP/仪表区时会把罗盘条压到 0。
+        // 这里只在整个 Fly View 本身小于首选宽度时收窄，角落控件尺寸不再改变罗盘条宽度。
         anchors.bottomMargin: root._toolsMargin
-        width: Math.min(ScreenTools.defaultFontPixelWidth * 50,
-                        Math.max(0, parent.width - ((root._horizontalSafetyInset + root._toolsMargin) * 2)))
+        width: Math.min(item ? item.implicitWidth : ScreenTools.defaultFontPixelWidth * 50,
+                        Math.max(0, parent.width - (root._toolsMargin * 2)))
         height: item ? item.implicitHeight : 0
 
         onStatusChanged: {
