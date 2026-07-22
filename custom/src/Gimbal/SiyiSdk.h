@@ -19,11 +19,24 @@ public:
     explicit SiyiSdk(QObject* parent = nullptr);
 
     void setEndpoint(const QString& host, quint16 port);
+    bool sendManualZoom(qint8 direction);
+    bool sendManualZoomTo(qint8 direction, const QString& host, quint16 port);
     bool sendAbsoluteZoom(double zoomLevel);
     bool requestCurrentZoom();
+    bool requestCameraSystemStatus();
+    bool takePhoto();
+    bool toggleVideoRecording();
 
 signals:
+    void manualZoomReceived(double zoomLevel);
     void currentZoomReceived(double zoomLevel);
+    void cameraSystemStatusReceived(quint8 hdrStatus,
+                                    quint8 recordingStatus,
+                                    quint8 gimbalMotionMode,
+                                    quint8 gimbalMountingDirection,
+                                    quint8 videoOutputStatus,
+                                    quint8 zoomLinkage);
+    void functionFeedbackReceived(quint8 infoType);
     void packetReceived();
     void communicationError(const QString& message);
 
@@ -32,6 +45,7 @@ private slots:
 
 private:
     bool _sendPacket(const QByteArray& packet);
+    bool _sendPacketTo(const QByteArray& packet, const QHostAddress& host, quint16 port);
 
     QUdpSocket _socket;
     QHostAddress _host = QHostAddress(QStringLiteral("192.168.144.25"));

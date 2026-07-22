@@ -12,6 +12,35 @@ namespace {
 static constexpr quint8 kHeader0 = 0x55;
 static constexpr quint8 kHeader1 = 0x66;
 static constexpr quint8 kControl = 0x01;
+static constexpr quint8 kTakePhotoFunction = 0;
+static constexpr quint8 kToggleVideoRecordingFunction = 2;
+static constexpr quint8 kMaximumFunctionFeedback = 4;
+}
+
+QByteArray SiyiProtocol::manualZoomPacket(qint8 direction)
+{
+    if (direction < -1 || direction > 1) {
+        return QByteArray();
+    }
+
+    QByteArray payload;
+    payload.append(static_cast<char>(direction));
+    return _encode(CommandManualZoom, payload);
+}
+
+QByteArray SiyiProtocol::requestCameraSystemStatusPacket()
+{
+    return _encode(CommandCameraSystemInfo, QByteArray());
+}
+
+QByteArray SiyiProtocol::takePhotoPacket()
+{
+    return _photoAndRecordPacket(kTakePhotoFunction);
+}
+
+QByteArray SiyiProtocol::toggleVideoRecordingPacket()
+{
+    return _photoAndRecordPacket(kToggleVideoRecordingFunction);
 }
 
 QByteArray SiyiProtocol::absoluteZoomPacket(double zoomLevel)
@@ -68,6 +97,55 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
     return result;
 }
 
+bool SiyiProtocol::parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel)
+{
+    if (!zoomLevel || payload.size() < 2) {
+        return false;
+    }
+
+    // 0x05 ACK 是小端 uint16 的十倍倍率，与 0x18 的整数/小数双字节格式不同。
+    const quint16 rawZoom = static_cast<quint16>(static_cast<quint8>(payload.at(0)))
+        | (static_cast<quint16>(static_cast<quint8>(payload.at(1))) << 8);
+    *zoomLevel = rawZoom / 10.0;
+    return true;
+}
+
+bool SiyiProtocol::parseCameraSystemStatusPayload(const QByteArray& payload, CameraSystemStatus* status)
+{
+    // A8 Mini 旧版协议到 video_hdmi_or_cvbs 为止共 7 字节；新版增加 zoom_linkage。
+    if (!status || payload.size() < 7) {
+        return false;
+    }
+
+    CameraSystemStatus parsedStatus;
+    parsedStatus.hdrStatus = static_cast<quint8>(payload.at(1));
+    parsedStatus.recordingStatus = static_cast<quint8>(payload.at(3));
+    parsedStatus.gimbalMotionMode = static_cast<quint8>(payload.at(4));
+    parsedStatus.gimbalMountingDirection = static_cast<quint8>(payload.at(5));
+    parsedStatus.videoOutputStatus = static_cast<quint8>(payload.at(6));
+    if (payload.size() >= 8) {
+        parsedStatus.zoomLinkage = static_cast<quint8>(payload.at(7));
+    }
+
+    *status = parsedStatus;
+    return true;
+}
+
+bool SiyiProtocol::parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType)
+{
+    if (!infoType || payload.isEmpty()) {
+        return false;
+    }
+
+    const quint8 parsedInfoType = static_cast<quint8>(payload.at(0));
+    if (parsedInfoType > kMaximumFunctionFeedback) {
+        return false;
+    }
+
+    *infoType = parsedInfoType;
+    return true;
+}
+
 bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload, double* zoomLevel)
 {
     if (!zoomLevel || payload.size() < 2) {
@@ -78,6 +156,13 @@ bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload, double* zo
     const int decimalPart = static_cast<quint8>(payload.at(1));
     *zoomLevel = integerPart + (decimalPart / 10.0);
     return true;
+}
+
+QByteArray SiyiProtocol::_photoAndRecordPacket(quint8 functionType)
+{
+    QByteArray payload;
+    payload.append(static_cast<char>(functionType));
+    return _encode(CommandPhotoAndRecord, payload);
 }
 
 QByteArray SiyiProtocol::_encode(Command command, const QByteArray& payload)

@@ -1,7 +1,7 @@
 /****************************************************************************
  *
- * 思翼云台缩放控制管理器。
- * QML 只调用该类的 zoomIn/zoomOut；协议封包和 UDP 发送由 SiyiSdk/SiyiProtocol 处理。
+ * 思翼云台相机控制管理器。
+ * QML 只调用该类的缩放/拍照/录像接口；协议封包和 UDP 发送由 SiyiSdk/SiyiProtocol 处理。
  *
  ****************************************************************************/
 
@@ -23,6 +23,11 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(double minimumZoom READ minimumZoom CONSTANT)
     Q_PROPERTY(double maximumZoom READ maximumZoom CONSTANT)
     Q_PROPERTY(bool sdkResponding READ sdkResponding NOTIFY sdkRespondingChanged)
+    Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
+    Q_PROPERTY(bool cameraStatusKnown READ cameraStatusKnown NOTIFY cameraStatusKnownChanged)
+    Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
+    Q_PROPERTY(bool recordingCommandPending READ recordingCommandPending NOTIFY recordingCommandPendingChanged)
+    Q_PROPERTY(int photoCount READ photoCount NOTIFY photoCountChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
@@ -35,31 +40,71 @@ public:
     double minimumZoom() const { return kMinZoom; }
     double maximumZoom() const { return kMaxZoom; }
     bool sdkResponding() const { return _sdkResponding; }
+    bool continuousZoomActive() const { return _continuousZoomActive; }
+    bool cameraStatusKnown() const { return _cameraStatusKnown; }
+    bool recording() const { return _recording; }
+    bool recordingCommandPending() const { return _recordingCommandPending; }
+    int photoCount() const { return _photoCount; }
     QString lastError() const { return _lastError; }
 
     Q_INVOKABLE bool zoomIn();
     Q_INVOKABLE bool zoomOut();
     Q_INVOKABLE bool setZoom(double zoomLevel);
+    Q_INVOKABLE bool startZoom(int direction);
+    Q_INVOKABLE bool stopZoom();
+    Q_INVOKABLE bool takePhoto();
+    Q_INVOKABLE bool toggleVideoRecording();
     Q_INVOKABLE bool requestCurrentZoom();
+    Q_INVOKABLE bool requestCameraStatus();
 
 signals:
     void enabledChanged();
     void currentZoomChanged();
     void zoomStepChanged();
     void sdkRespondingChanged();
+    void continuousZoomActiveChanged();
+    void cameraStatusKnownChanged();
+    void recordingChanged();
+    void recordingCommandPendingChanged();
+    void photoCountChanged();
     void lastErrorChanged();
 
 private slots:
     void _settingsChanged();
     void _handleCurrentZoom(double zoomLevel);
+    void _handleManualZoom(double zoomLevel);
+    void _handleCameraSystemStatus(quint8 hdrStatus,
+                                   quint8 recordingStatus,
+                                   quint8 gimbalMotionMode,
+                                   quint8 gimbalMountingDirection,
+                                   quint8 videoOutputStatus,
+                                   quint8 zoomLinkage);
+    void _handleFunctionFeedback(quint8 infoType);
     void _handleCommunicationError(const QString& message);
     void _markSdkNotResponding();
+    void _pollSdk();
+    void _advanceZoomStopSequence();
+    void _stopContinuousZoomForSafety();
+    void _requestRecordingStatusAfterDelay();
+    void _handleRecordingCommandTimeout();
 
 private:
     void _configureSdkEndpoint();
+    bool _beginZoomStopSequence(const QString& host, quint16 port);
+    void _finishZoomStopSequenceBeforeStart();
+    void _clearZoomStopSequence();
     void _setCurrentZoom(double zoomLevel);
     void _setSdkResponding(bool responding);
+    void _setContinuousZoomState(bool active, int direction = 0);
+    void _setCameraStatusKnown(bool known);
+    void _setRecording(bool recording);
+    void _setRecordingCommandPending(bool pending);
+    void _finishRecordingCommand();
+    void _syncCameraStatus();
     void _setLastError(const QString& message);
+    bool _cameraCommandAvailable();
+    bool _sendZoomStopTo(const QString& host, quint16 port);
+    QString _sdkHost() const;
     double _clampZoom(double zoomLevel) const;
     quint16 _sdkPort() const;
 
@@ -69,7 +114,29 @@ private:
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
     QTimer _sdkResponseTimer;
+    QTimer _sdkPollTimer;
+    QTimer _continuousZoomWatchdog;
+    QTimer _zoomStopRetryTimer;
+    QTimer _photoFeedbackTimer;
+    QTimer _recordingStatusDelayTimer;
+    QTimer _recordingCommandTimeoutTimer;
     double _currentZoom = kMinZoom;
+    bool _lastEnabled = false;
     bool _sdkResponding = false;
+    bool _continuousZoomActive = false;
+    int _continuousZoomDirection = 0;
+    QString _continuousZoomHost;
+    quint16 _continuousZoomPort = 0;
+    bool _zoomStopPending = false;
+    QString _zoomStopHost;
+    quint16 _zoomStopPort = 0;
+    int _zoomStopRetryStage = 0;
+    bool _cameraStatusKnown = false;
+    bool _recording = false;
+    bool _recordingCommandPending = false;
+    bool _recordingCommandTarget = false;
+    bool _recordingStatusResponseAllowed = false;
+    int _photoCount = 0;
+    bool _photoCommandPending = false;
     QString _lastError;
 };

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Application Settings -> Fly View 中的思翼云台缩放设置组。
+ * Application Settings -> Fly View 中的思翼云台相机设置组。
  *
  ****************************************************************************/
 
@@ -24,8 +24,8 @@ Loader {
 
         SettingsGroupLayout {
             Layout.fillWidth: true
-            heading: qsTr("SIYI Gimbal Zoom")
-            headingDescription: qsTr("Controls the SIYI camera zoom through the private UDP SDK. The 1080p zoom range is limited to 1.0x - 5.5x.")
+            heading: qsTr("SIYI Gimbal Camera")
+            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. Tap zoom for one step or press and hold for continuous zoom.")
 
             FactCheckBoxSlider {
                 Layout.fillWidth: true

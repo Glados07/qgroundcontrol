@@ -1,0 +1,241 @@
+/****************************************************************************
+ *
+ * Fly View思翼相机合并控制栏。
+ * 缩放位于左侧，拍照和录像复用QGC图标；全部命令均不依赖activeVehicle。
+ *
+ ****************************************************************************/
+
+import QtQuick
+import QtQuick.Layouts
+
+import QGroundControl
+import QGroundControl.Controls
+import QGroundControl.Palette
+import QGroundControl.ScreenTools
+
+Rectangle {
+    id: root
+
+    property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
+
+    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
+    readonly property real actionSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
+                                                ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.48
+    readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.45
+
+    property int recordingSeconds: 0
+
+    implicitWidth: controlRow.implicitWidth + panelPadding * 2
+    implicitHeight: actionSize + panelPadding * 2
+    width: implicitWidth
+    height: implicitHeight
+    radius: Math.min(10, ScreenTools.defaultFontPixelHeight * 0.55)
+    color: "#b0101822"
+    border.color: manager && manager.lastError.length > 0 ? qgcPal.colorRed : "#78ffffff"
+    border.width: 1
+    visible: online
+
+    function recordingTimeText() {
+        const hours = Math.floor(recordingSeconds / 3600)
+        const minutes = Math.floor((recordingSeconds % 3600) / 60)
+        const seconds = recordingSeconds % 60
+        const mm = (minutes < 10 ? "0" : "") + minutes
+        const ss = (seconds < 10 ? "0" : "") + seconds
+        return hours > 0 ? hours + ":" + mm + ":" + ss : mm + ":" + ss
+    }
+
+    QGCPalette {
+        id: qgcPal
+        colorGroupEnabled: root.enabled
+    }
+
+    DeadMouseArea { anchors.fill: parent }
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: Math.max(0, root.radius - 1)
+        color: "transparent"
+        border.color: "#20ffffff"
+        border.width: 1
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: Boolean(root.manager
+                         && root.manager.cameraStatusKnown
+                         && !root.manager.recordingCommandPending
+                         && root.manager.recording)
+        onTriggered: ++root.recordingSeconds
+    }
+
+    Connections {
+        target: root.manager
+
+        function onRecordingChanged() {
+            root.recordingSeconds = 0
+        }
+
+        function onPhotoCountChanged() {
+            photoSuccessFlash.restart()
+        }
+    }
+
+    RowLayout {
+        id: controlRow
+
+        anchors.fill: parent
+        anchors.margins: root.panelPadding
+        spacing: root.itemSpacing
+
+        GimbalZoomControl {
+            id: zoomControl
+
+            manager: root.manager
+            controlSize: root.actionSize
+            controlSpacing: root.itemSpacing
+            Layout.alignment: Qt.AlignVCenter
+        }
+
+        Rectangle {
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: root.actionSize * 0.68
+            Layout.alignment: Qt.AlignVCenter
+            color: "#56ffffff"
+        }
+
+        Rectangle {
+            id: photoButton
+
+            Layout.preferredWidth: root.actionSize
+            Layout.preferredHeight: root.actionSize
+            Layout.alignment: Qt.AlignVCenter
+            radius: width / 2
+            color: photoMouseArea.pressed ? "#f0ffffff" : (photoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
+            border.color: photoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"
+            border.width: 2
+            enabled: root.online
+            scale: photoMouseArea.pressed ? 0.94 : 1.0
+
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on scale { NumberAnimation { duration: 90 } }
+
+            QGCColoredImage {
+                anchors.centerIn: parent
+                width: parent.width * 0.48
+                height: width
+                source: "/qmlimages/camera_photo.svg"
+                sourceSize.height: height
+                fillMode: Image.PreserveAspectFit
+                color: photoMouseArea.pressed ? "#101820" : "white"
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -2
+                radius: width / 2
+                color: "transparent"
+                border.color: qgcPal.colorGreen
+                border.width: 3
+                opacity: 0
+
+                SequentialAnimation on opacity {
+                    id: photoSuccessFlash
+                    running: false
+                    NumberAnimation { to: 1; duration: 90 }
+                    PauseAnimation { duration: 180 }
+                    NumberAnimation { to: 0; duration: 240 }
+                }
+            }
+
+            MouseArea {
+                id: photoMouseArea
+
+                anchors.fill: parent
+                enabled: parent.enabled
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.manager.takePhoto()
+            }
+        }
+
+        Rectangle {
+            id: videoButton
+
+            Layout.preferredWidth: Math.max(root.actionSize * 1.5,
+                                            videoContent.implicitWidth + root.itemSpacing * 2)
+            Layout.preferredHeight: root.actionSize
+            Layout.alignment: Qt.AlignVCenter
+            radius: height / 2
+            color: root.manager && root.manager.recording
+                   ? (videoMouseArea.pressed ? "#e0a31f34" : "#c8a31f34")
+                   : (videoMouseArea.pressed ? "#f0ffffff" : (videoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff"))
+            border.color: root.manager && root.manager.recording
+                          ? "#ffff6b78"
+                          : (videoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff")
+            border.width: 2
+            enabled: Boolean(root.online
+                             && root.manager
+                             && root.manager.cameraStatusKnown
+                             && !root.manager.recordingCommandPending)
+            opacity: enabled ? 1.0 : 0.45
+            scale: videoMouseArea.pressed ? 0.96 : 1.0
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 90 } }
+
+            Row {
+                id: videoContent
+
+                anchors.centerIn: parent
+                spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                QGCColoredImage {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.actionSize * 0.4
+                    height: width
+                    source: "/qmlimages/camera_video.svg"
+                    sourceSize.height: height
+                    fillMode: Image.PreserveAspectFit
+                    color: videoMouseArea.pressed && !(root.manager && root.manager.recording) ? "#101820" : "white"
+                }
+
+                QGCLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.manager
+                          && (!root.manager.cameraStatusKnown || root.manager.recordingCommandPending)
+                          ? "..."
+                          : (root.manager && root.manager.recording ? root.recordingTimeText() : qsTr("REC"))
+                    color: videoMouseArea.pressed && !(root.manager && root.manager.recording) ? "#101820" : "white"
+                    font.bold: true
+                    font.pointSize: ScreenTools.smallFontPointSize
+                }
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: parent.width * 0.13
+                anchors.bottomMargin: parent.height * 0.12
+                width: Math.max(5, parent.height * 0.14)
+                height: width
+                radius: root.manager && root.manager.recording ? 1 : width / 2
+                color: root.manager && root.manager.recording ? "white" : qgcPal.colorRed
+            }
+
+            MouseArea {
+                id: videoMouseArea
+
+                anchors.fill: parent
+                enabled: parent.enabled
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.manager.toggleVideoRecording()
+            }
+        }
+    }
+}

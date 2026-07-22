@@ -1,103 +1,144 @@
 /****************************************************************************
  *
- * 思翼 A8 Mini 私有 SDK 缩放控件。
- * 采用半透明浮层和稳定尺寸，只展示缩放操作与当前倍率。
+ * 合并相机控制栏中的思翼A8 Mini缩放子控件。
+ * 短按按配置步长单步缩放；长按启动相机原生连续缩放，释放或取消时停止。
  *
  ****************************************************************************/
 
 import QtQuick
+import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
-Rectangle {
+Item {
     id: root
 
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
+    property real controlSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
+                                        ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
 
-    implicitWidth:  ScreenTools.defaultFontPixelWidth * 9.5
-    implicitHeight: controlColumn.implicitHeight + panelMargin * 2
-    width: implicitWidth
-    height: implicitHeight
-    radius: Math.min(8, ScreenTools.defaultFontPixelHeight * 0.42)
-    color: "#99101822"
-    border.color: "#70ffffff"
-    border.width: 1
+    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
+    readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
-    property real panelMargin: ScreenTools.defaultFontPixelHeight * 0.62
+    implicitWidth: zoomRow.implicitWidth
+    implicitHeight: controlSize
 
-    // 内层高光边缘增加视频画面上的轮廓感，不影响鼠标事件。
-    Rectangle {
+    function cancelContinuousZoom() {
+        if (manager && manager.continuousZoomActive) {
+            manager.stopZoom()
+        }
+    }
+
+    onOnlineChanged: {
+        if (!online) {
+            cancelContinuousZoom()
+        }
+    }
+    onVisibleChanged: {
+        if (!visible) {
+            cancelContinuousZoom()
+        }
+    }
+    Component.onDestruction: cancelContinuousZoom()
+
+    Connections {
+        target: Qt.application
+
+        function onStateChanged() {
+            if (Qt.application.state !== Qt.ApplicationActive) {
+                root.cancelContinuousZoom()
+            }
+        }
+    }
+
+    RowLayout {
+        id: zoomRow
+
         anchors.fill: parent
-        anchors.margins: 1
-        radius: Math.max(0, root.radius - 1)
-        color: "transparent"
-        border.color: "#24ffffff"
-        border.width: 1
-    }
-
-    Timer {
-        interval: 2000
-        repeat: true
-        running: root.visible && root.manager && root.manager.enabled
-        triggeredOnStart: true
-        onTriggered: root.manager.requestCurrentZoom()
-    }
-
-    Column {
-        id: controlColumn
-
-        anchors.top: parent.top
-        anchors.topMargin: root.panelMargin
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: parent.width - root.panelMargin * 2
-        spacing: ScreenTools.defaultFontPixelHeight * 0.58
+        spacing: root.controlSpacing
 
         Rectangle {
-            id: zoomInButton
+            id: zoomOutButton
 
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelHeight * 3.45
-            height: width
+            Layout.preferredWidth: root.controlSize
+            Layout.preferredHeight: root.controlSize
             radius: width / 2
-            color: zoomInMouseArea.pressed ? "#dce4ec" : (zoomInMouseArea.containsMouse ? "#ffffff" : "#f2ffffff")
-            border.color: zoomInMouseArea.containsMouse ? "#ffffff" : "#a8ffffff"
+            color: zoomOutMouseArea.pressed ? "#f2ffffff" : (zoomOutMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
+            border.color: zoomOutMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: Boolean(root.manager && root.manager.enabled)
-            opacity: enabled ? 1.0 : 0.55
-            scale: zoomInMouseArea.pressed ? 0.95 : 1.0
+            enabled: root.online
+                     && root.zoomValue > (root.manager.minimumZoom + 0.05)
+                     && (!root.manager.continuousZoomActive || zoomOutMouseArea.pressed)
+            opacity: enabled ? 1.0 : 0.38
+            scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
 
-            Behavior on scale {
-                NumberAnimation { duration: 90 }
-            }
-
-            Behavior on color {
-                ColorAnimation { duration: 100 }
-            }
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on scale { NumberAnimation { duration: 90 } }
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: "+"
-                color: "#101820"
+                text: "\u2212"
+                color: zoomOutMouseArea.pressed ? "#101820" : "white"
                 font.bold: true
-                font.pixelSize: parent.height * 0.56
+                font.pixelSize: parent.height * 0.48
             }
 
             MouseArea {
-                id: zoomInMouseArea
+                id: zoomOutMouseArea
+
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
+                preventStealing: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.manager.zoomIn()
+                pressAndHoldInterval: 420
+
+                property bool holdTriggered: false
+                property bool continuousStarted: false
+
+                onPressed: {
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onPressAndHold: {
+                    holdTriggered = true
+                    continuousStarted = root.manager.startZoom(-1)
+                }
+                onReleased: {
+                    if (holdTriggered) {
+                        if (continuousStarted || root.manager.continuousZoomActive) {
+                            root.manager.stopZoom()
+                        }
+                    } else if (containsMouse) {
+                        root.manager.zoomOut()
+                    }
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onCanceled: {
+                    if (continuousStarted || (root.manager && root.manager.continuousZoomActive)) {
+                        root.manager.stopZoom()
+                    }
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onExited: {
+                    if (pressed && continuousStarted) {
+                        holdTriggered = true
+                        root.manager.stopZoom()
+                        continuousStarted = false
+                    }
+                }
             }
         }
 
         Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelWidth * 5.8
-            height: ScreenTools.defaultFontPixelHeight * 1.58
+            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5.2
+            Layout.preferredHeight: root.controlSize * 0.78
+            Layout.alignment: Qt.AlignVCenter
             radius: height / 2
             color: "#e8ffffff"
             border.color: "#80ffffff"
@@ -105,7 +146,7 @@ Rectangle {
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: root.manager ? Number(root.manager.currentZoom).toFixed(1) + "x" : "--"
+                text: root.manager ? root.zoomValue.toFixed(1) + "x" : "--"
                 color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize
@@ -113,44 +154,78 @@ Rectangle {
         }
 
         Rectangle {
-            id: zoomOutButton
+            id: zoomInButton
 
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: ScreenTools.defaultFontPixelHeight * 3.45
-            height: width
+            Layout.preferredWidth: root.controlSize
+            Layout.preferredHeight: root.controlSize
             radius: width / 2
-            color: zoomOutMouseArea.pressed ? "#dce4ec" : (zoomOutMouseArea.containsMouse ? "#ffffff" : "#f2ffffff")
-            border.color: zoomOutMouseArea.containsMouse ? "#ffffff" : "#a8ffffff"
+            color: zoomInMouseArea.pressed ? "#f2ffffff" : (zoomInMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
+            border.color: zoomInMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: Boolean(root.manager && root.manager.enabled)
-            opacity: enabled ? 1.0 : 0.55
-            scale: zoomOutMouseArea.pressed ? 0.95 : 1.0
+            enabled: root.online
+                     && root.zoomValue < (root.manager.maximumZoom - 0.05)
+                     && (!root.manager.continuousZoomActive || zoomInMouseArea.pressed)
+            opacity: enabled ? 1.0 : 0.38
+            scale: zoomInMouseArea.pressed ? 0.94 : 1.0
 
-            Behavior on scale {
-                NumberAnimation { duration: 90 }
-            }
-
-            Behavior on color {
-                ColorAnimation { duration: 100 }
-            }
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on scale { NumberAnimation { duration: 90 } }
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: "-"
-                color: "#101820"
+                text: "+"
+                color: zoomInMouseArea.pressed ? "#101820" : "white"
                 font.bold: true
-                font.pixelSize: parent.height * 0.56
+                font.pixelSize: parent.height * 0.48
             }
 
             MouseArea {
-                id: zoomOutMouseArea
+                id: zoomInMouseArea
+
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
+                preventStealing: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.manager.zoomOut()
+                pressAndHoldInterval: 420
+
+                property bool holdTriggered: false
+                property bool continuousStarted: false
+
+                onPressed: {
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onPressAndHold: {
+                    holdTriggered = true
+                    continuousStarted = root.manager.startZoom(1)
+                }
+                onReleased: {
+                    if (holdTriggered) {
+                        if (continuousStarted || root.manager.continuousZoomActive) {
+                            root.manager.stopZoom()
+                        }
+                    } else if (containsMouse) {
+                        root.manager.zoomIn()
+                    }
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onCanceled: {
+                    if (continuousStarted || (root.manager && root.manager.continuousZoomActive)) {
+                        root.manager.stopZoom()
+                    }
+                    holdTriggered = false
+                    continuousStarted = false
+                }
+                onExited: {
+                    if (pressed && continuousStarted) {
+                        holdTriggered = true
+                        root.manager.stopZoom()
+                        continuousStarted = false
+                    }
+                }
             }
         }
-
     }
 }

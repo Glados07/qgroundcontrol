@@ -4,7 +4,7 @@
     "QGC.MetaData.Facts": [
         {
             "name": "enabled",
-            "shortDesc": "Enable SIYI gimbal zoom control",
+            "shortDesc": "Enable SIYI gimbal camera control",
             "type": "bool",
             "default": true
         },
