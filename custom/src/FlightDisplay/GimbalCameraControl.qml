@@ -18,6 +18,7 @@ Rectangle {
 
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
 
+    readonly property bool available: Boolean(manager && manager.enabled)
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property real actionSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
@@ -31,10 +32,12 @@ Rectangle {
     width: implicitWidth
     height: implicitHeight
     radius: Math.min(10, ScreenTools.defaultFontPixelHeight * 0.55)
-    color: "#b0101822"
-    border.color: manager && manager.lastError.length > 0 ? qgcPal.colorRed : "#78ffffff"
+    color: online ? "#b0101822" : "#a018202a"
+    border.color: online
+                  ? (manager && manager.lastError.length > 0 ? qgcPal.colorRed : "#78ffffff")
+                  : "#708493a3"
     border.width: 1
-    visible: online
+    visible: available
 
     function recordingTimeText() {
         const hours = Math.floor(recordingSeconds / 3600)
@@ -59,6 +62,21 @@ Rectangle {
         color: "transparent"
         border.color: "#20ffffff"
         border.width: 1
+    }
+
+    // 常驻控制栏的连接状态提示：离线时面板和按钮灰显，但不会从布局中消失。
+    Rectangle {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: root.panelPadding * 0.35
+        anchors.rightMargin: root.panelPadding * 0.35
+        width: Math.max(5, root.actionSize * 0.12)
+        height: width
+        radius: width / 2
+        color: root.online ? qgcPal.colorGreen : "#87929d"
+        border.color: "#b8ffffff"
+        border.width: 1
+        z: 2
     }
 
     Timer {
@@ -117,6 +135,7 @@ Rectangle {
             border.color: photoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"
             border.width: 2
             enabled: root.online
+            opacity: enabled ? 1.0 : 0.45
             scale: photoMouseArea.pressed ? 0.94 : 1.0
 
             Behavior on color { ColorAnimation { duration: 100 } }

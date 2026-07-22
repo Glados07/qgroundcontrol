@@ -146,7 +146,7 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: root.manager ? root.zoomValue.toFixed(1) + "x" : "--"
+                text: root.online ? root.zoomValue.toFixed(1) + "x" : "--"
                 color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize

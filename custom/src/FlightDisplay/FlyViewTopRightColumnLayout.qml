@@ -19,7 +19,7 @@ ColumnLayout {
     id: root
 
     width: Math.max(_rightPanelWidth,
-                    gimbalCameraControlLoader.visible && gimbalCameraControlLoader.item
+                    gimbalCameraControlLoader.active && gimbalCameraControlLoader.item
                     ? gimbalCameraControlLoader.item.implicitWidth
                     : 0)
 
@@ -33,15 +33,16 @@ ColumnLayout {
     }
 
     // 新增 QML 未注册到原生 FlightDisplay 模块，必须通过 custom QRC 地址显式加载。
+    // 启用私有相机模块后始终显示控制栏；SDK在线状态只控制按钮可用性，不再控制可见性。
     // preferredWidth/Height 跟随实际控件，避免 Loader 在布局中形成零尺寸透明占位。
     Loader {
         id:                     gimbalCameraControlLoader
         active:                 root._usePrivateCameraControl
-        visible:                Boolean(active && item && item.online)
+        visible:                Boolean(active && item)
         source:                 "qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml"
         Layout.alignment:       Qt.AlignTop | Qt.AlignRight
-        Layout.preferredWidth:  visible && item ? item.implicitWidth : 0
-        Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+        Layout.preferredWidth:  item ? item.implicitWidth : 0
+        Layout.preferredHeight: item ? item.implicitHeight : 0
         Layout.minimumWidth:    Layout.preferredWidth
         Layout.minimumHeight:   Layout.preferredHeight
 
