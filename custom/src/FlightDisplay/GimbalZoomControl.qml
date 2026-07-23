@@ -29,8 +29,8 @@ Item {
     readonly property bool canSend: Boolean(manager && manager.enabled)
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
-    implicitWidth: zoomRow.implicitWidth
-    implicitHeight: controlSize
+    implicitWidth: zoomColumn.implicitWidth
+    implicitHeight: zoomColumn.implicitHeight
 
     function cancelZoomGesture() {
         var shouldStop = Boolean(zoomOutMouseArea && zoomOutMouseArea.gestureState === gestureHolding)
@@ -99,17 +99,22 @@ Item {
         }
     }
 
-    RowLayout {
-        id: zoomRow
+    GridLayout {
+        id: zoomColumn
 
         anchors.fill: parent
-        spacing: root.controlSpacing
+        columns: 1
+        columnSpacing: 0
+        rowSpacing: root.controlSpacing
 
         Rectangle {
             id: zoomOutButton
 
+            Layout.row: 2
+            Layout.column: 0
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
+            Layout.alignment: Qt.AlignHCenter
             radius: width / 2
             color: zoomOutMouseArea.pressed ? "#f2ffffff" : (zoomOutMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomOutMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
@@ -207,9 +212,12 @@ Item {
         }
 
         Rectangle {
-            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5.2
+            Layout.row: 1
+            Layout.column: 0
+            Layout.preferredWidth: Math.max(root.controlSize,
+                                            ScreenTools.defaultFontPixelWidth * 5.2)
             Layout.preferredHeight: root.controlSize * 0.78
-            Layout.alignment: Qt.AlignVCenter
+            Layout.alignment: Qt.AlignHCenter
             radius: height / 2
             color: "#e8ffffff"
             border.color: "#80ffffff"
@@ -227,8 +235,11 @@ Item {
         Rectangle {
             id: zoomInButton
 
+            Layout.row: 0
+            Layout.column: 0
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
+            Layout.alignment: Qt.AlignHCenter
             radius: width / 2
             color: zoomInMouseArea.pressed ? "#f2ffffff" : (zoomInMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomInMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"

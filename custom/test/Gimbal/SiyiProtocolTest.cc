@@ -15,6 +15,7 @@ class SiyiProtocolTest : public QObject
 private slots:
     void manualZoomPackets();
     void absoluteZoomPacket();
+    void maximumZoomPayloads();
     void currentZoomPayloads();
     void invalidZoomPayloads();
 };
@@ -32,7 +33,54 @@ void SiyiProtocolTest::absoluteZoomPacket()
 {
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(1.0).toHex(), QByteArrayLiteral("556601020000000f010061be"));
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(4.5).toHex(), QByteArrayLiteral("556601020000000f04053111"));
+    QCOMPARE(SiyiProtocol::requestMaximumZoomPacket().toHex(), QByteArrayLiteral("5566010000000016b2a6"));
     QCOMPARE(SiyiProtocol::requestCurrentZoomPacket().toHex(), QByteArrayLiteral("55660100000000187c47"));
+}
+
+void SiyiProtocolTest::maximumZoomPayloads()
+{
+    double zoomLevel = 0.0;
+    bool usedLegacyEncoding = true;
+
+    QVERIFY(!SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0000"),
+                                                    6.0,
+                                                    &zoomLevel,
+                                                    &usedLegacyEncoding));
+
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0100"),
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 1.0);
+    QVERIFY(!usedLegacyEncoding);
+
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0305"),
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 3.5);
+    QVERIFY(!usedLegacyEncoding);
+
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0505"),
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(!usedLegacyEncoding);
+
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("3700"),
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(usedLegacyEncoding);
+
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0600"),
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 6.0);
+    QVERIFY(!usedLegacyEncoding);
 }
 
 void SiyiProtocolTest::currentZoomPayloads()
@@ -71,6 +119,14 @@ void SiyiProtocolTest::currentZoomPayloads()
                                                    &zoomLevel,
                                                    &usedLegacyEncoding));
     QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(usedLegacyEncoding);
+
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("3c00"),
+                                                   1.0,
+                                                   6.0,
+                                                   &zoomLevel,
+                                                   &usedLegacyEncoding));
+    QCOMPARE(zoomLevel, 6.0);
     QVERIFY(usedLegacyEncoding);
 }
 

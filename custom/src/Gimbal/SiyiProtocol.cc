@@ -62,6 +62,11 @@ QByteArray SiyiProtocol::requestCurrentZoomPacket()
     return _encode(CommandCurrentZoomValue, QByteArray());
 }
 
+QByteArray SiyiProtocol::requestMaximumZoomPacket()
+{
+    return _encode(CommandMaximumZoomValue, QByteArray());
+}
+
 SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
 {
     DecodedPacket result;
@@ -152,6 +157,33 @@ bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload,
                                            double* zoomLevel,
                                            bool* usedLegacyTenthsEncoding)
 {
+    return _parseZoomPayload(payload,
+                             minimumZoom,
+                             maximumZoom,
+                             zoomLevel,
+                             usedLegacyTenthsEncoding);
+}
+
+bool SiyiProtocol::parseMaximumZoomPayload(const QByteArray& payload,
+                                           double maximumSupportedZoom,
+                                           double* zoomLevel,
+                                           bool* usedLegacyTenthsEncoding)
+{
+    // 倍率的最小有效值是1.0x。协议没有把00 00定义为“不支持该命令”，
+    // 因此不能用零响应把UI永久锁在1.0x。
+    return _parseZoomPayload(payload,
+                             1.0,
+                             maximumSupportedZoom,
+                             zoomLevel,
+                             usedLegacyTenthsEncoding);
+}
+
+bool SiyiProtocol::_parseZoomPayload(const QByteArray& payload,
+                                     double minimumZoom,
+                                     double maximumZoom,
+                                     double* zoomLevel,
+                                     bool* usedLegacyTenthsEncoding)
+{
     if (usedLegacyTenthsEncoding) {
         *usedLegacyTenthsEncoding = false;
     }
@@ -165,7 +197,7 @@ bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload,
         return qIsFinite(value) && value >= minimumZoom && value <= maximumZoom;
     };
 
-    // 官方 0x18 格式为“整数 byte + 一位小数 byte”。部分 A8 Mini 兼容固件可能
+    // 官方 0x16/0x18 格式为“整数 byte + 一位小数 byte”。部分 A8 Mini兼容固件可能
     // 与 0x05 ACK 相同，以小端 uint16 的十分之一倍率返回（例如 0A 00 表示
     // 1.0x）。只有官方候选不合法、兼容候选又落在当前相机范围内时才回退，避免
     // 把真正的异常回包静默钳制成最大倍率。

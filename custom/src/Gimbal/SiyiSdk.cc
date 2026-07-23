@@ -80,6 +80,11 @@ bool SiyiSdk::sendAbsoluteZoom(double zoomLevel)
     return _sendPacket(SiyiProtocol::absoluteZoomPacket(zoomLevel));
 }
 
+bool SiyiSdk::requestMaximumZoom()
+{
+    return _sendPacket(SiyiProtocol::requestMaximumZoomPacket());
+}
+
 bool SiyiSdk::requestCurrentZoom()
 {
     return _sendPacket(SiyiProtocol::requestCurrentZoomPacket());
@@ -168,6 +173,22 @@ void SiyiSdk::_readPendingDatagrams()
             quint8 infoType = 0;
             if (SiyiProtocol::parseFunctionFeedbackPayload(decoded.payload, &infoType)) {
                 emit functionFeedbackReceived(infoType);
+            }
+        } else if (decoded.command == SiyiProtocol::CommandMaximumZoomValue) {
+            double zoomLevel = 0.0;
+            bool usedLegacyTenthsEncoding = false;
+            if (SiyiProtocol::parseMaximumZoomPayload(decoded.payload,
+                                                      _maximumZoom,
+                                                      &zoomLevel,
+                                                      &usedLegacyTenthsEncoding)) {
+                qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel
+                                    << "encoding"
+                                    << (usedLegacyTenthsEncoding ? "little-endian tenths compatibility" : "integer plus decimal");
+                emit maximumZoomReceived(zoomLevel);
+            } else {
+                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI maximum zoom payload"
+                                      << decoded.payload.toHex(' ')
+                                      << "accepted range" << 1.0 << _maximumZoom;
             }
         } else if (decoded.command == SiyiProtocol::CommandCurrentZoomValue) {
             double zoomLevel = 0.0;

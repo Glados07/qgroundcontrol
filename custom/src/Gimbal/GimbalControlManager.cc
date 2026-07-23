@@ -18,7 +18,7 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     , _sdk(new SiyiSdk(this))
 {
     Q_CHECK_PTR(_settings);
-    _sdk->setZoomRange(kMinZoom, kMaxZoom);
+    _sdk->setZoomRange(kMinZoom, kProtocolMaxZoom);
 
     _sdkResponseTimer.setSingleShot(true);
     // 倍率和相机状态每 2 秒轮询一次；响应超时必须短于轮询周期。
@@ -27,7 +27,9 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _zoomQueryResponseTimer.setInterval(1500);
     _sdkPollTimer.setInterval(2000);
     _continuousZoomWatchdog.setSingleShot(true);
-    _continuousZoomWatchdog.setInterval(15000);
+    // A8 Mini连续数字变倍在部分固件上较慢；60秒仍能兜底丢失的释放事件，
+    // 同时不会在到达5.5x/6.0x前于约3.5x处提前截停。
+    _continuousZoomWatchdog.setInterval(60000);
     _zoomSyncTimer.setSingleShot(true);
     _zoomSyncTimer.setInterval(350);
     _photoFeedbackTimer.setSingleShot(true);
@@ -37,6 +39,7 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _recordingCommandTimeoutTimer.setSingleShot(true);
     _recordingCommandTimeoutTimer.setInterval(2500);
 
+    connect(_sdk, &SiyiSdk::maximumZoomReceived, this, &GimbalControlManager::_handleMaximumZoom);
     connect(_sdk, &SiyiSdk::currentZoomReceived, this, &GimbalControlManager::_handleCurrentZoom);
     connect(_sdk, &SiyiSdk::cameraSystemStatusReceived, this, &GimbalControlManager::_handleCameraSystemStatus);
     connect(_sdk, &SiyiSdk::functionFeedbackReceived, this, &GimbalControlManager::_handleFunctionFeedback);
@@ -88,7 +91,8 @@ double GimbalControlManager::zoomStep() const
     if (!_settings) {
         return 1.0;
     }
-    return qBound(0.1, _settings->zoomStep()->rawValue().toDouble(), kMaxZoom - kMinZoom);
+    const double availableRange = qMax(0.1, _maximumZoom - kMinZoom);
+    return qBound(0.1, _settings->zoomStep()->rawValue().toDouble(), availableRange);
 }
 
 bool GimbalControlManager::zoomIn()
@@ -120,6 +124,11 @@ bool GimbalControlManager::setZoom(double zoomLevel)
     if (!_cameraCommandAvailable()) {
         return false;
     }
+    if (!_maximumZoomKnown) {
+        _setLastError(tr("Waiting for the SIYI camera zoom range."));
+        _pollSdk();
+        return false;
+    }
     if (!qIsFinite(zoomLevel)) {
         _setLastError(tr("Invalid SIYI camera zoom value."));
         return false;
@@ -130,6 +139,7 @@ bool GimbalControlManager::setZoom(double zoomLevel)
     if (_continuousZoomActive && !_stopContinuousZoom(false)) {
         return false;
     }
+    _clearStableZoomConfirmation();
 
     _configureSdkEndpoint();
     // 协议只传一位小数；Manager使用同一个量化目标，避免UI/requested值与
@@ -163,7 +173,7 @@ bool GimbalControlManager::startZoom(int direction)
     }
 
     if (_zoomStatusKnown &&
-        ((normalizedDirection > 0 && _currentZoom >= kMaxZoom - 0.05) ||
+        ((normalizedDirection > 0 && _currentZoom >= _maximumZoom - 0.05) ||
          (normalizedDirection < 0 && _currentZoom <= kMinZoom + 0.05))) {
         return false;
     }
@@ -182,6 +192,7 @@ bool GimbalControlManager::startZoom(int direction)
     _zoomSyncTimer.stop();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _clearStableZoomConfirmation();
     _requestedZoom = _currentZoom;
     _configureSdkEndpoint();
     const QString host = _sdkHost();
@@ -295,7 +306,9 @@ void GimbalControlManager::_settingsChanged()
     _zoomQueryResponseTimer.stop();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _clearStableZoomConfirmation();
     _requestedZoom = kMinZoom;
+    _resetMaximumZoomCapability();
     _photoFeedbackTimer.stop();
     _photoCommandPending = false;
     _finishRecordingCommand();
@@ -320,6 +333,46 @@ void GimbalControlManager::_settingsChanged()
     }
 }
 
+void GimbalControlManager::_handleMaximumZoom(double zoomLevel)
+{
+    if (!qIsFinite(zoomLevel) || zoomLevel < kMinZoom || zoomLevel > kProtocolMaxZoom) {
+        return;
+    }
+
+    const bool capabilityWasKnown = _maximumZoomKnown;
+    const double previousMaximumZoom = _maximumZoom;
+    _setMaximumZoom(zoomLevel);
+    _maximumZoomKnown = true;
+    const bool capabilityChanged = qAbs(previousMaximumZoom - _maximumZoom) > 0.051;
+
+    if (_absoluteZoomPending && _requestedZoom > _maximumZoom + 0.05) {
+        _absoluteZoomPending = false;
+        _requestedZoom = _currentZoom;
+        _setZoomStatusKnown(false);
+    }
+
+    // 启动/重连后必须先取得0x16能力值，再用一条随后发出的0x18确认当前倍率。
+    // 不能让同轮中先到达的旧0x18按默认5.5x边界提前解锁短按命令。
+    if ((!capabilityWasKnown || capabilityChanged) && enabled()) {
+        // 当前模式上限首次确认或发生变化时，丢弃同轮在途0x18的计时状态，
+        // 并要求随后两份稳定样本一致，确保能力值与当前倍率来自同一模式。
+        _stableZoomConfirmationPending = true;
+        _stableZoomCandidateValid = false;
+        _stableZoomCandidate = kMinZoom;
+        _setZoomStatusKnown(false);
+        _zoomQueryResponseTimer.stop();
+        if (!_continuousZoomActive && !_zoomResponseBlocked) {
+            _scheduleZoomSync();
+        }
+    } else if (!_zoomStatusKnown
+               && enabled()
+               && !_continuousZoomActive
+               && !_zoomResponseBlocked
+               && !_zoomQueryResponseTimer.isActive()) {
+        _scheduleZoomSync();
+    }
+}
+
 void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
 {
     _sdkResponseTimer.stop();
@@ -329,8 +382,36 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
     if (_zoomResponseBlocked || _continuousZoomActive) {
         return;
     }
-    if (!qIsFinite(zoomLevel) || zoomLevel < kMinZoom || zoomLevel > kMaxZoom) {
+    if (!qIsFinite(zoomLevel) || zoomLevel < kMinZoom || zoomLevel > kProtocolMaxZoom) {
         return;
+    }
+
+    if (!_maximumZoomKnown) {
+        // 缓存显示值，但在0x16到达前保持unknown；否则2K/4K可能在短暂窗口内
+        // 按默认5.5x边界发送越界的0x0f命令。
+        _absoluteZoomPending = false;
+        _requestedZoom = zoomLevel;
+        _zoomQueryResponseTimer.stop();
+        _setCurrentZoom(zoomLevel);
+        _setZoomStatusKnown(false);
+        return;
+    }
+    if (zoomLevel > _maximumZoom + 0.05) {
+        // 已取得0x16能力值后，超出当前模式上限的0x18只能是迟到旧包。
+        _scheduleZoomSync();
+        return;
+    }
+
+    if (_stableZoomConfirmationPending) {
+        // 连续停止、首次能力确认或能力变化后的首个0x18都可能是迟到值。
+        // 要求两次连续采样一致，不把2K真实3.5x硬改成5.5x，也不接受单个旧包。
+        if (!_stableZoomCandidateValid || qAbs(zoomLevel - _stableZoomCandidate) > 0.051) {
+            _stableZoomCandidate = zoomLevel;
+            _stableZoomCandidateValid = true;
+            _scheduleZoomSync();
+            return;
+        }
+        _clearStableZoomConfirmation();
     }
 
     if (_absoluteZoomPending && qAbs(zoomLevel - _requestedZoom) > 0.051) {
@@ -443,6 +524,8 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
     _zoomQueryResponseTimer.stop();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _clearStableZoomConfirmation();
+    _resetMaximumZoomCapability();
     _photoFeedbackTimer.stop();
     _photoCommandPending = false;
     _finishRecordingCommand();
@@ -463,6 +546,8 @@ void GimbalControlManager::_markSdkNotResponding()
     _zoomQueryResponseTimer.stop();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _clearStableZoomConfirmation();
+    _resetMaximumZoomCapability();
     _photoFeedbackTimer.stop();
     _photoCommandPending = false;
     _finishRecordingCommand();
@@ -482,6 +567,7 @@ void GimbalControlManager::_pollSdk()
     _configureSdkEndpoint();
     // 已有0x18等待响应时不再由周期轮询重复发送、重启专用超时；绝对缩放
     // 的确认重试只由_zoomSyncTimer负责，保证总超时不会被后台轮询无限延长。
+    const bool maximumZoomRequestSent = _sdk->requestMaximumZoom();
     const bool zoomRequestSent = !_continuousZoomActive
         && !_zoomResponseBlocked
         && !_zoomQueryResponseTimer.isActive()
@@ -491,7 +577,7 @@ void GimbalControlManager::_pollSdk()
     if (zoomRequestSent) {
         _zoomQueryResponseTimer.start();
     }
-    if (zoomRequestSent || cameraStatusRequestSent) {
+    if (zoomRequestSent || maximumZoomRequestSent || cameraStatusRequestSent) {
         _sdkResponseTimer.start();
     }
 }
@@ -501,6 +587,13 @@ void GimbalControlManager::_markZoomStatusUnknown()
     _zoomSyncTimer.stop();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    if (_stableZoomConfirmationPending) {
+        // 总超时只丢弃本轮候选，不允许下一轮周期0x18退化成单样本确认。
+        _stableZoomCandidateValid = false;
+        _stableZoomCandidate = kMinZoom;
+    } else {
+        _clearStableZoomConfirmation();
+    }
     _requestedZoom = _currentZoom;
     _setZoomStatusKnown(false);
 }
@@ -576,12 +669,27 @@ bool GimbalControlManager::_stopContinuousZoom(bool scheduleZoomSync)
     _continuousZoomWatchdog.stop();
     // 先切换为 Idle，避免 writeDatagram 失败触发 communicationError 时重入 stop。
     _setContinuousZoomState(false);
+    _clearStableZoomConfirmation();
     const bool sent = _sendZoomStopTo(host, port);
     if (sent && scheduleZoomSync && enabled()) {
+        _stableZoomConfirmationPending = true;
         _sdkResponseTimer.start();
         _scheduleZoomSync();
     }
     return sent;
+}
+
+void GimbalControlManager::_clearStableZoomConfirmation()
+{
+    _stableZoomConfirmationPending = false;
+    _stableZoomCandidateValid = false;
+    _stableZoomCandidate = kMinZoom;
+}
+
+void GimbalControlManager::_resetMaximumZoomCapability()
+{
+    _maximumZoomKnown = false;
+    _setMaximumZoom(kDefaultMaxZoom);
 }
 
 void GimbalControlManager::_scheduleZoomSync()
@@ -593,13 +701,33 @@ void GimbalControlManager::_scheduleZoomSync()
 void GimbalControlManager::_setCurrentZoom(double zoomLevel)
 {
     // 这里只接收已经校验过的设备值或已经钳制过的本地命令目标；绝不把
-    // 非法设备回包伪装成 1.0x/5.5x 边界值。
-    if (!qIsFinite(zoomLevel) || zoomLevel < kMinZoom || zoomLevel > kMaxZoom) {
+    // 非法设备回包伪装成边界值。
+    if (!qIsFinite(zoomLevel) || zoomLevel < kMinZoom || zoomLevel > kProtocolMaxZoom) {
         return;
     }
     if (!qFuzzyCompare(_currentZoom + 1.0, zoomLevel + 1.0)) {
         _currentZoom = zoomLevel;
         emit currentZoomChanged();
+    }
+}
+
+void GimbalControlManager::_setMaximumZoom(double zoomLevel)
+{
+    if (!qIsFinite(zoomLevel)) {
+        return;
+    }
+
+    const double normalizedZoom = qRound(qBound(kMinZoom, zoomLevel, kProtocolMaxZoom) * 10.0) / 10.0;
+    if (!qFuzzyCompare(_maximumZoom + 1.0, normalizedZoom + 1.0)) {
+        _maximumZoom = normalizedZoom;
+        emit maximumZoomChanged();
+        emit zoomStepChanged();
+
+        if (_zoomStatusKnown && _currentZoom > _maximumZoom + 0.05) {
+            _absoluteZoomPending = false;
+            _requestedZoom = _currentZoom;
+            _setZoomStatusKnown(false);
+        }
     }
 }
 
@@ -709,7 +837,9 @@ bool GimbalControlManager::_sendZoomStopTo(const QString& host, quint16 port)
     // 因而可降低单包丢失风险，也不可能落到随后的新缩放命令之后。
     const bool firstSent = _sdk->sendManualZoomTo(0, host, port);
     const bool secondSent = _sdk->sendManualZoomTo(0, host, port);
-    return firstSent || secondSent;
+    // 任一写入失败都会同步触发communicationError。只有两包均写入成功时，
+    // 外层才可重新建立倍率确认或继续发送新的缩放命令。
+    return firstSent && secondSent;
 }
 
 QString GimbalControlManager::_sdkHost() const
@@ -719,7 +849,7 @@ QString GimbalControlManager::_sdkHost() const
 
 double GimbalControlManager::_clampZoom(double zoomLevel) const
 {
-    return qBound(kMinZoom, zoomLevel, kMaxZoom);
+    return qBound(kMinZoom, zoomLevel, _maximumZoom);
 }
 
 quint16 GimbalControlManager::_sdkPort() const

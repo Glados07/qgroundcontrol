@@ -21,7 +21,7 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(double currentZoom READ currentZoom NOTIFY currentZoomChanged)
     Q_PROPERTY(double zoomStep READ zoomStep NOTIFY zoomStepChanged)
     Q_PROPERTY(double minimumZoom READ minimumZoom CONSTANT)
-    Q_PROPERTY(double maximumZoom READ maximumZoom CONSTANT)
+    Q_PROPERTY(double maximumZoom READ maximumZoom NOTIFY maximumZoomChanged)
     Q_PROPERTY(bool sdkResponding READ sdkResponding NOTIFY sdkRespondingChanged)
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
@@ -39,7 +39,7 @@ public:
     double currentZoom() const { return _currentZoom; }
     double zoomStep() const;
     double minimumZoom() const { return kMinZoom; }
-    double maximumZoom() const { return kMaxZoom; }
+    double maximumZoom() const { return _maximumZoom; }
     bool sdkResponding() const { return _sdkResponding; }
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
@@ -63,6 +63,7 @@ signals:
     void enabledChanged();
     void currentZoomChanged();
     void zoomStepChanged();
+    void maximumZoomChanged();
     void sdkRespondingChanged();
     void zoomStatusKnownChanged();
     void continuousZoomActiveChanged();
@@ -74,6 +75,7 @@ signals:
 
 private slots:
     void _settingsChanged();
+    void _handleMaximumZoom(double zoomLevel);
     void _handleCurrentZoom(double zoomLevel);
     void _handleCameraSystemStatus(quint8 hdrStatus,
                                    quint8 recordingStatus,
@@ -94,8 +96,11 @@ private slots:
 private:
     void _configureSdkEndpoint();
     bool _stopContinuousZoom(bool scheduleZoomSync);
+    void _clearStableZoomConfirmation();
+    void _resetMaximumZoomCapability();
     void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
+    void _setMaximumZoom(double zoomLevel);
     void _setSdkResponding(bool responding);
     void _setZoomStatusKnown(bool known);
     void _setContinuousZoomState(bool active, int direction = 0);
@@ -112,7 +117,8 @@ private:
     quint16 _sdkPort() const;
 
     static constexpr double kMinZoom = 1.0;
-    static constexpr double kMaxZoom = 5.5;
+    static constexpr double kDefaultMaxZoom = 5.5;
+    static constexpr double kProtocolMaxZoom = 6.0;
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
@@ -125,12 +131,17 @@ private:
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
     double _currentZoom = kMinZoom;
+    double _maximumZoom = kDefaultMaxZoom;
     double _requestedZoom = kMinZoom;
     bool _lastEnabled = false;
     bool _sdkResponding = false;
+    bool _maximumZoomKnown = false;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;
     bool _absoluteZoomPending = false;
+    bool _stableZoomConfirmationPending = false;
+    bool _stableZoomCandidateValid = false;
+    double _stableZoomCandidate = kMinZoom;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
     QString _continuousZoomHost;

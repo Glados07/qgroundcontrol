@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * Fly View思翼相机合并控制栏。
- * 缩放位于左侧，拍照和录像复用QGC图标；全部命令均不依赖activeVehicle。
+ * 缩放、拍照和录像纵向排列并复用QGC图标；全部命令均不依赖activeVehicle。
  *
  ****************************************************************************/
 
@@ -27,8 +27,8 @@ Rectangle {
 
     property int recordingSeconds: 0
 
-    implicitWidth: controlRow.implicitWidth + panelPadding * 2
-    implicitHeight: actionSize + panelPadding * 2
+    implicitWidth: controlColumn.implicitWidth + panelPadding * 2
+    implicitHeight: controlColumn.implicitHeight + panelPadding * 2
     width: implicitWidth
     height: implicitHeight
     radius: Math.min(10, ScreenTools.defaultFontPixelHeight * 0.55)
@@ -101,8 +101,8 @@ Rectangle {
         }
     }
 
-    RowLayout {
-        id: controlRow
+    ColumnLayout {
+        id: controlColumn
 
         anchors.fill: parent
         anchors.margins: root.panelPadding
@@ -114,13 +114,15 @@ Rectangle {
             manager: root.manager
             controlSize: root.actionSize
             controlSpacing: root.itemSpacing
-            Layout.alignment: Qt.AlignVCenter
+            Layout.alignment: Qt.AlignHCenter
         }
 
         Rectangle {
-            Layout.preferredWidth: 1
-            Layout.preferredHeight: root.actionSize * 0.68
-            Layout.alignment: Qt.AlignVCenter
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            Layout.leftMargin: root.itemSpacing
+            Layout.rightMargin: root.itemSpacing
+            Layout.alignment: Qt.AlignHCenter
             color: "#56ffffff"
         }
 
@@ -129,7 +131,7 @@ Rectangle {
 
             Layout.preferredWidth: root.actionSize
             Layout.preferredHeight: root.actionSize
-            Layout.alignment: Qt.AlignVCenter
+            Layout.alignment: Qt.AlignHCenter
             radius: width / 2
             color: photoMouseArea.pressed ? "#f0ffffff" : (photoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: photoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"
@@ -188,7 +190,7 @@ Rectangle {
             Layout.preferredWidth: Math.max(root.actionSize * 1.5,
                                             videoContent.implicitWidth + root.itemSpacing * 2)
             Layout.preferredHeight: root.actionSize
-            Layout.alignment: Qt.AlignVCenter
+            Layout.alignment: Qt.AlignHCenter
             radius: height / 2
             color: root.manager && root.manager.recording
                    ? (videoMouseArea.pressed ? "#e0a31f34" : "#c8a31f34")

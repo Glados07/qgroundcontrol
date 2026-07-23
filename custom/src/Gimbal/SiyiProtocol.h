@@ -20,6 +20,7 @@ public:
         CommandFunctionFeedback = 0x0b,
         CommandPhotoAndRecord   = 0x0c,
         CommandAbsoluteZoom     = 0x0f,
+        CommandMaximumZoomValue = 0x16,
         CommandCurrentZoomValue = 0x18,
     };
 
@@ -45,11 +46,16 @@ public:
     static QByteArray takePhotoPacket();
     static QByteArray toggleVideoRecordingPacket();
     static QByteArray absoluteZoomPacket(double zoomLevel);
+    static QByteArray requestMaximumZoomPacket();
     static QByteArray requestCurrentZoomPacket();
     static DecodedPacket decodePacket(const QByteArray& packet);
     static bool parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel);
     static bool parseCameraSystemStatusPayload(const QByteArray& payload, CameraSystemStatus* status);
     static bool parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType);
+    static bool parseMaximumZoomPayload(const QByteArray& payload,
+                                        double maximumSupportedZoom,
+                                        double* zoomLevel,
+                                        bool* usedLegacyTenthsEncoding = nullptr);
     static bool parseCurrentZoomPayload(const QByteArray& payload,
                                         double minimumZoom,
                                         double maximumZoom,
@@ -57,6 +63,11 @@ public:
                                         bool* usedLegacyTenthsEncoding = nullptr);
 
 private:
+    static bool _parseZoomPayload(const QByteArray& payload,
+                                  double minimumZoom,
+                                  double maximumZoom,
+                                  double* zoomLevel,
+                                  bool* usedLegacyTenthsEncoding);
     static QByteArray _photoAndRecordPacket(quint8 functionType);
     static QByteArray _encode(Command command, const QByteArray& payload);
     static quint16 _crc16(const QByteArray& bytes);

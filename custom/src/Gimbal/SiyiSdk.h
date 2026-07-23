@@ -23,6 +23,7 @@ public:
     bool sendManualZoom(qint8 direction);
     bool sendManualZoomTo(qint8 direction, const QString& host, quint16 port);
     bool sendAbsoluteZoom(double zoomLevel);
+    bool requestMaximumZoom();
     bool requestCurrentZoom();
     bool requestCameraSystemStatus();
     bool takePhoto();
@@ -30,6 +31,7 @@ public:
 
 signals:
     void manualZoomReceived(double zoomLevel);
+    void maximumZoomReceived(double zoomLevel);
     void currentZoomReceived(double zoomLevel);
     void cameraSystemStatusReceived(quint8 hdrStatus,
                                     quint8 recordingStatus,
