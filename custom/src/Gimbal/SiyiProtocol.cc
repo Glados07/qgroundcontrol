@@ -84,7 +84,7 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
 
     const quint16 payloadLength = static_cast<quint16>(at(3)) | (static_cast<quint16>(at(4)) << 8);
     const int expectedLength = 10 + payloadLength;
-    if (packet.size() < expectedLength) {
+    if (packet.size() != expectedLength) {
         return result;
     }
 

@@ -25,7 +25,7 @@ Loader {
         SettingsGroupLayout {
             Layout.fillWidth: true
             heading: qsTr("SIYI Gimbal Camera")
-            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. Tap zoom for one step or press and hold for continuous zoom.")
+            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. A tap uses one complete configured step; press and hold for continuous zoom. Zoom remains locked until QGC decodes a supported video resolution; card-recording resolution is not used.")
 
             FactCheckBoxSlider {
                 Layout.fillWidth: true

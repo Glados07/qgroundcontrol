@@ -238,6 +238,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     enable_testing()
     qt_add_executable(SiyiProtocolTest
         test/Gimbal/SiyiProtocolTest.cc
+        src/Gimbal/A8MiniZoomPolicy.cc
+        src/Gimbal/A8MiniZoomPolicy.h
         src/Gimbal/SiyiProtocol.cc
         src/Gimbal/SiyiProtocol.h
     )

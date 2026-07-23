@@ -25,6 +25,7 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
+            "longDesc": "A short press is sent only when the full configured step fits inside the zoom range for the video resolution currently decoded by QGC. Use continuous zoom or a smaller step to reach a fractional boundary.",
             "type": "double",
             "units": "x",
             "min": 0.1,

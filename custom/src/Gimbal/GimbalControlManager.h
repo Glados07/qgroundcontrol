@@ -13,6 +13,7 @@
 class Fact;
 class GimbalControlSettings;
 class SiyiSdk;
+class VideoManager;
 
 class GimbalControlManager : public QObject
 {
@@ -77,6 +78,8 @@ private slots:
     void _settingsChanged();
     void _handleMaximumZoom(double zoomLevel);
     void _handleCurrentZoom(double zoomLevel);
+    void _handlePulledVideoSize();
+    void _handleVideoDecodingChanged();
     void _handleCameraSystemStatus(quint8 hdrStatus,
                                    quint8 recordingStatus,
                                    quint8 gimbalMotionMode,
@@ -98,6 +101,10 @@ private:
     bool _stopContinuousZoom(bool scheduleZoomSync);
     void _clearStableZoomConfirmation();
     void _resetMaximumZoomCapability();
+    void _invalidateEffectiveMaximumZoomCapability();
+    void _updatePulledVideoSizeCapability();
+    void _refreshMaximumZoomCapability(bool forceZoomResync = false);
+    void _applyMaximumZoomCapability(double zoomLevel, bool forceZoomResync);
     void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
@@ -113,7 +120,6 @@ private:
     bool _cameraCommandAvailable();
     bool _sendZoomStopTo(const QString& host, quint16 port);
     QString _sdkHost() const;
-    double _clampZoom(double zoomLevel) const;
     quint16 _sdkPort() const;
 
     static constexpr double kMinZoom = 1.0;
@@ -122,6 +128,7 @@ private:
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
+    VideoManager* _videoManager = nullptr;
     QTimer _sdkResponseTimer;
     QTimer _zoomQueryResponseTimer;
     QTimer _sdkPollTimer;
@@ -136,6 +143,14 @@ private:
     bool _lastEnabled = false;
     bool _sdkResponding = false;
     bool _maximumZoomKnown = false;
+    bool _reportedMaximumZoomKnown = false;
+    double _reportedMaximumZoom = kDefaultMaxZoom;
+    bool _pulledVideoSizeAvailable = false;
+    bool _pulledVideoMaximumZoomKnown = false;
+    double _pulledVideoMaximumZoom = kDefaultMaxZoom;
+    quint16 _pulledVideoWidth = 0;
+    quint16 _pulledVideoHeight = 0;
+    bool _pulledVideoSizeObservedForCurrentStream = false;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;
     bool _absoluteZoomPending = false;
