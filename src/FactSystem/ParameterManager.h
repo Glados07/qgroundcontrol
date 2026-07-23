@@ -13,6 +13,7 @@
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QMap>
 #include <QtCore/QObject>
+#include <QtCore/QPair>
 #include <QtCore/QString>
 #include <QtCore/QTimer>
 
@@ -133,6 +134,8 @@ private:
     ///     @param waitingParamTimeout: true: being called due to timeout, false: being called to re-fill the batch queue
     /// return true: Parameters were requested, false: No more requests needed
     bool _fillIndexBatchQueue(bool waitingParamTimeout);
+    /// Sends one queued index request and schedules the next one after a short delay.
+    void _sendNextIndexBatchRequest();
     void _updateProgressBar();
     void _checkInitialLoadComplete();
     void _ftpDownloadComplete(const QString &fileName, const QString &errorMsg);
@@ -178,8 +181,11 @@ private:
     static constexpr int _maxReadWriteRetry = 5;                ///< Maximum retries read/write
     bool _disableAllRetries = false;                            ///< true: Don't retry any requests (used for testing)
 
-    bool _indexBatchQueueActive = false;    ///< true: we are actively batching re-requests for missing index base params, false: index based re-request has not yet started
-    QList<int> _indexBatchQueue;            ///< The current queue of index re-requests
+    using ComponentParamIndex = QPair<int /* component id */, int /* parameter index */>;
+
+    bool _indexBatchQueueActive = false;              ///< true: index based re-request batching has started
+    QList<ComponentParamIndex> _indexBatchQueue;      ///< Outstanding index re-requests, including requests waiting to be sent
+    QList<ComponentParamIndex> _indexBatchSendQueue;  ///< Index re-requests waiting for paced transmission
 
     QMap<int, int> _paramCountMap;                              ///< Key: Component id, Value: count of parameters in this component
     QMap<int, QMap<int, int>> _waitingReadParamIndexMap;        ///< Key: Component id, Value: Map { Key: parameter index still waiting for, Value: retry count }
@@ -193,6 +199,7 @@ private:
 
     QTimer _initialRequestTimeoutTimer;
     QTimer _waitingParamTimeoutTimer;
+    QTimer _indexBatchSendTimer;
 
     Fact _defaultFact;   ///< Used to return default fact, when parameter not found
 

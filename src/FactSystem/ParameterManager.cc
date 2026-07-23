@@ -54,6 +54,12 @@ ParameterManager::ParameterManager(Vehicle *vehicle)
     _waitingParamTimeoutTimer.setInterval(3000);
     (void) connect(&_waitingParamTimeoutTimer, &QTimer::timeout, this, &ParameterManager::_waitingParamTimeout);
 
+    // Missing parameter reads used to be sent as a single burst. Pace them to avoid
+    // overflowing low bandwidth radio and component bridge queues.
+    _indexBatchSendTimer.setSingleShot(true);
+    _indexBatchSendTimer.setInterval(100);
+    (void) connect(&_indexBatchSendTimer, &QTimer::timeout, this, &ParameterManager::_sendNextIndexBatchRequest);
+
     // Ensure the cache directory exists
     (void) QFileInfo(QSettings().fileName()).dir().mkdir("ParamCache");
 }
@@ -262,7 +268,9 @@ void ParameterManager::_handleParamValue(int componentId, const QString &paramet
     // Remove this parameter from the waiting lists
     if (_waitingReadParamIndexMap[componentId].contains(parameterIndex)) {
         _waitingReadParamIndexMap[componentId].remove(parameterIndex);
-        (void) _indexBatchQueue.removeOne(parameterIndex);
+        const ComponentParamIndex requestKey(componentId, parameterIndex);
+        (void) _indexBatchQueue.removeOne(requestKey);
+        (void) _indexBatchSendQueue.removeAll(requestKey);
         _fillIndexBatchQueue(false /* waitingParamTimeout */);
     }
 
@@ -606,7 +614,9 @@ bool ParameterManager::_fillIndexBatchQueue(bool waitingParamTimeout)
     if (waitingParamTimeout) {
         // We timed out, clear the queue and try again
         qCDebug(ParameterManagerLog) << "Refilling index based batch queue due to timeout";
+        _indexBatchSendTimer.stop();
         _indexBatchQueue.clear();
+        _indexBatchSendQueue.clear();
     } else {
         qCDebug(ParameterManagerLog) << "Refilling index based batch queue due to received parameter";
     }
@@ -618,12 +628,13 @@ bool ParameterManager::_fillIndexBatchQueue(bool waitingParamTimeout)
         }
 
         for (const int paramIndex: _waitingReadParamIndexMap[componentId].keys()) {
-            if (_indexBatchQueue.contains(paramIndex)) {
+            const ComponentParamIndex requestKey(componentId, paramIndex);
+            if (_indexBatchQueue.contains(requestKey)) {
                 // Don't add more than once
                 continue;
             }
 
-            if (_indexBatchQueue.count() > maxBatchSize) {
+            if (_indexBatchQueue.count() >= maxBatchSize) {
                 break;
             }
 
@@ -634,15 +645,44 @@ bool ParameterManager::_fillIndexBatchQueue(bool waitingParamTimeout)
                 qCDebug(ParameterManagerLog) << _logVehiclePrefix(componentId) << "Giving up on (paramIndex:" << paramIndex << "retryCount:" << _waitingReadParamIndexMap[componentId][paramIndex] << ")";
                 (void) _waitingReadParamIndexMap[componentId].remove(paramIndex);
             } else {
-                // Retry again
-                _indexBatchQueue.append(paramIndex);
-                _readParameterRaw(componentId, "", paramIndex);
-                qCDebug(ParameterManagerLog) << _logVehiclePrefix(componentId) << "Read re-request for (paramIndex:" << paramIndex << "retryCount:" << _waitingReadParamIndexMap[componentId][paramIndex] << ")";
+                // Retry again. Keep the request in the outstanding queue immediately,
+                // but pace the actual MAVLink messages through a separate send queue.
+                _indexBatchQueue.append(requestKey);
+                _indexBatchSendQueue.append(requestKey);
             }
         }
     }
 
+    if (!_indexBatchSendQueue.isEmpty() && !_indexBatchSendTimer.isActive()) {
+        _sendNextIndexBatchRequest();
+    }
+
     return (!_indexBatchQueue.isEmpty());
+}
+
+void ParameterManager::_sendNextIndexBatchRequest()
+{
+    while (!_indexBatchSendQueue.isEmpty()) {
+        const ComponentParamIndex requestKey = _indexBatchSendQueue.takeFirst();
+        const int componentId = requestKey.first;
+        const int paramIndex = requestKey.second;
+
+        // A parameter can arrive while its paced request is still queued. Skip stale
+        // requests instead of sending an unnecessary duplicate.
+        if (!_indexBatchQueue.contains(requestKey) ||
+            !_waitingReadParamIndexMap.contains(componentId) ||
+            !_waitingReadParamIndexMap[componentId].contains(paramIndex)) {
+            continue;
+        }
+
+        _readParameterRaw(componentId, "", paramIndex);
+        qCDebug(ParameterManagerLog) << _logVehiclePrefix(componentId) << "Read re-request for (paramIndex:" << paramIndex << "retryCount:" << _waitingReadParamIndexMap[componentId][paramIndex] << ")";
+
+        if (!_indexBatchSendQueue.isEmpty()) {
+            _indexBatchSendTimer.start();
+        }
+        return;
+    }
 }
 
 void ParameterManager::_waitingParamTimeout()
