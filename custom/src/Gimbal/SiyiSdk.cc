@@ -10,6 +10,7 @@
 #include "SiyiProtocol.h"
 
 #include <QtCore/QByteArray>
+#include <QtCore/QtMath>
 
 namespace {
 
@@ -35,6 +36,17 @@ void SiyiSdk::setEndpoint(const QString& host, quint16 port)
 
     _host = address;
     _port = port;
+}
+
+void SiyiSdk::setZoomRange(double minimumZoom, double maximumZoom)
+{
+    if (!qIsFinite(minimumZoom) || !qIsFinite(maximumZoom) || minimumZoom > maximumZoom) {
+        emit communicationError(tr("Invalid SIYI zoom range: %1-%2.").arg(minimumZoom).arg(maximumZoom));
+        return;
+    }
+
+    _minimumZoom = minimumZoom;
+    _maximumZoom = maximumZoom;
 }
 
 bool SiyiSdk::sendManualZoom(qint8 direction)
@@ -115,7 +127,8 @@ void SiyiSdk::_readPendingDatagrams()
         if (!decoded.valid) {
             qCDebug(SiyiSdkLog) << "Ignoring invalid SIYI datagram from"
                                 << sender.toString() << senderPort
-                                << "size" << datagram.size();
+                                << "size" << datagram.size()
+                                << "data" << datagram.toHex(' ');
             continue;
         }
 
@@ -128,13 +141,18 @@ void SiyiSdk::_readPendingDatagrams()
         }
         qCDebug(SiyiSdkLog) << "Accepted SIYI command" << static_cast<int>(decoded.command)
                             << "from" << sender.toString() << senderPort
-                            << "local UDP port" << _socket.localPort();
+                            << "local UDP port" << _socket.localPort()
+                            << "payload" << decoded.payload.toHex(' ');
 
         emit packetReceived();
         if (decoded.command == SiyiProtocol::CommandManualZoom) {
             double zoomLevel = 0.0;
             if (SiyiProtocol::parseManualZoomAckPayload(decoded.payload, &zoomLevel)) {
+                qCDebug(SiyiSdkLog) << "Decoded SIYI manual zoom ACK" << zoomLevel;
                 emit manualZoomReceived(zoomLevel);
+            } else {
+                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI manual zoom ACK payload"
+                                      << decoded.payload.toHex(' ');
             }
         } else if (decoded.command == SiyiProtocol::CommandCameraSystemInfo) {
             SiyiProtocol::CameraSystemStatus status;
@@ -153,8 +171,20 @@ void SiyiSdk::_readPendingDatagrams()
             }
         } else if (decoded.command == SiyiProtocol::CommandCurrentZoomValue) {
             double zoomLevel = 0.0;
-            if (SiyiProtocol::parseCurrentZoomPayload(decoded.payload, &zoomLevel)) {
+            bool usedLegacyTenthsEncoding = false;
+            if (SiyiProtocol::parseCurrentZoomPayload(decoded.payload,
+                                                      _minimumZoom,
+                                                      _maximumZoom,
+                                                      &zoomLevel,
+                                                      &usedLegacyTenthsEncoding)) {
+                qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel
+                                    << "encoding"
+                                    << (usedLegacyTenthsEncoding ? "little-endian tenths compatibility" : "integer plus decimal");
                 emit currentZoomReceived(zoomLevel);
+            } else {
+                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI current zoom payload"
+                                      << decoded.payload.toHex(' ')
+                                      << "accepted range" << _minimumZoom << _maximumZoom;
             }
         }
     }
@@ -181,6 +211,14 @@ bool SiyiSdk::_sendPacketTo(const QByteArray& packet, const QHostAddress& host, 
     if (written != packet.size()) {
         emit communicationError(tr("Failed to send SIYI SDK packet."));
         return false;
+    }
+
+    const auto decoded = SiyiProtocol::decodePacket(packet);
+    if (decoded.valid) {
+        qCDebug(SiyiSdkLog) << "Sent SIYI command" << static_cast<int>(decoded.command)
+                            << "to" << host.toString() << port
+                            << "local UDP port" << _socket.localPort()
+                            << "payload" << decoded.payload.toHex(' ');
     }
 
     return true;

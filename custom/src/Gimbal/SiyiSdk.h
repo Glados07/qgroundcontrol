@@ -19,6 +19,7 @@ public:
     explicit SiyiSdk(QObject* parent = nullptr);
 
     void setEndpoint(const QString& host, quint16 port);
+    void setZoomRange(double minimumZoom, double maximumZoom);
     bool sendManualZoom(qint8 direction);
     bool sendManualZoomTo(qint8 direction, const QString& host, quint16 port);
     bool sendAbsoluteZoom(double zoomLevel);
@@ -50,4 +51,6 @@ private:
     QUdpSocket _socket;
     QHostAddress _host = QHostAddress(QStringLiteral("192.168.144.25"));
     quint16 _port = 37260;
+    double _minimumZoom = 1.0;
+    double _maximumZoom = 5.5;
 };

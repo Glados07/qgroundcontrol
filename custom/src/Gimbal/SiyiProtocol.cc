@@ -99,7 +99,7 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
 
 bool SiyiProtocol::parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel)
 {
-    if (!zoomLevel || payload.size() < 2) {
+    if (!zoomLevel || payload.size() != 2) {
         return false;
     }
 
@@ -146,15 +146,46 @@ bool SiyiProtocol::parseFunctionFeedbackPayload(const QByteArray& payload, quint
     return true;
 }
 
-bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload, double* zoomLevel)
+bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload,
+                                           double minimumZoom,
+                                           double maximumZoom,
+                                           double* zoomLevel,
+                                           bool* usedLegacyTenthsEncoding)
 {
-    if (!zoomLevel || payload.size() < 2) {
+    if (usedLegacyTenthsEncoding) {
+        *usedLegacyTenthsEncoding = false;
+    }
+    if (!zoomLevel || payload.size() != 2 || !qIsFinite(minimumZoom) || !qIsFinite(maximumZoom) || minimumZoom > maximumZoom) {
         return false;
     }
 
-    const int integerPart = static_cast<quint8>(payload.at(0));
-    const int decimalPart = static_cast<quint8>(payload.at(1));
-    *zoomLevel = integerPart + (decimalPart / 10.0);
+    const quint8 firstByte = static_cast<quint8>(payload.at(0));
+    const quint8 secondByte = static_cast<quint8>(payload.at(1));
+    const auto inRange = [minimumZoom, maximumZoom](double value) {
+        return qIsFinite(value) && value >= minimumZoom && value <= maximumZoom;
+    };
+
+    // 官方 0x18 格式为“整数 byte + 一位小数 byte”。部分 A8 Mini 兼容固件可能
+    // 与 0x05 ACK 相同，以小端 uint16 的十分之一倍率返回（例如 0A 00 表示
+    // 1.0x）。只有官方候选不合法、兼容候选又落在当前相机范围内时才回退，避免
+    // 把真正的异常回包静默钳制成最大倍率。
+    const double documentedZoom = firstByte + (secondByte / 10.0);
+    if (secondByte <= 9 && inRange(documentedZoom)) {
+        *zoomLevel = documentedZoom;
+        return true;
+    }
+
+    const quint16 rawTenths = static_cast<quint16>(firstByte)
+        | (static_cast<quint16>(secondByte) << 8);
+    const double legacyZoom = rawTenths / 10.0;
+    if (!inRange(legacyZoom)) {
+        return false;
+    }
+
+    *zoomLevel = legacyZoom;
+    if (usedLegacyTenthsEncoding) {
+        *usedLegacyTenthsEncoding = true;
+    }
     return true;
 }
 

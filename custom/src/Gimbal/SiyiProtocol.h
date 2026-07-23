@@ -50,7 +50,11 @@ public:
     static bool parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel);
     static bool parseCameraSystemStatusPayload(const QByteArray& payload, CameraSystemStatus* status);
     static bool parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType);
-    static bool parseCurrentZoomPayload(const QByteArray& payload, double* zoomLevel);
+    static bool parseCurrentZoomPayload(const QByteArray& payload,
+                                        double minimumZoom,
+                                        double maximumZoom,
+                                        double* zoomLevel,
+                                        bool* usedLegacyTenthsEncoding = nullptr);
 
 private:
     static QByteArray _photoAndRecordPacket(quint8 functionType);

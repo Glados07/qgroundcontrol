@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/gimbalcontrol`
 
-最后更新：2026-07-22
+最后更新：2026-07-23
 
 ## 1. 当前开发进度
 
@@ -41,11 +41,11 @@
 ### 1.3 思翼 A8 Mini 云台控制（已集成）
 
 - 在 `custom` 中实现思翼私有 UDP SDK 和协议封装，包括帧组装、CRC16、固定为 0 的协议 sequence 字段，以及手动连续缩放0x05、相机系统状态0x0a、功能反馈0x0b、拍照/录像0x0c、绝对缩放0x0f和倍率查询0x18；当前实现没有递增命令序号。
-- 支持1.0x-5.5x绝对缩放、可配置缩放分度值、倍率范围钳制和乐观UI更新。`-`/`+`短按只按 `zoomStep` 执行一次0x0f绝对步进，长按420 ms后改用0x05启动云台原生连续缩放，松开、取消或移出按钮时发送方向0停止。
-- `GimbalControlManager` 在后台每2秒查询一次0x18当前倍率和0x0a相机状态；该探测不依赖控件可见或活动飞行器。接收端以 `QHostAddress::isEqual()`比较来源逻辑IP，兼容Qt双栈socket把IPv4回包表示成 `::ffff:x.x.x.x` 的情况；回包源端口不再作为在线硬条件，只有来源逻辑IP匹配且通过帧头、长度和CRC校验的合法SDK回包才会置 `sdkResponding=true`。1.5秒无合法回包会标记离线，但不会隐藏控制栏，也不会锁死仍可尝试发送的缩放和拍照命令。
-- 飞行界面右侧使用单个始终可见的横向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；左侧为缩放减号、当前倍率和加号，右侧为复用QGC相机图标的思翼机内拍照与录像按钮。离线时面板显示灰色状态点、倍率显示 `--`，缩放和拍照仍允许向配置endpoint尝试发送；录像0x0c属于toggle命令，必须先收到0x0a同步当前录像状态后才可操作，避免未知状态下反向切换。该栏不加载原生 `PhotoVideoControl`，因此没有原生纵向缩放滑块，命令直接走思翼UDP SDK且不要求 `activeVehicle`。
+- 支持当前项目配置范围1.0x-5.5x的绝对缩放和可配置缩放分度值。倍率状态增加 `zoomStatusKnown`：收到合法倍率前显示 `--`，短按不会用默认占位值计算绝对目标；合法0x18同时兼容官方“整数byte+小数byte”和部分固件可能返回的小端uint16十分之一格式，非法/越界数据直接拒绝，不能再静默钳制成5.5x。`-`/`+`短按只按 `zoomStep` 执行一次0x0f绝对步进，快速连点基于最新请求目标累计；长按420 ms后改用0x05启动云台原生连续缩放。
+- `GimbalControlManager` 在后台每2秒查询0x18当前倍率和0x0a相机状态，连续运动/稳定窗口内只跳过0x18；该探测不依赖控件可见或活动飞行器。接收端以 `QHostAddress::isEqual()`比较来源逻辑IP，兼容Qt双栈socket把IPv4回包表示成 `::ffff:x.x.x.x`；回包源端口不作为在线硬条件，只有来源逻辑IP匹配且通过帧头、长度和CRC校验的SDK回包才置 `sdkResponding=true`。1.5秒无合法回包会标记离线，但不会隐藏控制栏，也不会锁死仍可尝试发送的长按连续缩放和拍照命令。
+- 飞行界面右侧使用单个始终可见的横向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；左侧为缩放减号、当前倍率和加号，右侧为复用QGC相机图标的思翼机内拍照与录像按钮。离线或倍率尚未同步时面板显示灰色状态点、倍率显示 `--`；缩放按钮仍可捕获手势，但未知倍率下短按只触发0x18同步、绝不使用占位值发送0x0f，长按仍可直接尝试0x05连续缩放。取得合法倍率后，短按按实际边界和步长工作。拍照仍可向配置endpoint尝试发送；录像0x0c属于toggle命令，必须先收到0x0a同步当前录像状态后才可操作。该栏不加载原生 `PhotoVideoControl`，因此没有原生纵向缩放滑块，命令直接走思翼UDP SDK且不要求 `activeVehicle`。
 - 拍照成功只在存在本次拍照请求时由0x0b功能反馈累计本进程照片数并触发成功提示；录像按钮必须先取得0x0a录像状态，避免把“尚未同步”误当成“未录像”。0x0c录像切换没有ACK，发送后先建立目标状态和pending门控、再乐观更新UI，约400 ms后主动查询0x0a；只有与本次目标一致的状态0/1才能完成pending，延迟旧状态继续忽略，状态2/3错误立即结束，2.5秒仍未确认则重新标记unknown。0x0b只用于拍照结果、HDR结果和录像失败反馈，不能虚构录像成功反馈码。录制发生在思翼相机机内存储卡，而不是QGC本地录像支路。
-- Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。连续缩放还在离线、设置/endpoint变化、控件隐藏或销毁、进程退出时主动停止；停止始终绑定连续缩放启动时的endpoint，并采用立即双发、约250 ms双发、累计约2秒再双发后结束的有限序列。0x05回包只校正倍率，不作为无序号停止命令的确认或重发触发；另有15秒看门狗兜底，避免一次UDP丢包后云台持续变焦。
+- Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。缩放手势统一为Idle/Pressed/Holding/Consumed状态：短按只产生一次0x0f，长按只产生一次0x05方向启动，松开、取消或移出只触发一次停止动作且不会补发短按；Idle重复stop不发送网络包。一次停止动作在同一调用中紧邻发送两个0x05/0 UDP包以降低单包丢失风险，但不再保留250 ms/2秒延迟序列，因而不会在下一条绝对或连续命令之后落入旧stop。0x05 ACK不再覆盖倍率状态；连续开始即把倍率标记待确认，绝对命令或连续停止约350 ms后查询0x18，另有独立1.5秒倍率响应超时、15秒连续看门狗及各安全路径。
 - 在Fly View设置页以 `SIYI Gimbal Camera` 标题提供云台相机启用、SDK IP、SDK端口和短按缩放步长设置，并明确短按单步、长按连续以及私有UDP拍照/录像能力。
 
 ### 1.4 RTSP 与 Android H.265 视频链路（代码已集成，待真机验收）
@@ -110,7 +110,7 @@
 
 ### 1.11 custom 架构、设置和翻译（已集成）
 
-- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 104 个文件。
+- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 105 个文件。
 - 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、QML URL 拦截和 Android overlay 接入。
 - General、Fly View 和 Video 设置页均按 `src/UI/AppSettings` 文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
 - Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
@@ -131,7 +131,7 @@
 
 ## 3. custom 完整目录结构
 
-当前共 104 个文件：
+当前共 105 个文件：
 
 ```text
 custom/
@@ -235,6 +235,9 @@ custom/
         realistic_town_wgs84_map.mtl
         realistic_town_wgs84_map.obj
         textures/*.png
+  test/
+    Gimbal/
+      SiyiProtocolTest.cc
   translations/
     README.md
     custom.ts
@@ -250,7 +253,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android H.265 等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick 并定义 Google 3D 能力；翻译只导出 `custom_*.ts`，英文 `custom.ts` 模板不编译。Android configure 时把根 `android` 模板复制到 build 目录，再用 `custom/android` 同路径覆盖，校验 USB custom 标记并让 Gradle 只使用唯一合并源目录。外部 WGS84 样例目录不参与构建或安装。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android H.265 等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建还创建独立 `SiyiProtocolTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，校验USB custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
 | `custom/custom.qrc` | custom RCC运行时资源清单，共62个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、12个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。本分支新增 `GimbalCameraControl.qml` 并继续显式注册 `GimbalZoomControl.qml`；Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
@@ -290,7 +293,7 @@ custom/
 | `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View右侧中部控件容器的同路径覆盖。始终保留 `TerrainProgress`；Gimbal启用时不检查 `globals.activeVehicle`，而是始终实例化并显示明确QRC地址的 `GimbalCameraControl.qml`，SDK在线状态只决定状态点、实时倍率和录像状态是否已知，不再决定Loader尺寸、可见性或缩放/拍照发送能力。只有Gimbal关闭且存在活动飞行器时才加载原生 `PhotoVideoControl`。启用时ColumnLayout宽度取原生 `_rightPanelWidth` 与合并栏隐式宽度的较大值，Loader同时把最小尺寸固定为隐式尺寸并右对齐，86%字号或移动端最小触控尺寸不会把控制栏强制压缩。 |
 | `custom/src/FlightDisplay/GeneratorBusVoltageAlert.qml` | Fly View燃料电池母线低压提示本体。读取传入Vehicle的 `generator.busVoltage`，低于20.0 V显示告警、严格高于20.4 V清除，NaN或无Fact时隐藏；双阈值回差避免临界电压反复闪烁。它只绘制告警，加载位置和活动飞行器生命周期由 `FlyViewCustomLayer.qml` 管理。 |
 | `custom/src/FlightDisplay/GimbalCameraControl.qml` | Gimbal启用后始终显示的合并相机控制栏，不依赖飞控、活动Vehicle或SDK在线状态决定可见性。单个半透明圆角面板内用RowLayout把 `GimbalZoomControl`放左侧，以分隔线连接右侧拍照与录像按钮；图标直接复用QGC的 `camera_photo.svg` 和 `camera_video.svg`，但命令调用 `GimbalControlManager::takePhoto()/toggleVideoRecording()`，不依赖原生MAVLink相机对象。SDK离线时面板切换为灰色边框和灰色状态点，拍照按钮仍允许发送；录像状态未知或切换命令pending时按钮灰显并显示省略号，只有取得0x0a状态后才显示REC或本次会话计时并允许切换，因为录像命令是toggle语义。照片0x0b成功反馈触发绿色闪烁。该栏不实例化原生 `PhotoVideoControl`，因此不存在其纵向缩放滑块。 |
-| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 合并栏左侧的思翼缩放子控件。从Manager读取 `currentZoom` 和在线状态，显示减号、倍率、加号；离线时倍率显示 `--`，但只要Gimbal启用，缩放仍可向配置endpoint尝试发送，并继续按缓存/乐观倍率在1.0x/5.5x边界禁用对应方向。短按释放时调用 `zoomOut()/zoomIn()`执行一次配置步长的0x0f绝对缩放；按住420 ms触发 `startZoom(-1/1)`发送0x05连续缩放，释放、取消、移出、离线、隐藏或销毁时调用 `stopZoom()`发送0停止，避免长按再附带一次单步点击。后台2秒探测已移到Manager，本文件不再拥有轮询Timer。 |
+| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 合并栏左侧的思翼缩放子控件。从Manager读取 `currentZoom/zoomStatusKnown/sdkResponding`显示减号、倍率、加号；离线或倍率未知时倍率显示 `--`，按钮仍接收手势：短按由Manager只请求倍率且不发绝对命令，长按仍可尝试原生连续缩放；取得合法倍率后才按1.0x/5.5x边界限制方向。两侧MouseArea都使用Idle/Pressed/Holding/Consumed手势状态：Pressed释放调用一次 `zoomOut()/zoomIn()`；420 ms进入Holding并只调用一次 `startZoom(-1/1)`；Holding释放、取消或移出只调用一次 `stopZoom()`，外部离线、隐藏、应用退后台及Manager安全停止会消费当前手势，恢复前台/可见时清理已释放的Consumed状态，绝不再补发0x0f。当前按住的按钮在Manager状态同步变化时保持事件所有权，另一方向在连续缩放期间禁用。后台2秒探测已移到Manager。 |
 | `custom/src/FlightMap/Images/compassPointer.svg` | 罗盘条中央固定三角指针的纯矢量资源，不含角度或交互逻辑。按原生 `src/FlightMap/Images` 资源分类保存，由 `custom.qrc` 注册为 `qrc:/custom/img/compassPointer.svg`，`FlyViewCompassBar.qml` 通过 `QGCColoredImage` 加载并按当前主题文本颜色着色。 |
 
 未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
@@ -302,16 +305,17 @@ custom/
 | `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义6个Fact及约束：`enabled=true`（短描述为启用思翼云台相机控制）、数值IP `sdkHost=192.168.144.25`、`sdkPort=37260`（1-65535）、`zoomStep=1.0x`（0.1-4.5）、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`；后两项标记需重启。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`；硬解开关虽在所有平台存在，策略只在Android+GStreamer路径执行。 |
 | `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用6个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证属性名称稳定；不创建UDP socket、不发送云台命令，也不选择视频解码器。 |
 | `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现6个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
-| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。`enabled/zoomStep`来自持久化Fact；`currentZoom`、`sdkResponding`、`continuousZoomActive`、`cameraStatusKnown`、`recording`、`recordingCommandPending`、`photoCount`和 `lastError`只存在于当前进程。除原有绝对步进/查询外，还暴露 `startZoom()/stopZoom()`、`takePhoto()`、`toggleVideoRecording()`和相机状态查询，并定义1.0x-5.5x范围及对应变化信号；它不包含协议帧字节实现。 |
-| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`。启用后立即启动独立2秒周期Timer，每轮同时发0x18倍率查询和0x0a相机状态查询，合法回包置在线、1.5秒超时置离线，所以设备发现不依赖Fly View控件或活动飞行器。`sdkResponding`只表示近期是否收到合法状态回包，不等同于UDP是否允许发包；通用相机命令门控只要求enabled，因此探测暂时超时时缩放和拍照仍可重试，实际发送错误由Sdk上报。短按仍按1.0x-5.5x钳制后发0x0f并乐观更新；长按用0x05的-1/1启动、0停止。停止序列保存启动时endpoint，立即、约250 ms及累计约2秒各双发一次后确定结束，不用0x05 ACK清pending或由后台轮询无限重发；15秒看门狗以及设置变化、超时和析构路径也会安全停止。拍照只在存在pending请求时接收成功计数；录像仍要求状态已知且无命令pending，0x0c发送后先建立target/pending再发出乐观状态变化，约400 ms主动查询0x0a，仅接受与target一致的0/1，2/3立即报错，2.5秒超时则标记unknown；0x0b功能4只处理录像失败。endpoint变化会先向保存的旧endpoint启动有限停止序列，再清状态、重配并重新探测。 |
+| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。`enabled/zoomStep`来自持久化Fact；`currentZoom`、`zoomStatusKnown`、`sdkResponding`、`continuousZoomActive`、`cameraStatusKnown`、`recording`、`recordingCommandPending`、`photoCount`和 `lastError`只存在于当前进程。内部另保存最新绝对请求目标、绝对命令pending、旧倍率响应屏蔽窗口、350 ms稳定Timer和独立1.5秒倍率查询响应Timer。对QML暴露绝对步进/查询、`startZoom()/stopZoom()`、拍照、录像及状态查询，并定义当前项目1.0x-5.5x范围；它不包含协议帧字节实现。 |
+| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`。启用后立即启动2秒周期Timer，空闲且没有0x18在等待时发倍率查询，并始终发0x0a；合法协议帧置在线，SDK总响应和倍率查询分别使用1.5秒Timer，因而0x0a只能维持在线，不能掩盖0x18缺失，后台轮询也不会重启绝对命令的倍率总超时。合法倍率前 `zoomStatusKnown=false`；设备倍率必须有限且在范围内，接收路径绝不qBound。短按目标由独立requested值累计，0x0f后屏蔽在途旧倍率并约350 ms后查询0x18；只有与requested目标相符的回包才完成pending，中间值或旧值保留目标并在总超时内重查。长按用0x05的-1/1启动并立即把倍率置unknown，释放向启动时endpoint触发一次停止动作，底层同一调用紧邻双发0且任一包写入成功即可结束该动作；Idle重复stop不发包，0x05 ACK不更新倍率。连续期间和稳定窗口中的旧倍率忽略，停止后由0x18重新确认；倍率响应超时会清绝对pending并再次置unknown，不存在延迟stop干扰新命令。15秒看门狗及设置变化、超时、析构仍安全停止；拍照/录像逻辑保持不变。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明两个无对象状态的启动期适配接口：安装A8 Mini视频缺省设置，以及判断一条MAVLink消息是否应被过滤。它不创建 VideoReceiver、不连接RTSP，也不参与H.265解码。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | `CustomPlugin::init()` 每次启动调用的幂等迁移和消息策略实现。版本键 `[GimbalControl]/a8MiniVideoDefaultsVersion=4` 控制迁移：只在URL为空或旧拼写时设置A8 RTSP地址，只在A8 URL且timeout过小时提升到20秒，只在视频源为空/Disabled/No Video时选RTSP；Android仅在用户从未保存 `[Video]/lowLatencyMode` 且URL匹配时写true，已有选择不覆盖。过滤逻辑仅针对 `VIDEO_STREAM_INFORMATION`：Gimbal开启且 `mavlinkAutoVideoStream=false` 时阻止它进入原生自动视频配置，其余消息放行。 |
 | `custom/src/Gimbal/SiyiProtocol.h` | 思翼私有协议的纯静态编解码接口。定义0x05手动连续缩放、0x0a相机系统状态、0x0b功能反馈、0x0c拍照/录像、0x0f绝对倍率和0x18倍率查询，以及新旧版相机状态结构和各回包解析接口；不继承QObject，不访问网络、QSettings或UI。 |
-| `custom/src/Gimbal/SiyiProtocol.cc` | 实现 `55 66`帧头、control 0x01、小端payload长度、固定0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。0x05 payload用-1/0/1表示缩小/停止/放大，其ACK为小端uint16十分之一倍率；0x0c功能0拍照、功能2切换录像；0x0a兼容至少7字节的旧状态和带第8字节zoomLinkage的新状态；0x0b只接受官方定义的功能结果0–4并拒绝未知值；0x0f仍用整数byte+一位小数byte，0x18解析当前倍率。解码统一校验最小长度、帧头、声明长度和CRC，业务1.0x-5.5x限制仍由Manager完成。 |
-| `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明。除数值IP/端口endpoint外，提供0x05手动缩放、指定endpoint的0x05安全停止、0x0f绝对倍率、0x18倍率查询、0x0a状态查询和0x0c拍照/录像发送，并以 `manualZoomReceived`、`cameraSystemStatusReceived`、`functionFeedbackReceived`、`currentZoomReceived`及通信信号向Manager回报。它不负责业务范围、超时、安全停止或设置持久化。 |
-| `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；连续缩放停止还可显式发往Manager保存的旧endpoint，避免设置切换后的补发误投新设备。接收侧用容忍地址族转换的 `QHostAddress::isEqual()`匹配来源逻辑IP，兼容Qt双栈socket把IPv4来源报告为IPv4-mapped IPv6；请求目标端口37260不再被错误当成回包必须使用的源端口，代理/NAT改变源端口时只写debug日志。来源IP匹配且帧头、长度和CRC全部合法后才发出 `packetReceived`；其他主机或损坏数据仍不能把Manager误标为在线。`gcs.custom.gimbal.sdk`日志分类会记录意外主机、无效帧、不同回包源端口和成功接收的命令。随后按0x05/0x0a/0x0b/0x18分别解析连续缩放倍率、录制状态、功能反馈和当前倍率；短写、空包或无效endpoint通过 `communicationError`交给Manager。 |
+| `custom/src/Gimbal/SiyiProtocol.cc` | 实现 `55 66`帧头、control 0x01、小端payload长度、固定0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。0x05 payload用-1/0/1表示缩小/停止/放大，其ACK严格按2字节小端uint16十分之一解析；0x0c功能0拍照、功能2切换录像；0x0a兼容至少7字节旧状态和带第8字节zoomLinkage的新状态；0x0b只接受结果0–4；0x0f使用整数byte+一位小数byte。0x18要求恰好2字节，先尝试官方整数+一位小数且小数字节0–9、结果在Sdk传入范围内；只有官方候选非法时才尝试小端uint16十分之一兼容格式，两者都非法则拒绝，绝不钳制到边界。 |
+| `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明。除数值IP/端口endpoint和Manager下发的倍率有效范围外，提供0x05手动缩放、指定endpoint的0x05安全停止、0x0f绝对倍率、0x18倍率查询、0x0a状态查询和0x0c拍照/录像发送，并以 `manualZoomReceived`、`cameraSystemStatusReceived`、`functionFeedbackReceived`、`currentZoomReceived`及通信信号向Manager回报。它不负责超时、手势状态或设置持久化。 |
+| `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；连续缩放停止可显式发往Manager保存的旧endpoint。接收侧用 `QHostAddress::isEqual()`匹配逻辑IP，不把37260错误作为回包源端口硬条件；来源IP、帧头、长度、CRC合法后才发出 `packetReceived`。`gcs.custom.gimbal.sdk`现在为每个收发命令记录command、endpoint、本地端口和payload十六进制，并记录0x18最终采用官方或兼容编码；无法按任一格式得到范围内倍率时输出 `Rejected invalid SIYI current zoom payload` warning而不向Manager发送倍率。随后按0x05/0x0a/0x0b/0x18解析对应回包；空包、短写或无效endpoint通过 `communicationError`交给Manager。 |
+| `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议回归用例。校验0x05放大/停止/缩小、0x0f绝对倍率和0x18查询的完整CRC向量；同时覆盖官方 `01 00 -> 1.0x`、兼容 `0A 00 -> 1.0x`、官方/兼容5.5x、非法小数、越界、短包、长包及0x05 ACK严格长度，防止“非法值被钳成5.5”回归。只在桌面 `QGC_BUILD_TESTING`构建注册，并提供 `check_siyi_protocol`独立运行目标，不进入Android/iOS应用。 |
 
-云台相机完整调用链为：`GimbalControlSettings`保存endpoint/步长/开关 -> `GimbalControlManager`在后台每2秒发0x18+0x0a并维护在线、录像pending及绑定endpoint的有限安全停止状态 -> `FlyViewTopRightColumnLayout.qml`在Gimbal启用后始终显示 `GimbalCameraControl.qml`，用 `sdkResponding`切换状态点和实时倍率显示，但不锁死缩放/拍照发送 -> 左侧 `GimbalZoomControl.qml`把短按映射为0x0f、长按映射为0x05的启动/停止，右侧拍照/录像映射为0x0c，其中录像在0x0a状态已知后才允许toggle -> `SiyiSdk`收发UDP、按逻辑IP与协议完整性过滤来源，也可把停止包发往保存的旧endpoint -> `SiyiProtocol`组帧、CRC和解析0x05/0x0a/0x0b/0x0c/0x0f/0x18 -> 回包沿 `SiyiSdk -> Manager -> QML`校正倍率、照片反馈和录像状态。整条私有控制链不经过Vehicle、MAVLink或RTSP；没有飞控和云台时控制栏仍显示，RTSP视频是否正常也不能证明独立的UDP SDK已收到回包。
+云台相机完整调用链为：`GimbalControlSettings`保存endpoint/步长/开关 -> `GimbalControlManager`后台探测并维护在线、`zoomStatusKnown`、绝对目标/稳定窗口、连续手势和录像pending -> `FlyViewTopRightColumnLayout.qml`在Gimbal启用后始终显示 `GimbalCameraControl.qml` -> 左侧 `GimbalZoomControl.qml`把Pressed释放映射为单个0x0f、Holding映射为单个0x05启动/停止，右侧拍照/录像映射为0x0c -> `SiyiSdk`收发UDP、记录原始payload并按逻辑IP与协议完整性过滤来源 -> `SiyiProtocol`组帧、CRC并对0x18执行有范围约束的官方/兼容解码 -> 合法回包沿 `SiyiSdk -> Manager -> QML`确认倍率、照片反馈和录像状态。整条私有控制链不经过Vehicle、MAVLink或RTSP；没有飞控和云台时控制栏仍显示，RTSP视频正常也不能证明独立UDP SDK已收到回包。
 
 ### 4.6 Android 视频解码策略
 
@@ -566,9 +570,9 @@ QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay�
 | `mavlinkAutoVideoStream` | bool / `false` | 是否接受 MAVLink 相机流 URI 并允许其锁定视频源。修改后重启 QGC。 |
 | `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。注册 `hvc1 -> byte-stream/au` 适配器并优先真实厂商 MediaCodec H.265 硬解；无可用硬解时保留软件回退。修改后重启 QGC。 |
 
-Gimbal启用后，Manager即使不在Fly View也会每2秒向 `sdkHost:sdkPort`发送0x18倍率和0x0a相机状态查询；Fly View右侧的合并栏则不再等待探测结果，无论是否连接飞控或云台都立即显示。只有来源逻辑IP匹配配置endpoint、并通过帧头、长度和CRC校验的SDK帧，`sdkResponding`才变为true并把灰色状态点切为绿色；逻辑IP比较兼容IPv4与 `::ffff:IPv4` 表示，回包源端口不同不会单独导致丢包。1.5秒无合法回包只回到离线外观和未知实时倍率，不隐藏控制栏，也不禁止缩放/拍照向配置endpoint重试；录像必须先取得0x0a状态，因为0x0c是切换而非显式开始/停止命令。合并栏视觉上复用QGC相机图标，但不使用原生 `PhotoVideoControl`、MAVLink相机对象或其纵向缩放滑块。
+Gimbal启用后，Manager即使不在Fly View也会每2秒向 `sdkHost:sdkPort`探测：空闲且没有0x18在等待时发送倍率查询，每轮发送0x0a相机状态查询；连续缩放、350 ms稳定窗口或已有倍率查询在途时跳过周期0x18，避免旧倍率污染新目标或重启专用总超时，但0x0a探测继续。Fly View右侧合并栏不等待探测结果，无论是否连接飞控或云台都立即显示。只有来源逻辑IP匹配配置endpoint、并通过帧头、长度和CRC校验的SDK帧，`sdkResponding`才变为true并把状态点切绿；倍率还必须通过格式和范围校验才令 `zoomStatusKnown=true`。1.5秒无合法回包回到离线外观和未知倍率，不隐藏控制栏；倍率未知时短按只请求0x18且不发0x0f，长按连续缩放和拍照仍可向endpoint重试。录像必须先取得0x0a状态，因为0x0c是toggle。合并栏不使用原生 `PhotoVideoControl`、MAVLink相机对象或纵向缩放滑块。
 
-0x05连续缩放使用-1/1启动、0停止；QML在松开、取消、指针移出、离线、隐藏或销毁时停止，Manager还会在设置/endpoint变化、SDK超时、析构及15秒安全看门狗触发时启动有限停止序列。停止始终发往本次连续缩放保存的endpoint，固定在立即、约250 ms和累计约2秒各双发一次；0x05 ACK只校正倍率，不能确认某一个无序号的启动/停止请求。0x0c拍照/录像不带直接ACK：照片结果由0x0b功能反馈确认；录像先建立target/pending门控再乐观切换，约400 ms后主动查询0x0a，仅与target一致的0/1才确认，旧状态继续等待，2/3立即报错，2.5秒无结果标记unknown；0x0b功能4只报告录像失败。照片和录像写入思翼相机机内存储，不等同于QGC本地保存RTSP码流。
+0x05连续缩放使用-1/1启动、0停止；QML在松开、取消、指针移出、离线、隐藏或销毁时结束Holding，Manager还会在设置/endpoint变化、SDK超时、析构及15秒看门狗触发时安全停止。每次长按只发一个方向启动，每次有效结束只触发一次停止动作；传输层在同一调用内紧邻双发0，Idle重复stop无输出，也不存在250 ms/2秒延迟stop。0x05 ACK只证明协议通信，不覆盖倍率；连续开始即置 `zoomStatusKnown=false`，停止后约350 ms通过0x18同步，短按0x0f同样等稳定后查询并屏蔽旧0x18。倍率查询有独立1.5秒超时，不能被0x0a或0x0f回包清除。0x0c拍照/录像不带直接ACK：照片由0x0b确认；录像约400 ms查询0x0a并仅接受目标一致状态，2.5秒无结果标记unknown。
 
 RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一定为 H.264；QGC 依据 RTSP SDP 中的 `H264`/`H265` 编码声明组建管线。Android 策略只过滤 `video/x-h265` decoder，不修改 H.264 decoder rank。
 
@@ -591,8 +595,8 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 1. 电脑或遥控器网口连接A8 Mini，确认可访问 `192.168.144.25`；私有相机控制无需连接飞控，也无需等待QGC出现活动Vehicle。
 2. Application Settings -> Fly View -> SIYI Gimbal Camera 中确认IP、端口、短按分度值和Enabled；页面说明应包含私有UDP缩放/拍照/录像及“短按单步、长按连续”。
 3. Application Settings -> Video -> Video Stream Integration 中选择是否使用 MAVLink 自动视频流；Android 设备确认 H.265 硬解开关开启，然后重启 QGC。
-4. 返回Fly View。只要Gimbal Enabled，右侧单个合并栏就应立即显示，不要求飞控或云台已连接；尚未收到合法SDK回包时状态点为灰色、倍率显示 `--`，但缩放和拍照仍可尝试发送。录像按钮在0x0a状态未知时保持灰显并显示 `...`；收到合法状态后状态点变绿、倍率和录像状态自动更新，不需要重新进入页面。
-5. 短按 `+`/`-` 在1.0x-5.5x内按 `zoomStep`单步调整；按住约420 ms后开始连续放大/缩小，松手或移出按钮必须立即停止。倍率由0x05/0x18回包校正。
+4. 返回Fly View。只要Gimbal Enabled，右侧单个合并栏就应立即显示，不要求飞控或云台已连接；尚未收到合法SDK回包时状态点为灰色、倍率显示 `--`。此时短按缩放按钮只发起倍率同步、不发送绝对倍率，长按和拍照仍可尝试向endpoint发送；合法0x18把 `zoomStatusKnown`置true后，短按才按实际倍率与边界执行。录像按钮在0x0a状态未知时灰显并显示 `...`，合法状态到达后自动更新。
+5. 短按 `+`/`-` 在当前项目1.0x-5.5x范围内按 `zoomStep`单步调整；快速连续短按应按最新requested目标依次累计。按住约420 ms后开始连续放大/缩小，松手或移出必须立即停止；长按不附带短按，释放后约350 ms由0x18校正倍率，0x05 ACK不直接更新UI。
 6. 使用右侧相机图标拍照；录像状态尚未同步或一次切换命令仍在pending时，REC按钮灰显并显示 `...`。发送切换后约400 ms主动查询0x0a，只有与本次开始/停止目标一致的状态才允许再次操作；延迟旧状态会继续等待，2.5秒未确认则回到unknown并重新同步。照片成功有绿色闪烁，录像期间显示本次会话计时；录像最终状态以0x0a为准，0x0b只补充失败反馈。
 7. 在没有飞控的纯云台场景验证缩放、拍照、录像均可用；随后连接或断开飞控，控制栏不应消失或切换后端。只有关闭Gimbal设置时，有活动飞行器才恢复原生 `PhotoVideoControl`。
 
@@ -711,10 +715,10 @@ QGCApplication
      -> FlyViewCustomSettings（FlyView/showHeadingCompassBar）
      -> GimbalControlSettings / GimbalControlManager
         -> enabled时立即启动后台2秒探测，不依赖activeVehicle或QML可见
-        -> 每轮发送0x18倍率查询和0x0a相机状态查询
-        -> 来源逻辑IP匹配且帧校验合法的回包置sdkResponding，1.5秒超时置离线
-        -> sdkResponding只表达近期回包状态，不阻断缩放和拍照发包
-        -> 维护连续缩放、机内录像、照片反馈和安全停止状态
+        -> 空闲且没有倍率查询在途时发送0x18，每轮都发送0x0a相机状态查询
+        -> 来源逻辑IP匹配且帧校验合法的回包置sdkResponding，倍率另经格式/范围校验置zoomStatusKnown
+        -> sdkResponding只表达近期回包；倍率未知时短按只查询，长按0x05和拍照仍可尝试
+        -> 维护requested倍率/350ms稳定同步、单次连续启停、机内录像和照片反馈状态
      -> AndroidVideoDecoderPolicy::apply()
         -> 枚举并预检 byte-stream/au 厂商 amcviddec-*
         -> 注册高 rank qgcandroidh265hwdec
@@ -830,13 +834,15 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
 4. 3D 图标白色，2D/3D 可往返切换。
 5. 本地 OSM、外部 OBJ/glTF/GLB 和可选 Google 3D 正常加载。
 6. 验证云台在线发现与飞控解耦：
-   - Gimbal Enabled但飞控和云台都未接入时，合并栏仍必须立即显示并占用完整布局尺寸；Manager继续在后台每2秒发送0x18和0x0a，状态点灰显、倍率显示 `--`。缩放与拍照保持可尝试发送（缩放方向仍受1.0x/5.5x缓存边界约束），录像因状态未知保持 `...` 和禁用。错误来源逻辑IP、短包、错误帧头/长度/CRC都不能把 `sdkResponding`置true。
+   - Gimbal Enabled但飞控和云台都未接入时，合并栏仍必须立即显示并占用完整布局尺寸；Manager继续在后台探测，状态点灰显、倍率显示 `--`。缩放短按不得发送0x0f，只允许触发0x18查询；长按可尝试发送一个0x05方向命令并在释放时停止，拍照仍可尝试发送，录像保持 `...` 和禁用。错误来源逻辑IP、短包、错误帧头/长度/CRC都不能把 `sdkResponding`置true。
    - 用测试socket分别回送原生IPv4来源和IPv4-mapped IPv6来源，二者表示同一配置IP时都必须通过来源检查；同IP但回包源端口不同且CRC合法时也必须接受。真正不同的来源IP仍须丢弃，并可在 `gcs.custom.gimbal.sdk` debug日志中看到原因。
    - 只连接A8 Mini网络和私有SDK、完全不连接飞控时，合法回包必须把状态点切为绿色并恢复实时倍率与机内录像状态；连接或断开飞控不得影响控制栏可见性和后端选择。
-   - 云台断线超过1.5秒时合并栏不得消失，只将录像状态标记为unknown、状态点变灰且倍率显示 `--`；缩放和拍照仍允许重试，录像继续禁用。若此前正在连续缩放，Manager仍须向启动时保存的endpoint完成有限停止序列。重新接入后无需进入设置页或重启即可恢复状态同步。
+   - 云台断线超过1.5秒时合并栏不得消失，只将倍率/录像状态标记unknown、状态点变灰且倍率显示 `--`；缩放短按只查询、长按与拍照仍允许重试，录像保持禁用。若此前正在连续缩放，Manager须向启动时保存的endpoint尝试发送一次停止动作。重新接入后无需进入设置页或重启即可恢复状态同步。
 7. 验证合并控制栏的输入、安全、相机状态和布局：
-   - `-`/`+`短按只发送一次按 `zoomStep`计算的0x0f，释放不得重复触发；按住420 ms后发送0x05的-1/1，松开、取消、移出、控件隐藏/销毁、SDK离线、endpoint/Enabled变化和应用退出都必须发送或尝试发送0停止。抓包应看到启动时endpoint收到立即双发、约250 ms双发和累计约2秒再次双发，随后必须停止重发；0x05 ACK不得触发额外停止风暴，15秒看门狗必须能兜底。
-   - 连续缩放结束后0x05 ACK或0x18应校正倍率；在1.0x和5.5x边界禁用对应方向，不得继续发无效命令。抓包确认短按使用0x0f、长按使用0x05，而不是以高频绝对步进伪造连续缩放。
+   - 先验证0x18官方 `01 00` 和兼容 `0A 00` 都显示1.0x；`FF FF`、非法小数字节、短/长payload不得改变倍率或被钳成5.5x。`gcs.custom.gimbal.sdk`日志必须打印原始payload及选择的编码，非法数据打印明确拒绝原因。首次合法倍率前 `zoomStatusKnown=false`、UI为 `--`，短按不得发送0x0f。
+   - `-`/`+`短按只发送一次按 `zoomStep`计算的0x0f，释放不得重复触发；快速点击 `+++` 必须按requested目标产生连续递增目标，旧0x18不能把基准回退。0x0f后约350 ms才查询0x18，稳定窗口内的旧值必须忽略。
+   - 按住420 ms后只发送一个0x05的-1/1，连续开始后倍率立即显示 `--`；松开、取消、移出、控件隐藏/销毁、SDK离线、endpoint/Enabled变化和应用退出只触发一次停止动作，抓包可见同一时刻紧邻的两个0。停止后的250 ms及2秒不能再出现旧stop；Idle调用stop不发包，释放后立即短按时0x0f之后绝不能再落入0x05/0。0x05 ACK不得覆盖requested/current，15秒看门狗必须兜底。
+   - 连续缩放结束约350 ms后由0x18校正倍率；在1.0x和5.5x边界禁用对应方向。抓包确认短按使用0x0f、长按使用0x05，不以高频绝对步进伪造连续缩放，也不交换官方方向符号。
    - 拍照按钮发送0x0c功能0，只有存在pending拍照请求时成功0x0b反馈才触发绿色提示并递增照片数；录像状态未同步或命令pending时按钮必须灰显且不能再次发送toggle。状态已知后发送0x0c功能2，必须先建立target/pending门控再发出乐观状态变化；约400 ms后发送0x0a查询，命令前在途旧状态及与target不一致的0/1不得完成pending，2/3立即报错，2.5秒未确认回到unknown。分别覆盖正常开始/停止、同步信号重入、快速连点、无存储卡状态2、录像数据丢失状态3及0x0b功能4失败；0x0b大于4的未知值必须在Protocol层拒绝，不能上报为业务反馈或当成录像成功。
    - 合并栏必须保持“左侧缩放、右侧拍照/录像”的单栏结构，使用QGC相机图标且不出现原生纵向缩放滑块。Gimbal启用时右侧Column宽度必须始终随控制栏隐式宽度扩展，而不是在离线时缩为0或把Loader压回固定30字宽；在Android 86%/100%、桌面、横竖屏、地图/视频主窗口、PIP、Viewer3D和小屏触摸场景检查不裁切、不重叠、按钮达到移动端最小触控尺寸。
    - Gimbal Disabled且存在活动飞行器时恢复原生 `PhotoVideoControl`；关闭时没有活动飞行器则不加载原生控件。Gimbal Enabled但离线时仍显示私有合并栏，以灰色状态明确离线，不得用原生控件替换或把整栏隐藏。
@@ -896,9 +902,9 @@ adb logcat -v threadtime | grep -Ei \
 
 运行日志出现 `GimbalCameraControl is not a type`、`GimbalZoomControl is not a type` 或 `Gimbal camera control failed to load`，首先检查 `custom.qrc` 是否同时注册 `QGroundControl/FlightDisplay/GimbalCameraControl.qml` 和 `GimbalZoomControl.qml`。顶层由 `FlyViewTopRightColumnLayout.qml`使用完整 `qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml`地址显式加载，缩放子控件再从同一资源目录解析；它们不加入原生FlightDisplay qmldir。新增QRC文件后必须重新构建资源，若仍命中旧缓存，应新建构建目录后重新configure，而不是修改 `src` qmldir。
 
-Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值是否确实为Enabled、`FlyViewTopRightColumnLayout.qml`和 `GimbalCameraControl.qml`是否命中custom QRC、Loader是否报错，以及是否重新构建了资源。若控制栏已显示但状态点持续灰色，再依次确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由以及2秒轮询回包；RTSP视频与私有UDP SDK是两条独立链路，视频正常不能证明0x18/0x0a已有回包。当前接收端会接受与配置地址逻辑等价的IPv4或IPv4-mapped IPv6来源，也不会把回包源端口强制为37260，但仍要求来源逻辑IP、帧头、长度和CRC合法。可开启 `gcs.custom.gimbal.sdk` debug分类查看“unexpected host”“invalid datagram”“alternate source port”或成功接收的命令。即使状态点灰色，缩放和拍照也应允许尝试发送；录像按钮显示 `...` 并禁用，直到收到0x0a同步状态。
+Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、长度和CRC合法。开启 `gcs.custom.gimbal.sdk` 后，日志会显示每个SIYI收发命令和payload十六进制；0x18还会显示 `integer plus decimal` 或 `little-endian tenths compatibility`，非法倍率显示 `Rejected invalid SIYI current zoom payload`。状态点灰色时倍率为 `--`，缩放短按只查询、长按和拍照可重试，录像保持 `...` 禁用；如果状态点已绿而倍率仍为 `--`，重点查看0x18拒绝日志。
 
-长按松手后云台仍在缩放时，抓包确认松开、取消、指针移出、控件隐藏/销毁和SDK超时路径是否发出0x05 payload 0；正常长按先在420 ms后发送-1或1，释放不会再附带0x0f单步命令。停止应向连续缩放启动时保存的endpoint立即双发、约250 ms双发并在累计约2秒再次双发，之后结束；0x05 ACK不带方向/命令序号，只能校正倍率，不应清pending或触发更多停止包。若未发生，检查 `continuousZoomActive`、有限停止序列、endpoint变化前保存的旧地址和 `lastError`。拍照无绿色反馈或录像状态回跳时，分别检查pending拍照请求、0x0b功能反馈、0x0a `recordingStatus`、`cameraStatusKnown`、`recordingCommandPending`及保存的target；录像切换后约400 ms应发状态查询，命令前旧0x0a和与target不一致的状态不得完成pending，2.5秒超时应恢复unknown。无存储卡/数据丢失属于相机机内存储错误，不是QGC本地RTSP录像失败。
+初始镜头1.0x却显示5.5x，或点缩小反而放大时，先查看0x18原始payload：若为 `0a 00`，应记录兼容编码并解析为1.0；若两种候选都越界，应拒绝而不是显示边界值。不要交换0x05正负号：官方方向仍是1放大、-1缩小；旧实现是用错误缓存5.5计算4.5目标，真实镜头从1.0前往4.5才表现为“缩小键放大”。短按日志应只有0x0f；长按日志应是420 ms后一个0x05/`ff`或`01`，释放时紧邻两个0x05/`00`，随后约350 ms查询0x18，250 ms/2秒不能再出现停止包。若0x0a持续返回但0x18缺失，独立倍率超时仍应把显示恢复 `--`；此时短按只重查0x18，长按仍可用0x05控制。若仍持续缩放，检查手势状态、`continuousZoomActive`、启动endpoint和 `lastError`。
 
 `FlyViewCompassBar.qml` 同样不加入原生 FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 使用 `qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml` 显式加载。若设置开关存在但界面不显示，先检查 Application Messages 中的 `Fly View compass bar failed to load`，再确认 `custom.qrc` 已重新编译、存在活动飞行器且 `Vehicle.heading` 不是 NaN。
 
@@ -909,4 +915,11 @@ rg --files custom
 rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|FlyViewCustomSettings|showHeadingCompassBar|GimbalCameraControl|startZoom|takePhoto|toggleVideoRecording|CommandManualZoom|CommandCameraSystemInfo|CommandFunctionFeedback|CommandPhotoAndRecord" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
+```
+
+桌面测试构建启用 `QGC_BUILD_TESTING` 后，至少运行：
+
+```powershell
+cmake --build <desktop-build> --target check_siyi_protocol
+ctest --test-dir <desktop-build>/custom -R '^SiyiProtocolTest$' --output-on-failure
 ```
