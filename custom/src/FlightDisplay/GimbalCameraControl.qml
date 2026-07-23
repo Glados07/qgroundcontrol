@@ -64,7 +64,7 @@ Rectangle {
         border.width: 1
     }
 
-    // 常驻控制栏的连接状态提示：离线时面板和按钮灰显，但不会从布局中消失。
+    // 常驻控制栏的SDK状态提示：离线时状态点灰显，但控制栏不会从布局中消失。
     Rectangle {
         anchors.top: parent.top
         anchors.right: parent.right
@@ -134,7 +134,8 @@ Rectangle {
             color: photoMouseArea.pressed ? "#f0ffffff" : (photoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: photoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"
             border.width: 2
-            enabled: root.online
+            // UDP 命令发送能力不依赖最近一次状态探测，避免偶发回包超时锁死拍照。
+            enabled: root.available
             opacity: enabled ? 1.0 : 0.45
             scale: photoMouseArea.pressed ? 0.94 : 1.0
 
@@ -196,7 +197,8 @@ Rectangle {
                           ? "#ffff6b78"
                           : (videoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff")
             border.width: 2
-            enabled: Boolean(root.online
+            // 录像是 toggle 命令，仍需先同步当前录像状态以避免反向操作。
+            enabled: Boolean(root.available
                              && root.manager
                              && root.manager.cameraStatusKnown
                              && !root.manager.recordingCommandPending)

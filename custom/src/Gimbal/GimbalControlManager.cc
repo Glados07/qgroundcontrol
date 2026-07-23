@@ -634,10 +634,10 @@ bool GimbalControlManager::_cameraCommandAvailable()
         _setLastError(tr("SIYI gimbal camera control is disabled."));
         return false;
     }
-    if (!_sdkResponding) {
-        _setLastError(tr("The SIYI gimbal camera is not connected."));
-        return false;
-    }
+
+    // sdkResponding describes recent validated replies, not whether UDP can send.
+    // Keep zoom and photo usable across a transient probe timeout. Local send
+    // failures are still reported through SiyiSdk::communicationError.
     return true;
 }
 

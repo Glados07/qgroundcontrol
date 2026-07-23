@@ -6,9 +6,16 @@
 
 #include "SiyiSdk.h"
 
+#include "QGCLoggingCategory.h"
 #include "SiyiProtocol.h"
 
 #include <QtCore/QByteArray>
+
+namespace {
+
+QGC_LOGGING_CATEGORY(SiyiSdkLog, "gcs.custom.gimbal.sdk")
+
+} // namespace
 
 SiyiSdk::SiyiSdk(QObject* parent)
     : QObject(parent)
@@ -94,15 +101,34 @@ void SiyiSdk::_readPendingDatagrams()
         }
         datagram.resize(static_cast<int>(bytesRead));
 
-        // 只处理当前配置 endpoint 返回的数据，避免同 IP 的旧端口或其他思翼服务污染状态。
-        if (sender != _host || senderPort != _port) {
+        // A dual-stack QUdpSocket can report an IPv4 sender as IPv4-mapped IPv6
+        // (for example ::ffff:192.168.144.25). operator== uses strict conversion;
+        // isEqual uses tolerant conversion and compares the logical IP address.
+        if (!sender.isEqual(_host)) {
+            qCDebug(SiyiSdkLog) << "Ignoring SIYI datagram from unexpected host"
+                                << sender.toString() << senderPort
+                                << "configured endpoint" << _host.toString() << _port;
             continue;
         }
 
         const auto decoded = SiyiProtocol::decodePacket(datagram);
         if (!decoded.valid) {
+            qCDebug(SiyiSdkLog) << "Ignoring invalid SIYI datagram from"
+                                << sender.toString() << senderPort
+                                << "size" << datagram.size();
             continue;
         }
+
+        // 37260 is the request destination. A proxy or NAT can change the reply
+        // source port, so it cannot be an online gate. Host and CRC are still checked.
+        if (senderPort != _port) {
+            qCDebug(SiyiSdkLog) << "Accepting valid SIYI datagram from alternate source port"
+                                << sender.toString() << senderPort
+                                << "configured destination port" << _port;
+        }
+        qCDebug(SiyiSdkLog) << "Accepted SIYI command" << static_cast<int>(decoded.command)
+                            << "from" << sender.toString() << senderPort
+                            << "local UDP port" << _socket.localPort();
 
         emit packetReceived();
         if (decoded.command == SiyiProtocol::CommandManualZoom) {

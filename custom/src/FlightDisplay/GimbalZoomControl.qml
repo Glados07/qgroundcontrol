@@ -20,6 +20,7 @@ Item {
                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
 
+    readonly property bool canSend: Boolean(manager && manager.enabled)
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
@@ -69,7 +70,7 @@ Item {
             color: zoomOutMouseArea.pressed ? "#f2ffffff" : (zoomOutMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomOutMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: root.online
+            enabled: root.canSend
                      && root.zoomValue > (root.manager.minimumZoom + 0.05)
                      && (!root.manager.continuousZoomActive || zoomOutMouseArea.pressed)
             opacity: enabled ? 1.0 : 0.38
@@ -162,7 +163,7 @@ Item {
             color: zoomInMouseArea.pressed ? "#f2ffffff" : (zoomInMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomInMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: root.online
+            enabled: root.canSend
                      && root.zoomValue < (root.manager.maximumZoom - 0.05)
                      && (!root.manager.continuousZoomActive || zoomInMouseArea.pressed)
             opacity: enabled ? 1.0 : 0.38
