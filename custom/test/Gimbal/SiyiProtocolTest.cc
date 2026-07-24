@@ -236,6 +236,10 @@ void SiyiProtocolTest::pulledVideoResolutionLimits_data()
     QTest::newRow("2k") << 2560 << 1440 << 3.5;
     QTest::newRow("1080p") << 1920 << 1080 << 5.5;
     QTest::newRow("1080p-coded-height") << 1920 << 1088 << 5.5;
+    QTest::newRow("720p") << 1280 << 720 << 6.0;
+    QTest::newRow("720p-coded-height") << 1280 << 736 << 6.0;
+    QTest::newRow("4k-uhd-no-zoom") << 3840 << 2160 << 1.0;
+    QTest::newRow("4k-dci-no-zoom") << 4096 << 2160 << 1.0;
 }
 
 void SiyiProtocolTest::pulledVideoResolutionLimits()
@@ -252,9 +256,7 @@ void SiyiProtocolTest::pulledVideoResolutionLimits()
     QCOMPARE(resolvedMaximumZoom, maximumZoom);
 
     resolvedMaximumZoom = 9.9;
-    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(3840, 2160, &resolvedMaximumZoom));
-    QCOMPARE(resolvedMaximumZoom, 9.9);
-    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1280, 720, &resolvedMaximumZoom));
+    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1366, 768, &resolvedMaximumZoom));
     QCOMPARE(resolvedMaximumZoom, 9.9);
     QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(640, 480, &resolvedMaximumZoom));
     QCOMPARE(resolvedMaximumZoom, 9.9);

@@ -23,11 +23,17 @@ bool A8MiniZoomPolicy::maximumZoomForVideoResolution(quint16 width,
     }
 
     double resolvedMaximum = 0.0;
-    if (width == 2560 && height == 1440) {
+    if ((width == 3840 || width == 4096) && height == 2160) {
+        // A8 Mini在4K模式下不支持数字变焦；1.0x是已知且不可继续的边界。
+        resolvedMaximum = 1.0;
+    } else if (width == 2560 && height == 1440) {
         resolvedMaximum = 3.5;
     } else if (width == 1920 && (height == 1080 || height == 1088)) {
         // Some device decoder paths expose 1080P with an aligned coded height.
         resolvedMaximum = 5.5;
+    } else if (width == 1280 && (height == 720 || height == 736)) {
+        // Some decoder paths align 720P coded height to 16 pixels.
+        resolvedMaximum = 6.0;
     } else {
         return false;
     }

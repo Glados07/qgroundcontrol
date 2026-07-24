@@ -65,6 +65,7 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
             &SiyiSdk::absoluteZoomFeedbackReceived,
             this,
             &GimbalControlManager::_handleAbsoluteZoomFeedback);
+    connect(_sdk, &SiyiSdk::maximumZoomReceived, this, &GimbalControlManager::_handleMaximumZoom);
     connect(_sdk, &SiyiSdk::currentZoomReceived, this, &GimbalControlManager::_handleCurrentZoom);
     connect(_sdk, &SiyiSdk::cameraSystemStatusReceived, this, &GimbalControlManager::_handleCameraSystemStatus);
     connect(_sdk, &SiyiSdk::functionFeedbackReceived, this, &GimbalControlManager::_handleFunctionFeedback);
@@ -162,6 +163,7 @@ bool GimbalControlManager::zoomInAvailable() const
         && _maximumZoomKnown
         && _zoomStatusKnown
         && !_absoluteZoomPending
+        && !_stableZoomConfirmationPending
         && !_continuousZoomActive
         && A8MiniZoomPolicy::stepTarget(_currentZoom,
                                         zoomStep(),
@@ -178,6 +180,7 @@ bool GimbalControlManager::zoomOutAvailable() const
         && _maximumZoomKnown
         && _zoomStatusKnown
         && !_absoluteZoomPending
+        && !_stableZoomConfirmationPending
         && !_continuousZoomActive
         && A8MiniZoomPolicy::stepTarget(_currentZoom,
                                         zoomStep(),
@@ -507,6 +510,17 @@ void GimbalControlManager::_handleAbsoluteZoomFeedback(bool accepted)
     }
 }
 
+void GimbalControlManager::_handleMaximumZoom(double maximumZoom)
+{
+    if (!enabled() || _pulledVideoResolutionConfirmed) {
+        return;
+    }
+
+    // 0x16由设备返回“当前支持缩放范围”。它只在实际拉流尺寸尚未锁存时
+    // 作为恢复后备；一旦取得真实拉流尺寸，分辨率策略仍是最终依据。
+    _applyMaximumZoomCapability(maximumZoom, "SIYI current supported zoom range");
+}
+
 void GimbalControlManager::_handlePulledVideoSize()
 {
     _tryConfirmPulledVideoResolution();
@@ -515,15 +529,24 @@ void GimbalControlManager::_handlePulledVideoSize()
 
 void GimbalControlManager::_handleVideoDecodingChanged()
 {
+    if (_videoManager && !_videoManager->decoding()) {
+        // 新管线可能无法再次触发旧sink观察器。断流时只释放直接尺寸标记，
+        // 保留最近能力；恢复后新直接结果或稳定VideoManager尺寸均可更新上限。
+        _pulledVideoFallbackTimer.stop();
+        _videoManagerFallbackCandidate = QSize();
+        _negotiatedPulledVideoSize = QSize();
+        return;
+    }
+
     _tryConfirmPulledVideoResolution();
     _schedulePulledVideoResolutionFallback();
 }
 
 void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& videoSize)
 {
-    if (_pulledVideoResolutionConfirmed
-        || !videoSize.isValid()
-        || videoSize.isEmpty()) {
+    if (!videoSize.isValid()
+        || videoSize.isEmpty()
+        || (_videoManager && !_videoManager->decoding())) {
         return;
     }
 
@@ -531,26 +554,25 @@ void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& video
     _pulledVideoFallbackTimer.stop();
     _videoManagerFallbackCandidate = QSize();
 
-    if (_negotiatedPulledVideoSize != videoSize) {
-        _negotiatedPulledVideoSize = videoSize;
-        qCInfo(GimbalControlLog)
-            << "Observed negotiated main pulled-video resolution:"
-            << videoSize.width() << "x" << videoSize.height();
+    if (_negotiatedPulledVideoSize == videoSize) {
+        return;
     }
 
-    (void) _confirmPulledVideoResolution(
-        _negotiatedPulledVideoSize,
-        "negotiated main video sink");
+    _negotiatedPulledVideoSize = videoSize;
+    qCInfo(GimbalControlLog)
+        << "Observed negotiated main pulled-video resolution:"
+        << videoSize.width() << "x" << videoSize.height();
+
+    if (!_confirmPulledVideoResolution(_negotiatedPulledVideoSize,
+                                       "negotiated main video sink")) {
+        _invalidatePulledVideoResolutionCapability(
+            _negotiatedPulledVideoSize,
+            "unsupported negotiated main video sink");
+    }
 }
 
 void GimbalControlManager::_tryConfirmPulledVideoResolution()
 {
-    // 本应用会话只确认一次实际拉流规格。用户场景固定为1080P或2K，
-    // 断流/重连不再反复清空能力，也不会被VideoManager的瞬态尺寸扰动。
-    if (_pulledVideoResolutionConfirmed) {
-        return;
-    }
-
 #ifdef QGC_GST_STREAMING
     // GstVideoReceiver启动阶段的query_caps不是最终协商值。GStreamer构建
     // 此入口优先处理显示sink依据最终GstVideoInfo报告的可信尺寸；
@@ -566,9 +588,14 @@ void GimbalControlManager::_tryConfirmPulledVideoResolution()
     if (!_videoManager || !_videoManager->decoding()) {
         return;
     }
-    (void) _confirmPulledVideoResolution(
-        _videoManager->videoSize(),
-        "VideoManager");
+    const QSize videoSize = _videoManager->videoSize();
+    if (videoSize.isValid()
+        && !videoSize.isEmpty()
+        && !_confirmPulledVideoResolution(videoSize, "VideoManager")) {
+        _invalidatePulledVideoResolutionCapability(
+            videoSize,
+            "unsupported VideoManager resolution");
+    }
 #endif
 }
 
@@ -577,8 +604,7 @@ void GimbalControlManager::_schedulePulledVideoResolutionFallback()
 #ifdef QGC_GST_STREAMING
     // 某些平台能正常显示视频并更新VideoManager，但显示sink的两个custom观察器
     // 没有回调。只有尚无任何直接观察结果时，才把稳定的VideoManager尺寸作为兜底。
-    if (_pulledVideoResolutionConfirmed
-        || _negotiatedPulledVideoSize.isValid()
+    if (_negotiatedPulledVideoSize.isValid()
         || !_videoManager
         || !_videoManager->decoding()) {
         _pulledVideoFallbackTimer.stop();
@@ -601,6 +627,12 @@ void GimbalControlManager::_schedulePulledVideoResolutionFallback()
         _videoManagerFallbackCandidate = QSize();
         return;
     }
+    if (_pulledVideoResolutionConfirmed
+        && qAbs(_maximumZoom - maximumZoom) <= kZoomComparisonTolerance) {
+        _pulledVideoFallbackTimer.stop();
+        _videoManagerFallbackCandidate = QSize();
+        return;
+    }
 
     if (_videoManagerFallbackCandidate == videoSize
         && _pulledVideoFallbackTimer.isActive()) {
@@ -618,8 +650,7 @@ void GimbalControlManager::_schedulePulledVideoResolutionFallback()
 void GimbalControlManager::_tryConfirmPulledVideoResolutionFallback()
 {
 #ifdef QGC_GST_STREAMING
-    if (_pulledVideoResolutionConfirmed
-        || _negotiatedPulledVideoSize.isValid()
+    if (_negotiatedPulledVideoSize.isValid()
         || !_videoManager
         || !_videoManager->decoding()) {
         _videoManagerFallbackCandidate = QSize();
@@ -640,14 +671,86 @@ void GimbalControlManager::_tryConfirmPulledVideoResolutionFallback()
 #endif
 }
 
+void GimbalControlManager::_invalidatePulledVideoResolutionCapability(
+    const QSize& videoSize,
+    const char* sourceDescription)
+{
+    if (!_pulledVideoResolutionConfirmed) {
+        return;
+    }
+
+    // 新的直接协商尺寸比旧能力可信。未知尺寸不能继续沿用旧上限；
+    // 立即退回0x16设备范围后备，并在得到新能力后重新双确认实际倍率。
+    _pulledVideoResolutionConfirmed = false;
+    _stopContinuousZoom();
+    _sdkResponseTimer.stop();
+    _zoomSyncTimer.stop();
+    _zoomOperationTimer.stop();
+    _cancelOutstandingZoomQuery();
+    _zoomResponseBlocked = false;
+    _absoluteZoomPending = false;
+    _absoluteZoomMatchCount = 0;
+    _requestedZoom = _currentZoom;
+    _resetMaximumZoomCapability();
+    _setZoomStatusKnown(false);
+    qCWarning(GimbalControlLog)
+        << "Released stale pulled-video zoom capability after" << sourceDescription
+        << videoSize.width() << "x" << videoSize.height()
+        << "- requesting SIYI current supported zoom range";
+    if (enabled()) {
+        _configureSdkEndpoint();
+        (void) _sdk->requestMaximumZoom();
+    }
+}
+
+void GimbalControlManager::_applyMaximumZoomCapability(
+    double maximumZoom,
+    const char* sourceDescription)
+{
+    if (!qIsFinite(maximumZoom)
+        || maximumZoom < kMinZoom
+        || maximumZoom > kProtocolMaxZoom) {
+        return;
+    }
+
+    const double normalizedMaximum =
+        qRound(qBound(kMinZoom, maximumZoom, kProtocolMaxZoom) * 10.0) / 10.0;
+    const bool capabilityChanged = !_maximumZoomKnown
+        || qAbs(_maximumZoom - normalizedMaximum) > kZoomComparisonTolerance;
+
+    _setMaximumZoom(normalizedMaximum);
+    _setMaximumZoomKnown(true);
+    if (!capabilityChanged) {
+        return;
+    }
+
+    // 能力来源恢复或上限改变后，先取得两份一致的合法0x18实际倍率。
+    // 用户发出的绝对目标同样要求两次命中，不能用命令目标更新显示。
+    _stopContinuousZoom();
+    _sdkResponseTimer.stop();
+    _zoomSyncTimer.stop();
+    _zoomOperationTimer.stop();
+    _cancelOutstandingZoomQuery();
+    _zoomResponseBlocked = false;
+    _absoluteZoomPending = false;
+    _absoluteZoomMatchCount = 0;
+    _requestedZoom = _currentZoom;
+    _beginStableZoomConfirmation(true, 0);
+    _setZoomStatusKnown(false);
+    qCInfo(GimbalControlLog)
+        << "Activated SIYI zoom capability from" << sourceDescription
+        << "maximum zoom" << normalizedMaximum;
+    if (enabled()) {
+        _cancelOutstandingZoomQuery();
+        _zoomOperationTimer.start();
+        _scheduleZoomSync();
+    }
+}
+
 bool GimbalControlManager::_confirmPulledVideoResolution(
     const QSize& videoSize,
     const char* sourceDescription)
 {
-    if (_pulledVideoResolutionConfirmed) {
-        return true;
-    }
-
     const bool sizeAvailable = videoSize.isValid()
         && !videoSize.isEmpty()
         && videoSize.width() <= std::numeric_limits<quint16>::max()
@@ -669,28 +772,31 @@ bool GimbalControlManager::_confirmPulledVideoResolution(
                 << "Ignoring unsupported pulled video resolution"
                 << width << "x" << height
                 << "from" << sourceDescription
-                << "- waiting for negotiated 1920x1080/1920x1088 or 2560x1440 video";
+                << "- waiting for negotiated 1280x720/736, 1920x1080/1088,"
+                   " 2560x1440, or 3840/4096x2160 video";
         }
         return false;
     }
 
+    const bool capabilityChanged = !_pulledVideoResolutionConfirmed
+        || qAbs(_maximumZoom - maximumZoom) > kZoomComparisonTolerance;
+    if (!capabilityChanged) {
+        return true;
+    }
+
+    const bool replacingConfirmedResolution = _pulledVideoResolutionConfirmed;
     _lastRejectedPulledVideoSize = QSize();
     _pulledVideoFallbackTimer.stop();
     _videoManagerFallbackCandidate = QSize();
     _pulledVideoResolutionConfirmed = true;
-    _setMaximumZoom(maximumZoom);
-    _setMaximumZoomKnown(true);
-    _beginStableZoomConfirmation(true, 0);
+    _applyMaximumZoomCapability(maximumZoom, sourceDescription);
     qCInfo(GimbalControlLog)
-        << "Latched pulled video resolution for this application session:"
+        << (replacingConfirmedResolution
+                ? "Updated pulled video resolution:"
+                : "Latched pulled video resolution:")
         << width << "x" << height
         << "source" << sourceDescription
         << "maximum zoom" << maximumZoom;
-    if (enabled()) {
-        _cancelOutstandingZoomQuery();
-        _zoomOperationTimer.start();
-        _scheduleZoomSync();
-    }
     return true;
 }
 
@@ -764,7 +870,7 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
     }
 
     if (zoomLevel > _maximumZoom + 0.05) {
-        // 2K首次锁存时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
+        // 拉流上限降低时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
         // 回真实拉流上限；过程中始终显示unknown，不公开超限或运动中间值。
         if (!_stableZoomConfirmationPending
             || !_stableZoomCandidateValid
@@ -1024,7 +1130,13 @@ void GimbalControlManager::_pollSdk()
     _tryConfirmPulledVideoResolution();
     _schedulePulledVideoResolutionFallback();
 
-    // 倍率上限只来自首次确认的实际拉流尺寸，Manager不再查询0x16。
+    // 实际拉流尺寸是首选能力来源；在尺寸链尚未成功时持续查询设备当前
+    // 支持范围，避免“视频正常但尺寸观察器未回调”永久阻断0x18和控件。
+    if (!_pulledVideoResolutionConfirmed) {
+        _configureSdkEndpoint();
+        (void) _sdk->requestMaximumZoom();
+    }
+
     // 有绝对目标、稳定值确认或长按重复步骤时，由专用同步定时器串行查询。
     const bool shouldRequestZoom = _maximumZoomKnown
         && !_continuousZoomActive
@@ -1303,8 +1415,8 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
 
 void GimbalControlManager::_resetMaximumZoomCapability()
 {
-    // 分辨率在Manager生命周期内只锁存一次；SDK禁用、超时或RTSP短暂重连
-    // 都不能把固定1080P/2K能力清掉并重新引入另一套上限。
+    // 短暂SDK超时或RTSP重连保留最近确认的拉流能力；新的受支持协商
+    // 尺寸会显式替换它，新的不支持尺寸则释放它并回到0x16后备。
     _setMaximumZoomKnown(_pulledVideoResolutionConfirmed);
     if (!_maximumZoomKnown) {
         _setMaximumZoom(kDefaultMaxZoom);

@@ -88,6 +88,7 @@ private slots:
     void _settingsChanged();
     void _handleZoomStepChanged();
     void _handleAbsoluteZoomFeedback(bool accepted);
+    void _handleMaximumZoom(double maximumZoom);
     void _handleCurrentZoom(double zoomLevel);
     void _handlePulledVideoSize();
     void _handleVideoDecodingChanged();
@@ -122,6 +123,10 @@ private:
     void _tryConfirmPulledVideoResolution();
     void _schedulePulledVideoResolutionFallback();
     void _tryConfirmPulledVideoResolutionFallback();
+    void _invalidatePulledVideoResolutionCapability(const QSize& videoSize,
+                                                    const char* sourceDescription);
+    void _applyMaximumZoomCapability(double maximumZoom,
+                                     const char* sourceDescription);
     bool _confirmPulledVideoResolution(const QSize& videoSize,
                                        const char* sourceDescription);
     void _scheduleZoomSync();
