@@ -15,6 +15,7 @@
 #include "QGCLoggingCategory.h"
 #include "Settings/FlyViewCustomSettings.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
+#include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/CustomViewer3DManager.h"
 #include "Viewer3D/Viewer3DSettings.h"
@@ -224,6 +225,13 @@ QQmlApplicationEngine *CustomPlugin::createQmlApplicationEngine(QObject *parent)
     _qmlEngine->addUrlInterceptor(_selector);
 
     return _qmlEngine;
+}
+
+void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
+{
+    void *sink = QGCCorePlugin::createVideoSink(widget, parent);
+    (void) PulledVideoResolutionProbe::install(sink, parent);
+    return sink;
 }
 
 CustomOverrideInterceptor::CustomOverrideInterceptor()

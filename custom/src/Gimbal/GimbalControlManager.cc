@@ -533,13 +533,17 @@ void GimbalControlManager::_tryConfirmPulledVideoResolution()
     if (!A8MiniZoomPolicy::maximumZoomForVideoResolution(width,
                                                          height,
                                                          &maximumZoom)) {
-        qCWarning(GimbalControlLog)
-            << "Ignoring unsupported pulled video resolution"
-            << width << "x" << height
-            << "- waiting for decoded 1920x1080 or 2560x1440 video";
+        if (_lastRejectedPulledVideoSize != videoSize) {
+            _lastRejectedPulledVideoSize = videoSize;
+            qCWarning(GimbalControlLog)
+                << "Ignoring unsupported pulled video resolution"
+                << width << "x" << height
+                << "- waiting for negotiated 1920x1080/1920x1088 or 2560x1440 video";
+        }
         return;
     }
 
+    _lastRejectedPulledVideoSize = QSize();
     _pulledVideoResolutionConfirmed = true;
     _maximumZoomKnown = true;
     _setMaximumZoom(maximumZoom);
@@ -879,6 +883,10 @@ void GimbalControlManager::_pollSdk()
     if (!enabled()) {
         return;
     }
+
+    // Signals are the primary path. This retry also covers a receiver which had
+    // already published its negotiated size before this manager was initialized.
+    _tryConfirmPulledVideoResolution();
 
     // 倍率上限只来自首次确认的实际拉流尺寸，Manager不再查询0x16。
     // 有绝对目标、稳定值确认或长按重复步骤时，由专用同步定时器串行查询。

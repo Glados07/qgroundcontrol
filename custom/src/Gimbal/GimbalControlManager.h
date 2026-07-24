@@ -8,6 +8,7 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QSize>
 #include <QtCore/QTimer>
 
 class Fact;
@@ -154,6 +155,7 @@ private:
     bool _sdkResponding = false;
     bool _maximumZoomKnown = false;
     bool _pulledVideoResolutionConfirmed = false;
+    QSize _lastRejectedPulledVideoSize;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;
     bool _zoomQueryOutstanding = false;

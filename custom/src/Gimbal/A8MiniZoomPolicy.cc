@@ -25,7 +25,8 @@ bool A8MiniZoomPolicy::maximumZoomForVideoResolution(quint16 width,
     double resolvedMaximum = 0.0;
     if (width == 2560 && height == 1440) {
         resolvedMaximum = 3.5;
-    } else if (width == 1920 && height == 1080) {
+    } else if (width == 1920 && (height == 1080 || height == 1088)) {
+        // Some device decoder paths expose 1080P with an aligned coded height.
         resolvedMaximum = 5.5;
     } else {
         return false;

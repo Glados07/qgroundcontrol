@@ -235,6 +235,7 @@ void SiyiProtocolTest::pulledVideoResolutionLimits_data()
 
     QTest::newRow("2k") << 2560 << 1440 << 3.5;
     QTest::newRow("1080p") << 1920 << 1080 << 5.5;
+    QTest::newRow("1080p-coded-height") << 1920 << 1088 << 5.5;
 }
 
 void SiyiProtocolTest::pulledVideoResolutionLimits()

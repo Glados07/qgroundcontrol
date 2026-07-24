@@ -41,9 +41,9 @@
 ### 1.3 思翼 A8 Mini 云台控制（已集成）
 
 - 在 `custom` 中实现思翼私有 UDP SDK 和协议封装，包括帧组装、CRC16、固定为0的协议sequence字段，以及0x05、0x0a、0x0b、0x0c、0x0f、0x16和0x18。0x05与0x16只保留协议兼容接口，当前Manager/UI不调用；缩放控制统一使用0x0f绝对倍率和0x18实际倍率查询。0x0f的一字节ACK只表示命令受理，不能更新显示。为兼容现有设备当前仍未递增sequence，因此不能在协议层关联同命令迟到包；Manager以单目标/单查询在途、350 ms隔离和两次目标命中降低该风险。
-- A8 Mini数字变焦上限只以 `VideoManager::videoSize` 报告的QGC实际解码拉流尺寸确认，不能使用机内卡录分辨率或0x16替代。当前用户场景只接受1920×1080→5.5x、2560×1440→3.5x；4K、720P及其他尺寸不映射。Manager生命周期内首次在 `decoding=true` 时取得受支持尺寸即锁存一次，后续断流、重连和尺寸变化都不重算；锁存前尺寸无效或不受支持时保持unknown并锁定缩放。Manager不发送0x16查询。
+- A8 Mini数字变焦上限只以QGC实际解码拉流尺寸确认，不能使用机内卡录分辨率或0x16替代。GStreamer路径由custom在主视频 `qgcvideosinkbin` 的sink pad监听最终协商后的raw CAPS，并在第一帧再次发布该尺寸到原生 `VideoManager::videoSize`，避免原生接收器启动时的一次性 `query_caps` 暂态值导致能力一直unknown或误判。当前用户场景只接受1920×1080（以及设备解码链可能暴露的coded-height对齐值1920×1088）→5.5x、2560×1440→3.5x；4K、720P及其他尺寸不映射。Manager生命周期内首次在 `decoding=true` 时取得受支持尺寸即锁存一次，后续断流、重连和尺寸变化都不重算；锁存前尺寸无效或不受支持时保持unknown并锁定缩放。Manager不发送0x16查询。
 - `currentZoom`只保存经过协议校验和状态机确认的0x18设备回读，不在0x0f写入成功或ACK成功后乐观显示请求目标；命令确认期间 `zoomStatusKnown=false`，界面显示 `--`。同一时刻只允许一个0x0f目标在途，快速连点会被按钮和Manager共同拒绝，不再按requested累计。每个绝对目标必须由两个串行0x18查询都命中后才发布；任意1.8x、2.8x等运动中间值只会重置目标命中计数。`zoomStep`网格固定锚定1.0x：所有中间移动严格使用完整步长；只有下一完整步会越过相机真实小数上限时，才允许一次边界吸附。步长1.0x时1080P序列为1/2/3/4/5/5.5x，2K为1/2/3/3.5x；从小数上限缩小时先回到5.0x或3.0x，再继续完整步长。
-- `GimbalControlManager` 同时订阅 `VideoManager::videoSizeChanged` 和 `decodingChanged`，但只用于完成上述首次锁存。后台每2秒在空闲时查询0x18，并查询0x0a相机状态；绝对目标或稳定确认期间由专用串行查询状态机接管。每次先等待350 ms隔离旧包，同一时刻只允许一个0x18查询在途；单次查询1秒无响应才重试，整次缩放操作10秒未确认才置unknown。该探测不依赖控件可见或活动飞行器。接收端以 `QHostAddress::isEqual()`比较来源逻辑IP，并要求精确帧长、CRC及ACK control严格等于0x02；只有业务payload也合法的回包才置 `sdkResponding=true`。
+- `GimbalControlManager` 同时订阅 `VideoManager::videoSizeChanged` 和 `decodingChanged`，并在2秒轮询入口补查当前属性，但都只用于完成上述首次锁存。能力锁存后，后台每2秒在空闲时查询0x18，并查询0x0a相机状态；绝对目标或稳定确认期间由专用串行查询状态机接管。每次先等待350 ms隔离旧包，同一时刻只允许一个0x18查询在途；单次查询1秒无响应才重试，整次缩放操作10秒未确认才置unknown。该探测不依赖控件可见或活动飞行器。接收端以 `QHostAddress::isEqual()`比较来源逻辑IP，并要求精确帧长、CRC及ACK control严格等于0x02；只有业务payload也合法的回包才置 `sdkResponding=true`。
 - 飞行界面右侧使用单个始终可见的纵向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；从上到下依次为放大、当前倍率、缩小、横向分隔线、思翼机内拍照和录像。离线、拉流尺寸未知、倍率尚未确认或命令pending时显示 `--`并禁用缩放；已到真实上限或下限且该方向没有下一目标时保持显示真实倍率，只禁用该方向。最后一个整数网格点仍可向小数上限吸附，小数上限也可先回到相邻整数网格点。取得锁存的1080P/2K能力及稳定倍率后，短按和长按才按同一目标序列工作。
 - 拍照成功只在存在本次拍照请求时由0x0b功能反馈累计本进程照片数并触发成功提示；录像按钮必须先取得0x0a录像状态，避免把“尚未同步”误当成“未录像”。0x0c录像切换没有ACK，发送后先建立目标状态和pending门控、再乐观更新UI，约400 ms后主动查询0x0a；只有与本次目标一致的状态0/1才能完成pending，延迟旧状态继续忽略，状态2/3错误立即结束，2.5秒仍未确认则重新标记unknown。0x0b只用于拍照结果、HDR结果和录像失败反馈，不能虚构录像成功反馈码。录制发生在思翼相机机内存储卡，而不是QGC本地录像支路。
 - Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。缩放手势统一为Idle/Pressed/Holding/Consumed状态：短按发送一个0x0f目标；长按也不使用自由运行的0x05，而是在上一0x0f经过两次0x18目标确认后串行发送下一目标。中间目标间距严格等于 `zoomStep`，仅最后一次允许吸附真实小数上限，反向时先从该上限回到相邻网格点。松开、取消、移出或外部安全停止只取消尚未发送的后续步骤，已经发出的唯一目标继续确认，不发送0x05停止包，也不会在释放后补发短按。保留60秒长按看门狗。
@@ -205,6 +205,8 @@ custom/
           AndroidH265HardwareDecoderAdapter.cc
           AndroidVideoDecoderPolicy.h
           AndroidVideoDecoderPolicy.cc
+          PulledVideoResolutionProbe.h
+          PulledVideoResolutionProbe.cc
     Viewer3D/
       CityMapGeometry.cc
       CustomViewer3DManager.h
@@ -256,7 +258,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android H.265 等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建还创建独立 `SiyiProtocolTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，校验USB custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建还创建独立 `SiyiProtocolTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，校验USB custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
 | `custom/custom.qrc` | custom RCC运行时资源清单，共62个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、12个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。本分支新增 `GimbalCameraControl.qml` 并继续显式注册 `GimbalZoomControl.qml`；Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
@@ -264,8 +266,8 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤和 QML engine创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
-| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()` 在 LinkManager加载前安装默认UDP链路，安装 custom翻译，创建并持有 Viewer3D/FlyView/Gimbal设置和管理器，注册 Viewer3D QML类型，在 GStreamer已初始化而 `decodebin3` 尚未建管线时应用 Android H.265策略，并安装 A8 Mini视频缺省值；`adjustSettingMetaData()` 仅在 Android且根 `appFontPointSize` 尚无保存值时提供12 pt缺省；`mavlinkMessage()`按自动视频流开关过滤相机流信息；`createQmlApplicationEngine()`安装 URL拦截器，仅当对应 custom资源存在时覆盖原生QML。所有设置对象以本插件为父对象并通过Q_PROPERTY供QML复用。 |
+| `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤、QML engine创建和视频sink创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
+| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()` 在 LinkManager加载前安装默认UDP链路，安装 custom翻译，创建并持有 Viewer3D/FlyView/Gimbal设置和管理器，注册 Viewer3D QML类型，在 GStreamer已初始化而 `decodebin3` 尚未建管线时应用 Android H.265策略，并安装 A8 Mini视频缺省值；`createVideoSink()`先完整复用原生sink创建，再仅为主拉流安装协商尺寸探针；`adjustSettingMetaData()` 仅在 Android且根 `appFontPointSize` 尚无保存值时提供12 pt缺省；`mavlinkMessage()`按自动视频流开关过滤相机流信息；`createQmlApplicationEngine()`安装 URL拦截器，仅当对应 custom资源存在时覆盖原生QML。所有设置对象以本插件为父对象并通过Q_PROPERTY供QML复用。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明无状态的 `DefaultCommunicationLinkInstaller::ensureInstalled()` 静态接口。调用者只有 `CustomPlugin::init()`；头文件不创建或连接链路，目的是把“写入项目缺省通信配置”与 CustomPlugin生命周期代码分离。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的幂等实现。在原生 LinkManager读取 `LinkConfigurations` 前遍历已有配置，名称以不区分大小写方式匹配 `local` 即立即返回；不存在时按原生 QSettings结构追加一个 UDP配置：本地端口0、单一远端 `192.168.144.20:19856`、不自动连接、非高延迟，并更新count和同步磁盘。它只安装可编辑的配置，不直接打开socket；后续加载、连接、修改和删除仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
 
@@ -306,26 +308,28 @@ custom/
 | 文件 | 详细作用 |
 |---|---|
 | `custom/src/Gimbal/A8MiniZoomPolicy.h` | A8 Mini缩放策略的纯静态接口，将视频尺寸到最大倍率映射、固定网格和真实边界吸附计算从Manager状态机中分离，便于独立测试；不访问网络、QSettings或UI。实际拉流唯一来源由Manager根据 `VideoManager::decoding/videoSize` 强制执行。 |
-| `custom/src/Gimbal/A8MiniZoomPolicy.cc` | 只实现用户实际使用的两种拉流规格：2560×1440→3.5x、1920×1080→5.5x，其他尺寸返回不支持。倍率网格以1.0x为固定锚点并使用十分之一整数计算：中间目标严格相差完整 `zoomStep`；若下一完整步会越过小数上限，则唯一一次吸附到真实上限；从该上限缩小时先回到最高合法网格点。该规则是显式边界转换，不使用通用 `qBound`在其他位置制造部分步长。 |
+| `custom/src/Gimbal/A8MiniZoomPolicy.cc` | 只实现用户实际使用的两种拉流规格：2560×1440→3.5x、1920×1080→5.5x；同时把设备解码链可能暴露的coded-height对齐值1920×1088明确视为1080P→5.5x，其他尺寸返回不支持。倍率网格以1.0x为固定锚点并使用十分之一整数计算：中间目标严格相差完整 `zoomStep`；若下一完整步会越过小数上限，则唯一一次吸附到真实上限；从该上限缩小时先回到最高合法网格点。该规则是显式边界转换，不使用通用 `qBound`在其他位置制造部分步长。 |
 | `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义6个Fact及约束：`enabled=true`（短描述为启用思翼云台相机控制）、数值IP `sdkHost=192.168.144.25`、`sdkPort=37260`（1-65535）、`zoomStep=1.0x`（0.1-4.5）、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`；后两项标记需重启。`zoomStep`说明明确中间移动使用完整分度，最后一次可吸附小数上限且反向时先回到相邻网格点；步长1.0x可通过5.0↔5.5和3.0↔3.5到达1080P/2K真实上限。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`；硬解开关虽在所有平台存在，策略只在Android+GStreamer路径执行。 |
 | `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用6个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证属性名称稳定；不创建UDP socket、不发送云台命令，也不选择视频解码器。 |
 | `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现6个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
 | `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。`currentZoom`只表示设备确认值，另向QML暴露按固定网格及真实边界转换计算的 `zoomInAvailable/zoomOutAvailable`。能力状态只保存首次拉流尺寸是否已锁存及对应上限；倍率状态分别保存唯一绝对目标、目标命中次数、稳定值候选、查询在途门禁、350 ms隔离Timer、1秒单次查询Timer和10秒操作Timer。默认5.5x仅是能力未知时的界面占位，不能用于发送缩放命令。 |
-| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`，同时只读复用原生 `VideoManager::decoding/videoSize/videoSizeChanged/decodingChanged`，没有修改或复制 `src/VideoManager`。首次在解码状态观察到1920×1080或2560×1440即锁存上限，后续断流、重连和尺寸变化均忽略，0x16完全不参与。单击和长按共用串行0x0f目标路径；中间移动使用完整步长，最后一个网格点与真实小数上限之间允许显式边界吸附及反向返回。一个目标在途时拒绝追加操作，只有两个独立0x18查询都命中目标才更新 `currentZoom`。状态机保证同一时刻最多一个0x18查询，超时经隔离后重试；启动或外部控制留下的其他非网格稳定值会在显示解锁前吸附到最近合法停点（固定网格点或真实上限）。功能关闭后忽略关闭前请求的迟到回包，不能重新点亮在线状态或触发自动倍率修正命令。 |
+| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`，同时只读复用原生 `VideoManager::decoding/videoSize/videoSizeChanged/decodingChanged`，没有修改或复制 `src/VideoManager`。信号是尺寸确认主路径，2秒SDK轮询入口还会补查属性以覆盖初始化前已发布值；首次在解码状态观察到1920×1080、1920×1088或2560×1440即锁存上限，后续断流、重连和尺寸变化均忽略，0x16完全不参与。单击和长按共用串行0x0f目标路径；中间移动使用完整步长，最后一个网格点与真实小数上限之间允许显式边界吸附及反向返回。一个目标在途时拒绝追加操作，只有两个独立0x18查询都命中目标才更新 `currentZoom`。状态机保证同一时刻最多一个0x18查询，超时经隔离后重试；启动或外部控制留下的其他非网格稳定值会在显示解锁前吸附到最近合法停点（固定网格点或真实上限）。功能关闭后忽略关闭前请求的迟到回包，不能重新点亮在线状态或触发自动倍率修正命令。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明两个无对象状态的启动期适配接口：安装A8 Mini视频缺省设置，以及判断一条MAVLink消息是否应被过滤。它不创建 VideoReceiver、不连接RTSP，也不参与H.265解码。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | `CustomPlugin::init()` 每次启动调用的幂等迁移和消息策略实现。版本键 `[GimbalControl]/a8MiniVideoDefaultsVersion=4` 控制迁移：只在URL为空或旧拼写时设置A8 RTSP地址，只在A8 URL且timeout过小时提升到20秒，只在视频源为空/Disabled/No Video时选RTSP；Android仅在用户从未保存 `[Video]/lowLatencyMode` 且URL匹配时写true，已有选择不覆盖。过滤逻辑仅针对 `VIDEO_STREAM_INFORMATION`：Gimbal开启且 `mavlinkAutoVideoStream=false` 时阻止它进入原生自动视频配置，其余消息放行。 |
 | `custom/src/Gimbal/SiyiProtocol.h` | 思翼私有协议的纯静态编解码接口，覆盖0x05/0x0a/0x0b/0x0c/0x0f/0x16/0x18及ACK帧判定；不继承QObject，不访问网络、QSettings或UI。 |
 | `custom/src/Gimbal/SiyiProtocol.cc` | 实现 `55 66`帧头、control 0x01、小端payload长度、固定0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。整帧长度必须与payload声明精确相等，尾随字节也会拒绝；入站业务ACK必须严格为control 0x02。0x05 ACK单独按小端uint16/10解析；0x16/0x18严格按官方“整数字节+一位小数字节”解析，`12 00`、`1c 00`、`37 00`等不再猜测为1.8x、2.8x、5.5x。0x0f ACK只接受单字节0/1。 |
 | `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明，保留0x05/0x16兼容接口并提供绝对缩放、当前倍率查询、拍照、录像和状态查询；它不负责拉流尺寸、步长网格、手势状态或设置持久化，Manager/UI不会调用0x05/0x16。 |
 | `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；接收侧按逻辑IP、精确帧长、CRC和control 0x02过滤，并且只在对应业务payload解析成功后发出 `packetReceived`。`gcs.custom.gimbal.sdk`记录每个收发命令和原始payload；0x0f受理反馈、0x16和0x18分别按各自格式分发，不能交叉解释。空包、短写或无效endpoint通过 `communicationError`交给Manager。 |
-| `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖封包量化、ACK control、坏CRC、严格整帧长度、0x05/0x0f/0x16/0x18格式隔离、非法legacy载荷、仅2K/1080P映射、固定网格对齐，以及短按/长按共用的中间完整步长和双向小数上限吸附序列。测试只在桌面 `QGC_BUILD_TESTING`注册，并提供 `check_siyi_protocol`独立目标。 |
+| `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖封包量化、ACK control、坏CRC、严格整帧长度、0x05/0x0f/0x16/0x18格式隔离、非法legacy载荷、2K/1080P及1920×1088编码对齐映射、固定网格对齐，以及短按/长按共用的中间完整步长和双向小数上限吸附序列。测试只在桌面 `QGC_BUILD_TESTING`注册，并提供 `check_siyi_protocol`独立目标。 |
 
-云台相机完整调用链为：`VideoReceiver`解码当前视频并更新 `VideoManager::decoding/videoSize` -> `GimbalControlManager`锁存首次受支持的1080P/2K实际拉流尺寸 -> `A8MiniZoomPolicy`计算以1.0x为锚点的中间完整步长及双向真实边界吸附 -> `GimbalZoomControl.qml`把短按和长按都映射到同一串行0x0f目标路径 -> `SiyiSdk/SiyiProtocol`收发0x0f ACK与0x18 -> Manager只在两次查询都命中目标后发布倍率。机内卡录配置和0x16不在该调用链中。
+云台相机完整调用链为：`VideoReceiver`解码当前视频 -> `PulledVideoResolutionProbe`从显示sink的最终raw CAPS取得实际尺寸并在首帧更新 `VideoManager::videoSize` -> `GimbalControlManager`在 `decoding=true` 后锁存首次受支持的1080P/2K拉流能力 -> `A8MiniZoomPolicy`计算以1.0x为锚点的中间完整步长及双向真实边界吸附 -> `GimbalZoomControl.qml`把短按和长按都映射到同一串行0x0f目标路径 -> `SiyiSdk/SiyiProtocol`收发0x0f ACK与0x18 -> Manager只在两次查询都命中目标后发布倍率。机内卡录配置和0x16不在该调用链中。
 
-### 4.6 Android 视频解码策略
+### 4.6 GStreamer 拉流分辨率与 Android 视频解码策略
 
 | 文件 | 详细作用 |
 |---|---|
+| `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h` | 声明无QObject状态的主拉流协商尺寸探针安装接口。由 `CustomPlugin::createVideoSink()` 调用；非GStreamer构建、空sink、非 `VideoReceiver` parent或thermal receiver返回false且不改变原生视频路径。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.cc` | 只在 `QGC_GST_STREAMING` 下对主视频 `qgcvideosinkbin` 的 `sink` ghost pad安装downstream CAPS+buffer probe。CAPS必须固定且通过 `gst_video_info_from_caps()`，宽高必须为正；记录最终协商的raw尺寸后，在下一真实buffer到达时经既有 `VideoReceiver::videoSizeChanged` 再发布给 `VideoManager`。这样可覆盖原生 `GstVideoReceiver::_addVideoSink()` 在管线刚拼接时用 `gst_pad_query_caps()` 得到的暂态/无效值，同时不修改 `src`、不猜测卡录分辨率，也不影响thermal流。日志类别 `gcs.custom.gimbal.pulledvideoresolution` 只在真实尺寸变化时记录一次尺寸。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明进程级 custom H.265 decoder factory接口：固定factory名、注册函数、已选内部厂商MediaCodec factory查询，以及policy与adapter共用的厂商名称过滤函数。它只是适配器注册API，不实现H.265算法，也不调用Android `MediaCodecInfo.isHardwareAccelerated()`做系统级硬件认证。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 在启动阶段枚举能接受 `video/x-h265,stream-format=byte-stream,alignment=au` 的 `amcviddec-*`，排除secure、software/FFmpeg、`*.sw.dec`、Qualcomm `*swvdec`、OMX Google及C2 Android/Google/Goldfish，优先名称含low-latency变体的组件，再按原rank/名称排序；预检只证明元素可创建、静态链可链接且bin能进READY，不证明真实profile/level已解码。选中后缓存厂商factory并以rank `PRIMARY+100=356` 注册 `qgcandroidh265hwdec`。每个实例内部为：外部hvc1 ghost sink -> `h265parse(config-interval=-1)` -> Annex-B byte-stream/AU capsfilter -> 厂商MediaCodec -> downstream-leaky raw queue（最多2 buffer）-> `video/x-raw(ANY)` ghost src；probe记录真实输入caps和首个raw buffer的caps/PTS/bytes/GLMemory。首帧日志只证明经过名称筛选的factory已产出raw frame，不等同Android API硬件认证，也不保证画面已到QML sink。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明一次性的Android H.265 factory rank/适配策略入口。正确调用窗口是 `VideoManager`构造已完成 `GStreamer::initialize()` 之后、`VideoManager::init()` 创建VideoReceiver和 `decodebin3`之前；过早无法枚举插件，过晚则已建管线不会重新选择decoder。 |
@@ -577,7 +581,7 @@ QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay�
 
 Gimbal启用后，Manager即使不在Fly View也会订阅 `VideoManager::videoSizeChanged/decodingChanged`，并每2秒向 `sdkHost:sdkPort`探测：每轮发送0x0a相机状态，只有缩放状态空闲且没有0x18查询在途时才查询当前倍率；Manager不发送0x16。绝对目标和稳定确认由专用状态机管理：先留350 ms隔离窗口，再发送唯一在途的0x18；1秒未收到合法倍率才安排下一次隔离重试，10秒整体deadline不会被重试刷新。Fly View右侧纵向合并栏不等待探测结果，无论是否连接飞控或云台都立即显示。只有来源逻辑IP匹配配置endpoint、通过帧头、精确长度、CRC、control=0x02及对应payload校验的SDK响应，`sdkResponding`才变为true。
 
-有效上限只取QGC实际解码的拉流尺寸，且当前只支持1920×1080→5.5x、2560×1440→3.5x。这里不是相机机内卡录分辨率，也不读取0x16；无论当前地址拉取主码流、子码流还是其他流，都以首次在 `decoding=true` 时观察到的受支持 `VideoManager::videoSize` 为准。该尺寸在Manager/QGC应用会话内只锁存一次，之后断流、重连或尺寸变化不重算；锁存前视频未解码或尺寸不受支持时保持unknown，单击和长按均锁定。能力确认后需两次串行0x18稳定确认并在必要时对齐到固定网格点或真实上限才解锁。普通SDK在线探测使用1.5秒响应窗口；正在进行的倍率确认可在10秒整体deadline内重试。拍照仍可重试，录像必须先取得0x0a状态，因为0x0c是toggle。
+有效上限只取QGC实际解码的拉流尺寸，且当前支持1920×1080→5.5x、设备解码链coded-height对齐形式1920×1088→5.5x、2560×1440→3.5x。这里不是相机机内卡录分辨率，也不读取0x16；GStreamer主视频在第一帧通过sink negotiated CAPS校正 `VideoManager::videoSize`，再以首次在 `decoding=true` 时观察到的受支持尺寸为准。该尺寸在Manager/QGC应用会话内只锁存一次，之后断流、重连或尺寸变化不重算；锁存前视频未解码或尺寸不受支持时保持unknown，单击和长按均锁定。能力确认后需两次串行0x18稳定确认并在必要时对齐到固定网格点或真实上限才解锁。普通SDK在线探测使用1.5秒响应窗口；正在进行的倍率确认可在10秒整体deadline内重试。拍照仍可重试，录像必须先取得0x0a状态，因为0x0c是toggle。
 
 短按从已确认的 `currentZoom` 计算唯一下一目标：在1.0x锚定网格内部按0.1x协议精度执行 `current ± zoomStep`；若放大的下一完整步会越过真实小数上限，则把目标明确设为该上限；若从不在网格上的真实上限缩小，则先返回最高合法网格点。只有这两个方向相反的边界转换允许小于配置步长的距离，其他位置不使用通用钳制制造部分步长，也不会以requested累计。步长1.0x时对应1080P的5.0↔5.5和2K的3.0↔3.5。发送后立即令显示为 `--`，0x0f ACK只表示受理；随后两个串行0x18查询都精确命中目标，才更新 `currentZoom`。任何1.8x、2.8x等运动中间值都只会清零命中计数并继续查询。长按复用完全相同的目标路径：上一目标双确认后等待180 ms再计算下一完整网格步或边界吸附；松开、取消、移出、隐藏、销毁、设置变化、SDK异常或60秒看门狗只取消后续调度，已发送目标继续确认，不发送0x05启动或停止包。启动或外部控制留下的其他非网格稳定值会先双采样，再以0x0f吸附到最近合法停点（固定网格点或真实上限）；这是独立的状态校正，不属于用户步长或小数上限转换，完成前仍显示 `--`。0x0c拍照/录像不带直接ACK：照片由0x0b确认；录像约400 ms查询0x0a并仅接受目标一致状态，2.5秒无结果标记unknown。
 
@@ -602,7 +606,7 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 1. 电脑或遥控器网口连接A8 Mini，确认可访问 `192.168.144.25`；私有相机控制无需连接飞控，也无需等待QGC出现活动Vehicle。
 2. Application Settings -> Fly View -> SIYI Gimbal Camera 中确认IP、端口、缩放分度值和Enabled；页面说明应包含私有UDP缩放/拍照/录像、“短按发送一个目标、长按重复已确认目标、中间完整步长、最后双向吸附真实小数上限”、首次1080P/2K实际拉流尺寸会话锁存，以及卡录分辨率和0x16不参与的提示。
 3. Application Settings -> Video -> Video Stream Integration 中选择是否使用 MAVLink 自动视频流；Android 设备确认 H.265 硬解开关开启，然后重启 QGC。
-4. 返回Fly View。只要Gimbal Enabled，右侧单个纵向合并栏就应立即显示，不要求飞控或云台已连接；从上到下依次为 `+`、倍率、`-`、拍照和录像。尚未取得有效能力和倍率时倍率显示 `--`且缩放按钮禁用。视频开始解码并首次报告1920×1080或2560×1440后锁存上限，0x16不参与；随后稳定确认和必要的网格对齐完成后，短按和长按才可执行。录像按钮在0x0a状态未知时灰显并显示 `...`。
+4. 返回Fly View。只要Gimbal Enabled，右侧单个纵向合并栏就应立即显示，不要求飞控或云台已连接；从上到下依次为 `+`、倍率、`-`、拍照和录像。尚未取得有效能力和倍率时倍率显示 `--`且缩放按钮禁用。视频第一帧到达后应依次看到 negotiated main pulled-video resolution、会话尺寸锁存和发出的命令24（0x18）日志；1920×1080/1920×1088锁存5.5x，2560×1440锁存3.5x，0x16不参与。随后稳定确认和必要的网格对齐完成后，短按和长按才可执行。录像按钮在0x0a状态未知时灰显并显示 `...`。
 5. 短按 `+`/`-` 只发送一个目标：中间网格严格执行完整 `zoomStep`，仅最后一次允许吸附真实小数上限，反向时先返回相邻网格点。步长1.0x时1080P序列应为1→2→3→4→5→5.5，反向为5.5→5→4→3→2→1；2K应为1→2→3→3.5及3.5→3→2→1。一个目标确认前按钮禁用且UI显示 `--`，快速连点不会追加或累计。按住约420 ms后按相同规则串行重复目标，每个目标都需两个0x18命中；松手或移出只停止下一目标，长按不附带短按，也不应抓到任何0x05缩放包。
 6. 使用纵向栏下部的相机图标拍照；录像状态尚未同步或一次切换命令仍在pending时，REC按钮灰显并显示 `...`。发送切换后约400 ms主动查询0x0a，只有与本次开始/停止目标一致的状态才允许再次操作；延迟旧状态会继续等待，2.5秒未确认则回到unknown并重新同步。照片成功有绿色闪烁，录像期间显示本次会话计时；录像最终状态以0x0a为准，0x0b只补充失败反馈。
 7. 在没有飞控的纯云台场景验证缩放、拍照、录像均可用；随后连接或断开飞控，控制栏不应消失或切换后端。只有关闭Gimbal设置时，有活动飞行器才恢复原生 `PhotoVideoControl`。
@@ -734,6 +738,9 @@ QGCApplication
      -> GimbalVideoStreamSupport 安装 A8 Mini 默认值
   -> VideoManager::init()
      -> 创建 VideoReceiver / decodebin3
+        -> CustomPlugin::createVideoSink()复用原生qgcvideosinkbin
+           -> PulledVideoResolutionProbe监听主视频最终raw CAPS
+           -> 第一帧把可信尺寸发布到VideoManager，thermal流不参与
         -> 原生 parsebin 输出 hvc1
         -> qgcandroidh265hwdec
            -> h265parse -> byte-stream/au
@@ -913,7 +920,7 @@ adb logcat -v threadtime | grep -Ei \
 
 运行日志出现 `GimbalCameraControl is not a type`、`GimbalZoomControl is not a type` 或 `Gimbal camera control failed to load`，首先检查 `custom.qrc` 是否同时注册 `QGroundControl/FlightDisplay/GimbalCameraControl.qml` 和 `GimbalZoomControl.qml`。顶层由 `FlyViewTopRightColumnLayout.qml`使用完整 `qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml`地址显式加载，缩放子控件再从同一资源目录解析；它们不加入原生FlightDisplay qmldir。新增QRC文件后必须重新构建资源，若仍命中旧缓存，应新建构建目录后重新configure，而不是修改 `src` qmldir。
 
-Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。开启 `gcs.custom.gimbal.sdk` 后，日志会显示0x0a/0x0f/0x18等命令和原始payload；正常Manager流程不应出现发出的0x16。开启 `gcs.custom.gimbal.control` 可查看 `Latched pulled video resolution for this application session`。状态点已绿而倍率仍为 `--`时，先确认 `VideoManager` 正在解码且本会话首次受支持尺寸确为1920×1080或2560×1440，并检查一个0x18查询是否在1秒内返回；4K、720P和其他尺寸在锁存前会被忽略，不能从0x16回退。若整栏只有一个按钮高度或底部被裁掉，再检查三级 `implicitHeight/Layout.minimumHeight`。
+Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。开启 `gcs.custom.gimbal.sdk` 后，日志会显示0x0a/0x0f/0x18等命令和原始payload；正常Manager流程不应出现发出的0x16。视频有画面且SDK已有0x0a回包、但缩放按钮仍灰色时，日志必须按顺序出现 `gcs.custom.gimbal.pulledvideoresolution` 的 `Negotiated main pulled-video resolution`、`gcs.custom.gimbal.control` 的 `Latched pulled video resolution for this application session`，随后 `gcs.custom.gimbal.sdk` 应开始发送命令24；若第一条都没有，说明当前安装包未包含custom sink覆盖或主视频没有经过该sink，若第一条尺寸不受支持则不会猜成1080P，若已锁存却没有命令24再检查倍率状态机pending门禁。受支持尺寸为1920×1080、1920×1088或2560×1440；4K、720P和其他尺寸在锁存前会被忽略，不能从0x16回退。若整栏只有一个按钮高度或底部被裁掉，再检查三级 `implicitHeight/Layout.minimumHeight`。
 
 初始镜头1.0x却显示5.5x、实际与显示不一致或缩小方向异常时，先查看0x18原始payload：官方格式 `01 00`才是1.0x，`01 08`是1.8x；`0A 00`、`12 00`、`1C 00`和`37 00`不得按小端兼容猜测。0x0f发送后UI在两个0x18查询都命中目标前必须为 `--`，不能显示requested冒充实际值。若镜头或按钮上限为3.5，查看control日志中首次锁存的实际拉流尺寸：2560×1440应为3.5，1920×1080必须为5.5；卡录分辨率和0x16不能影响结果。锁存后更换拉流规格不会在本会话重算，如需有意更换应重启QGC。步长1.0时，5.0↔5.5和3.0↔3.5产生0.5距离是预期的真实上限双向吸附；其他中间位置仍必须保持1.0完整步长，1.8→2.8等非网格值不能直接成为用户目标。启动或外部控制留下其他非网格倍率时会自动归整到最近合法停点，该过程显示 `--`且完成后才解锁按钮。长按日志应只包含串行的“0x0f目标、0x18查询、0x18查询”，释放不应出现0x05。
 
