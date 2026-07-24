@@ -26,9 +26,11 @@ private slots:
     void invalidZoomPayloads();
     void pulledVideoResolutionLimits_data();
     void pulledVideoResolutionLimits();
+    void alignedMaximumZooms();
     void strictStepTargets();
     void alignmentTargets();
     void repeatedStepSequences();
+    void targetTrackerRecovery();
 };
 
 void SiyiProtocolTest::manualZoomPackets()
@@ -296,6 +298,31 @@ void SiyiProtocolTest::pulledVideoResolutionLimits()
     QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1920, 1080, nullptr));
 }
 
+void SiyiProtocolTest::alignedMaximumZooms()
+{
+    double maximumZoom = 9.9;
+
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(5.5, 1.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 5.0);
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(3.5, 1.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 3.0);
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(6.0, 1.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 6.0);
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(5.5, 0.5, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 5.5);
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(3.5, 0.5, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 3.5);
+    QVERIFY(A8MiniZoomPolicy::alignedMaximumZoom(1.0, 1.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 1.0);
+
+    maximumZoom = 9.9;
+    QVERIFY(!A8MiniZoomPolicy::alignedMaximumZoom(0.9, 1.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 9.9);
+    QVERIFY(!A8MiniZoomPolicy::alignedMaximumZoom(5.5, 0.0, 1.0, &maximumZoom));
+    QCOMPARE(maximumZoom, 9.9);
+    QVERIFY(!A8MiniZoomPolicy::alignedMaximumZoom(5.5, 1.0, 1.0, nullptr));
+}
+
 void SiyiProtocolTest::strictStepTargets()
 {
     double targetZoom = 0.0;
@@ -304,12 +331,7 @@ void SiyiProtocolTest::strictStepTargets()
         QVERIFY(A8MiniZoomPolicy::stepTarget(current, 1.0, 1.0, 5.5, 1, &targetZoom));
         QCOMPARE(targetZoom, current + 1.0);
     }
-    QVERIFY(A8MiniZoomPolicy::stepTarget(5.0, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QCOMPARE(targetZoom, 5.5);
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.5, 1, &targetZoom));
-
-    QVERIFY(A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(!A8MiniZoomPolicy::stepTarget(5.0, 1.0, 1.0, 5.5, 1, &targetZoom));
     for (int current = 5; current > 1; --current) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(current, 1.0, 1.0, 5.5, -1, &targetZoom));
         QCOMPARE(targetZoom, current - 1.0);
@@ -317,18 +339,23 @@ void SiyiProtocolTest::strictStepTargets()
 
     QVERIFY(!A8MiniZoomPolicy::stepTarget(1.0, 1.0, 1.0, 5.5, -1, &targetZoom));
 
-    QVERIFY(A8MiniZoomPolicy::stepTarget(3.0, 1.0, 1.0, 3.5, 1, &targetZoom));
-    QCOMPARE(targetZoom, 3.5);
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(3.5, 1.0, 1.0, 3.5, 1, &targetZoom));
-    QVERIFY(A8MiniZoomPolicy::stepTarget(3.5, 1.0, 1.0, 3.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 3.0);
+    QVERIFY(!A8MiniZoomPolicy::stepTarget(3.0, 1.0, 1.0, 3.5, 1, &targetZoom));
 
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(1.8, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(1.8, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.5, -1, &targetZoom));
+    QVERIFY(A8MiniZoomPolicy::stepTarget(1.8, 1.0, 1.0, 5.0, 1, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(1.8, 1.0, 1.0, 5.0, -1, &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.0, 1, &targetZoom));
+    QCOMPARE(targetZoom, 3.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.0, -1, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.0, 1, &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.0, -1, &targetZoom));
+    QCOMPARE(targetZoom, 4.0);
+    QVERIFY(A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.0, -1, &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(!A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.0, 1, &targetZoom));
     QVERIFY(!A8MiniZoomPolicy::stepTarget(1.0, 1.0, 1.0, 1.0, 1, &targetZoom));
     QVERIFY(!A8MiniZoomPolicy::stepTarget(1.0, 0.0, 1.0, 5.5, 1, &targetZoom));
     QVERIFY(!A8MiniZoomPolicy::stepTarget(1.0, 1.0, 1.0, 5.5, 0, &targetZoom));
@@ -350,13 +377,13 @@ void SiyiProtocolTest::alignmentTargets()
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(5.2, 1.0, 1.0, 5.5, 0, &targetZoom));
     QCOMPARE(targetZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(5.3, 1.0, 1.0, 5.5, 0, &targetZoom));
-    QCOMPARE(targetZoom, 5.5);
+    QCOMPARE(targetZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(3.3, 1.0, 1.0, 3.5, 0, &targetZoom));
-    QCOMPARE(targetZoom, 3.5);
+    QCOMPARE(targetZoom, 3.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(5.5, 1.0, 1.0, 5.5, 0, &targetZoom));
-    QCOMPARE(targetZoom, 5.5);
+    QCOMPARE(targetZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(3.5, 1.0, 1.0, 3.5, 0, &targetZoom));
-    QCOMPARE(targetZoom, 3.5);
+    QCOMPARE(targetZoom, 3.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(1.5, 1.0, 1.0, 5.5, -1, &targetZoom));
     QCOMPARE(targetZoom, 1.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(1.5, 1.0, 1.0, 5.5, 1, &targetZoom));
@@ -366,8 +393,8 @@ void SiyiProtocolTest::alignmentTargets()
 
     QVERIFY(A8MiniZoomPolicy::isAlignedZoom(5.0, 1.0, 1.0, 5.5));
     QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(1.8, 1.0, 1.0, 5.5));
-    QVERIFY(A8MiniZoomPolicy::isAlignedZoom(5.5, 1.0, 1.0, 5.5));
-    QVERIFY(A8MiniZoomPolicy::isAlignedZoom(3.5, 1.0, 1.0, 3.5));
+    QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(5.5, 1.0, 1.0, 5.5));
+    QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(3.5, 1.0, 1.0, 3.5));
     QVERIFY(A8MiniZoomPolicy::isAlignedZoom(5.5, 0.5, 1.0, 5.5));
 }
 
@@ -375,7 +402,7 @@ void SiyiProtocolTest::repeatedStepSequences()
 {
     double currentZoom = 1.0;
     double targetZoom = 0.0;
-    const QList<double> expected1080pZoomIn = {2.0, 3.0, 4.0, 5.0, 5.5};
+    const QList<double> expected1080pZoomIn = {2.0, 3.0, 4.0, 5.0};
     for (const double expected : expected1080pZoomIn) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, 1, &targetZoom));
         QCOMPARE(targetZoom, expected);
@@ -383,7 +410,7 @@ void SiyiProtocolTest::repeatedStepSequences()
     }
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, 1, &targetZoom));
 
-    const QList<double> expected1080pZoomOut = {5.0, 4.0, 3.0, 2.0, 1.0};
+    const QList<double> expected1080pZoomOut = {4.0, 3.0, 2.0, 1.0};
     for (const double expected : expected1080pZoomOut) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, -1, &targetZoom));
         QCOMPARE(targetZoom, expected);
@@ -392,7 +419,7 @@ void SiyiProtocolTest::repeatedStepSequences()
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, -1, &targetZoom));
 
     currentZoom = 1.0;
-    const QList<double> expected2kZoomIn = {2.0, 3.0, 3.5};
+    const QList<double> expected2kZoomIn = {2.0, 3.0};
     for (const double expected : expected2kZoomIn) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, 1, &targetZoom));
         QCOMPARE(targetZoom, expected);
@@ -400,7 +427,7 @@ void SiyiProtocolTest::repeatedStepSequences()
     }
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, 1, &targetZoom));
 
-    const QList<double> expected2kZoomOut = {3.0, 2.0, 1.0};
+    const QList<double> expected2kZoomOut = {2.0, 1.0};
     for (const double expected : expected2kZoomOut) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, -1, &targetZoom));
         QCOMPARE(targetZoom, expected);
@@ -424,6 +451,40 @@ void SiyiProtocolTest::repeatedStepSequences()
     }
     QCOMPARE(currentZoom, 1.0);
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 0.5, 1.0, 5.5, -1, &targetZoom));
+}
+
+void SiyiProtocolTest::targetTrackerRecovery()
+{
+    using Observation = A8MiniZoomPolicy::TargetObservation;
+
+    A8MiniZoomPolicy::TargetTracker tracker;
+    tracker.reset(2.0);
+    QCOMPARE(tracker.observe(1.2), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.5), Observation::Waiting);
+    QCOMPARE(tracker.observe(2.0), Observation::Waiting);
+    QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
+
+    tracker.reset(2.0);
+    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.0), Observation::StableDifferent);
+    QCOMPARE(tracker.stableDifferentZoom(), 1.0);
+
+    tracker.reset(2.0);
+    tracker.markCommandRejected();
+    QVERIFY(tracker.commandRejected());
+    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.0), Observation::StableDifferent);
+
+    tracker.reset(2.0);
+    QCOMPARE(tracker.observe(1.8), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.8), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.9), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.9), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.9), Observation::StableDifferent);
+
+    tracker.clear();
+    QCOMPARE(tracker.observe(2.0), Observation::Waiting);
 }
 
 QTEST_APPLESS_MAIN(SiyiProtocolTest)

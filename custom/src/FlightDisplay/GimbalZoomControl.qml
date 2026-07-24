@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按按配置步长单步缩放，最后一次可吸附真实上限；长按串行重复相同规则。
+ * 短按按配置步长单步缩放；长按在每个目标确认后串行重复相同规则。
  *
  ****************************************************************************/
 
@@ -26,6 +26,8 @@ Item {
     readonly property int gestureConsumed: 3
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
+    readonly property bool zoomPending: Boolean(manager && manager.zoomCommandPending)
+    readonly property bool zoomUncertain: Boolean(manager && manager.zoomValueUncertain)
     readonly property bool canSend: Boolean(manager && manager.enabled)
     readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
     readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
@@ -225,7 +227,12 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: root.online && root.zoomKnown ? root.zoomValue.toFixed(1) + "x" : "--"
+                // pending期间继续显示最后一份设备确认值，并用省略号明确表示
+                // 新目标仍在核对；不能把requested目标冒充实际倍率。
+                text: root.online && root.zoomKnown
+                      ? root.zoomValue.toFixed(1) + "x"
+                        + (root.zoomPending ? "\u2026" : (root.zoomUncertain ? "?" : ""))
+                      : "--"
                 color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize

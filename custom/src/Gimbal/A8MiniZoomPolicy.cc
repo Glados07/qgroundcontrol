@@ -11,8 +11,75 @@
 namespace {
 
 static constexpr double kComparisonTolerance = 0.051;
+static constexpr int kTargetConfirmationCount = 2;
+static constexpr int kStableDifferentConfirmationCount = 3;
+static constexpr int kRejectedStableConfirmationCount = 2;
 
 } // namespace
+
+void A8MiniZoomPolicy::TargetTracker::reset(double targetZoom)
+{
+    clear();
+    if (!qIsFinite(targetZoom)) {
+        return;
+    }
+
+    _targetZoom = qRound(targetZoom * 10.0) / 10.0;
+    _active = true;
+}
+
+void A8MiniZoomPolicy::TargetTracker::clear()
+{
+    _targetZoom = 1.0;
+    _differentCandidate = 1.0;
+    _targetMatchCount = 0;
+    _differentMatchCount = 0;
+    _differentCandidateValid = false;
+    _commandRejected = false;
+    _active = false;
+}
+
+void A8MiniZoomPolicy::TargetTracker::markCommandRejected()
+{
+    if (_active) {
+        _commandRejected = true;
+    }
+}
+
+A8MiniZoomPolicy::TargetObservation
+A8MiniZoomPolicy::TargetTracker::observe(double actualZoom)
+{
+    if (!_active || !qIsFinite(actualZoom)) {
+        return TargetObservation::Waiting;
+    }
+
+    const double normalizedActual = qRound(actualZoom * 10.0) / 10.0;
+    if (qAbs(normalizedActual - _targetZoom) <= kComparisonTolerance) {
+        _differentCandidateValid = false;
+        _differentMatchCount = 0;
+        ++_targetMatchCount;
+        return _targetMatchCount >= kTargetConfirmationCount
+            ? TargetObservation::TargetReached
+            : TargetObservation::Waiting;
+    }
+
+    _targetMatchCount = 0;
+    if (!_differentCandidateValid
+        || qAbs(normalizedActual - _differentCandidate) > kComparisonTolerance) {
+        _differentCandidate = normalizedActual;
+        _differentCandidateValid = true;
+        _differentMatchCount = 1;
+    } else {
+        ++_differentMatchCount;
+    }
+
+    const int requiredCount = _commandRejected
+        ? kRejectedStableConfirmationCount
+        : kStableDifferentConfirmationCount;
+    return _differentMatchCount >= requiredCount
+        ? TargetObservation::StableDifferent
+        : TargetObservation::Waiting;
+}
 
 bool A8MiniZoomPolicy::maximumZoomForVideoResolution(quint16 width,
                                                      quint16 height,
@@ -42,6 +109,34 @@ bool A8MiniZoomPolicy::maximumZoomForVideoResolution(quint16 width,
     return true;
 }
 
+bool A8MiniZoomPolicy::alignedMaximumZoom(double capabilityMaximumZoom,
+                                          double zoomStep,
+                                          double minimumZoom,
+                                          double* maximumZoom)
+{
+    if (!maximumZoom
+        || !qIsFinite(capabilityMaximumZoom)
+        || !qIsFinite(zoomStep)
+        || !qIsFinite(minimumZoom)
+        || zoomStep <= 0.0
+        || capabilityMaximumZoom < minimumZoom) {
+        return false;
+    }
+
+    const int capabilityTenths = qRound(capabilityMaximumZoom * 10.0);
+    const int stepTenths = qRound(zoomStep * 10.0);
+    const int minimumTenths = qRound(minimumZoom * 10.0);
+    if (stepTenths < 1 || capabilityTenths < minimumTenths) {
+        return false;
+    }
+
+    const int completeStepCount =
+        (capabilityTenths - minimumTenths) / stepTenths;
+    *maximumZoom =
+        (minimumTenths + completeStepCount * stepTenths) / 10.0;
+    return true;
+}
+
 bool A8MiniZoomPolicy::isAlignedZoom(double zoomLevel,
                                      double zoomStep,
                                      double minimumZoom,
@@ -61,15 +156,13 @@ bool A8MiniZoomPolicy::isAlignedZoom(double zoomLevel,
     const int zoomTenths = qRound(zoomLevel * 10.0);
     const int stepTenths = qRound(zoomStep * 10.0);
     const int minimumTenths = qRound(minimumZoom * 10.0);
-    const int maximumTenths = qRound(maximumZoom * 10.0);
     if (stepTenths < 1) {
         return false;
     }
 
-    // 中间倍率固定锚定在minimumZoom；真实分辨率上限始终是额外的合法停点。
-    // 例如步长1.0时，1080P允许1/2/3/4/5/5.5，2K允许1/2/3/3.5。
-    return zoomTenths == maximumTenths
-        || (zoomTenths - minimumTenths) % stepTenths == 0;
+    // 所有可发布停点都固定锚定在minimumZoom，并严格落在完整步长网格。
+    // 分辨率能力上限只负责“不可越过”，不再作为非网格特殊停点。
+    return (zoomTenths - minimumTenths) % stepTenths == 0;
 }
 
 bool A8MiniZoomPolicy::alignmentTarget(double currentZoom,
@@ -122,9 +215,6 @@ bool A8MiniZoomPolicy::alignmentTarget(double currentZoom,
     };
 
     considerCandidate(lowerGridTenths + stepTenths);
-    // 上限即使不落在固定步长网格上，也必须参与最近合法停点选择。
-    considerCandidate(maximumTenths);
-
     *targetZoom = selectedTenths / 10.0;
     return true;
 }
@@ -147,40 +237,53 @@ bool A8MiniZoomPolicy::stepTarget(double currentZoom,
         return false;
     }
 
-    // 单击和长按重复只能从固定分度点或真实上限出发。启动时或外部控制
-    // 留下的1.8x等任意小数必须先由Manager对齐，不能直接计算成2.8x。
+    // 正常单击和长按从固定分度点出发。若硬件拒绝自动归整而留下非网格
+    // 实际值，则下一次人工操作只移动到该方向最近的合法网格点，绝不发送
+    // current+step形成1.8→2.8一类漂移网格。
     const int currentTenths = qRound(currentZoom * 10.0);
     const int stepTenths = qRound(zoomStep * 10.0);
     const int minimumTenths = qRound(minimumZoom * 10.0);
     const int maximumTenths = qRound(maximumZoom * 10.0);
-    if (stepTenths < 1
-        || !isAlignedZoom(currentTenths / 10.0,
-                          stepTenths / 10.0,
-                          minimumZoom,
-                          maximumZoom)) {
+    if (stepTenths < 1) {
         return false;
     }
 
-    int candidateTenths = currentTenths + direction * stepTenths;
-    if (direction > 0) {
-        if (currentTenths >= maximumTenths) {
-            return false;
+    if (currentTenths > maximumTenths) {
+        if (direction < 0) {
+            *targetZoom = maximumTenths / 10.0;
+            return true;
         }
-        // 完整步长将越过上限时，最后一次操作精确吸附到真实能力边界。
-        candidateTenths = qMin(candidateTenths, maximumTenths);
-    } else {
-        if (currentTenths <= minimumTenths) {
-            return false;
-        }
-        const bool maximumIsOnGrid =
-            (maximumTenths - minimumTenths) % stepTenths == 0;
-        if (currentTenths == maximumTenths && !maximumIsOnGrid) {
-            // 从小数上限缩小时先回到最高固定分度，不能以max-step制造偏移网格。
-            const int highestGridIndex =
-                (maximumTenths - minimumTenths) / stepTenths;
-            candidateTenths = minimumTenths + highestGridIndex * stepTenths;
-        }
+        return false;
     }
+    if (currentTenths < minimumTenths) {
+        if (direction > 0) {
+            *targetZoom = minimumTenths / 10.0;
+            return true;
+        }
+        return false;
+    }
+
+    if (!isAlignedZoom(currentTenths / 10.0,
+                       stepTenths / 10.0,
+                       minimumZoom,
+                       maximumZoom)) {
+        const int offsetTenths = currentTenths - minimumTenths;
+        const int candidateTenths = direction > 0
+            ? minimumTenths
+                + ((offsetTenths + stepTenths - 1) / stepTenths) * stepTenths
+            : minimumTenths
+                + (offsetTenths / stepTenths) * stepTenths;
+        if (candidateTenths < minimumTenths
+            || candidateTenths > maximumTenths
+            || candidateTenths == currentTenths) {
+            return false;
+        }
+        *targetZoom = candidateTenths / 10.0;
+        return true;
+    }
+
+    const int candidateTenths =
+        currentTenths + direction * stepTenths;
 
     if (candidateTenths < minimumTenths
         || candidateTenths > maximumTenths

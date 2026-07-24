@@ -25,7 +25,7 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
-            "longDesc": "Tap sends one step. Holding repeats only after the camera confirms the previous target. Intermediate moves use the full configured step from the 1.0x grid. If the next full step would cross the fractional camera limit, one boundary move snaps to 5.5x for 1080p or 3.5x for 2K; zooming out from that limit first returns to 5.0x or 3.0x, then continues by full steps.",
+            "longDesc": "Tap sends one configured step. Holding repeats only after the camera confirms the previous target. Every commanded stop is on the 1.0x + n * step grid. The pulled-video resolution provides the physical ceiling and the usable maximum is the highest complete grid stop at or below that ceiling; for example, a 1.0x step uses 5.0x for a 5.5x ceiling and 3.0x for a 3.5x ceiling.",
             "type": "double",
             "units": "x",
             "min": 0.1,

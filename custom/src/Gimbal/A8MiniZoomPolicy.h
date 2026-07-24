@@ -11,9 +11,41 @@
 class A8MiniZoomPolicy
 {
 public:
+    enum class TargetObservation {
+        Waiting,
+        TargetReached,
+        StableDifferent,
+    };
+
+    class TargetTracker
+    {
+    public:
+        void reset(double targetZoom);
+        void clear();
+        void markCommandRejected();
+        TargetObservation observe(double actualZoom);
+
+        double targetZoom() const { return _targetZoom; }
+        double stableDifferentZoom() const { return _differentCandidate; }
+        bool commandRejected() const { return _commandRejected; }
+
+    private:
+        double _targetZoom = 1.0;
+        double _differentCandidate = 1.0;
+        int _targetMatchCount = 0;
+        int _differentMatchCount = 0;
+        bool _differentCandidateValid = false;
+        bool _commandRejected = false;
+        bool _active = false;
+    };
+
     static bool maximumZoomForVideoResolution(quint16 width,
                                                quint16 height,
                                                double* maximumZoom);
+    static bool alignedMaximumZoom(double capabilityMaximumZoom,
+                                   double zoomStep,
+                                   double minimumZoom,
+                                   double* maximumZoom);
     static bool isAlignedZoom(double zoomLevel,
                               double zoomStep,
                               double minimumZoom,
