@@ -189,30 +189,35 @@ bool SiyiProtocol::parseFunctionFeedbackPayload(const QByteArray& payload, quint
 bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload,
                                            double minimumZoom,
                                            double maximumZoom,
-                                           double* zoomLevel)
+                                           double* zoomLevel,
+                                           bool* usedLegacyTenthsEncoding)
 {
     return _parseZoomPayload(payload,
                              minimumZoom,
                              maximumZoom,
-                             zoomLevel);
+                             zoomLevel,
+                             usedLegacyTenthsEncoding);
 }
 
 bool SiyiProtocol::parseMaximumZoomPayload(const QByteArray& payload,
                                            double maximumSupportedZoom,
-                                           double* zoomLevel)
+                                           double* zoomLevel,
+                                           bool* usedLegacyTenthsEncoding)
 {
     // 倍率的最小有效值是1.0x。协议没有把00 00定义为“不支持该命令”，
     // 因此不能用零响应把UI永久锁在1.0x。
     return _parseZoomPayload(payload,
                              1.0,
                              maximumSupportedZoom,
-                             zoomLevel);
+                             zoomLevel,
+                             usedLegacyTenthsEncoding);
 }
 
 bool SiyiProtocol::_parseZoomPayload(const QByteArray& payload,
                                      double minimumZoom,
                                      double maximumZoom,
-                                     double* zoomLevel)
+                                     double* zoomLevel,
+                                     bool* usedLegacyTenthsEncoding)
 {
     if (!zoomLevel || payload.size() != 2 || !qIsFinite(minimumZoom) || !qIsFinite(maximumZoom) || minimumZoom > maximumZoom) {
         return false;
@@ -220,19 +225,37 @@ bool SiyiProtocol::_parseZoomPayload(const QByteArray& payload,
 
     const quint8 firstByte = static_cast<quint8>(payload.at(0));
     const quint8 secondByte = static_cast<quint8>(payload.at(1));
-    // 官方0x16/0x18固定为“整数byte + 一位小数byte”。0x05 ACK才是
-    // 小端uint16/10，两种命令不能混用解析，否则12 00会被伪造为1.8x。
-    if (secondByte > 9) {
-        return false;
-    }
-    const double documentedZoom = firstByte + (secondByte / 10.0);
-    if (!qIsFinite(documentedZoom)
-        || documentedZoom < minimumZoom
-        || documentedZoom > maximumZoom) {
-        return false;
+
+    const auto acceptZoom = [minimumZoom, maximumZoom, zoomLevel](double candidateZoom) {
+        if (!qIsFinite(candidateZoom)
+            || candidateZoom < minimumZoom
+            || candidateZoom > maximumZoom) {
+            return false;
+        }
+        *zoomLevel = candidateZoom;
+        return true;
+    };
+
+    // 新版文档定义0x16/0x18为“整数byte + 一位小数byte”，始终优先解析。
+    if (secondByte <= 9
+        && acceptZoom(firstByte + (secondByte / 10.0))) {
+        if (usedLegacyTenthsEncoding) {
+            *usedLegacyTenthsEncoding = false;
+        }
+        return true;
     }
 
-    *zoomLevel = documentedZoom;
+    // 真机A8 Mini固件会把0x18的1.0x回成0a 00，即小端uint16/10。
+    // 只在新版结果无效且兼容结果落入当前A8范围时启用后备；01 00、
+    // 01 08等新版payload不会被重新解释，也不会把异常值钳制成边界值。
+    const quint16 legacyTenths = static_cast<quint16>(firstByte)
+        | (static_cast<quint16>(secondByte) << 8);
+    if (!acceptZoom(legacyTenths / 10.0)) {
+        return false;
+    }
+    if (usedLegacyTenthsEncoding) {
+        *usedLegacyTenthsEncoding = true;
+    }
     return true;
 }
 

@@ -150,40 +150,60 @@ void SiyiProtocolTest::absoluteZoomAckPayloads()
 void SiyiProtocolTest::maximumZoomPayloads()
 {
     double zoomLevel = 9.9;
+    bool usedLegacyTenthsEncoding = true;
 
-    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0100"), 6.0, &zoomLevel));
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(
+        QByteArray::fromHex("0100"), 6.0, &zoomLevel, &usedLegacyTenthsEncoding));
     QCOMPARE(zoomLevel, 1.0);
+    QVERIFY(!usedLegacyTenthsEncoding);
     QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0305"), 6.0, &zoomLevel));
     QCOMPARE(zoomLevel, 3.5);
     QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0505"), 6.0, &zoomLevel));
     QCOMPARE(zoomLevel, 5.5);
     QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0600"), 6.0, &zoomLevel));
     QCOMPARE(zoomLevel, 6.0);
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(
+        QByteArray::fromHex("0a00"), 6.0, &zoomLevel, &usedLegacyTenthsEncoding));
+    QCOMPARE(zoomLevel, 1.0);
+    QVERIFY(usedLegacyTenthsEncoding);
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("0b00"), 6.0, &zoomLevel));
+    QCOMPARE(zoomLevel, 1.1);
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("2300"), 6.0, &zoomLevel));
+    QCOMPARE(zoomLevel, 3.5);
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("3700"), 6.0, &zoomLevel));
+    QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(SiyiProtocol::parseMaximumZoomPayload(QByteArray::fromHex("3c00"), 6.0, &zoomLevel));
+    QCOMPARE(zoomLevel, 6.0);
 
     zoomLevel = 9.9;
     const QList<QByteArray> invalidPayloads = {
         QByteArray::fromHex("0000"),
         QByteArray::fromHex("030a"),
-        QByteArray::fromHex("0a00"),
-        QByteArray::fromHex("1200"),
-        QByteArray::fromHex("3700"),
-        QByteArray::fromHex("3c00"),
+        QByteArray::fromHex("0900"),
+        QByteArray::fromHex("3d00"),
+        QByteArray::fromHex("0001"),
         QByteArray::fromHex("ffff"),
         QByteArray::fromHex("01"),
         QByteArray::fromHex("010000"),
     };
     for (const QByteArray& payload : invalidPayloads) {
-        QVERIFY(!SiyiProtocol::parseMaximumZoomPayload(payload, 6.0, &zoomLevel));
+        usedLegacyTenthsEncoding = true;
+        QVERIFY(!SiyiProtocol::parseMaximumZoomPayload(
+            payload, 6.0, &zoomLevel, &usedLegacyTenthsEncoding));
         QCOMPARE(zoomLevel, 9.9);
+        QVERIFY(usedLegacyTenthsEncoding);
     }
 }
 
 void SiyiProtocolTest::currentZoomPayloads()
 {
     double zoomLevel = 0.0;
+    bool usedLegacyTenthsEncoding = true;
 
-    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("0100"), 1.0, 5.5, &zoomLevel));
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(
+        QByteArray::fromHex("0100"), 1.0, 5.5, &zoomLevel, &usedLegacyTenthsEncoding));
     QCOMPARE(zoomLevel, 1.0);
+    QVERIFY(!usedLegacyTenthsEncoding);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("0108"), 1.0, 5.5, &zoomLevel));
     QCOMPARE(zoomLevel, 1.8);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("0208"), 1.0, 5.5, &zoomLevel));
@@ -192,6 +212,20 @@ void SiyiProtocolTest::currentZoomPayloads()
     QCOMPARE(zoomLevel, 3.5);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("0505"), 1.0, 5.5, &zoomLevel));
     QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(
+        QByteArray::fromHex("0a00"), 1.0, 5.5, &zoomLevel, &usedLegacyTenthsEncoding));
+    QCOMPARE(zoomLevel, 1.0);
+    QVERIFY(usedLegacyTenthsEncoding);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1200"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 1.8);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1c00"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 2.8);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("2300"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 3.5);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("3700"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 5.5);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("3c00"), 1.0, 6.0, &zoomLevel));
+    QCOMPARE(zoomLevel, 6.0);
 }
 
 void SiyiProtocolTest::invalidZoomPayloads()
@@ -200,11 +234,10 @@ void SiyiProtocolTest::invalidZoomPayloads()
     const QList<QByteArray> invalidCurrentPayloads = {
         QByteArray::fromHex("0000"),
         QByteArray::fromHex("010a"),
-        QByteArray::fromHex("0a00"),
-        QByteArray::fromHex("1200"),
-        QByteArray::fromHex("1c00"),
-        QByteArray::fromHex("3700"),
+        QByteArray::fromHex("0900"),
+        QByteArray::fromHex("3800"),
         QByteArray::fromHex("3c00"),
+        QByteArray::fromHex("0001"),
         QByteArray::fromHex("ffff"),
         QByteArray::fromHex("01"),
         QByteArray::fromHex("010000"),

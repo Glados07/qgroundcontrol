@@ -197,10 +197,16 @@ void SiyiSdk::_readPendingDatagrams()
             }
         } else if (decoded.command == SiyiProtocol::CommandMaximumZoomValue) {
             double zoomLevel = 0.0;
+            bool usedLegacyTenthsEncoding = false;
             if (SiyiProtocol::parseMaximumZoomPayload(decoded.payload,
                                                       _maximumZoom,
-                                                      &zoomLevel)) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel;
+                                                      &zoomLevel,
+                                                      &usedLegacyTenthsEncoding)) {
+                qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel
+                                    << "encoding"
+                                    << (usedLegacyTenthsEncoding
+                                            ? "little-endian tenths compatibility"
+                                            : "integer plus decimal");
                 emit packetReceived();
                 emit maximumZoomReceived(zoomLevel);
             } else {
@@ -210,11 +216,17 @@ void SiyiSdk::_readPendingDatagrams()
             }
         } else if (decoded.command == SiyiProtocol::CommandCurrentZoomValue) {
             double zoomLevel = 0.0;
+            bool usedLegacyTenthsEncoding = false;
             if (SiyiProtocol::parseCurrentZoomPayload(decoded.payload,
                                                       _minimumZoom,
                                                       _maximumZoom,
-                                                      &zoomLevel)) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel;
+                                                      &zoomLevel,
+                                                      &usedLegacyTenthsEncoding)) {
+                qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel
+                                    << "encoding"
+                                    << (usedLegacyTenthsEncoding
+                                            ? "little-endian tenths compatibility"
+                                            : "integer plus decimal");
                 emit packetReceived();
                 emit currentZoomReceived(zoomLevel);
             } else {

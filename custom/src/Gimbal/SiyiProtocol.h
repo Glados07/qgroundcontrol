@@ -57,17 +57,20 @@ public:
     static bool parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType);
     static bool parseMaximumZoomPayload(const QByteArray& payload,
                                         double maximumSupportedZoom,
-                                        double* zoomLevel);
+                                        double* zoomLevel,
+                                        bool* usedLegacyTenthsEncoding = nullptr);
     static bool parseCurrentZoomPayload(const QByteArray& payload,
                                         double minimumZoom,
                                         double maximumZoom,
-                                        double* zoomLevel);
+                                        double* zoomLevel,
+                                        bool* usedLegacyTenthsEncoding = nullptr);
 
 private:
     static bool _parseZoomPayload(const QByteArray& payload,
                                   double minimumZoom,
                                   double maximumZoom,
-                                  double* zoomLevel);
+                                  double* zoomLevel,
+                                  bool* usedLegacyTenthsEncoding);
     static QByteArray _photoAndRecordPacket(quint8 functionType);
     static QByteArray _encode(Command command, const QByteArray& payload);
     static quint16 _crc16(const QByteArray& bytes);
