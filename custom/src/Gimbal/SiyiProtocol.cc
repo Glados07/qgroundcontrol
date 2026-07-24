@@ -45,11 +45,15 @@ QByteArray SiyiProtocol::toggleVideoRecordingPacket()
 
 QByteArray SiyiProtocol::absoluteZoomPacket(double zoomLevel)
 {
-    // Python SDK: integer_part = int(zoom), decimal_part = int((zoom * 10) % 10)
-    // 思翼绝对缩放命令用两个 uint8 表示倍率整数部分和一位小数部分。
-    const double normalized = qBound(0.0, zoomLevel, 99.9);
-    const int integerPart = qFloor(normalized);
-    const int decimalPart = qFloor((normalized * 10.0) + 0.0001) % 10;
+    if (!qIsFinite(zoomLevel) || zoomLevel < 1.0 || zoomLevel > 30.0) {
+        return QByteArray();
+    }
+
+    // 先统一量化成十分之一整数，再拆分整数/小数字节，避免4.999999之类
+    // 浮点表示被qFloor错误编码为4.9。协议层拒绝越界，不静默钳制。
+    const int zoomTenths = qRound(zoomLevel * 10.0);
+    const int integerPart = zoomTenths / 10;
+    const int decimalPart = zoomTenths % 10;
 
     QByteArray payload;
     payload.append(static_cast<char>(integerPart & 0xff));
@@ -81,6 +85,9 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
     if (at(0) != kHeader0 || at(1) != kHeader1) {
         return result;
     }
+    if ((at(2) & 0xfc) != 0) {
+        return result;
+    }
 
     const quint16 payloadLength = static_cast<quint16>(at(3)) | (static_cast<quint16>(at(4)) << 8);
     const int expectedLength = 10 + payloadLength;
@@ -96,10 +103,18 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
     }
 
     result.valid = true;
+    result.control = at(2);
     result.sequence = static_cast<quint16>(at(5)) | (static_cast<quint16>(at(6)) << 8);
     result.command = at(7);
     result.payload = frame.mid(8, payloadLength);
     return result;
+}
+
+bool SiyiProtocol::isAckPacket(const DecodedPacket& packet)
+{
+    // 相机响应必须只设置ack_pack(bit1)。请求回显(0x01)和同时设置
+    // need_ack/ack_pack的异常帧(0x03)都不能进入业务状态机。
+    return packet.valid && packet.control == 0x02;
 }
 
 bool SiyiProtocol::parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel)
@@ -111,7 +126,27 @@ bool SiyiProtocol::parseManualZoomAckPayload(const QByteArray& payload, double* 
     // 0x05 ACK 是小端 uint16 的十倍倍率，与 0x18 的整数/小数双字节格式不同。
     const quint16 rawZoom = static_cast<quint16>(static_cast<quint8>(payload.at(0)))
         | (static_cast<quint16>(static_cast<quint8>(payload.at(1))) << 8);
-    *zoomLevel = rawZoom / 10.0;
+    const double decodedZoom = rawZoom / 10.0;
+    if (decodedZoom < 1.0 || decodedZoom > 30.0) {
+        return false;
+    }
+
+    *zoomLevel = decodedZoom;
+    return true;
+}
+
+bool SiyiProtocol::parseAbsoluteZoomAckPayload(const QByteArray& payload, bool* accepted)
+{
+    if (!accepted || payload.size() != 1) {
+        return false;
+    }
+
+    const quint8 result = static_cast<quint8>(payload.at(0));
+    if (result > 1) {
+        return false;
+    }
+
+    *accepted = result == 1;
     return true;
 }
 
@@ -154,70 +189,50 @@ bool SiyiProtocol::parseFunctionFeedbackPayload(const QByteArray& payload, quint
 bool SiyiProtocol::parseCurrentZoomPayload(const QByteArray& payload,
                                            double minimumZoom,
                                            double maximumZoom,
-                                           double* zoomLevel,
-                                           bool* usedLegacyTenthsEncoding)
+                                           double* zoomLevel)
 {
     return _parseZoomPayload(payload,
                              minimumZoom,
                              maximumZoom,
-                             zoomLevel,
-                             usedLegacyTenthsEncoding);
+                             zoomLevel);
 }
 
 bool SiyiProtocol::parseMaximumZoomPayload(const QByteArray& payload,
                                            double maximumSupportedZoom,
-                                           double* zoomLevel,
-                                           bool* usedLegacyTenthsEncoding)
+                                           double* zoomLevel)
 {
     // 倍率的最小有效值是1.0x。协议没有把00 00定义为“不支持该命令”，
     // 因此不能用零响应把UI永久锁在1.0x。
     return _parseZoomPayload(payload,
                              1.0,
                              maximumSupportedZoom,
-                             zoomLevel,
-                             usedLegacyTenthsEncoding);
+                             zoomLevel);
 }
 
 bool SiyiProtocol::_parseZoomPayload(const QByteArray& payload,
                                      double minimumZoom,
                                      double maximumZoom,
-                                     double* zoomLevel,
-                                     bool* usedLegacyTenthsEncoding)
+                                     double* zoomLevel)
 {
-    if (usedLegacyTenthsEncoding) {
-        *usedLegacyTenthsEncoding = false;
-    }
     if (!zoomLevel || payload.size() != 2 || !qIsFinite(minimumZoom) || !qIsFinite(maximumZoom) || minimumZoom > maximumZoom) {
         return false;
     }
 
     const quint8 firstByte = static_cast<quint8>(payload.at(0));
     const quint8 secondByte = static_cast<quint8>(payload.at(1));
-    const auto inRange = [minimumZoom, maximumZoom](double value) {
-        return qIsFinite(value) && value >= minimumZoom && value <= maximumZoom;
-    };
-
-    // 官方 0x16/0x18 格式为“整数 byte + 一位小数 byte”。部分 A8 Mini兼容固件可能
-    // 与 0x05 ACK 相同，以小端 uint16 的十分之一倍率返回（例如 0A 00 表示
-    // 1.0x）。只有官方候选不合法、兼容候选又落在当前相机范围内时才回退，避免
-    // 把真正的异常回包静默钳制成最大倍率。
-    const double documentedZoom = firstByte + (secondByte / 10.0);
-    if (secondByte <= 9 && inRange(documentedZoom)) {
-        *zoomLevel = documentedZoom;
-        return true;
+    // 官方0x16/0x18固定为“整数byte + 一位小数byte”。0x05 ACK才是
+    // 小端uint16/10，两种命令不能混用解析，否则12 00会被伪造为1.8x。
+    if (secondByte > 9) {
+        return false;
     }
-
-    const quint16 rawTenths = static_cast<quint16>(firstByte)
-        | (static_cast<quint16>(secondByte) << 8);
-    const double legacyZoom = rawTenths / 10.0;
-    if (!inRange(legacyZoom)) {
+    const double documentedZoom = firstByte + (secondByte / 10.0);
+    if (!qIsFinite(documentedZoom)
+        || documentedZoom < minimumZoom
+        || documentedZoom > maximumZoom) {
         return false;
     }
 
-    *zoomLevel = legacyZoom;
-    if (usedLegacyTenthsEncoding) {
-        *usedLegacyTenthsEncoding = true;
-    }
+    *zoomLevel = documentedZoom;
     return true;
 }
 

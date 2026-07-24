@@ -25,7 +25,7 @@ Loader {
         SettingsGroupLayout {
             Layout.fillWidth: true
             heading: qsTr("SIYI Gimbal Camera")
-            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. A tap uses one complete configured step; press and hold for continuous zoom. Zoom remains locked until QGC decodes a supported video resolution; card-recording resolution is not used.")
+            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. Tap sends one configured step; holding repeats confirmed steps. Intermediate moves keep the full step, while the last move snaps 5.0x to 5.5x for 1080p or 3.0x to 3.5x for 2K; zooming out reverses that boundary move first. The first decoded 1080p or 2K pull-stream resolution is used for this application session; card-recording resolution and command 0x16 are not used.")
 
             FactCheckBoxSlider {
                 Layout.fillWidth: true

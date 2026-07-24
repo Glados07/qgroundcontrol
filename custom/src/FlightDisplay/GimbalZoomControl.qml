@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按按配置步长单步缩放；长按启动相机原生连续缩放，释放或取消时停止。
+ * 短按按配置步长单步缩放，最后一次可吸附真实上限；长按串行重复相同规则。
  *
  ****************************************************************************/
 
@@ -27,6 +27,8 @@ Item {
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
     readonly property bool canSend: Boolean(manager && manager.enabled)
+    readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
+    readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
     implicitWidth: zoomColumn.implicitWidth
@@ -121,9 +123,7 @@ Item {
             border.width: 1
             enabled: root.canSend
                      && (zoomOutMouseArea.gestureState !== root.gestureIdle
-                         || (!root.manager.continuousZoomActive
-                             && (!root.zoomKnown
-                                 || root.zoomValue > (root.manager.minimumZoom + 0.05))))
+                         || root.canZoomOut)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
 
@@ -246,9 +246,7 @@ Item {
             border.width: 1
             enabled: root.canSend
                      && (zoomInMouseArea.gestureState !== root.gestureIdle
-                         || (!root.manager.continuousZoomActive
-                             && (!root.zoomKnown
-                                 || root.zoomValue < (root.manager.maximumZoom - 0.05))))
+                         || root.canZoomIn)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomInMouseArea.pressed ? 0.94 : 1.0
 

@@ -31,6 +31,7 @@ public:
 
 signals:
     void manualZoomReceived(double zoomLevel);
+    void absoluteZoomFeedbackReceived(bool accepted);
     void maximumZoomReceived(double zoomLevel);
     void currentZoomReceived(double zoomLevel);
     void cameraSystemStatusReceived(quint8 hdrStatus,

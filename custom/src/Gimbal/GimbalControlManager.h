@@ -25,6 +25,8 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(double maximumZoom READ maximumZoom NOTIFY maximumZoomChanged)
     Q_PROPERTY(bool sdkResponding READ sdkResponding NOTIFY sdkRespondingChanged)
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
+    Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
     Q_PROPERTY(bool cameraStatusKnown READ cameraStatusKnown NOTIFY cameraStatusKnownChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
@@ -43,6 +45,8 @@ public:
     double maximumZoom() const { return _maximumZoom; }
     bool sdkResponding() const { return _sdkResponding; }
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
+    bool zoomInAvailable() const;
+    bool zoomOutAvailable() const;
     bool continuousZoomActive() const { return _continuousZoomActive; }
     bool cameraStatusKnown() const { return _cameraStatusKnown; }
     bool recording() const { return _recording; }
@@ -67,6 +71,7 @@ signals:
     void maximumZoomChanged();
     void sdkRespondingChanged();
     void zoomStatusKnownChanged();
+    void zoomAvailabilityChanged();
     void continuousZoomActiveChanged();
     void cameraStatusKnownChanged();
     void recordingChanged();
@@ -76,7 +81,8 @@ signals:
 
 private slots:
     void _settingsChanged();
-    void _handleMaximumZoom(double zoomLevel);
+    void _handleZoomStepChanged();
+    void _handleAbsoluteZoomFeedback(bool accepted);
     void _handleCurrentZoom(double zoomLevel);
     void _handlePulledVideoSize();
     void _handleVideoDecodingChanged();
@@ -90,21 +96,25 @@ private slots:
     void _handleCommunicationError(const QString& message);
     void _markSdkNotResponding();
     void _markZoomStatusUnknown();
+    void _handleZoomQueryTimeout();
     void _pollSdk();
     void _requestZoomAfterSettle();
+    void _sendNextContinuousZoomStep();
     void _stopContinuousZoomForSafety();
     void _requestRecordingStatusAfterDelay();
     void _handleRecordingCommandTimeout();
 
 private:
     void _configureSdkEndpoint();
-    bool _stopContinuousZoom(bool scheduleZoomSync);
+    bool _sendAbsoluteZoomTarget(double zoomLevel);
+    bool _sendCurrentZoomQuery(bool startOperationDeadline);
+    void _cancelOutstandingZoomQuery();
+    bool _stopContinuousZoom();
     void _clearStableZoomConfirmation();
+    void _beginStableZoomConfirmation(bool normalizeToStepGrid, int direction);
+    void _finalizeConfirmedZoom(double zoomLevel);
     void _resetMaximumZoomCapability();
-    void _invalidateEffectiveMaximumZoomCapability();
-    void _updatePulledVideoSizeCapability();
-    void _refreshMaximumZoomCapability(bool forceZoomResync = false);
-    void _applyMaximumZoomCapability(double zoomLevel, bool forceZoomResync);
+    void _tryConfirmPulledVideoResolution();
     void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
@@ -118,8 +128,6 @@ private:
     void _syncCameraStatus();
     void _setLastError(const QString& message);
     bool _cameraCommandAvailable();
-    bool _sendZoomStopTo(const QString& host, quint16 port);
-    QString _sdkHost() const;
     quint16 _sdkPort() const;
 
     static constexpr double kMinZoom = 1.0;
@@ -130,9 +138,11 @@ private:
     SiyiSdk* _sdk = nullptr;
     VideoManager* _videoManager = nullptr;
     QTimer _sdkResponseTimer;
-    QTimer _zoomQueryResponseTimer;
+    QTimer _zoomOperationTimer;
+    QTimer _zoomQueryTimeoutTimer;
     QTimer _sdkPollTimer;
     QTimer _continuousZoomWatchdog;
+    QTimer _continuousZoomStepTimer;
     QTimer _zoomSyncTimer;
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
@@ -143,24 +153,19 @@ private:
     bool _lastEnabled = false;
     bool _sdkResponding = false;
     bool _maximumZoomKnown = false;
-    bool _reportedMaximumZoomKnown = false;
-    double _reportedMaximumZoom = kDefaultMaxZoom;
-    bool _pulledVideoSizeAvailable = false;
-    bool _pulledVideoMaximumZoomKnown = false;
-    double _pulledVideoMaximumZoom = kDefaultMaxZoom;
-    quint16 _pulledVideoWidth = 0;
-    quint16 _pulledVideoHeight = 0;
-    bool _pulledVideoSizeObservedForCurrentStream = false;
+    bool _pulledVideoResolutionConfirmed = false;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;
+    bool _zoomQueryOutstanding = false;
     bool _absoluteZoomPending = false;
+    int _absoluteZoomMatchCount = 0;
     bool _stableZoomConfirmationPending = false;
     bool _stableZoomCandidateValid = false;
     double _stableZoomCandidate = kMinZoom;
+    bool _normalizeAfterStableZoom = false;
+    int _stableZoomDirection = 0;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
-    QString _continuousZoomHost;
-    quint16 _continuousZoomPort = 0;
     bool _cameraStatusKnown = false;
     bool _recording = false;
     bool _recordingCommandPending = false;

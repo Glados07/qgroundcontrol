@@ -36,6 +36,7 @@ public:
 
     struct DecodedPacket {
         bool valid = false;
+        quint8 control = 0;
         quint8 command = 0;
         quint16 sequence = 0;
         QByteArray payload;
@@ -49,25 +50,24 @@ public:
     static QByteArray requestMaximumZoomPacket();
     static QByteArray requestCurrentZoomPacket();
     static DecodedPacket decodePacket(const QByteArray& packet);
+    static bool isAckPacket(const DecodedPacket& packet);
     static bool parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel);
+    static bool parseAbsoluteZoomAckPayload(const QByteArray& payload, bool* accepted);
     static bool parseCameraSystemStatusPayload(const QByteArray& payload, CameraSystemStatus* status);
     static bool parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType);
     static bool parseMaximumZoomPayload(const QByteArray& payload,
                                         double maximumSupportedZoom,
-                                        double* zoomLevel,
-                                        bool* usedLegacyTenthsEncoding = nullptr);
+                                        double* zoomLevel);
     static bool parseCurrentZoomPayload(const QByteArray& payload,
                                         double minimumZoom,
                                         double maximumZoom,
-                                        double* zoomLevel,
-                                        bool* usedLegacyTenthsEncoding = nullptr);
+                                        double* zoomLevel);
 
 private:
     static bool _parseZoomPayload(const QByteArray& payload,
                                   double minimumZoom,
                                   double maximumZoom,
-                                  double* zoomLevel,
-                                  bool* usedLegacyTenthsEncoding);
+                                  double* zoomLevel);
     static QByteArray _photoAndRecordPacket(quint8 functionType);
     static QByteArray _encode(Command command, const QByteArray& payload);
     static quint16 _crc16(const QByteArray& bytes);

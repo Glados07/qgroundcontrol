@@ -14,6 +14,16 @@ public:
     static bool maximumZoomForVideoResolution(quint16 width,
                                                quint16 height,
                                                double* maximumZoom);
+    static bool isAlignedZoom(double zoomLevel,
+                              double zoomStep,
+                              double minimumZoom,
+                              double maximumZoom);
+    static bool alignmentTarget(double currentZoom,
+                                double zoomStep,
+                                double minimumZoom,
+                                double maximumZoom,
+                                int direction,
+                                double* targetZoom);
     static bool stepTarget(double currentZoom,
                            double zoomStep,
                            double minimumZoom,
