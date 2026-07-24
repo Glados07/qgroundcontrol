@@ -120,11 +120,14 @@ private:
     void _finalizeConfirmedZoom(double zoomLevel);
     void _resetMaximumZoomCapability();
     void _tryConfirmPulledVideoResolution();
+    void _schedulePulledVideoResolutionFallback();
+    void _tryConfirmPulledVideoResolutionFallback();
     bool _confirmPulledVideoResolution(const QSize& videoSize,
                                        const char* sourceDescription);
     void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
+    void _setMaximumZoomKnown(bool known);
     void _setSdkResponding(bool responding);
     void _setZoomStatusKnown(bool known);
     void _setContinuousZoomState(bool active, int direction = 0);
@@ -151,6 +154,7 @@ private:
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStepTimer;
     QTimer _zoomSyncTimer;
+    QTimer _pulledVideoFallbackTimer;
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
@@ -162,6 +166,7 @@ private:
     bool _maximumZoomKnown = false;
     bool _pulledVideoResolutionConfirmed = false;
     QSize _negotiatedPulledVideoSize;
+    QSize _videoManagerFallbackCandidate;
     QSize _lastRejectedPulledVideoSize;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;
