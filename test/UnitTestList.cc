@@ -103,7 +103,7 @@
 #include "FTPManagerTest.h"
 // #include "InitialConnectTest.h"
 #include "MAVLinkLogManagerTest.h"
-// #include "RequestMessageTest.h"
+#include "RequestMessageTest.h"
 // #include "SendMavCommandWithHandlerTest.h"
 // #include "SendMavCommandWithSignalingTest.h"
 #include "VehicleLinkManagerTest.h"
@@ -206,7 +206,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(FTPManagerTest)
     // UT_REGISTER_TEST(InitialConnectTest)
     UT_REGISTER_TEST(MAVLinkLogManagerTest)
-    // UT_REGISTER_TEST(RequestMessageTest)
+    UT_REGISTER_TEST(RequestMessageTest)
     // UT_REGISTER_TEST(SendMavCommandWithHandlerTest)
     // UT_REGISTER_TEST(SendMavCommandWithSignalingTest)
     UT_REGISTER_TEST(VehicleLinkManagerTest)

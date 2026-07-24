@@ -1171,6 +1171,11 @@ private:
         Vehicle*                    vehicle             = nullptr;
         int                         compId;
         int                         msgId;
+        float                       param1              = 0.0f;
+        float                       param2              = 0.0f;
+        float                       param3              = 0.0f;
+        float                       param4              = 0.0f;
+        float                       param5              = 0.0f;
         RequestMessageResultHandler resultHandler       = nullptr;
         void*                       resultHandlerData   = nullptr;
         bool                        commandAckReceived  = false;    // We keep track of the ack/message being received since the order in which this will come in is random
@@ -1180,8 +1185,12 @@ private:
     } RequestMessageInfo_t;
 
     QMap<int /* compId */, QMap<int /* msgId */, RequestMessageInfo_t*>> _requestMessageInfoMap; // Map of all request message calls currently waiting on a response
+    QMap<int /* compId */, QList<RequestMessageInfo_t*>> _requestMessageQueueMap;                 // Requests waiting for the active request on a component to finish
 
     void _removeRequestMessageInfo(int compId, int msgId);
+    bool _requestMessageDuplicate(int compId, int msgId) const;
+    void _requestMessageSendNow(RequestMessageInfo_t* requestMessageInfo);
+    void _requestMessageSendNextFromQueue(int compId);
 
     static void _requestMessageCmdResultHandler             (void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode);
     static void _requestMessageWaitForMessageResultHandler  (void* resultHandlerData, bool noResponsefromVehicle, const mavlink_message_t& message);

@@ -25,6 +25,7 @@ private slots:
     void _performTestCases(void);
     void _compIdAllFailure(void);
     void _duplicateCommand(void);
+    void _differentMessageQueued(void);
 
 private:
     typedef struct {
@@ -32,7 +33,9 @@ private:
         MAV_RESULT                                          expectedCommandResult;
         Vehicle::RequestMessageResultHandlerFailureCode_t   expectedFailureCode;
         int                                                 expectedSendCount;
+        int                                                 expectedMessageId;
         bool                                                resultHandlerCalled;
+        int                                                 callbackCount;
     } TestCase_t;
 
     void _testCaseWorker(TestCase_t& testCase);

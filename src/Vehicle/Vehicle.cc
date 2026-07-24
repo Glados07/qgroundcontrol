@@ -374,6 +374,11 @@ Vehicle::~Vehicle()
 {
     qCDebug(VehicleLog) << "~Vehicle" << this;
 
+    for (auto& requestQueue : _requestMessageQueueMap) {
+        qDeleteAll(requestQueue);
+    }
+    _requestMessageQueueMap.clear();
+
     delete _missionManager;
     _missionManager = nullptr;
 
@@ -2902,9 +2907,71 @@ void Vehicle::_removeRequestMessageInfo(int compId, int msgId)
     if (_requestMessageInfoMap.contains(compId) && _requestMessageInfoMap[compId].contains(msgId)) {
         delete _requestMessageInfoMap[compId][msgId];
         _requestMessageInfoMap[compId].remove(msgId);
+        if (_requestMessageInfoMap[compId].isEmpty()) {
+            _requestMessageInfoMap.remove(compId);
+        }
+        _requestMessageSendNextFromQueue(compId);
     } else {
         qWarning() << Q_FUNC_INFO << "compId:msgId not found" << compId << msgId;
     }
+}
+
+bool Vehicle::_requestMessageDuplicate(int compId, int msgId) const
+{
+    if (_requestMessageInfoMap.contains(compId) && _requestMessageInfoMap[compId].contains(msgId)) {
+        return true;
+    }
+
+    if (_requestMessageQueueMap.contains(compId)) {
+        for (const RequestMessageInfo_t* requestMessageInfo : _requestMessageQueueMap[compId]) {
+            if (requestMessageInfo->msgId == msgId) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+void Vehicle::_requestMessageSendNow(RequestMessageInfo_t* requestMessageInfo)
+{
+    _requestMessageInfoMap[requestMessageInfo->compId][requestMessageInfo->msgId] = requestMessageInfo;
+
+    Vehicle::MavCmdAckHandlerInfo_t handlerInfo;
+    handlerInfo.resultHandler       = _requestMessageCmdResultHandler;
+    handlerInfo.resultHandlerData   = requestMessageInfo;
+
+    _sendMavCommandWorker(false,                                    // commandInt
+                          false,                                    // showError
+                          &handlerInfo,
+                          requestMessageInfo->compId,
+                          MAV_CMD_REQUEST_MESSAGE,
+                          MAV_FRAME_GLOBAL,
+                          requestMessageInfo->msgId,
+                          requestMessageInfo->param1,
+                          requestMessageInfo->param2,
+                          requestMessageInfo->param3,
+                          requestMessageInfo->param4,
+                          requestMessageInfo->param5,
+                          0);
+}
+
+void Vehicle::_requestMessageSendNextFromQueue(int compId)
+{
+    if (_requestMessageInfoMap.contains(compId) && !_requestMessageInfoMap[compId].isEmpty()) {
+        return;
+    }
+
+    if (!_requestMessageQueueMap.contains(compId) || _requestMessageQueueMap[compId].isEmpty()) {
+        _requestMessageQueueMap.remove(compId);
+        return;
+    }
+
+    RequestMessageInfo_t* requestMessageInfo = _requestMessageQueueMap[compId].takeFirst();
+    if (_requestMessageQueueMap[compId].isEmpty()) {
+        _requestMessageQueueMap.remove(compId);
+    }
+    _requestMessageSendNow(requestMessageInfo);
 }
 
 
@@ -3008,27 +3075,30 @@ void Vehicle::_requestMessageWaitForMessageResultHandler(void* resultHandlerData
 
 void Vehicle::requestMessage(RequestMessageResultHandler resultHandler, void* resultHandlerData, int compId, int messageId, float param1, float param2, float param3, float param4, float param5)
 {
+    if (_requestMessageDuplicate(compId, messageId)) {
+        mavlink_message_t message{};
+        (*resultHandler)(resultHandlerData, MAV_RESULT_FAILED, RequestMessageFailureDuplicateCommand, message);
+        return;
+    }
+
     auto requestMessageInfo = new RequestMessageInfo_t;
     requestMessageInfo->vehicle                 = this;
     requestMessageInfo->compId                  = compId;
     requestMessageInfo->msgId                   = messageId;
+    requestMessageInfo->param1                  = param1;
+    requestMessageInfo->param2                  = param2;
+    requestMessageInfo->param3                  = param3;
+    requestMessageInfo->param4                  = param4;
+    requestMessageInfo->param5                  = param5;
     requestMessageInfo->resultHandler           = resultHandler;
     requestMessageInfo->resultHandlerData       = resultHandlerData;
 
-    _requestMessageInfoMap[compId][messageId] = requestMessageInfo;
+    if (_requestMessageInfoMap.contains(compId) && !_requestMessageInfoMap[compId].isEmpty()) {
+        _requestMessageQueueMap[compId].append(requestMessageInfo);
+        return;
+    }
 
-    Vehicle::MavCmdAckHandlerInfo_t handlerInfo;
-    handlerInfo.resultHandler       = _requestMessageCmdResultHandler;
-    handlerInfo.resultHandlerData   = requestMessageInfo;
-
-    _sendMavCommandWorker(false,                                    // commandInt
-                          false,                                    // showError
-                          &handlerInfo,
-                          compId,
-                          MAV_CMD_REQUEST_MESSAGE,
-                          MAV_FRAME_GLOBAL,
-                          messageId,
-                          param1, param2, param3, param4, param5, 0);
+    _requestMessageSendNow(requestMessageInfo);
 }
 
 void Vehicle::setPrearmError(const QString& prearmError)
