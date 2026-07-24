@@ -19,6 +19,8 @@ import QGroundControl.ScreenTools
 Loader {
     id: root
 
+    implicitWidth: item ? item.implicitWidth : 0
+    implicitHeight: item ? item.implicitHeight : 0
     Layout.fillWidth: true
     active: viewer3DReady && viewer3DSettingsVisible()
     sourceComponent: viewer3DSettingsComponent
@@ -43,9 +45,6 @@ Loader {
     property var osmFilePathFact:               viewer3DFact("osmFilePath")
     property var buildingLevelHeightFact:       viewer3DFact("buildingLevelHeight")
     property var altitudeBiasFact:              viewer3DFact("altitudeBias")
-
-    onLoaded:       if (item) { item.width = width }
-    onWidthChanged: if (item) { item.width = width }
 
     function viewer3DCorePluginObject(name) {
         try {

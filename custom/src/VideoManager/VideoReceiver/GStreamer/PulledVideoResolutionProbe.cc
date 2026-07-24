@@ -15,10 +15,9 @@ QGC_LOGGING_CATEGORY(PulledVideoResolutionProbeLog,
 
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 
-#include <QtCore/QSize>
-
 #include <gst/gst.h>
-#include <gst/video/video.h>
+
+#include <utility>
 
 namespace {
 
@@ -28,32 +27,94 @@ struct ProbeContext
     QSize negotiatedSize;
     QSize lastLoggedSize;
     bool reportOnNextBuffer = false;
+    bool missingCapsLogged = false;
+    PulledVideoResolutionProbe::ResolutionHandler resolutionHandler;
 };
 
 bool updateNegotiatedSize(ProbeContext *context, const GstCaps *caps)
 {
-    if (!context || !caps || !gst_caps_is_fixed(caps)) {
+    if (!context
+        || !caps
+        || gst_caps_is_any(caps)
+        || gst_caps_is_empty(caps)) {
         return false;
     }
 
-    GstVideoInfo videoInfo;
-    gst_video_info_init(&videoInfo);
-    if (!gst_video_info_from_caps(&videoInfo, caps)) {
+    for (guint index = 0; index < gst_caps_get_size(caps); ++index) {
+        const GstStructure *structure = gst_caps_get_structure(caps, index);
+        gint width = 0;
+        gint height = 0;
+        if (!structure
+            || !gst_structure_get_int(structure, "width", &width)
+            || !gst_structure_get_int(structure, "height", &height)
+            || width <= 0
+            || height <= 0) {
+            continue;
+        }
+
+        context->negotiatedSize = QSize(width, height);
+        // A CAPS event alone is not enough: publish only after this exact
+        // negotiation has delivered a real decoded frame.
+        context->reportOnNextBuffer = true;
+        context->missingCapsLogged = false;
+        return true;
+    }
+
+    return false;
+}
+
+bool updateFromCurrentPadCaps(ProbeContext *context, GstPad *pad)
+{
+    if (!context || !pad) {
         return false;
     }
 
-    const int width = GST_VIDEO_INFO_WIDTH(&videoInfo);
-    const int height = GST_VIDEO_INFO_HEIGHT(&videoInfo);
-    if (width <= 0 || height <= 0) {
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    const bool updated = updateNegotiatedSize(context, caps);
+    gst_clear_caps(&caps);
+    return updated;
+}
+
+bool updateFromPeerCurrentCaps(ProbeContext *context, GstPad *pad)
+{
+    if (!context || !pad) {
         return false;
     }
 
-    context->negotiatedSize = QSize(width, height);
-    // The native receiver can publish its early query-caps value after CAPS
-    // negotiation. Re-publish the negotiated value on the following real frame
-    // so VideoManager cannot be left with that provisional value.
-    context->reportOnNextBuffer = true;
-    return true;
+    GstPad *peerPad = gst_pad_get_peer(pad);
+    if (!peerPad) {
+        return false;
+    }
+
+    const bool updated = updateFromCurrentPadCaps(context, peerPad);
+    gst_object_unref(peerPad);
+    return updated;
+}
+
+bool updateFromGhostTargetCurrentCaps(ProbeContext *context, GstPad *pad)
+{
+    if (!context || !pad || !GST_IS_GHOST_PAD(pad)) {
+        return false;
+    }
+
+    GstPad *targetPad = gst_ghost_pad_get_target(GST_GHOST_PAD(pad));
+    if (!targetPad) {
+        return false;
+    }
+
+    const bool updated = updateFromCurrentPadCaps(context, targetPad);
+    gst_object_unref(targetPad);
+    return updated;
+}
+
+bool updateFromRealFrameCaps(ProbeContext *context, GstPad *pad)
+{
+    // qgcvideosinkbin exposes a ghost sink pad. Depending on the platform,
+    // current caps can live on the outer pad, its decoder peer, or the ghost
+    // target. A real buffer proves that the selected caps are in use.
+    return updateFromCurrentPadCaps(context, pad)
+        || updateFromPeerCurrentCaps(context, pad)
+        || updateFromGhostTargetCurrentCaps(context, pad);
 }
 
 void reportNegotiatedSize(ProbeContext *context)
@@ -72,6 +133,9 @@ void reportNegotiatedSize(ProbeContext *context)
     }
 
     emit context->receiver->videoSizeChanged(context->negotiatedSize);
+    if (context->resolutionHandler) {
+        context->resolutionHandler(context->negotiatedSize);
+    }
 }
 
 GstPadProbeReturn sinkPadProbe(GstPad *pad,
@@ -93,16 +157,21 @@ GstPadProbeReturn sinkPadProbe(GstPad *pad,
         }
     }
 
-    if ((type & GST_PAD_PROBE_TYPE_BUFFER) != 0) {
+    if ((type & (GST_PAD_PROBE_TYPE_BUFFER
+                 | GST_PAD_PROBE_TYPE_BUFFER_LIST)) != 0) {
         if (!context->negotiatedSize.isValid()) {
-            GstCaps *caps = gst_pad_get_current_caps(pad);
-            (void) updateNegotiatedSize(context, caps);
-            gst_clear_caps(&caps);
+            (void) updateFromRealFrameCaps(context, pad);
         }
 
         if (context->reportOnNextBuffer) {
             context->reportOnNextBuffer = false;
             reportNegotiatedSize(context);
+        } else if (!context->negotiatedSize.isValid()
+                   && !context->missingCapsLogged) {
+            context->missingCapsLogged = true;
+            qCWarning(PulledVideoResolutionProbeLog)
+                << "A main pulled-video frame arrived without readable"
+                   " negotiated width/height caps";
         }
     }
 
@@ -118,7 +187,10 @@ void destroyProbeContext(gpointer userData)
 
 #endif // QGC_GST_STREAMING
 
-bool PulledVideoResolutionProbe::install(void *sink, QObject *parent)
+bool PulledVideoResolutionProbe::install(
+    void *sink,
+    QObject *parent,
+    ResolutionHandler resolutionHandler)
 {
 #ifdef QGC_GST_STREAMING
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
@@ -136,8 +208,11 @@ bool PulledVideoResolutionProbe::install(void *sink, QObject *parent)
 
     auto *context = new ProbeContext;
     context->receiver = receiver;
+    context->resolutionHandler = std::move(resolutionHandler);
     const GstPadProbeType probeTypes = static_cast<GstPadProbeType>(
-        GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM | GST_PAD_PROBE_TYPE_BUFFER);
+        GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM
+        | GST_PAD_PROBE_TYPE_BUFFER
+        | GST_PAD_PROBE_TYPE_BUFFER_LIST);
     const gulong probeId = gst_pad_add_probe(sinkPad,
                                              probeTypes,
                                              sinkPadProbe,
@@ -151,9 +226,7 @@ bool PulledVideoResolutionProbe::install(void *sink, QObject *parent)
         return false;
     }
 
-    GstCaps *currentCaps = gst_pad_get_current_caps(sinkPad);
-    (void) updateNegotiatedSize(context, currentCaps);
-    gst_clear_caps(&currentCaps);
+    (void) updateFromCurrentPadCaps(context, sinkPad);
     gst_object_unref(sinkPad);
 
     qCDebug(PulledVideoResolutionProbeLog)
@@ -162,6 +235,7 @@ bool PulledVideoResolutionProbe::install(void *sink, QObject *parent)
 #else
     Q_UNUSED(sink);
     Q_UNUSED(parent);
+    Q_UNUSED(resolutionHandler);
     return false;
 #endif
 }

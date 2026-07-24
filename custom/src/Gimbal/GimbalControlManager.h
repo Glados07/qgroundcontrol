@@ -65,6 +65,10 @@ public:
     Q_INVOKABLE bool requestCurrentZoom();
     Q_INVOKABLE bool requestCameraStatus();
 
+    /// Accepts the decoded main-stream size reported by the negotiated video
+    /// sink. The caller must invoke this method on the manager's Qt thread.
+    void setNegotiatedPulledVideoResolution(const QSize& videoSize);
+
 signals:
     void enabledChanged();
     void currentZoomChanged();
@@ -116,6 +120,8 @@ private:
     void _finalizeConfirmedZoom(double zoomLevel);
     void _resetMaximumZoomCapability();
     void _tryConfirmPulledVideoResolution();
+    bool _confirmPulledVideoResolution(const QSize& videoSize,
+                                       const char* sourceDescription);
     void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
@@ -155,6 +161,7 @@ private:
     bool _sdkResponding = false;
     bool _maximumZoomKnown = false;
     bool _pulledVideoResolutionConfirmed = false;
+    QSize _negotiatedPulledVideoSize;
     QSize _lastRejectedPulledVideoSize;
     bool _zoomStatusKnown = false;
     bool _zoomResponseBlocked = false;

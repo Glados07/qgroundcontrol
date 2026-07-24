@@ -14,6 +14,8 @@ import QGroundControl.FactControls
 Loader {
     id: root
 
+    implicitWidth: item ? item.implicitWidth : 0
+    implicitHeight: item ? item.implicitHeight : 0
     active: QGroundControl.corePlugin && QGroundControl.corePlugin.gimbalControlSettings
     sourceComponent: settingsComponent
 
@@ -25,7 +27,7 @@ Loader {
         SettingsGroupLayout {
             Layout.fillWidth: true
             heading: qsTr("SIYI Gimbal Camera")
-            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. Tap sends one configured step; holding repeats confirmed steps. Intermediate moves keep the full step, while the last move snaps 5.0x to 5.5x for 1080p or 3.0x to 3.5x for 2K; zooming out reverses that boundary move first. The first decoded 1080p or 2K pull-stream resolution is used for this application session; card-recording resolution and command 0x16 are not used.")
+            headingDescription: qsTr("Private SDK camera controls.")
 
             FactCheckBoxSlider {
                 Layout.fillWidth: true

@@ -26,8 +26,17 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QLocale>
+#include <QtCore/QMetaObject>
+#include <QtCore/QPointer>
 #include <QtCore/QStringList>
+#include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
+
+#ifdef QGC_GST_STREAMING
+#include "VideoManager/VideoReceiver/VideoReceiver.h"
+
+#include <QtQuick/QQuickItem>
+#endif
 
 QGC_LOGGING_CATEGORY(CustomLog, "gcs.custom.customplugin")
 
@@ -230,7 +239,83 @@ QQmlApplicationEngine *CustomPlugin::createQmlApplicationEngine(QObject *parent)
 void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
 {
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
-    (void) PulledVideoResolutionProbe::install(sink, parent);
+
+#ifdef QGC_GST_STREAMING
+    auto *receiver = qobject_cast<VideoReceiver *>(parent);
+    const bool isMainVideoReceiver = receiver && !receiver->isThermal();
+    GimbalControlManager *manager =
+        isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
+
+    QPointer<GimbalControlManager> guardedManager(manager);
+    const auto queueNegotiatedResolution =
+        [guardedManager](const QSize& videoSize) {
+            if (!guardedManager) {
+                return;
+            }
+            QMetaObject::invokeMethod(
+                guardedManager.data(),
+                [guardedManager, videoSize]() {
+                    if (guardedManager) {
+                        guardedManager->setNegotiatedPulledVideoResolution(
+                            videoSize);
+                    }
+                },
+                Qt::QueuedConnection);
+        };
+
+    const bool padProbeInstalled =
+        PulledVideoResolutionProbe::install(
+            sink,
+            parent,
+            queueNegotiatedResolution);
+
+    bool videoItemObserverInstalled = false;
+    if (widget && isMainVideoReceiver && manager) {
+        QPointer<QQuickItem> guardedWidget(widget);
+        const auto reportVideoItemResolution =
+            [guardedWidget, guardedManager]() {
+                if (!guardedWidget || !guardedManager) {
+                    return;
+                }
+
+                const QSize videoSize(
+                    qRound(guardedWidget->implicitWidth()),
+                    qRound(guardedWidget->implicitHeight()));
+                guardedManager->setNegotiatedPulledVideoResolution(videoSize);
+            };
+
+        connect(widget,
+                &QQuickItem::implicitWidthChanged,
+                manager,
+                reportVideoItemResolution);
+        connect(widget,
+                &QQuickItem::implicitHeightChanged,
+                manager,
+                reportVideoItemResolution);
+        QMetaObject::invokeMethod(
+            manager,
+            reportVideoItemResolution,
+            Qt::QueuedConnection);
+        videoItemObserverInstalled = true;
+    }
+
+    if (isMainVideoReceiver) {
+        const QSize initialImplicitSize(
+            widget ? qRound(widget->implicitWidth()) : 0,
+            widget ? qRound(widget->implicitHeight()) : 0);
+        qCInfo(CustomLog)
+            << "Installed main pulled-video resolution observers:"
+            << "receiver" << receiver->name()
+            << "widgetClass"
+            << (widget ? widget->metaObject()->className() : "<null>")
+            << "widgetName"
+            << (widget ? widget->objectName() : QString())
+            << "initialImplicitSize" << initialImplicitSize
+            << "videoItem" << videoItemObserverInstalled
+            << "padProbe" << padProbeInstalled;
+    }
+#endif
+
     return sink;
 }
 

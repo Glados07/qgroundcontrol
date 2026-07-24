@@ -509,21 +509,68 @@ void GimbalControlManager::_handleVideoDecodingChanged()
     _tryConfirmPulledVideoResolution();
 }
 
+void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& videoSize)
+{
+    if (_pulledVideoResolutionConfirmed
+        || !videoSize.isValid()
+        || videoSize.isEmpty()) {
+        return;
+    }
+
+    if (_negotiatedPulledVideoSize != videoSize) {
+        _negotiatedPulledVideoSize = videoSize;
+        qCInfo(GimbalControlLog)
+            << "Observed negotiated main pulled-video resolution:"
+            << videoSize.width() << "x" << videoSize.height();
+    }
+
+    (void) _confirmPulledVideoResolution(
+        _negotiatedPulledVideoSize,
+        "negotiated main video sink");
+}
+
 void GimbalControlManager::_tryConfirmPulledVideoResolution()
 {
     // 本应用会话只确认一次实际拉流规格。用户场景固定为1080P或2K，
     // 断流/重连不再反复清空能力，也不会被VideoManager的瞬态尺寸扰动。
-    if (_pulledVideoResolutionConfirmed || !_videoManager || !_videoManager->decoding()) {
+    if (_pulledVideoResolutionConfirmed) {
         return;
     }
 
-    const QSize videoSize = _videoManager->videoSize();
+#ifdef QGC_GST_STREAMING
+    // GstVideoReceiver启动阶段的query_caps不是最终协商值。GStreamer构建
+    // 只允许显示sink依据最终GstVideoInfo报告的可信尺寸完成能力锁存。
+    if (!_negotiatedPulledVideoSize.isValid()
+        || _negotiatedPulledVideoSize.isEmpty()) {
+        return;
+    }
+    (void) _confirmPulledVideoResolution(
+        _negotiatedPulledVideoSize,
+        "negotiated main video sink");
+#else
+    if (!_videoManager || !_videoManager->decoding()) {
+        return;
+    }
+    (void) _confirmPulledVideoResolution(
+        _videoManager->videoSize(),
+        "VideoManager");
+#endif
+}
+
+bool GimbalControlManager::_confirmPulledVideoResolution(
+    const QSize& videoSize,
+    const char* sourceDescription)
+{
+    if (_pulledVideoResolutionConfirmed) {
+        return true;
+    }
+
     const bool sizeAvailable = videoSize.isValid()
         && !videoSize.isEmpty()
         && videoSize.width() <= std::numeric_limits<quint16>::max()
         && videoSize.height() <= std::numeric_limits<quint16>::max();
     if (!sizeAvailable) {
-        return;
+        return false;
     }
 
     const quint16 width = static_cast<quint16>(videoSize.width());
@@ -538,9 +585,10 @@ void GimbalControlManager::_tryConfirmPulledVideoResolution()
             qCWarning(GimbalControlLog)
                 << "Ignoring unsupported pulled video resolution"
                 << width << "x" << height
+                << "from" << sourceDescription
                 << "- waiting for negotiated 1920x1080/1920x1088 or 2560x1440 video";
         }
-        return;
+        return false;
     }
 
     _lastRejectedPulledVideoSize = QSize();
@@ -551,12 +599,14 @@ void GimbalControlManager::_tryConfirmPulledVideoResolution()
     qCInfo(GimbalControlLog)
         << "Latched pulled video resolution for this application session:"
         << width << "x" << height
+        << "source" << sourceDescription
         << "maximum zoom" << maximumZoom;
     if (enabled()) {
         _cancelOutstandingZoomQuery();
         _zoomOperationTimer.start();
         _scheduleZoomSync();
     }
+    return true;
 }
 
 void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
@@ -1141,6 +1191,7 @@ void GimbalControlManager::_beginStableZoomConfirmation(bool normalizeToStepGrid
 
 void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
 {
+    const bool controlsWereWaiting = !_zoomStatusKnown;
     _zoomSyncTimer.stop();
     _zoomOperationTimer.stop();
     _cancelOutstandingZoomQuery();
@@ -1152,6 +1203,12 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
     _setCurrentZoom(zoomLevel);
     _setZoomStatusKnown(true);
     _setLastError(QString());
+
+    if (controlsWereWaiting) {
+        qCInfo(GimbalControlLog)
+            << "Confirmed stable SIYI zoom" << zoomLevel
+            << "- zoom controls are ready";
+    }
 
     if (_continuousZoomActive) {
         _continuousZoomStepTimer.start();

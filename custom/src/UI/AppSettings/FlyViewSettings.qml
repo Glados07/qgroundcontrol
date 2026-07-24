@@ -226,6 +226,8 @@ SettingsPage {
         Loader {
             id:                 headingCompassBarToggleLoader
             Layout.fillWidth:   true
+            Layout.preferredHeight: item ? item.implicitHeight : 0
+            Layout.minimumHeight:   item ? item.implicitHeight : 0
             active:             _showHeadingCompassBar !== null
             visible:            active
 
@@ -254,10 +256,10 @@ SettingsPage {
     Loader {
         id:                 viewer3DSettingsGroupLoader
         Layout.fillWidth:   true
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+        Layout.minimumHeight:   item ? item.implicitHeight : 0
         source:             "qrc:/Custom/qml/QGroundControl/AppSettings/Viewer3DSettingsGroup.qml"
 
-        onLoaded:       if (item) { item.width = width }
-        onWidthChanged: if (item) { item.width = width }
         onStatusChanged: {
             if (status === Loader.Error) {
                 console.warn("Viewer3D settings group failed to load:", source)
@@ -269,10 +271,10 @@ SettingsPage {
     Loader {
         id:                 gimbalControlSettingsGroupLoader
         Layout.fillWidth:   true
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+        Layout.minimumHeight:   item ? item.implicitHeight : 0
         source:             "qrc:/Custom/qml/QGroundControl/AppSettings/GimbalControlSettingsGroup.qml"
 
-        onLoaded:       if (item) { item.width = width }
-        onWidthChanged: if (item) { item.width = width }
         onStatusChanged: {
             if (status === Loader.Error) {
                 console.warn("Gimbal control settings group failed to load:", source)
