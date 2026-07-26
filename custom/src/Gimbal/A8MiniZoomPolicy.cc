@@ -12,8 +12,8 @@ namespace {
 
 static constexpr double kComparisonTolerance = 0.051;
 static constexpr int kTargetConfirmationCount = 2;
-static constexpr int kStableDifferentConfirmationCount = 3;
 static constexpr int kRejectedStableConfirmationCount = 2;
+static constexpr int kUnacknowledgedStableConfirmationCount = 5;
 
 } // namespace
 
@@ -43,6 +43,9 @@ void A8MiniZoomPolicy::TargetTracker::markCommandRejected()
 {
     if (_active) {
         _commandRejected = true;
+        _targetMatchCount = 0;
+        _differentCandidateValid = false;
+        _differentMatchCount = 0;
     }
 }
 
@@ -73,10 +76,15 @@ A8MiniZoomPolicy::TargetTracker::observe(double actualZoom)
         ++_differentMatchCount;
     }
 
-    const int requiredCount = _commandRejected
+    // Repeated one-decimal samples are not immediate proof of a stopped lens:
+    // a moving A8 can report 1.6x several times on its way to 2.0x. A negative
+    // ACK needs two fresh matching samples; an ACK-less/accepted command needs
+    // a wider five-sample evidence window. The Manager adds a command-age gate
+    // (longer again for off-grid values) before acting on the latter.
+    const int requiredConfirmationCount = _commandRejected
         ? kRejectedStableConfirmationCount
-        : kStableDifferentConfirmationCount;
-    return _differentMatchCount >= requiredCount
+        : kUnacknowledgedStableConfirmationCount;
+    return _differentMatchCount >= requiredConfirmationCount
         ? TargetObservation::StableDifferent
         : TargetObservation::Waiting;
 }
@@ -130,10 +138,11 @@ bool A8MiniZoomPolicy::alignedMaximumZoom(double capabilityMaximumZoom,
         return false;
     }
 
-    const int completeStepCount =
-        (capabilityTenths - minimumTenths) / stepTenths;
-    *maximumZoom =
-        (minimumTenths + completeStepCount * stepTenths) / 10.0;
+    // The pulled-video ceiling is itself a legal terminal stop even when the
+    // final interval is shorter than zoomStep (for example 5.0 -> 5.5 at
+    // 1080P with a 1.0x step). Keep the historical function name because it is
+    // part of the custom policy API, but do not discard that terminal stop.
+    *maximumZoom = capabilityTenths / 10.0;
     return true;
 }
 
@@ -160,9 +169,12 @@ bool A8MiniZoomPolicy::isAlignedZoom(double zoomLevel,
         return false;
     }
 
-    // 所有可发布停点都固定锚定在minimumZoom，并严格落在完整步长网格。
-    // 分辨率能力上限只负责“不可越过”，不再作为非网格特殊停点。
-    return (zoomTenths - minimumTenths) % stepTenths == 0;
+    // Normal stops are anchored at minimumZoom. The exact stream-resolution
+    // ceiling is also a legal terminal stop, even when the final interval is
+    // shorter than one configured step (5.0 -> 5.5, or 3.0 -> 3.5).
+    const int maximumTenths = qRound(maximumZoom * 10.0);
+    return zoomTenths == maximumTenths
+        || (zoomTenths - minimumTenths) % stepTenths == 0;
 }
 
 bool A8MiniZoomPolicy::alignmentTarget(double currentZoom,
@@ -215,6 +227,9 @@ bool A8MiniZoomPolicy::alignmentTarget(double currentZoom,
     };
 
     considerCandidate(lowerGridTenths + stepTenths);
+    // The physical ceiling is a first-class stop, not an arbitrary off-grid
+    // value. This lets normalization select 5.5 from 5.3 and 3.5 from 3.3.
+    considerCandidate(maximumTenths);
     *targetZoom = selectedTenths / 10.0;
     return true;
 }
@@ -263,28 +278,57 @@ bool A8MiniZoomPolicy::stepTarget(double currentZoom,
         return false;
     }
 
-    if (!isAlignedZoom(currentTenths / 10.0,
-                       stepTenths / 10.0,
-                       minimumZoom,
-                       maximumZoom)) {
-        const int offsetTenths = currentTenths - minimumTenths;
-        const int candidateTenths = direction > 0
-            ? minimumTenths
-                + ((offsetTenths + stepTenths - 1) / stepTenths) * stepTenths
-            : minimumTenths
-                + (offsetTenths / stepTenths) * stepTenths;
-        if (candidateTenths < minimumTenths
-            || candidateTenths > maximumTenths
-            || candidateTenths == currentTenths) {
+    const bool atMaximum = currentTenths == maximumTenths;
+    const bool onRegularGrid =
+        (currentTenths - minimumTenths) % stepTenths == 0;
+
+    if (atMaximum) {
+        if (direction > 0) {
             return false;
         }
-        *targetZoom = candidateTenths / 10.0;
+
+        int previousGridTenths =
+            minimumTenths
+            + ((maximumTenths - minimumTenths) / stepTenths) * stepTenths;
+        if (previousGridTenths >= maximumTenths) {
+            previousGridTenths -= stepTenths;
+        }
+        if (previousGridTenths < minimumTenths) {
+            return false;
+        }
+        *targetZoom = previousGridTenths / 10.0;
         return true;
     }
 
-    const int candidateTenths =
-        currentTenths + direction * stepTenths;
+    if (onRegularGrid) {
+        const int regularCandidateTenths =
+            currentTenths + direction * stepTenths;
+        if (direction > 0
+            && regularCandidateTenths > maximumTenths
+            && currentTenths < maximumTenths) {
+            *targetZoom = maximumTenths / 10.0;
+            return true;
+        }
+        if (regularCandidateTenths < minimumTenths
+            || regularCandidateTenths > maximumTenths
+            || regularCandidateTenths == currentTenths) {
+            return false;
+        }
+        *targetZoom = regularCandidateTenths / 10.0;
+        return true;
+    }
 
+    // A transient hardware value such as 1.6x is never used as a new grid
+    // anchor. Move to the nearest legal stop in the requested direction.
+    const int offsetTenths = currentTenths - minimumTenths;
+    int candidateTenths = direction > 0
+        ? minimumTenths
+            + ((offsetTenths + stepTenths - 1) / stepTenths) * stepTenths
+        : minimumTenths
+            + (offsetTenths / stepTenths) * stepTenths;
+    if (direction > 0 && candidateTenths > maximumTenths) {
+        candidateTenths = maximumTenths;
+    }
     if (candidateTenths < minimumTenths
         || candidateTenths > maximumTenths
         || candidateTenths == currentTenths) {

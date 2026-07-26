@@ -24,11 +24,10 @@ Item {
     readonly property int gesturePressed: 1
     readonly property int gestureHolding: 2
     readonly property int gestureConsumed: 3
-    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
+    readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
-    readonly property bool zoomPending: Boolean(manager && manager.zoomCommandPending)
     readonly property bool zoomUncertain: Boolean(manager && manager.zoomValueUncertain)
-    readonly property bool canSend: Boolean(manager && manager.enabled)
+    readonly property bool canSend: online
     readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
     readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
@@ -227,11 +226,10 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                // pending期间继续显示最后一份设备确认值，并用省略号明确表示
-                // 新目标仍在核对；不能把requested目标冒充实际倍率。
-                text: root.online && root.zoomKnown
+                // currentZoom只包含两次0x18确认过的合法停点。运动中的
+                // 1.6x/1.8x等原始样本从不进入QML。
+                text: root.online && root.zoomKnown && !root.zoomUncertain
                       ? root.zoomValue.toFixed(1) + "x"
-                        + (root.zoomPending ? "\u2026" : (root.zoomUncertain ? "?" : ""))
                       : "--"
                 color: "#101820"
                 font.bold: true

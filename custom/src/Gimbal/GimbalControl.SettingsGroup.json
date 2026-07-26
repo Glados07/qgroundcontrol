@@ -25,7 +25,7 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
-            "longDesc": "Tap sends one configured step. Holding repeats only after the camera confirms the previous target. Every commanded stop is on the 1.0x + n * step grid. The pulled-video resolution provides the physical ceiling and the usable maximum is the highest complete grid stop at or below that ceiling; for example, a 1.0x step uses 5.0x for a 5.5x ceiling and 3.0x for a 3.5x ceiling.",
+            "longDesc": "Tap queues one configured step. Holding serially repeats only after the camera confirms the previous target. Legal stops are the 1.0x + n * step grid plus the exact pulled-video resolution ceiling as the terminal stop; for example, a 1.0x step uses 1.0/2.0/3.0/4.0/5.0/5.5 at 1080P and 1.0/2.0/3.0/3.5 at 2K.",
             "type": "double",
             "units": "x",
             "min": 0.1,

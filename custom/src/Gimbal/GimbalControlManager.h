@@ -9,7 +9,9 @@
 
 #include "A8MiniZoomPolicy.h"
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
+#include <QtCore/QQueue>
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
 
@@ -30,6 +32,7 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
     Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomControlsUnlocked READ zoomControlsUnlocked NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomCommandPending READ zoomCommandPending NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomValueUncertain READ zoomValueUncertain NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
@@ -52,6 +55,9 @@ public:
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
     bool zoomInAvailable() const;
     bool zoomOutAvailable() const;
+    bool zoomControlsUnlocked() const {
+        return enabled() && _videoStreamAvailable && _maximumZoomKnown;
+    }
     bool zoomCommandPending() const {
         return _absoluteZoomPending || _stableZoomConfirmationPending;
     }
@@ -128,12 +134,19 @@ private:
     void _configureSdkEndpoint();
     bool _sendAbsoluteZoomTarget(double zoomLevel,
                                  bool alignmentCorrection = false);
+    bool _queueZoomStep(int direction);
+    bool _zoomPlanningReference(double* zoomLevel) const;
+    bool _zoomDirectionAvailable(int direction) const;
+    void _clearQueuedZoomSteps();
+    void _dispatchNextZoomStep();
+    AlignmentAttemptResult _dispatchPendingZoomIntentFrom(double referenceZoom);
     bool _sendAlignmentCorrection(double targetZoom, double sourceZoom);
     bool _sendCurrentZoomQuery(bool startOperationDeadline);
     void _cancelOutstandingZoomQuery();
     bool _stopContinuousZoom();
     void _handleStableUnexpectedZoom(double zoomLevel);
-    AlignmentAttemptResult _tryRealignStableZoom(double zoomLevel);
+    AlignmentAttemptResult _tryRealignStableZoom(double zoomLevel,
+                                                  int direction = 0);
     bool _automaticAlignmentSuppressedFor(double zoomLevel) const;
     void _suppressAutomaticAlignment(double zoomLevel);
     void _clearAutomaticAlignmentSuppression();
@@ -155,6 +168,7 @@ private:
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
     void _setMaximumZoomKnown(bool known);
+    void _setVideoStreamAvailable(bool available);
     void _setSdkResponding(bool responding);
     void _setZoomStatusKnown(bool known);
     void _setZoomValueUncertain(bool uncertain);
@@ -172,6 +186,7 @@ private:
     static constexpr double kDefaultMaxZoom = 5.5;
     static constexpr double kProtocolMaxZoom = 6.0;
     static constexpr int kMaximumAlignmentAttempts = 2;
+    static constexpr int kMaximumQueuedZoomSteps = 32;
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
@@ -187,6 +202,7 @@ private:
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
+    QElapsedTimer _absoluteZoomElapsed;
     double _currentZoom = kMinZoom;
     double _maximumZoom = kDefaultMaxZoom;
     double _capabilityMaximumZoom = kDefaultMaxZoom;
@@ -196,6 +212,7 @@ private:
     bool _lastEnabled = false;
     bool _sdkResponding = false;
     bool _maximumZoomKnown = false;
+    bool _videoStreamAvailable = false;
     bool _pulledVideoResolutionConfirmed = false;
     bool _deviceMaximumZoomKnown = false;
     QSize _negotiatedPulledVideoSize;
@@ -206,6 +223,9 @@ private:
     bool _zoomResponseBlocked = false;
     bool _zoomQueryOutstanding = false;
     bool _absoluteZoomPending = false;
+    bool _latestActualZoomKnown = false;
+    double _latestActualZoom = kMinZoom;
+    QQueue<int> _queuedZoomDirections;
     int _alignmentAttemptCount = 0;
     bool _automaticAlignmentSuppressed = false;
     double _suppressedAlignmentZoom = kMinZoom;
