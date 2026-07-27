@@ -542,9 +542,11 @@ void SiyiProtocolTest::targetTrackerRecovery()
 
     A8MiniZoomPolicy::TargetTracker tracker;
     tracker.reset(2.0);
+    QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
+
+    tracker.reset(2.0);
     QCOMPARE(tracker.observe(1.2), Observation::Waiting);
     QCOMPARE(tracker.observe(1.5), Observation::Waiting);
-    QCOMPARE(tracker.observe(2.0), Observation::Waiting);
     QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
 
     tracker.reset(2.0);
@@ -557,7 +559,6 @@ void SiyiProtocolTest::targetTrackerRecovery()
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::StableDifferent);
-    QCOMPARE(tracker.observe(2.0), Observation::Waiting);
     QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
 
     tracker.reset(2.0);

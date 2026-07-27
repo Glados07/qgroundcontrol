@@ -11,8 +11,8 @@
 
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
-#include <QtCore/QQueue>
 #include <QtCore/QSize>
+#include <QtCore/QString>
 #include <QtCore/QTimer>
 
 class Fact;
@@ -59,7 +59,9 @@ public:
         return enabled() && _videoStreamAvailable && _maximumZoomKnown;
     }
     bool zoomCommandPending() const {
-        return _absoluteZoomPending || _stableZoomConfirmationPending;
+        return _absoluteZoomPending
+            || _stableZoomConfirmationPending
+            || _manualZoomFinalizePending;
     }
     bool zoomValueUncertain() const { return _zoomValueUncertain; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
@@ -101,6 +103,7 @@ signals:
 private slots:
     void _settingsChanged();
     void _handleZoomStepChanged();
+    void _handleManualZoomFeedback(double zoomLevel);
     void _handleAbsoluteZoomFeedback(bool accepted);
     void _handleMaximumZoom(double maximumZoom);
     void _handleCurrentZoom(double zoomLevel);
@@ -119,7 +122,9 @@ private slots:
     void _handleZoomQueryTimeout();
     void _pollSdk();
     void _requestZoomAfterSettle();
-    void _sendNextContinuousZoomStep();
+    void _pollContinuousZoom();
+    void _retryManualZoomStop();
+    void _expireManualZoomFinalize();
     void _stopContinuousZoomForSafety();
     void _requestRecordingStatusAfterDelay();
     void _handleRecordingCommandTimeout();
@@ -134,17 +139,22 @@ private:
     void _configureSdkEndpoint();
     bool _sendAbsoluteZoomTarget(double zoomLevel,
                                  bool alignmentCorrection = false,
-                                 bool replacePendingTarget = false);
-    bool _queueZoomStep(int direction);
+                                 bool replacePendingTarget = false,
+                                 bool manualFinalizeCorrection = false);
+    bool _sendZoomStep(int direction);
     bool _zoomPlanningReference(double* zoomLevel) const;
     bool _zoomDirectionAvailable(int direction) const;
-    void _clearQueuedZoomSteps();
-    void _dispatchNextZoomStep();
-    AlignmentAttemptResult _dispatchPendingZoomIntentFrom(double referenceZoom);
     bool _sendAlignmentCorrection(double targetZoom, double sourceZoom);
     bool _sendCurrentZoomQuery(bool startOperationDeadline);
     void _cancelOutstandingZoomQuery();
-    bool _stopContinuousZoom();
+    bool _stopContinuousZoom(bool finalizeAfterStop = true);
+    bool _flushPendingManualZoomStop();
+    bool _sendPendingManualZoomStop();
+    bool _manualZoomFinalizeDeadlineOpen() const;
+    void _cancelManualZoomFinalize();
+    void _handleContinuousZoomSample(double zoomLevel);
+    void _finishManualZoomStop(double zoomLevel);
+    void _publishLegalZoom(double zoomLevel);
     void _handleStableUnexpectedZoom(double zoomLevel);
     AlignmentAttemptResult _tryRealignStableZoom(double zoomLevel,
                                                   int direction = 0);
@@ -187,9 +197,14 @@ private:
     static constexpr double kDefaultMaxZoom = 5.5;
     static constexpr double kProtocolMaxZoom = 6.0;
     static constexpr int kMaximumAlignmentAttempts = 2;
-    static constexpr int kMaximumQueuedZoomSteps = 32;
-    static constexpr int kConfirmedZoomStepDelayMs = 180;
-    static constexpr int kPendingZoomRetargetIntervalMs = 1100;
+    static constexpr int kDefaultZoomQueryTimeoutMs = 1000;
+    static constexpr int kManualZoomPollIntervalMs = 120;
+    static constexpr int kManualZoomQueryTimeoutMs = 250;
+    static constexpr int kManualZoomStopQueryDelayMs = 350;
+    static constexpr int kManualZoomStopRetryMs = 80;
+    static constexpr int kManualZoomFinalizeTimeoutMs = 1000;
+    static constexpr int kManualZoomFinalConfirmationCount = 2;
+    static constexpr int kManualZoomStopMaximumRetryAttempts = 2;
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
@@ -200,12 +215,15 @@ private:
     QTimer _sdkPollTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStepTimer;
+    QTimer _manualZoomStopRetryTimer;
+    QTimer _manualZoomFinalizeTimer;
     QTimer _zoomSyncTimer;
     QTimer _pulledVideoFallbackTimer;
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
     QElapsedTimer _absoluteZoomElapsed;
+    QElapsedTimer _manualZoomFinalizeElapsed;
     double _currentZoom = kMinZoom;
     double _maximumZoom = kDefaultMaxZoom;
     double _capabilityMaximumZoom = kDefaultMaxZoom;
@@ -228,7 +246,6 @@ private:
     bool _absoluteZoomPending = false;
     bool _latestActualZoomKnown = false;
     double _latestActualZoom = kMinZoom;
-    QQueue<int> _queuedZoomDirections;
     int _alignmentAttemptCount = 0;
     bool _automaticAlignmentSuppressed = false;
     double _suppressedAlignmentZoom = kMinZoom;
@@ -244,6 +261,15 @@ private:
     int _stableZoomDirection = 0;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
+    bool _manualZoomFinalizePending = false;
+    int _manualZoomFinalizeDirection = 0;
+    bool _manualZoomFinalCandidateValid = false;
+    double _manualZoomFinalCandidate = kMinZoom;
+    int _manualZoomFinalMatchCount = 0;
+    bool _suppressIdleAlignmentUntilExplicitZoom = false;
+    QString _manualZoomSessionHost;
+    quint16 _manualZoomSessionPort = 0;
+    int _manualZoomStopRetryAttemptsRemaining = 0;
     bool _cameraStatusKnown = false;
     bool _recording = false;
     bool _recordingCommandPending = false;

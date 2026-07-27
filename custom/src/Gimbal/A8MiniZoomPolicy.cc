@@ -11,7 +11,10 @@
 namespace {
 
 static constexpr double kComparisonTolerance = 0.051;
-static constexpr int kTargetConfirmationCount = 2;
+// A validated solicited 0x18 packet that exactly equals the legal target is
+// sufficient. Requiring two target samples made normal zooms remain hidden and
+// let a newer gesture reset the tracker before any value could be published.
+static constexpr int kTargetConfirmationCount = 1;
 static constexpr int kStableDifferentConfirmationCount = 5;
 
 } // namespace
