@@ -46,6 +46,7 @@ void SiyiProtocolTest::absoluteZoomPackets()
 {
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(1.0).toHex(), QByteArrayLiteral("556601020000000f010061be"));
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(1.8).toHex(), QByteArrayLiteral("556601020000000f0108693f"));
+    QCOMPARE(SiyiProtocol::absoluteZoomPacket(2.0).toHex(), QByteArrayLiteral("556601020000000f020032eb"));
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(4.5).toHex(), QByteArrayLiteral("556601020000000f04053111"));
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(4.999999).toHex(), QByteArrayLiteral("556601020000000f0500a572"));
     QCOMPARE(SiyiProtocol::absoluteZoomPacket(5.5).toHex(), QByteArrayLiteral("556601020000000f05050022"));
@@ -218,8 +219,12 @@ void SiyiProtocolTest::currentZoomPayloads()
         QByteArray::fromHex("0a00"), 1.0, 5.5, &zoomLevel, &usedLegacyTenthsEncoding));
     QCOMPARE(zoomLevel, 1.0);
     QVERIFY(usedLegacyTenthsEncoding);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1000"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 1.6);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1200"), 1.0, 5.5, &zoomLevel));
     QCOMPARE(zoomLevel, 1.8);
+    QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1400"), 1.0, 5.5, &zoomLevel));
+    QCOMPARE(zoomLevel, 2.0);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("1c00"), 1.0, 5.5, &zoomLevel));
     QCOMPARE(zoomLevel, 2.8);
     QVERIFY(SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("2300"), 1.0, 5.5, &zoomLevel));
@@ -512,6 +517,23 @@ void SiyiProtocolTest::repeatedStepSequences()
     }
     QVERIFY(!A8MiniZoomPolicy::stepTarget(
         currentZoom, 0.7, 1.0, 5.5, -1, &targetZoom));
+
+    // A newer tap/hold target is planned from the previous legal request,
+    // not from an off-grid 0x18 movement sample. This is the rapid-input
+    // sequence used when pending 2.0x still reports raw 1.6x.
+    const double movementSample = 1.6;
+    double pendingRequestedZoom = 2.0;
+    QVERIFY(A8MiniZoomPolicy::stepTarget(
+        pendingRequestedZoom, 1.0, 1.0, 5.5, 1, &targetZoom));
+    QCOMPARE(targetZoom, 3.0);
+    pendingRequestedZoom = targetZoom;
+    QVERIFY(A8MiniZoomPolicy::stepTarget(
+        pendingRequestedZoom, 1.0, 1.0, 5.5, 1, &targetZoom));
+    QCOMPARE(targetZoom, 4.0);
+
+    QVERIFY(A8MiniZoomPolicy::stepTarget(
+        movementSample, 1.0, 1.0, 5.5, 1, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
 }
 
 void SiyiProtocolTest::targetTrackerRecovery()
@@ -535,27 +557,6 @@ void SiyiProtocolTest::targetTrackerRecovery()
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::StableDifferent);
-    QCOMPARE(tracker.observe(2.0), Observation::Waiting);
-    QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
-
-    tracker.reset(2.0);
-    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
-    tracker.markCommandRejected();
-    QVERIFY(tracker.commandRejected());
-    // Rejection starts a fresh evidence window; pre-ACK samples cannot count
-    // toward the stable-different decision.
-    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.0), Observation::StableDifferent);
-
-    tracker.reset(2.0);
-    tracker.markCommandRejected();
-    QCOMPARE(tracker.observe(1.0), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.5), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.5), Observation::StableDifferent);
-
-    tracker.reset(2.0);
-    tracker.markCommandRejected();
     QCOMPARE(tracker.observe(2.0), Observation::Waiting);
     QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
 

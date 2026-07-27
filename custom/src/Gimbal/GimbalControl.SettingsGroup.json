@@ -25,7 +25,7 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
-            "longDesc": "Tap queues one configured step. Holding serially repeats only after the camera confirms the previous target. Legal stops are the 1.0x + n * step grid plus the exact pulled-video resolution ceiling as the terminal stop; for example, a 1.0x step uses 1.0/2.0/3.0/4.0/5.0/5.5 at 1080P and 1.0/2.0/3.0/3.5 at 2K.",
+            "longDesc": "Tap queues one configured step. Holding repeats legal absolute targets at a controlled interval; a newer gesture can replace a still-unconfirmed older target without using an off-grid camera sample as its step anchor. Legal stops are the 1.0x + n * step grid plus the exact pulled-video resolution ceiling as the terminal stop; for example, a 1.0x step uses 1.0/2.0/3.0/4.0/5.0/5.5 at 1080P and 1.0/2.0/3.0/3.5 at 2K.",
             "type": "double",
             "units": "x",
             "min": 0.1,

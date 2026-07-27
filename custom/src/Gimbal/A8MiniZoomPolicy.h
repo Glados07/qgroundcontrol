@@ -22,12 +22,10 @@ public:
     public:
         void reset(double targetZoom);
         void clear();
-        void markCommandRejected();
         TargetObservation observe(double actualZoom);
 
         double targetZoom() const { return _targetZoom; }
         double stableDifferentZoom() const { return _differentCandidate; }
-        bool commandRejected() const { return _commandRejected; }
 
     private:
         double _targetZoom = 1.0;
@@ -35,7 +33,6 @@ public:
         int _targetMatchCount = 0;
         int _differentMatchCount = 0;
         bool _differentCandidateValid = false;
-        bool _commandRejected = false;
         bool _active = false;
     };
 

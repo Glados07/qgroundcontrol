@@ -133,7 +133,8 @@ private:
 
     void _configureSdkEndpoint();
     bool _sendAbsoluteZoomTarget(double zoomLevel,
-                                 bool alignmentCorrection = false);
+                                 bool alignmentCorrection = false,
+                                 bool replacePendingTarget = false);
     bool _queueZoomStep(int direction);
     bool _zoomPlanningReference(double* zoomLevel) const;
     bool _zoomDirectionAvailable(int direction) const;
@@ -187,6 +188,8 @@ private:
     static constexpr double kProtocolMaxZoom = 6.0;
     static constexpr int kMaximumAlignmentAttempts = 2;
     static constexpr int kMaximumQueuedZoomSteps = 32;
+    static constexpr int kConfirmedZoomStepDelayMs = 180;
+    static constexpr int kPendingZoomRetargetIntervalMs = 1100;
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;

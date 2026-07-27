@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按按配置步长单步缩放；长按在每个目标确认后串行重复相同规则。
+ * 短按按配置步长单步缩放；长按以受控间隔重复相同的合法目标。
  *
  ****************************************************************************/
 
@@ -182,12 +182,16 @@ Item {
                         gestureState = root.gestureHolding
                     }
                 }
-                onReleased: {
+                onReleased: function(mouse) {
                     const completedState = gestureState
+                    const releasedInside = mouse.x >= 0 && mouse.x <= width
+                                           && mouse.y >= 0 && mouse.y <= height
                     gestureState = root.gestureIdle
                     if (completedState === root.gestureHolding && root.manager) {
                         root.manager.stopZoom()
-                    } else if (completedState === root.gesturePressed && containsMouse && root.manager) {
+                    } else if (completedState === root.gesturePressed
+                               && releasedInside
+                               && root.manager) {
                         root.manager.zoomOut()
                     }
                 }
@@ -307,12 +311,16 @@ Item {
                         gestureState = root.gestureHolding
                     }
                 }
-                onReleased: {
+                onReleased: function(mouse) {
                     const completedState = gestureState
+                    const releasedInside = mouse.x >= 0 && mouse.x <= width
+                                           && mouse.y >= 0 && mouse.y <= height
                     gestureState = root.gestureIdle
                     if (completedState === root.gestureHolding && root.manager) {
                         root.manager.stopZoom()
-                    } else if (completedState === root.gesturePressed && containsMouse && root.manager) {
+                    } else if (completedState === root.gesturePressed
+                               && releasedInside
+                               && root.manager) {
                         root.manager.zoomIn()
                     }
                 }

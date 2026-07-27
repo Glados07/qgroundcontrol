@@ -22,8 +22,8 @@ namespace {
 QGC_LOGGING_CATEGORY(GimbalControlLog, "gcs.custom.gimbal.control")
 
 static constexpr double kZoomComparisonTolerance = 0.051;
-static constexpr qint64 kUnacknowledgedLegalRecoveryMs = 3000;
-static constexpr qint64 kUnacknowledgedOffGridRecoveryMs = 5000;
+static constexpr qint64 kLegalStableRecoveryMs = 3000;
+static constexpr qint64 kOffGridStableRecoveryMs = 5000;
 
 } // namespace
 
@@ -47,10 +47,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _zoomQueryTimeoutTimer.setInterval(1000);
     _sdkPollTimer.setInterval(2000);
     _continuousZoomWatchdog.setSingleShot(true);
-    // 长按采用逐步确认的0x0f循环；60秒只兜底丢失的释放事件。
+    // 长按采用受控间隔的0x0f合法目标循环；60秒只兜底丢失的释放事件。
     _continuousZoomWatchdog.setInterval(60000);
     _continuousZoomStepTimer.setSingleShot(true);
-    _continuousZoomStepTimer.setInterval(180);
+    _continuousZoomStepTimer.setInterval(kConfirmedZoomStepDelayMs);
     _zoomSyncTimer.setSingleShot(true);
     _zoomSyncTimer.setInterval(350);
     _pulledVideoFallbackTimer.setSingleShot(true);
@@ -250,8 +250,13 @@ bool GimbalControlManager::_queueZoomStep(int direction)
         return false;
     }
     if (_continuousZoomActive) {
-        _setLastError(tr("Release the held zoom direction before sending a tap step."));
-        return false;
+        // A tap is a newer, explicit user intent. Recover from a missing
+        // touch-release/cancel event instead of leaving apparently enabled
+        // buttons rejecting every tap until the long watchdog expires.
+        qCWarning(GimbalControlLog)
+            << "Stopping residual continuous SIYI zoom before accepting tap direction"
+            << direction;
+        _stopContinuousZoom();
     }
     if (!_zoomDirectionAvailable(direction)) {
         _setLastError(direction > 0
@@ -265,6 +270,10 @@ bool GimbalControlManager::_queueZoomStep(int direction)
     }
 
     _queuedZoomDirections.enqueue(direction);
+    qCInfo(GimbalControlLog)
+        << "Queued SIYI zoom direction" << direction
+        << "depth" << _queuedZoomDirections.size()
+        << "pending target" << (_absoluteZoomPending ? _requestedZoom : 0.0);
     emit zoomAvailabilityChanged();
     _setLastError(QString());
     _dispatchNextZoomStep();
@@ -278,20 +287,51 @@ void GimbalControlManager::_clearQueuedZoomSteps()
     }
 
     _queuedZoomDirections.clear();
+    if (!_continuousZoomActive) {
+        _continuousZoomStepTimer.stop();
+    }
     emit zoomAvailabilityChanged();
 }
 
 void GimbalControlManager::_dispatchNextZoomStep()
 {
     if (!zoomControlsUnlocked()
-        || _absoluteZoomPending
         || _stableZoomConfirmationPending) {
         return;
     }
 
+    const bool replacePendingTarget = _absoluteZoomPending;
+    if (replacePendingTarget) {
+        if (_queuedZoomDirections.isEmpty() && !_continuousZoomActive) {
+            return;
+        }
+
+        // The camera may report an intermediate value such as 1.6x for a
+        // prolonged period. A newer user gesture must not remain hostage to
+        // the old target's two-sample confirmation. Preserve a conservative
+        // command/query isolation interval, then replace the old absolute
+        // target with the next legal planned stop.
+        const qint64 elapsedMs =
+            _absoluteZoomElapsed.isValid() ? _absoluteZoomElapsed.elapsed() : 0;
+        if (elapsedMs < kPendingZoomRetargetIntervalMs) {
+            const int remainingMs = static_cast<int>(
+                qMax<qint64>(1, kPendingZoomRetargetIntervalMs - elapsedMs));
+            _continuousZoomStepTimer.start(remainingMs);
+            qCDebug(GimbalControlLog)
+                << "Deferred newer SIYI zoom intent for" << remainingMs
+                << "ms while target" << _requestedZoom
+                << "remains pending; queued depth"
+                << _queuedZoomDirections.size()
+                << "continuous" << _continuousZoomActive;
+            return;
+        }
+    }
+
     if (!_queuedZoomDirections.isEmpty()) {
         double referenceZoom = kMinZoom;
-        if (!_zoomPlanningReference(&referenceZoom)) {
+        if (replacePendingTarget) {
+            referenceZoom = _requestedZoom;
+        } else if (!_zoomPlanningReference(&referenceZoom)) {
             _beginStableZoomConfirmation(true, 0);
             _scheduleZoomSync();
             return;
@@ -311,7 +351,9 @@ void GimbalControlManager::_dispatchNextZoomStep()
                 continue;
             }
 
-            if (!_sendAbsoluteZoomTarget(targetZoom)) {
+            if (!_sendAbsoluteZoomTarget(targetZoom,
+                                         false,
+                                         replacePendingTarget)) {
                 _clearQueuedZoomSteps();
             }
             return;
@@ -323,7 +365,9 @@ void GimbalControlManager::_dispatchNextZoomStep()
     }
 
     double referenceZoom = kMinZoom;
-    if (!_zoomPlanningReference(&referenceZoom)) {
+    if (replacePendingTarget) {
+        referenceZoom = _requestedZoom;
+    } else if (!_zoomPlanningReference(&referenceZoom)) {
         _beginStableZoomConfirmation(true, 0);
         _scheduleZoomSync();
         return;
@@ -341,7 +385,9 @@ void GimbalControlManager::_dispatchNextZoomStep()
         return;
     }
 
-    if (!_sendAbsoluteZoomTarget(targetZoom)) {
+    if (!_sendAbsoluteZoomTarget(targetZoom,
+                                 false,
+                                 replacePendingTarget)) {
         _stopContinuousZoom();
     }
 }
@@ -439,7 +485,7 @@ bool GimbalControlManager::setZoom(double zoomLevel)
         return false;
     }
 
-    // 绝对倍率是新的镜头运动命令。若长按正处在两个已确认分度之间的等待
+    // 绝对倍率是新的镜头运动命令。若长按正处在两个合法目标之间的节流
     // 间隔，只需停止后续重复，再发送这个唯一的新目标。
     if (_continuousZoomActive && !_stopContinuousZoom()) {
         return false;
@@ -474,8 +520,9 @@ bool GimbalControlManager::startZoom(int direction)
         return false;
     }
 
-    // 长按不再发送自由运行的0x05。它串行重复完整0x0f分度，每一步必须
-    // 先由0x18确认，因而不会停在1.8x并继续产生2.8x之类的漂移网格。
+    // 长按不发送自由运行的0x05，而是按受控间隔重复完整0x0f分度。
+    // 若上一目标尚未确认，新目标从上一合法请求继续计划，绝不会把
+    // 1.8x等中间raw值作为锚点产生2.8x之类的漂移网格。
     if (!zoomControlsUnlocked()) {
         _setLastError(tr("Waiting for a supported pulled-video stream before controlling zoom."));
         return false;
@@ -494,7 +541,7 @@ bool GimbalControlManager::startZoom(int direction)
 
 bool GimbalControlManager::stopZoom()
 {
-    // 长按是串行绝对步进，不存在自由运动命令；释放只停止后续步进，
+    // 长按是有节流的绝对步进，不存在自由运动命令；释放只停止后续步进，
     // 已经发出的当前0x0f仍等待0x18确认，不能发送会干扰它的0x05停止包。
     return _stopContinuousZoom();
 }
@@ -669,13 +716,12 @@ void GimbalControlManager::_handleAbsoluteZoomFeedback(bool accepted)
         return;
     }
 
-    // sequence固定为0，负ACK本身不能直接发布倍率；但它必须缩短失败恢复，
-    // 让两份稳定实际值结束当前目标，不能继续把控件锁满10秒。
+    // sequence固定为0，迟到ACK无法归属旧目标还是新目标。负ACK只作
+    // 诊断，不能缩短当前目标的证据窗口；最终状态始终由0x18决定。
     qCWarning(GimbalControlLog)
         << "SIYI camera returned a negative absolute-zoom ACK;"
-        << "recovering from confirmed current zoom";
-    _absoluteZoomTracker.markCommandRejected();
-    _setLastError(tr("The SIYI camera did not accept the zoom step; verifying the actual zoom value."));
+        << "continuing 0x18 confirmation for target" << _requestedZoom;
+    _setLastError(tr("The SIYI camera reported a negative zoom acknowledgement; verifying the actual zoom value."));
     if (!_zoomQueryOutstanding && !_zoomResponseBlocked) {
         _scheduleZoomSync();
     }
@@ -1091,40 +1137,38 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         const A8MiniZoomPolicy::TargetObservation observation =
             _absoluteZoomTracker.observe(zoomLevel);
         if (observation == A8MiniZoomPolicy::TargetObservation::Waiting) {
-            // 目标值仍需两次命中；正常运动值可以变化或短时重复。没有
-            // 负ACK时，非目标样本先满足五份稳定证据再进入分级年龄门。
+            // 目标值仍需两次命中；正常运动值可以变化或短时重复。
+            // 非目标样本先满足五份稳定证据再进入分级年龄门。
             _scheduleZoomSync();
             return;
         }
         if (observation == A8MiniZoomPolicy::TargetObservation::StableDifferent) {
-            if (!_absoluteZoomTracker.commandRejected()) {
-                // Five repeated samples are only the first evidence layer.
-                // Give legal alternate stops at least 3s and off-grid motion
-                // samples such as 1.6x at least 5s before bounded recovery.
-                // This avoids both the old ~1s false settle and an unnecessary
-                // full 10s wait when the camera really stopped elsewhere.
-                const double stableZoom =
-                    _absoluteZoomTracker.stableDifferentZoom();
-                const bool stableZoomIsLegal =
-                    A8MiniZoomPolicy::isAlignedZoom(stableZoom,
-                                                    zoomStep(),
-                                                    kMinZoom,
-                                                    _maximumZoom);
-                const qint64 minimumRecoveryAgeMs = stableZoomIsLegal
-                    ? kUnacknowledgedLegalRecoveryMs
-                    : kUnacknowledgedOffGridRecoveryMs;
-                const qint64 elapsedMs = _absoluteZoomElapsed.isValid()
-                    ? _absoluteZoomElapsed.elapsed()
-                    : 0;
-                if (elapsedMs < minimumRecoveryAgeMs) {
-                    qCDebug(GimbalControlLog)
-                        << "Retaining SIYI zoom target" << _requestedZoom
-                        << "while stable-different candidate" << stableZoom
-                        << "awaits recovery age" << minimumRecoveryAgeMs
-                        << "elapsed ms" << elapsedMs;
-                    _scheduleZoomSync();
-                    return;
-                }
+            // Five repeated samples are only the first evidence layer.
+            // Give legal alternate stops at least 3s and off-grid motion
+            // samples such as 1.6x at least 5s before bounded recovery.
+            // This avoids both the old ~1s false settle and an unnecessary
+            // full 10s wait when the camera really stopped elsewhere.
+            const double stableZoom =
+                _absoluteZoomTracker.stableDifferentZoom();
+            const bool stableZoomIsLegal =
+                A8MiniZoomPolicy::isAlignedZoom(stableZoom,
+                                                zoomStep(),
+                                                kMinZoom,
+                                                _maximumZoom);
+            const qint64 minimumRecoveryAgeMs = stableZoomIsLegal
+                ? kLegalStableRecoveryMs
+                : kOffGridStableRecoveryMs;
+            const qint64 elapsedMs = _absoluteZoomElapsed.isValid()
+                ? _absoluteZoomElapsed.elapsed()
+                : 0;
+            if (elapsedMs < minimumRecoveryAgeMs) {
+                qCDebug(GimbalControlLog)
+                    << "Retaining SIYI zoom target" << _requestedZoom
+                    << "while stable-different candidate" << stableZoom
+                    << "awaits recovery age" << minimumRecoveryAgeMs
+                    << "elapsed ms" << elapsedMs;
+                _scheduleZoomSync();
+                return;
             }
             _handleStableUnexpectedZoom(
                 _absoluteZoomTracker.stableDifferentZoom());
@@ -1172,7 +1216,7 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         }
 
         // 拉流上限降低时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
-        // 回有效网格上限；已有旧显示时用pending标记，不能冒充新实际值。
+        // 回有效网格上限；确认期间用uncertain隐藏旧数字，不能冒充新实际值。
         if (!_stableZoomConfirmationPending
             || !_stableZoomCandidateValid
             || qAbs(zoomLevel - _stableZoomCandidate) > kZoomComparisonTolerance) {
@@ -1269,8 +1313,8 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         _beginStableZoomConfirmation(true, 0);
         _stableZoomCandidate = zoomLevel;
         _stableZoomCandidateValid = true;
-        // 初次同步显示--；已有合法值的pending保留上一确认显示。两者都
-        // 不改变视频会话解锁状态。
+        // 初次同步或已有值重新核对都显示--，不把旧停点冒充新的实际值；
+        // 这不改变视频会话解锁状态。
         if (!_zoomStatusKnown) {
             _setZoomStatusKnown(false);
         }
@@ -1485,6 +1529,9 @@ void GimbalControlManager::_pollSdk()
 void GimbalControlManager::_markZoomStatusUnknown()
 {
     const bool hadConfirmedZoom = _zoomStatusKnown;
+    const double timedOutRequestedZoom = _requestedZoom;
+    const bool hasNewerUserIntent =
+        !_queuedZoomDirections.isEmpty() || _continuousZoomActive;
     const bool timedOutDuringAlignment =
         _alignmentAttemptCount > 0 && _alignmentSourceZoomValid;
     const double timedOutAlignmentSource = _alignmentSourceZoom;
@@ -1494,7 +1541,6 @@ void GimbalControlManager::_markZoomStatusUnknown()
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
     _absoluteZoomTracker.clear();
-    _clearQueuedZoomSteps();
     if (timedOutDuringAlignment) {
         // 自动归整已发出但没有得到可判定结果时，不允许下一次空闲轮询
         // 立即重启同一轮归整。实际值、步长、能力或用户操作变化后才重试。
@@ -1502,8 +1548,6 @@ void GimbalControlManager::_markZoomStatusUnknown()
     }
     _alignmentAttemptCount = 0;
     _clearStableZoomConfirmation();
-    _stopContinuousZoom();
-    _requestedZoom = _currentZoom;
     if (!hadConfirmedZoom) {
         _setZoomStatusKnown(false);
     } else {
@@ -1514,7 +1558,28 @@ void GimbalControlManager::_markZoomStatusUnknown()
     // uncertain可能在上一次超时后已经为true；仍需显式通知absolute/stable
     // pending已经清除，通知QML刷新计划边界；它不参与会话解锁。
     emit zoomAvailabilityChanged();
-    _setLastError(tr("Timed out waiting for the SIYI zoom target; showing the last confirmed value while rechecking the camera."));
+    _setLastError(tr("Timed out waiting for the SIYI zoom target; hiding the zoom value while rechecking the camera."));
+
+    // A timeout belongs to the old command generation. Do not silently erase
+    // taps or a hold which arrived after that command was sent. Continue from
+    // the old requested stop so each accepted direction still represents one
+    // configured step, even if the most recent raw sample was 1.6x.
+    if (hasNewerUserIntent && zoomControlsUnlocked()) {
+        const AlignmentAttemptResult intentResult =
+            _dispatchPendingZoomIntentFrom(timedOutRequestedZoom);
+        if (intentResult == AlignmentAttemptResult::CommandSent) {
+            qCWarning(GimbalControlLog)
+                << "Timed-out SIYI target" << timedOutRequestedZoom
+                << "was replaced by a newer queued/held user intent";
+            _setLastError(QString());
+            return;
+        }
+        if (intentResult == AlignmentAttemptResult::SendFailed) {
+            return;
+        }
+    }
+
+    _requestedZoom = _currentZoom;
     if (enabled() && _maximumZoomKnown) {
         (void) _sendCurrentZoomQuery(false);
     }
@@ -1643,11 +1708,15 @@ void GimbalControlManager::_cancelOutstandingZoomQuery()
 }
 
 bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
-                                                   bool alignmentCorrection)
+                                                   bool alignmentCorrection,
+                                                   bool replacePendingTarget)
 {
+    const bool replacingPendingTarget = _absoluteZoomPending;
     if (!_sdk
         || !_maximumZoomKnown
-        || _absoluteZoomPending
+        || (replacingPendingTarget && !replacePendingTarget)
+        || (replacePendingTarget && !replacingPendingTarget)
+        || (replacePendingTarget && alignmentCorrection)
         || !qIsFinite(zoomLevel)
         || zoomLevel < kMinZoom - kZoomComparisonTolerance
         || zoomLevel > _maximumZoom + kZoomComparisonTolerance) {
@@ -1667,17 +1736,25 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
     _clearStableZoomConfirmation();
     _cancelOutstandingZoomQuery();
     _zoomSyncTimer.stop();
-    if (!alignmentCorrection) {
-        _zoomOperationTimer.stop();
-    }
     _configureSdkEndpoint();
     if (!_sdk->sendAbsoluteZoom(targetZoom)) {
+        // A failed replacement send must not strand the old transaction after
+        // its query was canceled above. Keep confirming the old target.
+        if (replacingPendingTarget && _absoluteZoomPending) {
+            _scheduleZoomSync();
+        }
         return false;
+    }
+    if (!alignmentCorrection) {
+        // A newer explicit target owns a fresh bounded confirmation window.
+        // Stop only after the replacement datagram was accepted locally so a
+        // failed send cannot remove the old transaction's deadline.
+        _zoomOperationTimer.stop();
     }
 
     // 全系统同一时刻只允许一个0x0f目标在途。ACK仅表示受理，最终状态必须
-    // 等主动查询的0x18确认。保留上一份已确认实际值并单独标记pending；
-    // QML不会把requested目标冒充实际倍率，也不会把已有显示抹成unknown。
+    // 等主动查询的0x18确认。保留上一份合法值供恢复/规划，但用uncertain
+    // 让QML在运动期间显示--，既不冒充requested目标也不冒充旧实际倍率。
     if (alignmentCorrection) {
         ++_alignmentAttemptCount;
     } else {
@@ -1688,15 +1765,27 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
     _requestedZoom = targetZoom;
     _absoluteZoomPending = true;
     _absoluteZoomTracker.reset(targetZoom);
-    _absoluteZoomElapsed.restart();
+    // QElapsedTimer is invalid before the first command. start() is valid for
+    // both the first target and each replacement and resets the target age.
+    _absoluteZoomElapsed.start();
+    if (_zoomStatusKnown) {
+        // The lens may already be between legal stops. Hide the previous
+        // number while moving rather than presenting a stale value as the
+        // actual zoom. Only a twice-confirmed legal 0x18 value restores it.
+        _setZoomValueUncertain(true);
+    }
     emit zoomAvailabilityChanged();
     if (!_zoomOperationTimer.isActive()) {
         _zoomOperationTimer.start();
     }
     _sdkResponseTimer.start();
     _scheduleZoomSync();
+    if (!_queuedZoomDirections.isEmpty() || _continuousZoomActive) {
+        _continuousZoomStepTimer.start(kPendingZoomRetargetIntervalMs);
+    }
     qCInfo(GimbalControlLog)
         << "Started SIYI absolute zoom target" << targetZoom
+        << (replacingPendingTarget ? "replacing pending target" : "new target")
         << "alignment attempt" << _alignmentAttemptCount;
     return true;
 }
@@ -1706,7 +1795,9 @@ bool GimbalControlManager::_sendAlignmentCorrection(double targetZoom,
 {
     _alignmentSourceZoom = qRound(sourceZoom * 10.0) / 10.0;
     _alignmentSourceZoomValid = true;
-    const bool sent = _sendAbsoluteZoomTarget(targetZoom, true);
+    const bool sent = _sendAbsoluteZoomTarget(targetZoom,
+                                              true,
+                                              false);
     if (!sent) {
         _alignmentSourceZoomValid = false;
     }
@@ -1720,7 +1811,9 @@ bool GimbalControlManager::_stopContinuousZoom()
     }
 
     _continuousZoomWatchdog.stop();
-    _continuousZoomStepTimer.stop();
+    if (_queuedZoomDirections.isEmpty()) {
+        _continuousZoomStepTimer.stop();
+    }
     _setContinuousZoomState(false);
     return true;
 }
@@ -1728,12 +1821,31 @@ bool GimbalControlManager::_stopContinuousZoom()
 void GimbalControlManager::_handleStableUnexpectedZoom(double zoomLevel)
 {
     const double requestedZoom = _requestedZoom;
-    const bool commandRejected = _absoluteZoomTracker.commandRejected();
+    const bool hasNewerUserIntent =
+        !_queuedZoomDirections.isEmpty() || _continuousZoomActive;
     _absoluteZoomPending = false;
     _absoluteZoomTracker.clear();
-    _clearQueuedZoomSteps();
-    _stopContinuousZoom();
     emit zoomAvailabilityChanged();
+
+    // The stable-different result completes only the old target. A later tap
+    // or an active hold is a newer command generation and takes priority over
+    // automatic recovery of that old target. Plan from requestedZoom so a
+    // second '+' after requested 2.0x still means 3.0x even if raw is 1.6x.
+    if (hasNewerUserIntent) {
+        const AlignmentAttemptResult intentResult =
+            _dispatchPendingZoomIntentFrom(requestedZoom);
+        if (intentResult == AlignmentAttemptResult::CommandSent) {
+            qCWarning(GimbalControlLog)
+                << "Stable-different SIYI target" << requestedZoom
+                << "reported" << zoomLevel
+                << "and was replaced by a newer queued/held user intent";
+            _setLastError(QString());
+            return;
+        }
+        if (intentResult == AlignmentAttemptResult::SendFailed) {
+            return;
+        }
+    }
 
     // Refresh 0x16 for diagnostics only. It never changes a resolution-derived
     // UI ceiling.
@@ -1755,7 +1867,7 @@ void GimbalControlManager::_handleStableUnexpectedZoom(double zoomLevel)
                 .arg(zoomLevel, 0, 'f', 1));
         qCWarning(GimbalControlLog)
             << "SIYI absolute zoom target" << requestedZoom
-            << (commandRejected ? "was rejected;" : "did not settle;")
+            << "did not settle;"
             << "restored stable actual zoom" << zoomLevel;
         return;
     }
@@ -1895,6 +2007,9 @@ void GimbalControlManager::_beginStableZoomConfirmation(bool normalizeToStepGrid
     _stableZoomCandidate = kMinZoom;
     _normalizeAfterStableZoom = normalizeToStepGrid;
     _stableZoomDirection = qBound(-1, direction, 1);
+    if (_zoomStatusKnown) {
+        _setZoomValueUncertain(true);
+    }
     if (!wasPending) {
         emit zoomAvailabilityChanged();
     }
@@ -1907,6 +2022,8 @@ void GimbalControlManager::_beginStableZoomConfirmation(bool normalizeToStepGrid
 
 void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
 {
+    const bool completedAbsoluteTarget = _absoluteZoomPending;
+    const double completedRequestedZoom = _requestedZoom;
     const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
     if (!A8MiniZoomPolicy::isAlignedZoom(normalizedZoom,
                                          zoomStep(),
@@ -1935,7 +2052,7 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
         }
         emit zoomAvailabilityChanged();
         if (!_queuedZoomDirections.isEmpty() || _continuousZoomActive) {
-            _continuousZoomStepTimer.start();
+            _continuousZoomStepTimer.start(kConfirmedZoomStepDelayMs);
         }
         return;
     }
@@ -1960,14 +2077,20 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
     emit zoomAvailabilityChanged();
     _setLastError(QString());
 
-    if (controlsWereWaiting) {
+    if (completedAbsoluteTarget) {
+        qCInfo(GimbalControlLog)
+            << "Confirmed SIYI absolute zoom target" << completedRequestedZoom
+            << "at actual" << normalizedZoom
+            << "queued depth" << _queuedZoomDirections.size()
+            << "continuous" << _continuousZoomActive;
+    } else if (controlsWereWaiting) {
         qCInfo(GimbalControlLog)
             << "Confirmed stable SIYI zoom" << zoomLevel
             << "- zoom controls are ready";
     }
 
     if (!_queuedZoomDirections.isEmpty() || _continuousZoomActive) {
-        _continuousZoomStepTimer.start();
+        _continuousZoomStepTimer.start(kConfirmedZoomStepDelayMs);
     }
 }
 

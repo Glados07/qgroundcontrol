@@ -12,8 +12,7 @@ namespace {
 
 static constexpr double kComparisonTolerance = 0.051;
 static constexpr int kTargetConfirmationCount = 2;
-static constexpr int kRejectedStableConfirmationCount = 2;
-static constexpr int kUnacknowledgedStableConfirmationCount = 5;
+static constexpr int kStableDifferentConfirmationCount = 5;
 
 } // namespace
 
@@ -35,18 +34,7 @@ void A8MiniZoomPolicy::TargetTracker::clear()
     _targetMatchCount = 0;
     _differentMatchCount = 0;
     _differentCandidateValid = false;
-    _commandRejected = false;
     _active = false;
-}
-
-void A8MiniZoomPolicy::TargetTracker::markCommandRejected()
-{
-    if (_active) {
-        _commandRejected = true;
-        _targetMatchCount = 0;
-        _differentCandidateValid = false;
-        _differentMatchCount = 0;
-    }
 }
 
 A8MiniZoomPolicy::TargetObservation
@@ -77,14 +65,11 @@ A8MiniZoomPolicy::TargetTracker::observe(double actualZoom)
     }
 
     // Repeated one-decimal samples are not immediate proof of a stopped lens:
-    // a moving A8 can report 1.6x several times on its way to 2.0x. A negative
-    // ACK needs two fresh matching samples; an ACK-less/accepted command needs
-    // a wider five-sample evidence window. The Manager adds a command-age gate
-    // (longer again for off-grid values) before acting on the latter.
-    const int requiredConfirmationCount = _commandRejected
-        ? kRejectedStableConfirmationCount
-        : kUnacknowledgedStableConfirmationCount;
-    return _differentMatchCount >= requiredConfirmationCount
+    // a moving A8 can report 1.6x several times on its way to 2.0x. The SDK
+    // sequence is fixed to zero, so even a negative ACK cannot safely shorten
+    // this evidence window after targets are replaced. The Manager adds a
+    // command-age gate before acting on these five matching samples.
+    return _differentMatchCount >= kStableDifferentConfirmationCount
         ? TargetObservation::StableDifferent
         : TargetObservation::Waiting;
 }
