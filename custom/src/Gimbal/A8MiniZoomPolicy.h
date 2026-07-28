@@ -47,6 +47,14 @@ public:
                               double zoomStep,
                               double minimumZoom,
                               double maximumZoom);
+    static bool feedbackReachesTarget(double actualZoom,
+                                      double sourceZoom,
+                                      double targetZoom);
+    static bool terminalHandoffStop(double zoomStep,
+                                    double minimumZoom,
+                                    double maximumZoom,
+                                    int direction,
+                                    double* handoffZoom);
     static bool alignmentTarget(double currentZoom,
                                 double zoomStep,
                                 double minimumZoom,

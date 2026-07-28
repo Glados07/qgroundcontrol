@@ -25,7 +25,7 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
-            "longDesc": "Each tap immediately sends the next configured legal absolute step and replaces any older in-flight tap; taps are never queued for delayed replay. Holding uses SIYI native continuous zoom except when the next legal stop is the exact stream ceiling, which is commanded directly. A running native zoom is explicitly stopped on release, then may apply at most one prompt grid alignment inside a strict one-second finalize window. Legal displayed stops are the 1.0x + n * step grid plus the exact pulled-video resolution ceiling; for example, a 1.0x step uses 1.0/2.0/3.0/4.0/5.0/5.5 at 1080P and 1.0/2.0/3.0/3.5 at 2K.",
+            "longDesc": "Each tap immediately sends the next configured legal absolute step and replaces any older in-flight tap; taps are never queued for delayed replay. Holding uses SIYI native continuous zoom and publishes only feedback-crossed legal step values while the lens moves. A running native zoom is explicitly stopped on release, then may apply at most one prompt grid alignment inside a strict one-second finalize window. Legal stops are the union of the minimum-anchored and stream-ceiling-anchored step grids. With a 1.0x step, 1080P zoom-in is 1.0/2.0/3.0/4.0/5.0/5.5 and zoom-out from the ceiling is 5.5/4.5/3.5/2.5/1.5/1.0; at 2K they are 1.0/2.0/3.0/3.5 and 3.5/2.5/1.5/1.0.",
             "type": "double",
             "units": "x",
             "min": 0.1,

@@ -24,6 +24,7 @@ QGC_LOGGING_CATEGORY(GimbalControlLog, "gcs.custom.gimbal.control")
 static constexpr double kZoomComparisonTolerance = 0.051;
 static constexpr qint64 kLegalStableRecoveryMs = 3000;
 static constexpr qint64 kOffGridStableRecoveryMs = 5000;
+static constexpr int kAbsoluteTargetBucketConfirmationCount = 2;
 
 } // namespace
 
@@ -170,8 +171,8 @@ double GimbalControlManager::zoomStep() const
     if (!_settings) {
         return 1.0;
     }
-    // 0x0f和0x18都只有一位小数精度。设置值也先量化到0.1x，保证所有
-    // 目标都严格落在以1.0x为锚点的整数步长网格。
+    // 0x0f和0x18都只有一位小数精度。设置值也先量化到0.1x，保证最小值
+    // 锚定的放大网格和分辨率上限锚定的缩小网格都可精确表示。
     return qRound(qBound(0.1,
                          _settings->zoomStep()->rawValue().toDouble(),
                          kProtocolMaxZoom - kMinZoom)
@@ -430,20 +431,24 @@ bool GimbalControlManager::startZoom(int direction)
     }
 
     _suppressIdleAlignmentUntilExplicitZoom = false;
-    // The stream ceiling is a legal terminal stop. When it is the next stop,
-    // use exact 0x0f instead of free-running through the final interval and
-    // risking an overshoot of the resolution-derived limit.
-    if (normalizedDirection > 0
-        && qAbs(nextTarget - _maximumZoom) <= kZoomComparisonTolerance) {
+    // Both stream-derived endpoints are exact terminal stops. When either is
+    // the very next stop, use 0x0f directly instead of starting a native 0x05
+    // run for only the shortened endpoint interval.
+    const bool nextTargetIsTerminal =
+        (normalizedDirection > 0
+         && qAbs(nextTarget - _maximumZoom) <= kZoomComparisonTolerance)
+        || (normalizedDirection < 0
+            && qAbs(nextTarget - kMinZoom) <= kZoomComparisonTolerance);
+    if (nextTargetIsTerminal) {
         const bool sent = _sendAbsoluteZoomTarget(
-            _maximumZoom,
+            nextTarget,
             false,
             _absoluteZoomPending);
         if (sent) {
             _setLastError(QString());
             qCInfo(GimbalControlLog)
                 << "Handed held SIYI zoom directly to terminal target"
-                << _maximumZoom << "from" << referenceZoom;
+                << nextTarget << "from" << referenceZoom;
         }
         return sent;
     }
@@ -456,6 +461,7 @@ bool GimbalControlManager::startZoom(int direction)
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     _absoluteZoomElapsed.invalidate();
     _alignmentAttemptCount = 0;
@@ -475,9 +481,9 @@ bool GimbalControlManager::startZoom(int direction)
     }
 
     _setContinuousZoomState(true, normalizedDirection);
-    // A continuously moving lens has no single truthful legal display value.
-    // Keep the label hidden until release is stably read and, if needed, aligned.
-    _setZoomValueUncertain(true);
+    // Keep the last feedback-confirmed logical stop visible while the lens is
+    // between stops. Solicited 0x18 samples advance it only after the raw value
+    // crosses the midpoint to the next legal stop.
     _continuousZoomWatchdog.start();
     _continuousZoomStepTimer.start(isolateLateZoomResponse
                                        ? kManualZoomStopQueryDelayMs
@@ -977,7 +983,7 @@ void GimbalControlManager::_applyMaximumZoomCapability(
     }
 
     // 能力来源恢复或上限改变后，先取得两份一致的合法0x18实际倍率。
-    // 用户绝对目标只由主动查询的精确0x18命中更新，不能用命令本身更新显示。
+    // 用户绝对目标只由主动0x18反馈更新，不能用命令本身或ACK更新显示。
     _stopContinuousZoom(false);
     _cancelManualZoomFinalize();
     _sdkResponseTimer.stop();
@@ -985,7 +991,19 @@ void GimbalControlManager::_applyMaximumZoomCapability(
     _zoomOperationTimer.stop();
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
+    if (_absoluteZoomPending
+        && _absoluteTargetBucketMatchCount > 0
+        && A8MiniZoomPolicy::isAlignedZoom(_absoluteZoomFeedbackSource,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom)) {
+        // A stream-capability change cannot promote a one-sample provisional
+        // target before the new ceiling is resynchronized.
+        _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+        _setCurrentZoom(_absoluteZoomFeedbackSource);
+    }
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     _alignmentAttemptCount = 0;
     _clearAutomaticAlignmentSuppression();
@@ -1145,11 +1163,61 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
     }
 
     if (_absoluteZoomPending) {
+        _publishZoomProgress(normalizedActualZoom);
+        // Some A8 firmware reports a continuous raw value (for example 1.6)
+        // after accepting the legal 2.0 stop. Treat a solicited sample as
+        // confirmation once it has crossed the midpoint from this
+        // transaction's source stop to its target. The published value remains
+        // the legal target; the raw value stays in _latestActualZoom for
+        // boundary checks and diagnostics.
+        const bool exactTargetSample =
+            qAbs(normalizedActualZoom - _requestedZoom)
+            <= kZoomComparisonTolerance;
+        const bool targetBucketSample =
+            A8MiniZoomPolicy::feedbackReachesTarget(
+                normalizedActualZoom,
+                _absoluteZoomFeedbackSource,
+                _requestedZoom);
+        if (targetBucketSample) {
+            // A target-bucket sample interrupts any stable-different run.
+            // Target confirmation below owns these samples, so an older
+            // alternate candidate must never survive across this boundary.
+            _absoluteZoomTracker.reset(_requestedZoom);
+            ++_absoluteTargetBucketMatchCount;
+            qCInfo(GimbalControlLog)
+                << "Mapped SIYI raw zoom" << normalizedActualZoom
+                << "from logical source" << _absoluteZoomFeedbackSource
+                << "to legal target" << _requestedZoom
+                << "bucket confirmations"
+                << _absoluteTargetBucketMatchCount;
+            if (exactTargetSample
+                || _absoluteTargetBucketMatchCount
+                    >= kAbsoluteTargetBucketConfirmationCount) {
+                _finalizeConfirmedZoom(_requestedZoom);
+            } else {
+                _scheduleZoomSync();
+            }
+            return;
+        }
+        if (_absoluteTargetBucketMatchCount > 0
+            && A8MiniZoomPolicy::isAlignedZoom(
+                _absoluteZoomFeedbackSource,
+                zoomStep(),
+                kMinZoom,
+                _maximumZoom)) {
+            // A single crossing followed by a sample outside the target bucket
+            // was transient. Roll the logical display back to the transaction
+            // source instead of leaving an unconfirmed target visible.
+            _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+            _setCurrentZoom(_absoluteZoomFeedbackSource);
+        }
+        _absoluteTargetBucketMatchCount = 0;
+
         const A8MiniZoomPolicy::TargetObservation observation =
             _absoluteZoomTracker.observe(zoomLevel);
         if (observation == A8MiniZoomPolicy::TargetObservation::Waiting) {
-            // 精确目标值会立即确认；正常运动值可以变化或短时重复。
-            // 非目标样本先满足五份稳定证据再进入分级年龄门。
+            // 精确目标值会立即确认，非精确目标档由上面的两份连续归属
+            // 确认；其余值仍先满足五份稳定证据再进入分级年龄门。
             _scheduleZoomSync();
             return;
         }
@@ -1211,8 +1279,26 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
             return;
         }
 
-        // Publish the exact legal target, never a merely tolerated raw sample.
+        // Exact target confirmation remains as a defensive fallback for policy
+        // implementations which distinguish it from midpoint ownership.
         _finalizeConfirmedZoom(_requestedZoom);
+        return;
+    }
+
+    if (_zoomStatusKnown
+        && normalizedActualZoom
+            <= _maximumZoom + kZoomComparisonTolerance
+        && A8MiniZoomPolicy::feedbackReachesTarget(
+            normalizedActualZoom,
+            _currentZoomFeedbackSource,
+            _currentZoom)) {
+        // The raw firmware value still belongs to the currently displayed
+        // logical bucket. Do not let ordinary polling reinterpret 1.6 as a new
+        // external zoom and auto-correct a confirmed 2.0 back to 1.5.
+        _zoomOperationTimer.stop();
+        _clearStableZoomConfirmation();
+        _requestedZoom = _currentZoom;
+        _setZoomValueUncertain(false);
         return;
     }
 
@@ -1227,7 +1313,7 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         }
 
         // 拉流上限降低时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
-        // 回有效网格上限；确认期间用uncertain隐藏旧数字，不能冒充新实际值。
+        // 回有效网格上限；确认期间保留上一合法档，不公开超限raw值。
         if (!_stableZoomConfirmationPending
             || !_stableZoomCandidateValid
             || qAbs(zoomLevel - _stableZoomCandidate) > kZoomComparisonTolerance) {
@@ -1286,7 +1372,10 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
                 _zoomSyncTimer.stop();
                 _zoomOperationTimer.stop();
                 _requestedZoom = _currentZoom;
-                _setZoomValueUncertain(true);
+                // Keep the latest feedback-quantized legal bucket visible.
+                // This expired gesture owns no future movement, so the raw
+                // off-grid value is diagnostic only.
+                _setZoomValueUncertain(false);
                 _setLastError(
                     tr("The stopped SIYI zoom is outside the configured step; "
                        "no delayed alignment command will be sent."));
@@ -1329,8 +1418,8 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         _beginStableZoomConfirmation(true, 0);
         _stableZoomCandidate = zoomLevel;
         _stableZoomCandidateValid = true;
-        // 初次同步或已有值重新核对都显示--，不把旧停点冒充新的实际值；
-        // 这不改变视频会话解锁状态。
+        // 初次同步尚无合法档时保持--；已有值重新核对时保留上一合法档。
+        // 两种情况都不改变视频会话解锁状态。
         if (!_zoomStatusKnown) {
             _setZoomStatusKnown(false);
         }
@@ -1349,7 +1438,7 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
             _zoomSyncTimer.stop();
             _zoomOperationTimer.stop();
             _requestedZoom = _currentZoom;
-            _setZoomValueUncertain(true);
+            _setZoomValueUncertain(false);
             _setLastError(
                 tr("The SIYI zoom is outside the configured step; "
                    "waiting for a new explicit zoom gesture."));
@@ -1483,7 +1572,23 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
     _zoomOperationTimer.stop();
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
+    const bool hadSingleProvisionalTarget =
+        _absoluteZoomPending && _absoluteTargetBucketMatchCount > 0;
+    const bool provisionalSourceIsLegal =
+        hadSingleProvisionalTarget
+        && A8MiniZoomPolicy::isAlignedZoom(_absoluteZoomFeedbackSource,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom);
+    if (provisionalSourceIsLegal) {
+        // A local transport failure interrupts the required pair of
+        // non-exact target samples. Never preserve the provisional target as
+        // the planning reference after the transaction is discarded.
+        _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+        _setCurrentZoom(_absoluteZoomFeedbackSource);
+    }
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     _alignmentAttemptCount = 0;
     _clearAutomaticAlignmentSuppression();
@@ -1496,7 +1601,26 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
     _photoCommandPending = false;
     _finishRecordingCommand();
     _setSdkResponding(false);
-    _setZoomStatusKnown(false);
+    if (hadSingleProvisionalTarget && !provisionalSourceIsLegal) {
+        _setZoomStatusKnown(false);
+    }
+    if (enabled()
+        && _videoStreamAvailable
+        && _maximumZoomKnown
+        && _zoomStatusKnown
+        && A8MiniZoomPolicy::isAlignedZoom(_currentZoom,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom)) {
+        // SDK reachability is diagnostic and may briefly flap while the
+        // decoded-video session remains healthy. Keep the last feedback-owned
+        // legal bucket visible and usable; no old movement is replayed.
+        _requestedZoom = _currentZoom;
+        _setZoomValueUncertain(false);
+        emit zoomAvailabilityChanged();
+    } else {
+        _setZoomStatusKnown(false);
+    }
     _setCameraStatusKnown(false);
     _setRecording(false);
     _setLastError(message);
@@ -1521,7 +1645,22 @@ void GimbalControlManager::_markSdkNotResponding()
     _zoomOperationTimer.stop();
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
+    const bool hadSingleProvisionalTarget =
+        _absoluteZoomPending && _absoluteTargetBucketMatchCount > 0;
+    const bool provisionalSourceIsLegal =
+        hadSingleProvisionalTarget
+        && A8MiniZoomPolicy::isAlignedZoom(_absoluteZoomFeedbackSource,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom);
+    if (provisionalSourceIsLegal) {
+        // Heartbeat loss interrupts the required pair of non-exact target
+        // samples. Keep only the previous confirmed logical stop.
+        _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+        _setCurrentZoom(_absoluteZoomFeedbackSource);
+    }
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     _alignmentAttemptCount = 0;
     _clearStableZoomConfirmation();
@@ -1533,7 +1672,23 @@ void GimbalControlManager::_markSdkNotResponding()
     _photoCommandPending = false;
     _finishRecordingCommand();
     _setSdkResponding(false);
-    _setZoomStatusKnown(false);
+    if (hadSingleProvisionalTarget && !provisionalSourceIsLegal) {
+        _setZoomStatusKnown(false);
+    }
+    if (enabled()
+        && _videoStreamAvailable
+        && _maximumZoomKnown
+        && _zoomStatusKnown
+        && A8MiniZoomPolicy::isAlignedZoom(_currentZoom,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom)) {
+        _requestedZoom = _currentZoom;
+        _setZoomValueUncertain(false);
+        emit zoomAvailabilityChanged();
+    } else {
+        _setZoomStatusKnown(false);
+    }
     _setCameraStatusKnown(false);
     _setRecording(false);
     _setLastError(tr("No response from the SIYI SDK endpoint."));
@@ -1578,6 +1733,14 @@ void GimbalControlManager::_markZoomStatusUnknown()
 {
     const bool hadConfirmedZoom = _zoomStatusKnown;
     const bool timedOutUserTarget = _absoluteZoomPending;
+    const bool hadSingleUnconfirmedTargetBucket =
+        _absoluteZoomPending && _absoluteTargetBucketMatchCount > 0;
+    const bool timedOutFeedbackSourceIsLegal =
+        hadSingleUnconfirmedTargetBucket
+        && A8MiniZoomPolicy::isAlignedZoom(_absoluteZoomFeedbackSource,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom);
     const bool timedOutDuringAlignment =
         _alignmentAttemptCount > 0 && _alignmentSourceZoomValid;
     const double timedOutAlignmentSource = _alignmentSourceZoom;
@@ -1585,7 +1748,15 @@ void GimbalControlManager::_markZoomStatusUnknown()
     _zoomOperationTimer.stop();
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
+    if (timedOutFeedbackSourceIsLegal) {
+        // A non-exact target needs two consecutive ownership samples. If the
+        // transaction expires after only one, discard its provisional display
+        // and return to the last confirmed logical stop.
+        _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+        _setCurrentZoom(_absoluteZoomFeedbackSource);
+    }
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     if (timedOutDuringAlignment) {
         // 自动归整已发出但没有得到可判定结果时，不允许下一次空闲轮询
@@ -1594,15 +1765,18 @@ void GimbalControlManager::_markZoomStatusUnknown()
     }
     _alignmentAttemptCount = 0;
     _clearStableZoomConfirmation();
-    if (!hadConfirmedZoom) {
+    if (!hadConfirmedZoom
+        || (hadSingleUnconfirmedTargetBucket
+            && !timedOutFeedbackSourceIsLegal)) {
         _setZoomStatusKnown(false);
     } else {
-        // The previous legal value is retained internally for planning, but it
-        // is no longer a truthful current display after an unconfirmed move.
-        _setZoomValueUncertain(true);
+        // Retain the last feedback-quantized legal bucket visibly. The expired
+        // command is discarded below and cannot be replayed; a later explicit
+        // gesture starts from this deterministic logical stop.
+        _setZoomValueUncertain(false);
     }
-    // uncertain可能在上一次超时后已经为true；仍需显式通知absolute/stable
-    // pending已经清除，通知QML刷新计划边界；它不参与会话解锁。
+    // 即使显示状态未改变，仍需显式通知absolute/stable pending已经清除，
+    // 让QML刷新计划边界；pending不参与视频会话解锁。
     emit zoomAvailabilityChanged();
     _setLastError(tr("Timed out waiting for the SIYI zoom target; the previous legal value is retained internally and no old input will be replayed."));
 
@@ -1647,6 +1821,23 @@ void GimbalControlManager::_handleZoomQueryTimeout()
         return;
     }
 
+    if (_absoluteZoomPending && _absoluteTargetBucketMatchCount > 0) {
+        // The non-exact target rule requires consecutive responses. A lost
+        // query breaks that evidence run; keep the transaction alive for a
+        // fresh pair, but discard its provisional target display now.
+        if (A8MiniZoomPolicy::isAlignedZoom(_absoluteZoomFeedbackSource,
+                                            zoomStep(),
+                                            kMinZoom,
+                                            _maximumZoom)) {
+            _currentZoomFeedbackSource = _absoluteZoomFeedbackSource;
+            _setCurrentZoom(_absoluteZoomFeedbackSource);
+        } else {
+            _setZoomStatusKnown(false);
+        }
+        _absoluteTargetBucketMatchCount = 0;
+        _absoluteZoomTracker.reset(_requestedZoom);
+    }
+
     if (_zoomOperationTimer.isActive()
         && (_absoluteZoomPending
             || _stableZoomConfirmationPending
@@ -1668,7 +1859,9 @@ void GimbalControlManager::_requestZoomAfterSettle()
         || !_maximumZoomKnown
         || (!_absoluteZoomPending
             && !_stableZoomConfirmationPending
-            && _zoomStatusKnown)) {
+            && _zoomStatusKnown
+            && !_zoomValueUncertain
+            && !_suppressIdleAlignmentUntilExplicitZoom)) {
         return;
     }
     if (_zoomQueryOutstanding) {
@@ -1732,9 +1925,10 @@ void GimbalControlManager::_expireManualZoomFinalize()
     _zoomSyncTimer.start();
     _requestedZoom = _currentZoom;
     _suppressIdleAlignmentUntilExplicitZoom = true;
-    if (_zoomStatusKnown) {
-        _setZoomValueUncertain(true);
-    }
+    // The bounded ownership window only decides whether a post-release 0x0f
+    // correction may still be sent. It must not erase the latest
+    // feedback-quantized legal display. The scheduled query below is read-only
+    // recovery and can never replay the expired gesture.
     const bool stopRetryPending =
         _manualZoomStopRetryTimer.isActive()
         || (!_manualZoomSessionHost.isEmpty()
@@ -1832,7 +2026,8 @@ void GimbalControlManager::_cancelOutstandingZoomQuery()
 bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
                                                    bool alignmentCorrection,
                                                    bool replacePendingTarget,
-                                                   bool manualFinalizeCorrection)
+                                                   bool manualFinalizeCorrection,
+                                                   double feedbackSourceZoom)
 {
     const bool replacingPendingTarget = _absoluteZoomPending;
     if (!_sdk
@@ -1858,6 +2053,89 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
                                          _maximumZoom)) {
         _setLastError(tr("Refusing to send a SIYI zoom target outside the configured legal stops."));
         return false;
+    }
+
+    double resolvedFeedbackSource = feedbackSourceZoom;
+    if (!qIsFinite(resolvedFeedbackSource)
+        || resolvedFeedbackSource < kMinZoom - kZoomComparisonTolerance
+        || resolvedFeedbackSource > _maximumZoom + kZoomComparisonTolerance) {
+        if (replacingPendingTarget) {
+            resolvedFeedbackSource = _requestedZoom;
+        } else if (_zoomStatusKnown) {
+            resolvedFeedbackSource = _currentZoom;
+        } else if (_latestActualZoomKnown) {
+            resolvedFeedbackSource = _latestActualZoom;
+        } else {
+            resolvedFeedbackSource = targetZoom;
+        }
+    }
+    resolvedFeedbackSource =
+        qRound(qBound(kMinZoom, resolvedFeedbackSource, _maximumZoom) * 10.0)
+        / 10.0;
+    if (!A8MiniZoomPolicy::isAlignedZoom(resolvedFeedbackSource,
+                                          zoomStep(),
+                                          kMinZoom,
+                                          _maximumZoom)
+        && qAbs(targetZoom - resolvedFeedbackSource)
+            > kZoomComparisonTolerance) {
+        const int direction =
+            targetZoom > resolvedFeedbackSource ? 1 : -1;
+        double previousLegalStop = 0.0;
+        bool previousStopResolved = false;
+        if ((direction > 0
+             && qAbs(targetZoom - _maximumZoom)
+                 <= kZoomComparisonTolerance)
+            || (direction < 0
+                && qAbs(targetZoom - kMinZoom)
+                    <= kZoomComparisonTolerance)) {
+            previousStopResolved =
+                A8MiniZoomPolicy::terminalHandoffStop(
+                    zoomStep(),
+                    kMinZoom,
+                    _maximumZoom,
+                    direction,
+                    &previousLegalStop);
+        } else {
+            previousStopResolved =
+                A8MiniZoomPolicy::stepTarget(targetZoom,
+                                             zoomStep(),
+                                             kMinZoom,
+                                             _maximumZoom,
+                                             -direction,
+                                             &previousLegalStop);
+        }
+        if (previousStopResolved) {
+            resolvedFeedbackSource = previousLegalStop;
+        }
+    }
+    if (qAbs(targetZoom - resolvedFeedbackSource)
+        > zoomStep() + kZoomComparisonTolerance) {
+        const int direction = targetZoom > resolvedFeedbackSource ? 1 : -1;
+        double adjacentZoom =
+            targetZoom - direction * zoomStep();
+        const bool targetIsDirectionalTerminal =
+            (direction > 0
+             && qAbs(targetZoom - _maximumZoom)
+                 <= kZoomComparisonTolerance)
+            || (direction < 0
+                && qAbs(targetZoom - kMinZoom)
+                    <= kZoomComparisonTolerance);
+        const bool adjacentResolved =
+            targetIsDirectionalTerminal
+            ? A8MiniZoomPolicy::terminalHandoffStop(
+                  zoomStep(),
+                  kMinZoom,
+                  _maximumZoom,
+                  direction,
+                  &adjacentZoom)
+            : A8MiniZoomPolicy::isAlignedZoom(
+                  adjacentZoom,
+                  zoomStep(),
+                  kMinZoom,
+                  _maximumZoom);
+        if (adjacentResolved) {
+            resolvedFeedbackSource = qRound(adjacentZoom * 10.0) / 10.0;
+        }
     }
 
     // Every physical movement shares the same stop barrier. This also covers
@@ -1900,8 +2178,8 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
     }
 
     // 全系统同一时刻只允许一个0x0f目标在途。ACK仅表示受理，最终状态必须
-    // 等主动查询的0x18确认。保留上一份合法值供恢复/规划，但用uncertain
-    // 让QML在运动期间显示--，既不冒充requested目标也不冒充旧实际倍率。
+    // 等主动查询的0x18确认。期间保留上一合法档；raw跨过相邻档中点后才
+    // 更新显示，非精确目标档还需第二份连续归属反馈才能结束事务。
     if (alignmentCorrection) {
         ++_alignmentAttemptCount;
     } else {
@@ -1910,14 +2188,16 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
         _alignmentAttemptCount = 0;
     }
     _requestedZoom = targetZoom;
+    _absoluteZoomFeedbackSource = resolvedFeedbackSource;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomPending = true;
     _absoluteZoomTracker.reset(targetZoom);
     // QElapsedTimer is invalid before the first command. start() is valid for
     // both the first target and each replacement and resets the target age.
     _absoluteZoomElapsed.start();
-    _setZoomValueUncertain(true);
-    // The requested target is never published optimistically. One exact,
-    // solicited 0x18 after the ownership barrier publishes it.
+    // Keep the last feedback-confirmed logical bucket visible. The requested
+    // target is never published on send/ACK; a solicited 0x18 must first cross
+    // the source-to-target midpoint.
     emit zoomAvailabilityChanged();
     if (!_zoomOperationTimer.isActive()) {
         _zoomOperationTimer.start();
@@ -1926,6 +2206,7 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
     _scheduleZoomSync();
     qCInfo(GimbalControlLog)
         << "Started SIYI absolute zoom target" << targetZoom
+        << "feedback source" << _absoluteZoomFeedbackSource
         << (replacingPendingTarget ? "replacing pending target" : "new target")
         << "alignment attempt" << _alignmentAttemptCount;
     return true;
@@ -1936,9 +2217,47 @@ bool GimbalControlManager::_sendAlignmentCorrection(double targetZoom,
 {
     _alignmentSourceZoom = qRound(sourceZoom * 10.0) / 10.0;
     _alignmentSourceZoomValid = true;
+    const int correctionDirection =
+        targetZoom > sourceZoom + kZoomComparisonTolerance
+            ? 1
+            : (targetZoom < sourceZoom - kZoomComparisonTolerance ? -1 : 0);
+    double feedbackSourceZoom = _currentZoom;
+    double previousLegalStop = 0.0;
+    bool previousStopResolved = false;
+    if (correctionDirection != 0
+        && ((correctionDirection > 0
+             && qAbs(targetZoom - _maximumZoom)
+                 <= kZoomComparisonTolerance)
+            || (correctionDirection < 0
+                && qAbs(targetZoom - kMinZoom)
+                    <= kZoomComparisonTolerance))) {
+        previousStopResolved =
+            A8MiniZoomPolicy::terminalHandoffStop(
+                zoomStep(),
+                kMinZoom,
+                _maximumZoom,
+                correctionDirection,
+                &previousLegalStop);
+    } else if (correctionDirection != 0) {
+        previousStopResolved =
+            A8MiniZoomPolicy::stepTarget(targetZoom,
+                                         zoomStep(),
+                                         kMinZoom,
+                                         _maximumZoom,
+                                         -correctionDirection,
+                                         &previousLegalStop);
+    }
+    if (previousStopResolved) {
+        // The physical raw source can itself be an off-grid firmware value.
+        // Use the preceding logical stop so a stable raw such as 1.6 can own
+        // the commanded 2.0 target instead of waiting forever for exact 2.0.
+        feedbackSourceZoom = previousLegalStop;
+    }
     const bool sent = _sendAbsoluteZoomTarget(targetZoom,
                                               true,
-                                              false);
+                                              false,
+                                              false,
+                                              feedbackSourceZoom);
     if (!sent) {
         _alignmentSourceZoomValid = false;
     }
@@ -1979,7 +2298,6 @@ bool GimbalControlManager::_stopContinuousZoom(bool finalizeAfterStop)
     _manualZoomFinalCandidate = kMinZoom;
     _manualZoomFinalMatchCount = 0;
     if (shouldFinalize) {
-        _setZoomValueUncertain(true);
         _manualZoomFinalizeElapsed.start();
         _manualZoomFinalizeTimer.start(kManualZoomFinalizeTimeoutMs);
     } else {
@@ -2159,8 +2477,11 @@ void GimbalControlManager::_publishLegalZoom(double zoomLevel)
     }
 
     _requestedZoom = normalizedZoom;
-    _latestActualZoom = normalizedZoom;
-    _latestActualZoomKnown = true;
+    _currentZoomFeedbackSource = normalizedZoom;
+    if (!_latestActualZoomKnown) {
+        _latestActualZoom = normalizedZoom;
+        _latestActualZoomKnown = true;
+    }
     _setCurrentZoom(normalizedZoom);
     _setZoomValueUncertain(false);
     _setZoomStatusKnown(true);
@@ -2174,32 +2495,61 @@ void GimbalControlManager::_handleContinuousZoomSample(double zoomLevel)
     }
 
     const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
+    _publishZoomProgress(normalizedZoom);
+
     double boundaryTarget = 0.0;
     if (_continuousZoomDirection > 0) {
         if (normalizedZoom >= _maximumZoom - kZoomComparisonTolerance) {
             boundaryTarget = _maximumZoom;
         } else {
             // Switch from free-running 0x05 to the exact 0x0f ceiling at the
-            // previous legal stop. The final interval is always absolute so a
-            // hold never intentionally runs through the stream-derived limit.
+            // last minimum-anchored zoom-in stop. Do not derive this with a
+            // reverse step: reverse travel is maximum-anchored (5.5 -> 4.5)
+            // and therefore has a different phase.
             double previousMaximumStop = 0.0;
-            if (A8MiniZoomPolicy::stepTarget(_maximumZoom,
-                                             zoomStep(),
-                                             kMinZoom,
-                                             _maximumZoom,
-                                             -1,
-                                             &previousMaximumStop)
+            if (A8MiniZoomPolicy::terminalHandoffStop(
+                    zoomStep(),
+                    kMinZoom,
+                    _maximumZoom,
+                    1,
+                    &previousMaximumStop)
                 && normalizedZoom
                     >= previousMaximumStop - kZoomComparisonTolerance) {
                 boundaryTarget = _maximumZoom;
             }
         }
-    } else if (_continuousZoomDirection < 0
-               && normalizedZoom <= kMinZoom + kZoomComparisonTolerance) {
-        boundaryTarget = kMinZoom;
+    } else if (_continuousZoomDirection < 0) {
+        if (normalizedZoom <= kMinZoom + kZoomComparisonTolerance) {
+            boundaryTarget = kMinZoom;
+        } else {
+            // Symmetric lower-end handoff: reverse travel uses the
+            // maximum-anchored grid, so 1080P/1.0x step reaches 1.5 before the
+            // exact 1.0 terminal stop.
+            double previousMinimumStop = 0.0;
+            if (A8MiniZoomPolicy::terminalHandoffStop(
+                    zoomStep(),
+                    kMinZoom,
+                    _maximumZoom,
+                    -1,
+                    &previousMinimumStop)
+                && normalizedZoom
+                    <= previousMinimumStop + kZoomComparisonTolerance) {
+                boundaryTarget = kMinZoom;
+            }
+        }
     }
 
     if (boundaryTarget <= 0.0) {
+        return;
+    }
+
+    double boundaryFeedbackSource = 0.0;
+    if (!A8MiniZoomPolicy::terminalHandoffStop(
+            zoomStep(),
+            kMinZoom,
+            _maximumZoom,
+            _continuousZoomDirection,
+            &boundaryFeedbackSource)) {
         return;
     }
 
@@ -2216,9 +2566,116 @@ void GimbalControlManager::_handleContinuousZoomSample(double zoomLevel)
     // A sample captured while 0x05 was running is never proof that the lens
     // remained at that value after stop. Always command and confirm the exact
     // legal boundary; do not publish the in-motion sample.
-    if (!_sendAbsoluteZoomTarget(boundaryTarget)) {
+    if (!_sendAbsoluteZoomTarget(boundaryTarget,
+                                 false,
+                                 false,
+                                 false,
+                                 boundaryFeedbackSource)) {
         _suppressIdleAlignmentUntilExplicitZoom = true;
     }
+}
+
+void GimbalControlManager::_publishZoomProgress(double zoomLevel)
+{
+    int progressDirection = 0;
+    if (_continuousZoomActive) {
+        progressDirection = _continuousZoomDirection;
+    } else if (_manualZoomFinalizePending) {
+        progressDirection = _manualZoomFinalizeDirection;
+    } else if (_absoluteZoomPending) {
+        progressDirection =
+            _requestedZoom > _absoluteZoomFeedbackSource
+                ? 1
+                : (_requestedZoom < _absoluteZoomFeedbackSource ? -1 : 0);
+    }
+    if ((progressDirection != -1 && progressDirection != 1)
+        || !qIsFinite(zoomLevel)) {
+        return;
+    }
+
+    double logicalZoom = _currentZoom;
+    bool logicalZoomResolvedFromRaw = false;
+    if (!_zoomStatusKnown
+        || !A8MiniZoomPolicy::isAlignedZoom(logicalZoom,
+                                             zoomStep(),
+                                             kMinZoom,
+                                             _maximumZoom)) {
+        if (!A8MiniZoomPolicy::alignmentTarget(
+                qBound(kMinZoom, zoomLevel, _maximumZoom),
+                zoomStep(),
+                kMinZoom,
+                _maximumZoom,
+                0,
+                &logicalZoom)) {
+            return;
+        }
+        logicalZoomResolvedFromRaw = true;
+    }
+
+    // A single 0x18 sample can skip more than one UI bucket while native 0x05
+    // continues smoothly. Walk every crossed midpoint, but publish only the
+    // final legal bucket so QML never sees raw values such as 1.6 or 1.8.
+    double feedbackSourceZoom = logicalZoomResolvedFromRaw
+        ? logicalZoom
+        : _currentZoomFeedbackSource;
+    for (int crossedStops = 0; crossedStops < 64; ++crossedStops) {
+        double nextLogicalZoom = 0.0;
+        if (!A8MiniZoomPolicy::stepTarget(logicalZoom,
+                                          zoomStep(),
+                                          kMinZoom,
+                                          _maximumZoom,
+                                          progressDirection,
+                                          &nextLogicalZoom)) {
+            break;
+        }
+        if (_absoluteZoomPending
+            && ((progressDirection > 0
+                 && nextLogicalZoom
+                     > _requestedZoom + kZoomComparisonTolerance)
+                || (progressDirection < 0
+                    && nextLogicalZoom
+                        < _requestedZoom - kZoomComparisonTolerance))) {
+            break;
+        }
+        if (_absoluteZoomPending
+            && qAbs(nextLogicalZoom - _requestedZoom)
+                <= kZoomComparisonTolerance
+            && !A8MiniZoomPolicy::feedbackReachesTarget(
+                zoomLevel,
+                _absoluteZoomFeedbackSource,
+                _requestedZoom)) {
+            // Intermediate buckets may be published while a replacement
+            // target is still moving, but the target bucket itself requires
+            // the transaction's bounded ownership interval. An overshoot such
+            // as raw 2.6 for target 2.0 must not look completed.
+            break;
+        }
+
+        const double midpoint = (logicalZoom + nextLogicalZoom) / 2.0;
+        const bool crossedMidpoint = progressDirection > 0
+            ? zoomLevel >= midpoint
+            : zoomLevel <= midpoint;
+        if (!crossedMidpoint) {
+            break;
+        }
+        feedbackSourceZoom = logicalZoom;
+        logicalZoom = nextLogicalZoom;
+    }
+
+    if (!A8MiniZoomPolicy::isAlignedZoom(logicalZoom,
+                                         zoomStep(),
+                                         kMinZoom,
+                                         _maximumZoom)) {
+        return;
+    }
+
+    if (!_absoluteZoomPending) {
+        _requestedZoom = logicalZoom;
+    }
+    _currentZoomFeedbackSource = feedbackSourceZoom;
+    _setCurrentZoom(logicalZoom);
+    _setZoomStatusKnown(true);
+    _setZoomValueUncertain(false);
 }
 
 void GimbalControlManager::_finishManualZoomStop(double zoomLevel)
@@ -2232,6 +2689,7 @@ void GimbalControlManager::_finishManualZoomStop(double zoomLevel)
     }
 
     const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
+    _publishZoomProgress(normalizedZoom);
     if (!_manualZoomFinalCandidateValid
         || qAbs(normalizedZoom - _manualZoomFinalCandidate)
             > kZoomComparisonTolerance) {
@@ -2248,30 +2706,31 @@ void GimbalControlManager::_finishManualZoomStop(double zoomLevel)
         return;
     }
 
-    const int stoppedDirection = _manualZoomFinalizeDirection;
-    if (A8MiniZoomPolicy::isAlignedZoom(normalizedZoom,
-                                        zoomStep(),
-                                        kMinZoom,
-                                        _maximumZoom)) {
-        _cancelManualZoomFinalize();
-        _suppressIdleAlignmentUntilExplicitZoom = false;
-        _publishLegalZoom(normalizedZoom);
-        _setLastError(QString());
-        return;
+    double alignedZoom = _currentZoom;
+    if (!_zoomStatusKnown
+        || !A8MiniZoomPolicy::isAlignedZoom(alignedZoom,
+                                             zoomStep(),
+                                             kMinZoom,
+                                             _maximumZoom)) {
+        if (!A8MiniZoomPolicy::alignmentTarget(
+                qBound(kMinZoom, normalizedZoom, _maximumZoom),
+                zoomStep(),
+                kMinZoom,
+                _maximumZoom,
+                0,
+                &alignedZoom)) {
+            _cancelManualZoomFinalize();
+            _suppressIdleAlignmentUntilExplicitZoom = true;
+            _setLastError(tr("Failed to resolve the stopped SIYI zoom to a legal step."));
+            return;
+        }
     }
 
-    const double boundedZoom = qBound(kMinZoom, normalizedZoom, _maximumZoom);
-    double alignedZoom = 0.0;
-    if (!A8MiniZoomPolicy::alignmentTarget(boundedZoom,
-                                           zoomStep(),
-                                           kMinZoom,
-                                           _maximumZoom,
-                                           stoppedDirection,
-                                           &alignedZoom)) {
+    if (qAbs(normalizedZoom - alignedZoom) <= kZoomComparisonTolerance) {
         _cancelManualZoomFinalize();
-        _suppressIdleAlignmentUntilExplicitZoom = true;
-        _setZoomValueUncertain(true);
-        _setLastError(tr("Failed to resolve the stopped SIYI zoom to a legal step."));
+        _suppressIdleAlignmentUntilExplicitZoom = false;
+        _publishLegalZoom(alignedZoom);
+        _setLastError(QString());
         return;
     }
 
@@ -2282,16 +2741,53 @@ void GimbalControlManager::_finishManualZoomStop(double zoomLevel)
         _expireManualZoomFinalize();
         return;
     }
+    double feedbackSourceZoom = _currentZoom;
+    double previousLegalStop = 0.0;
+    const int correctionDirection =
+        alignedZoom > normalizedZoom + kZoomComparisonTolerance
+            ? 1
+            : (alignedZoom
+                       < normalizedZoom - kZoomComparisonTolerance
+                   ? -1
+                   : 0);
+    bool previousStopResolved = false;
+    if (correctionDirection != 0
+        && ((correctionDirection > 0
+             && qAbs(alignedZoom - _maximumZoom)
+                 <= kZoomComparisonTolerance)
+            || (correctionDirection < 0
+                && qAbs(alignedZoom - kMinZoom)
+                    <= kZoomComparisonTolerance))) {
+        previousStopResolved =
+            A8MiniZoomPolicy::terminalHandoffStop(
+                zoomStep(),
+                kMinZoom,
+                _maximumZoom,
+                correctionDirection,
+                &previousLegalStop);
+    } else if (correctionDirection != 0) {
+        previousStopResolved =
+            A8MiniZoomPolicy::stepTarget(alignedZoom,
+                                         zoomStep(),
+                                         kMinZoom,
+                                         _maximumZoom,
+                                         -correctionDirection,
+                                         &previousLegalStop);
+    }
+    if (previousStopResolved) {
+        feedbackSourceZoom = previousLegalStop;
+    }
     _suppressIdleAlignmentUntilExplicitZoom = false;
     if (!_sendAbsoluteZoomTarget(alignedZoom,
                                  false,
                                  false,
-                                 true)) {
+                                 true,
+                                 feedbackSourceZoom)) {
         if (_manualZoomFinalizePending) {
             _cancelManualZoomFinalize();
         }
         _suppressIdleAlignmentUntilExplicitZoom = true;
-        _setZoomValueUncertain(true);
+        _setZoomValueUncertain(false);
         if (_lastError.isEmpty()) {
             _setLastError(tr("Failed to align the stopped SIYI zoom to a legal step."));
         }
@@ -2335,16 +2831,16 @@ void GimbalControlManager::_handleStableUnexpectedZoom(double zoomLevel)
     }
 
     // The old tap has expired. Never turn it into a delayed correction several
-    // seconds later: retain the last legal value only as an internal planning
-    // reference and wait for a new explicit gesture. The off-grid raw sample
-    // remains private, so QML shows "--" instead of a stale multiplier.
+    // seconds later. The off-grid raw sample remains private, while the last
+    // feedback-quantized legal bucket remains visible and available as the
+    // deterministic source for the next explicit gesture.
     _zoomOperationTimer.stop();
     _requestedZoom = _currentZoom;
     _suppressIdleAlignmentUntilExplicitZoom = true;
-    if (_zoomStatusKnown) {
-        _setZoomValueUncertain(true);
-    } else {
+    if (!_zoomStatusKnown) {
         _setZoomStatusKnown(false);
+    } else {
+        _setZoomValueUncertain(false);
     }
     _suppressAutomaticAlignment(zoomLevel);
     emit zoomAvailabilityChanged();
@@ -2446,9 +2942,9 @@ void GimbalControlManager::_beginStableZoomConfirmation(bool normalizeToStepGrid
     _stableZoomCandidate = kMinZoom;
     _normalizeAfterStableZoom = normalizeToStepGrid;
     _stableZoomDirection = qBound(-1, direction, 1);
-    if (_zoomStatusKnown) {
-        _setZoomValueUncertain(true);
-    }
+    // A stable-value check must not blank an already confirmed legal bucket.
+    // It will atomically replace that bucket only after the new feedback has
+    // been resolved to a legal stop.
     if (!wasPending) {
         emit zoomAvailabilityChanged();
     }
@@ -2463,6 +2959,7 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
 {
     const bool completedAbsoluteTarget = _absoluteZoomPending;
     const double completedRequestedZoom = _requestedZoom;
+    const double completedFeedbackSource = _absoluteZoomFeedbackSource;
     const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
     if (!A8MiniZoomPolicy::isAlignedZoom(normalizedZoom,
                                          zoomStep(),
@@ -2485,7 +2982,7 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
         _clearStableZoomConfirmation();
         _requestedZoom = _currentZoom;
         if (hadConfirmedZoom) {
-            _setZoomValueUncertain(true);
+            _setZoomValueUncertain(false);
         } else {
             _setZoomStatusKnown(false);
         }
@@ -2499,14 +2996,24 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
     _cancelOutstandingZoomQuery();
     _zoomResponseBlocked = false;
     _absoluteZoomPending = false;
+    _absoluteTargetBucketMatchCount = 0;
     _absoluteZoomTracker.clear();
     _absoluteZoomElapsed.invalidate();
     _alignmentAttemptCount = 0;
     _clearAutomaticAlignmentSuppression();
     _clearStableZoomConfirmation();
     _requestedZoom = normalizedZoom;
-    _latestActualZoom = normalizedZoom;
-    _latestActualZoomKnown = true;
+    _currentZoomFeedbackSource = completedAbsoluteTarget
+        ? completedFeedbackSource
+        : normalizedZoom;
+    // _handleCurrentZoom records the solicited raw sample before resolving it
+    // to a legal logical bucket. Preserve that raw evidence (for example 1.6)
+    // instead of replacing it with the displayed 2.0 target.
+    if (!_latestActualZoomKnown) {
+        _latestActualZoom = normalizedZoom;
+        _latestActualZoomKnown = true;
+    }
+    _absoluteZoomFeedbackSource = normalizedZoom;
     _setCurrentZoom(normalizedZoom);
     _setZoomValueUncertain(false);
     _setZoomStatusKnown(true);

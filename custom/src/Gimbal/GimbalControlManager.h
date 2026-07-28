@@ -140,7 +140,8 @@ private:
     bool _sendAbsoluteZoomTarget(double zoomLevel,
                                  bool alignmentCorrection = false,
                                  bool replacePendingTarget = false,
-                                 bool manualFinalizeCorrection = false);
+                                 bool manualFinalizeCorrection = false,
+                                 double feedbackSourceZoom = 0.0);
     bool _sendZoomStep(int direction);
     bool _zoomPlanningReference(double* zoomLevel) const;
     bool _zoomDirectionAvailable(int direction) const;
@@ -153,6 +154,7 @@ private:
     bool _manualZoomFinalizeDeadlineOpen() const;
     void _cancelManualZoomFinalize();
     void _handleContinuousZoomSample(double zoomLevel);
+    void _publishZoomProgress(double zoomLevel);
     void _finishManualZoomStop(double zoomLevel);
     void _publishLegalZoom(double zoomLevel);
     void _handleStableUnexpectedZoom(double zoomLevel);
@@ -225,6 +227,7 @@ private:
     QElapsedTimer _absoluteZoomElapsed;
     QElapsedTimer _manualZoomFinalizeElapsed;
     double _currentZoom = kMinZoom;
+    double _currentZoomFeedbackSource = kMinZoom;
     double _maximumZoom = kDefaultMaxZoom;
     double _capabilityMaximumZoom = kDefaultMaxZoom;
     double _pulledVideoMaximumZoom = kDefaultMaxZoom;
@@ -244,6 +247,8 @@ private:
     bool _zoomResponseBlocked = false;
     bool _zoomQueryOutstanding = false;
     bool _absoluteZoomPending = false;
+    double _absoluteZoomFeedbackSource = kMinZoom;
+    int _absoluteTargetBucketMatchCount = 0;
     bool _latestActualZoomKnown = false;
     double _latestActualZoom = kMinZoom;
     int _alignmentAttemptCount = 0;
