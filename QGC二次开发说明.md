@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/gimbalcontrol`
 
-最后更新：2026-07-27
+最后更新：2026-07-29
 
 ## 1. 当前开发进度
 
@@ -25,7 +25,7 @@
 各模块当前所处阶段如下：
 
 - **已集成**：Viewer3D、思翼云台、Fuel、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
-- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、底部航向罗盘条、Android 86% 界面缩放缺省值、Android H.265 低延迟硬解和 Android USB 串口管理器。代码已经进入当前工作树，但仍需按第 12 章完成目标遥控器上的抓包、净安装、布局、性能、日志、延迟、反复拔插和重连测试，不能仅凭静态接入、代码注册或 decoder rank 判定验收通过。
+- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/定时绝对长按状态机、底部航向罗盘条、Android 86% 界面缩放缺省值、Android H.265 低延迟硬解和 Android USB 串口管理器。代码已经进入当前工作树，但仍需按第 12 章完成目标遥控器上的抓包、净安装、布局、性能、日志、延迟、反复拔插和重连测试，不能仅凭静态接入、代码注册或 decoder rank 判定验收通过。
 - **已有实测基础**：Ubuntu 24.04 下 A8 Mini 云台控制及 H.265 RTSP 播放正常；Android 下同一云台使用 H.264 编码播放正常。
 - **功能边界**：本次实现的是 QGC 根据活动飞行器 `Vehicle.heading` 绘制的航向罗盘条，不是思翼视频码流内的 OSD，也不表示航点方向、航线偏差或下一航段。
 
@@ -40,15 +40,16 @@
 
 ### 1.3 思翼 A8 Mini 云台控制（已集成）
 
-- 在 `custom` 中实现思翼私有 UDP SDK 和协议封装，包括帧组装、CRC16、固定为0的协议sequence字段，以及0x05、0x0a、0x0b、0x0c、0x0f、0x16和0x18。0x05由Manager用于长按原生连续变焦：`+1/-1`只在长按成立且下一合法停点不是分辨率端点时各发送一次；原生0x05已启动时，释放立即发送0并在80 ms后发送一次有界安全副本。停止包本地发送失败时，除首次发送外最多再尝试两次；任一次本地失败都会取消本次倍率收尾，只保留安全停止义务，不得随后归整镜头。任何新的移动命令都必须先同步完成待发stop，失败则直接拒绝本次新手势，绝不让旧stop迟到并打断新运动。若长按开始时下一停点已经是精确端点，则直接发送0x0f到该端点，不启动0x05，释放时也无需发送0x05 stop。0x0f还用于单击绝对步进、原生长按到达上下限末段及长按停止后的合法网格归整，0x16只读取设备诊断能力，0x18读取实际倍率。0x05 ACK和0x0f ACK都不能直接更新显示：现有设备不递增sequence，迟到ACK无法可靠归属当前手势，0x05 ACK只作心跳/诊断，0x0f负ACK也只作诊断，最终结果始终以串行主动0x18回读为准。单击不再排队或节流，新的单击立即以合法计划停点替换旧的在途目标；每次0x0f后保留350 ms旧包隔离，随后由主动0x18原始反馈确认目标：raw精确等于目标时一份即可提交；非精确raw越过相邻合法档位中点并落入目标bucket时，首份可暂时显示该合法目标，连续第二份同bucket反馈才提交事务。若第二份落回其他bucket或整体超时，显示回退到该事务的上一个已确认档位。这样1.0→2.0过程中持续回报1.6也可确认已经进入2.0档，但UI永远不会直接显示1.6。
-- A8 Mini数字变焦上限由QGC实际解码拉流尺寸确认。GStreamer路径有两条互相独立的首选可信来源：custom在主视频 `qgcvideosinkbin` 的sink pad等待真实首帧，并依次检查外层pad、已连接解码器peer及ghost target的current CAPS；同时观察 `GstGLQt6VideoItem` 在最终 `GstVideoInfo` 生效后写入的 `implicitWidth/implicitHeight`。任一来源得到受支持尺寸都会直接投递Manager，pad路径还会修正原生 `VideoManager::videoSize`。两个custom观察器都未回调时，已解码且连续稳定1秒的 `VideoManager::videoSize`作为第二级后备。尺寸上限映射为1280×720（及coded-height 736）→6.0x、1920×1080（及1088）→5.5x、2560×1440→3.5x、3840/4096×2160→1.0x。Manager仍每2秒查询0x16，但它在任何时候都只用于协议诊断，不参与UI能力判断，不得解锁、收紧、重置或锁定由拉流分辨率确定的上限。其他拉流尺寸不作猜测。
-- `zoomStep`采用“双锚网格”：合法停点是从最小值1.0x按 `zoomStep`递增的min锚网格、从当前拉流精确上限按 `zoomStep`递减的max锚网格，以及上下端点三者的并集；手势从哪一端出发就沿对应方向网格连续步进，端点不足整步时直接收敛到另一端。默认步长1.0x时，1080P放大序列严格为1.0、2.0、3.0、4.0、5.0、5.5，从上限缩小严格为5.5、4.5、3.5、2.5、1.5、1.0；2K放大严格为1.0、2.0、3.0、3.5，从上限缩小严格为3.5、2.5、1.5、1.0。在该默认步长下，1.6、1.8等既不属于双网格并集，也不允许作为命令目标或直接数字显示。
-- `currentZoom`只保存由主动0x18原始反馈映射出的合法档位bucket，不在0x05/0x0f发送成功或ACK成功后乐观写入请求目标。0x16/0x18逐包优先按新版“整数字节+一位小数字节”解析；若该候选超出A8协议范围，再兼容真机固件使用的小端uint16/10格式，例如 `01 00`与 `0a 00`都可表示1.0x。采用兼容格式时日志记录 `encoding little-endian tenths compatibility`。绝对目标在350 ms旧包隔离后，以相邻合法档位的中点作为归属边界：精确目标raw一份即可确认；非精确raw首份跨过中点时可暂显对应合法bucket，连续第二份归属同一bucket后才确认，若下一份落回其他bucket、查询超时或10秒整体超时则立即回退事务源档。例如1.0→2.0时raw 1.6只会映射并显示2.0，绝不显示1.6。原生连续变焦期间每120 ms串行回读0x18，每份有效运动反馈都按当前方向和跨越中点实时推进合法bucket，不再让整个运动阶段一直显示 `--`；后续idle轮询沿用最近已确认的bucket和路径归属，设备继续返回同一raw时不会把数字清空。仅当0x05 stop本地发送成功时，松手后才进入收尾查询；非网格停止值只允许在1秒收尾所有权窗口内发送一次0x0f归整，stop本地失败会取消本次倍率收尾。收尾同时使用独立单调计时器校验绝对截止时间，即使定时器事件排队也不能在1秒后补发归整。所有raw值都可作为实时位置证据，但QML只接收双网格并集中的合法bucket，因此界面不会出现1.6、1.8等任意小数。
-- `GimbalControlManager` 把“视频流会话是否解锁”“绝对目标是否在途”“原生连续变焦是否活动”“公开倍率是否已确认”拆成独立状态。支持的拉流分辨率确认后立即锁存 `zoomControlsUnlocked=true`；pending、稳定确认、0x18丢包、10秒目标超时、SDK 1.5秒心跳抖动以及同一解码会话中的瞬态异常尺寸均不能重新锁定按钮，只有真实 `VideoManager::decoding=false`、Gimbal关闭，或新解码会话始终未确认受支持尺寸时才保持锁定。每次单击都立即发送下一合法0x0f目标；已有目标时从上一合法请求值继续规划并立即替换，不使用1.6等raw值作步长锚点，也不保存任何等待以后派发的方向队列。稳定未达、10秒超时或收尾超时都会丢弃旧手势，普通后台轮询不得在数秒后重新发送旧方向或归整命令；只有新的显式操作可以重新产生移动。初始/外部稳定非网格值仍可执行最多两次有界归整，以保证公开倍率属于合法网格。
-- 飞行界面右侧使用单个始终可见的纵向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；从上到下依次为放大、当前倍率、缩小、横向分隔线、思翼机内拍照和录像。支持的拉流尚未确认时缩放按钮锁定；确认后按钮启用状态只由计划倍率的方向边界决定，命令pending不会让两个方向同时变灰。到上限仅禁用加号，到1.0x仅禁用减号；4K上限本身为1.0x时两个方向均无目标属于无数字变焦范围。真实断流才重新锁定两键并显示 `--`，同分辨率重连也会重新解锁。
+- 在 `custom` 中实现思翼私有 UDP SDK 和协议封装，包括帧组装、CRC16、固定为0的协议sequence字段，以及0x05、0x0a、0x0b、0x0c、0x0f、0x16和0x18。0x05只保留协议封装与兼容测试，当前缩放手势不调用它。
+  当前缩放手势统一发送0x0f绝对倍率：短按每次沿唯一合法目标表推进一档；长按在420 ms成立后，根据总按压时长 `qRound(totalMs / 600.0)` 计算从手势起点前进的档数，并且只允许沿按下方向单调更新0x0f目标。新的显式目标立即替换旧目标，不排队或延迟重放；本地发送成功即把目标写入 `currentZoom`并显示。0x0f ACK和主动0x18回读继续用于通信诊断与实际位置核对，但中间raw不覆盖当前目标倍率。正常释放调用 `stopZoom()`完成本次长按；取消、移出、控件隐藏、应用进入后台或销毁统一调用 `cancelZoom()`，取消路径不得补发短按或产生新的倍率目标。
+- A8 Mini数字变焦上限由QGC实际解码拉流尺寸确认。GStreamer路径有两条互相独立的首选可信来源：custom在主视频 `qgcvideosinkbin` 的sink pad等待真实首帧，并依次检查外层pad、已连接解码器peer及ghost target的current CAPS；同时观察 `GstGLQt6VideoItem` 在最终 `GstVideoInfo` 生效后写入的 `implicitWidth/implicitHeight`。任一来源得到受支持尺寸都会直接投递Manager，pad路径还会修正原生 `VideoManager::videoSize`。两个custom观察器都未回调时，已解码且连续稳定1秒的 `VideoManager::videoSize`作为第二级后备。当前只接受1920×1080→5.5x和1280×720→6.0x；其他尺寸不解锁缩放，也不作猜测。Manager仍可查询0x16作协议诊断，但它不参与UI能力判断。
+- `zoomStep`采用唯一的最小值锚网格：从1.0x按 `zoomStep`递增，并把当前拉流精确上限作为最后一个合法目标；放大和缩小都在同一有序目标表中按相邻项移动，不再生成上限锚定的另一套停点。默认步长1.0x时，1080P正向为1.0、2.0、3.0、4.0、5.0、5.5，反向严格沿同一表返回5.5、5.0、4.0、3.0、2.0、1.0；720P双向使用1.0、2.0、3.0、4.0、5.0、6.0。
+- `currentZoom`表示当前合法目标倍率。任意tap或hold生成的新0x0f目标在本地发送成功后立即写入并显示，不等待0x18证明镜头已经到位；发送失败则保持原显示。0x16/0x18仍按新版“整数字节+一位小数字节”优先解析，并兼容真机小端uint16/10格式；0x18实际值保存在独立反馈状态中，用于诊断、边界保护和后续同步，不能把1.6、1.8等运动中raw直接写成新的目标倍率。在线且倍率已知时，pending或反馈核对不会把QML数字隐藏为 `--`。
+- `GimbalControlManager` 把视频流解锁、当前目标倍率、最近实际反馈和在途命令拆成独立状态。tap从当前目标立即取同一合法表的相邻一档并发送；快速tap从上一成功目标继续规划。hold锁存手势起点和方向，420 ms成立后按总按压时长每600 ms重新计算目标档数，只有目标档数增加时才发送新的0x0f，整个序列严格单调并钳制到分辨率上限。普通release完成手势；取消、移出、隐藏、后台和销毁只清理手势状态，不再产生新的目标。SDK心跳、命令pending和实际反馈核对均不撤销仍在解码的视频会话。
+- 飞行界面右侧使用单个始终可见的纵向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；从上到下依次为放大、当前目标倍率、缩小、横向分隔线、思翼机内拍照和录像。支持的拉流尚未确认时缩放按钮锁定；确认后按钮启用状态只由当前目标在同一合法表中的方向边界决定。到上限仅禁用加号，到1.0x仅禁用减号；真实断流才重新锁定两键并显示 `--`，同分辨率重连也会重新解锁。
 - 拍照成功只在存在本次拍照请求时由0x0b功能反馈累计本进程照片数并触发成功提示；录像按钮必须先取得0x0a录像状态，避免把“尚未同步”误当成“未录像”。0x0c录像切换没有ACK，发送后先建立目标状态和pending门控、再乐观更新UI，约400 ms后主动查询0x0a；只有与本次目标一致的状态0/1才能完成pending，延迟旧状态继续忽略，状态2/3错误立即结束，2.5秒仍未确认则重新标记unknown。0x0b只用于拍照结果、HDR结果和录像失败反馈，不能虚构录像成功反馈码。录制发生在思翼相机机内存储卡，而不是QGC本地录像支路。
-- Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。缩放手势统一为Idle/Pressed/Holding/Consumed状态：短按释放立即发送一个合法0x0f停点；按住约420 ms且下一合法停点不是端点时只发送一次0x05方向命令，镜头由相机原生连续运动，Manager每120 ms串行查询0x18并按中点跨越实时发布合法倍率，单次进度查询250 ms超时即主动停止，避免失去反馈后继续盲跑。默认步长1.0x时，1080P正向连续运动到5.0后停止0x05并切换0x0f精确到5.5，2K正向到3.0后切换到3.5；两者反向连续运动到1.5后都停止0x05并切换0x0f精确到1.0。若长按开始时下一停点已经是精确端点，则直接发送0x0f，不建立原生连续状态。仅在原生0x05已经启动时，释放、取消、移出、控件隐藏或安全看门狗才立即发送0x05停止，80 ms后再补一个有界停止包；本地发送失败时除首次stop外最多再尝试两次，同时取消倍率收尾并阻止后续移动越过未完成stop。仅当stop本地发送成功时才执行释放收尾；1秒窗口一旦到期，普通范围内的轮询绝不再补发移动，只有确认实际已经超过拉流上限时允许独立安全回限。QML释放判断使用本次释放事件坐标，不依赖Android上不稳定的 `containsMouse`悬停状态，长按释放不会再补发短按。
-- 在Fly View设置页以 `SIYI Gimbal Camera` 标题提供云台相机启用、SDK IP、SDK端口和缩放步长设置，并明确短按立即按步长绝对缩放、长按优先使用思翼原生连续变焦并在原生状态释放时立即停止、上下限末段允许直接使用0x0f、合法停点为min锚网格、拉流上限锚网格及精确端点的并集；实际拉流尺寸单独决定已连接会话的缩放上限。
+- Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。缩放手势统一为Idle/Pressed/Holding/Consumed状态：短按释放立即发送并显示同一合法表的下一档0x0f目标；按住420 ms后进入Holding，并以总按压时长 `qRound(totalMs / 600.0)` 计算相对手势起点的目标档数。只有档数增加且方向不变时才发送新0x0f，因此整个hold目标序列单调且不会越过1.0x或拉流精确上限。正常release继续调用 `stopZoom()`；取消、移出、控件隐藏、应用后台及销毁统一调用 `cancelZoom()`。QML释放判断使用本次释放事件坐标，不依赖Android上不稳定的 `containsMouse`悬停状态，长按释放不会再补发短按。
+- 在Fly View设置页以 `SIYI Gimbal Camera` 标题提供云台相机启用、SDK IP、SDK端口和缩放步长设置，并明确tap每次发送一档0x0f且成功即显示目标、hold从420 ms成立起按总按压时长每600 ms计算单调绝对目标；合法目标只包含1.0x起始的min锚网格和当前拉流精确上限。
 
 ### 1.4 RTSP 与 Android H.265 视频链路（代码已集成，待真机验收）
 
@@ -299,7 +300,7 @@ custom/
 | `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View右侧中部控件容器的同路径覆盖。始终保留 `TerrainProgress`；Gimbal启用时不检查 `globals.activeVehicle`，而是始终实例化并显示明确QRC地址的 `GimbalCameraControl.qml`。`sdkResponding`不决定Loader尺寸、控件可见性或缩放按钮锁定；缩放由拉流会话解锁，录像需状态已知，拍照允许离线尝试。只有Gimbal关闭且存在活动飞行器时才加载原生 `PhotoVideoControl`。启用时ColumnLayout宽度取原生 `_rightPanelWidth` 与合并栏隐式宽度的较大值，Loader同时把最小尺寸固定为隐式尺寸并右对齐，86%字号或移动端最小触控尺寸不会把控制栏强制压缩。 |
 | `custom/src/FlightDisplay/GeneratorBusVoltageAlert.qml` | Fly View燃料电池母线低压提示本体。读取传入Vehicle的 `generator.busVoltage`，低于20.0 V显示告警、严格高于20.4 V清除，NaN或无Fact时隐藏；双阈值回差避免临界电压反复闪烁。它只绘制告警，加载位置和活动飞行器生命周期由 `FlyViewCustomLayer.qml` 管理。 |
 | `custom/src/FlightDisplay/GimbalCameraControl.qml` | Gimbal启用后始终显示的合并相机控制栏，不依赖飞控、活动Vehicle或SDK在线状态决定可见性。单个半透明圆角面板使用ColumnLayout纵向排列 `GimbalZoomControl`、横向分隔线、拍照和录像按钮，完整高度由子项隐式高度与间距计算；图标直接复用QGC的 `camera_photo.svg` 和 `camera_video.svg`，但命令调用 `GimbalControlManager::takePhoto()/toggleVideoRecording()`，不依赖原生MAVLink相机对象。SDK离线时面板切换为灰色边框和灰色状态点，拍照按钮仍允许发送；录像状态未知或切换命令pending时按钮灰显并显示省略号，只有取得0x0a状态后才显示REC或本次会话计时并允许切换，因为录像命令是toggle语义。照片0x0b成功反馈触发绿色闪烁。该栏不实例化原生 `PhotoVideoControl`，因此不存在原生缩放滑块。 |
-| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 合并栏顶部的思翼缩放子控件，使用单列GridLayout从上到下显示加号、当前倍率和减号，并把完整列高传给外层布局。从Manager读取 `zoomControlsUnlocked/currentZoom/zoomStatusKnown/zoomValueUncertain/zoomInAvailable/zoomOutAvailable`；新会话尚无任何可归属0x18反馈、真实断流，或步长/受支持分辨率变化后必须重新同步时显示 `--`，普通pending、单击/长按运动及SDK心跳抖动不会清空已有合法数字。raw 1.6可以成为1.0→2.0的反馈证据，但QML只会收到并显示2.0，不会直接显示1.6。按钮不依赖 `sdkResponding`，pending也不会将两方向一起禁用；方向availability只反映计划倍率是否还有下一合法停点。两侧MouseArea使用Idle/Pressed/Holding/Consumed手势状态：短按释放立即调用一次 `zoomIn/zoomOut`，长按成立后只调用一次 `startZoom`，释放/取消只调用一次 `stopZoom`且不补短按；释放坐标不依赖Android触摸下可能为false的 `containsMouse`。 |
+| `custom/src/FlightDisplay/GimbalZoomControl.qml` | 合并栏顶部的思翼缩放子控件，使用单列GridLayout从上到下显示加号、当前目标倍率和减号，并把完整列高传给外层布局。从Manager读取 `zoomControlsUnlocked/currentZoom/zoomStatusKnown/zoomInAvailable/zoomOutAvailable`；只要在线且倍率已知就显示 `currentZoom`，不再因 `zoomValueUncertain`或命令pending隐藏数字。按钮不依赖 `sdkResponding`，方向availability只反映当前目标在唯一合法表中是否还有下一档。两侧MouseArea使用Idle/Pressed/Holding/Consumed状态：短按释放调用一次 `zoomIn/zoomOut`；长按420 ms成立后，把从最初按下起计算的总时长传给 `startZoomWithPressDuration(direction, totalMs)`，Manager按 `qRound(totalMs / 600.0)` 推进绝对目标；普通release调用 `stopZoom()`，取消、移出、隐藏、后台和销毁调用 `cancelZoom()`，都不会补发短按。 |
 | `custom/src/FlightMap/Images/compassPointer.svg` | 罗盘条中央固定三角指针的纯矢量资源，不含角度或交互逻辑。按原生 `src/FlightMap/Images` 资源分类保存，由 `custom.qrc` 注册为 `qrc:/custom/img/compassPointer.svg`，`FlyViewCompassBar.qml` 通过 `QGCColoredImage` 加载并按当前主题文本颜色着色。 |
 
 未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
@@ -308,22 +309,22 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/Gimbal/A8MiniZoomPolicy.h` | A8 Mini缩放策略的纯静态接口，将视频尺寸映射、min/max双锚合法网格、方向步进、单份raw是否属于目标bucket的中点/外侧判定，以及精确目标与稳定异值观察器从Manager状态机中分离，便于独立测试；不访问网络、QSettings或UI。Policy只判定一份样本的归属；非精确目标连续两份计数、首份暂显、查询超时断证据和回退均由Manager持有。固定sequence使负ACK无法跨目标可靠归属，因此ACK不改变观察器证据。 |
-| `custom/src/Gimbal/A8MiniZoomPolicy.cc` | 显式映射A8 Mini拉流规格：1280×720/736→6.0x、1920×1080/1088→5.5x、2560×1440→3.5x、3840/4096×2160→1.0x（4K不可继续缩放），其他尺寸返回不支持。倍率计算使用十分之一整数；合法停点为从1.0x递增的min锚网格、从拉流精确上限递减的max锚网格及端点的并集，并按当前手势方向保持所在网格。默认1.0x步长下，1080P正向为1/2/3/4/5/5.5、从上限反向为5.5/4.5/3.5/2.5/1.5/1；2K正向为1/2/3/3.5、反向为3.5/2.5/1.5/1。raw值不成为漂移网格，而是按相邻合法档位中点归入当前路径的目标bucket。 |
-| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义6个Fact及约束：`enabled=true`（短描述为启用思翼云台相机控制）、数值IP `sdkHost=192.168.144.25`、`sdkPort=37260`（1-65535）、`zoomStep=1.0x`（0.1-4.5）、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`；后两项标记需重启。`zoomStep`说明明确合法目标为最小值锚网格、拉流上限锚网格与精确端点的并集；默认步长1.0x时1080P/2K正向末端分别为5.5x/3.5x，从上限反向则分别按4.5/3.5/2.5/1.5及2.5/1.5过渡。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`；硬解开关虽在所有平台存在，策略只在Android+GStreamer路径执行。 |
+| `custom/src/Gimbal/A8MiniZoomPolicy.h` | A8 Mini缩放策略的纯静态接口，将受支持视频尺寸、唯一min锚合法目标表、相邻方向步进及按总按压时长计算单调hold目标从Manager状态机中分离，便于独立测试；不访问网络、QSettings或UI。 |
+| `custom/src/Gimbal/A8MiniZoomPolicy.cc` | 只映射1280×720→6.0x和1920×1080→5.5x，其他尺寸返回不支持。倍率计算使用十分之一整数；合法目标从1.0x按配置步长递增，并把精确上限作为唯一末端目标，正反方向都遍历同一有序表。默认1.0x时1080P为1/2/3/4/5/5.5，720P为1/2/3/4/5/6。hold按 `qRound(totalMs / 600.0)` 从起始目标计算档数，目标序列只沿按下方向单调推进并在端点钳制。 |
+| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义6个Fact及约束：`enabled=true`、`sdkHost=192.168.144.25`、`sdkPort=37260`、`zoomStep=1.0x`、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`。`zoomStep`说明明确tap每次推进一档并在发送成功后立即显示，hold从420 ms成立起按总按压时长每600 ms计算单调绝对目标；合法目标只使用min锚网格和精确拉流上限。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`；硬解开关只在Android+GStreamer路径执行。 |
 | `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用6个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证属性名称稳定；不创建UDP socket、不发送云台命令，也不选择视频解码器。 |
 | `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现6个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
-| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。`currentZoom`表示设备主动0x18反馈按当前运动路径映射出的合法bucket，绝不直接承载命令目标或任意raw小数；`zoomControlsUnlocked`表示受支持的解码流会话，另暴露基于计划倍率边界计算的 `zoomInAvailable/zoomOutAvailable`、只读 `zoomCommandPending`及非阻塞核对标记 `zoomValueUncertain`。倍率状态分别保存公开合法bucket、最新raw实际值、bucket路径/连续命中证据和唯一在途绝对目标，不再保存短按方向队列；视频会话、命令pending、倍率known和SDK responding互相独立。 |
-| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`，没有修改或复制 `src/VideoManager`。GStreamer构建按“主显示sink直接尺寸→稳定1秒的VideoManager尺寸”确认拉流上限；受支持尺寸是已连接会话的唯一UI上限，0x16继续轮询但始终只作诊断。支持尺寸确认即锁存本次解码会话的解锁状态；只有真实断流才撤销，同一会话的瞬态异常尺寸、pending、查询超时和SDK心跳均不锁键；SDK心跳/通信瞬态也保留最后一个合法倍率bucket。同分辨率新会话重连会立即启动0x18同步，不再等下一轮2秒后台轮询。短按立即按双锚合法网格发送0x0f；已有pending时从上一合法请求停点规划并现场替换，不保存方向队列，也不会在几秒后重放旧点击。350 ms隔离后以主动0x18反馈是否跨过相邻合法档中点确认目标bucket：精确目标一份发布并提交；非精确raw首份暂显合法目标、连续第二份同bucket才提交；下一份落回其他bucket、查询超时或整体超时才回退源档，新的显式tap则直接建立替换事务。idle轮询继续保留最近bucket归属。长按优先使用原生0x05连续变焦，120 ms进度轮询会实时发布跨过的合法档位，250 ms反馈超时即停；默认步长1.0x时，1080P正向到5.0后以0x0f收敛到5.5、2K正向到3.0后收敛到3.5，两者反向到1.5后都收敛到1.0，切换前先停0x05；下一停点已经是端点时直接0x0f且不建立0x05状态。仅对已启动的0x05在释放时立即停止并80 ms重发一次。停止包本地失败时除首次外最多再试两次、取消本次倍率收尾，且新运动必须先同步通过停止门；stop成功后在1秒所有权窗口内完成反馈收尾或最多一次合法归整，窗口过期后普通范围内不再产生移动；实际倍率超出分辨率上限时保留独立安全回限。所有公开入口仍二次拒绝不属于双锚并集的值，QML只显示合法bucket而不直接显示raw小数。 |
+| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。`currentZoom`表示当前成功发送的合法目标倍率，最近0x18实际值另行保存；`zoomControlsUnlocked`表示受支持的解码流会话，并暴露基于当前目标边界计算的 `zoomInAvailable/zoomOutAvailable`、命令pending和长按状态。公共接口区分普通 `stopZoom()`与安全 `cancelZoom()`。 |
+| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`，没有修改或复制 `src/VideoManager`。拉流尺寸只接受1920×1080和1280×720并分别确定5.5x、6.0x上限；0x16只作诊断。tap从唯一合法表取相邻一档并立即发送0x0f，本地发送成功即更新 `currentZoom`，快速tap从上一成功目标继续规划。hold在420 ms成立时锁存起点与方向，随后按总按压时长 `qRound(totalMs / 600.0)` 计算绝对档数；只有档数增加时发送新的单调0x0f目标。正常release完成hold，取消、移出、隐藏、后台或销毁调用 `cancelZoom()`且不产生新目标。0x18反馈保留在独立实际值状态中，用于核对与边界保护，不覆盖当前目标显示。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明两个无对象状态的启动期适配接口：安装A8 Mini视频缺省设置，以及判断一条MAVLink消息是否应被过滤。它不创建 VideoReceiver、不连接RTSP，也不参与H.265解码。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | `CustomPlugin::init()` 每次启动调用的幂等迁移和消息策略实现。版本键 `[GimbalControl]/a8MiniVideoDefaultsVersion=4` 控制迁移：只在URL为空或旧拼写时设置A8 RTSP地址，只在A8 URL且timeout过小时提升到20秒，只在视频源为空/Disabled/No Video时选RTSP；Android仅在用户从未保存 `[Video]/lowLatencyMode` 且URL匹配时写true，已有选择不覆盖。过滤逻辑仅针对 `VIDEO_STREAM_INFORMATION`：Gimbal开启且 `mavlinkAutoVideoStream=false` 时阻止它进入原生自动视频配置，其余消息放行。 |
 | `custom/src/Gimbal/SiyiProtocol.h` | 思翼私有协议的纯静态编解码接口，覆盖0x05/0x0a/0x0b/0x0c/0x0f/0x16/0x18及ACK帧判定；不继承QObject，不访问网络、QSettings或UI。 |
 | `custom/src/Gimbal/SiyiProtocol.cc` | 实现 `55 66`帧头、control 0x01、小端payload长度、固定0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。整帧长度必须与payload声明精确相等，尾随字节也会拒绝；入站业务ACK必须严格为control 0x02。0x05 ACK按小端uint16/10解析；0x16/0x18逐包先按官方“整数字节+一位小数字节”解析，只有官方候选超出当前A8有效范围时，才计算完整小端uint16/10兼容候选并再次校验范围，不钳制异常值。`01 00`/`01 08`保持1.0x/1.8x，`0a 00`/`12 00`/`1c 00`/`37 00`分别兼容1.0x/1.8x/2.8x/5.5x；A8物理范围不超过6.0x，因此两种合法表示没有歧义。解析接口同时返回本包是否采用兼容格式，0x0f ACK只接受单字节0/1。 |
-| `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明，提供0x05原生连续变焦及显式endpoint停止、0x16当前支持范围、0x0f绝对倍率、0x18当前倍率、拍照、录像和状态查询；它不负责拉流尺寸、步长网格、手势状态或设置持久化。Manager在非终端长按时调用0x05；单击和下一合法停点已经是精确上限的长按使用0x0f。 |
+| `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明，提供0x0f绝对倍率、0x16当前支持范围、0x18当前倍率、拍照、录像和状态查询；它不负责拉流尺寸、合法目标表、手势计时或设置持久化。当前tap和hold都由Manager调用0x0f。 |
 | `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；接收侧按逻辑IP、精确帧长、CRC和control 0x02过滤，并且只在对应业务payload解析成功后发出 `packetReceived`。`gcs.custom.gimbal.sdk`记录每个收发命令、原始payload、解出的倍率及本包采用的 `integer plus decimal`或 `little-endian tenths compatibility`编码；0x0f受理反馈、0x16能力和0x18实际倍率仍按命令职责分别分发。空包、短写或无效endpoint通过 `communicationError`交给Manager。 |
-| `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖0x05方向/停止包、封包量化（含2.0x完整0x0f帧）、ACK control、坏CRC、严格整帧长度、0x05/0x0f/0x16/0x18新版与真机旧版倍率payload（含旧版1.6x=`10 00`、2.0x=`14 00`）、越界和非法载荷、720P/1080P/2K/4K及coded-height映射、min/max双锚网格、1080P与2K方向序列、0.7x步长端点收敛、off-grid方向恢复，以及单份目标样本的中点/外侧半开边界、0.1x最小步长源值不误跨档、错误方向拒绝和精确/稳定异值观察。测试只在桌面 `QGC_BUILD_TESTING`注册，并提供 `check_siyi_protocol`独立目标；Manager中的“非精确连续两份提交、首份暂显、超时回退”、定时器和UDP代际仍需Manager级或真机时序验证。 |
+| `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖0x0f封包量化、ACK control、坏CRC、严格整帧长度、0x16/0x18双格式倍率payload、仅720P/1080P尺寸映射、唯一min锚目标表、精确上限追加、正反同表序列、off-grid方向恢复，以及420 ms长按成立后按 `qRound(total/600)` 计算档数和端点钳制。Manager级测试还需覆盖tap成功即显示、快速替换、hold目标单调、普通release与cancel分流、隐藏/后台不产生新目标。 |
 
-云台相机完整调用链为：`VideoReceiver`解码当前视频 -> 真实首帧CAPS或最终 `GstVideoInfo` 隐式尺寸 -> 无直接结果时使用稳定1秒的 `VideoManager::videoSize` -> 得到并锁存本次流会话上限/解锁控件，同分辨率重连时立即重建0x18倍率参考 -> `A8MiniZoomPolicy`生成min锚网格、max锚网格与精确端点的合法并集 -> 短按由 `GimbalControlManager`立即发送/替换一个0x0f合法目标，350 ms隔离后由主动0x18按“精确一份提交、非精确首份暂显且连续第二份提交”处理 -> 长按在非终端段由QML一次调用0x05方向启动，Manager每120 ms串行轮询0x18并实时发布跨过的合法档位，在上下限末段停止0x05并切精确0x0f -> 已启动0x05时释放立即发送停止及一个有界副本，并在1秒所有权窗口内完成反馈收尾或最多一次合法归整。raw小数只作为bucket归属证据，不直接显示；第二份异桶、查询超时或整体超时会回退最近已确认合法bucket、丢弃旧手势并禁止后台重放，不会锁定仍在线的视频会话。
+云台相机完整调用链为：`VideoReceiver`解码当前视频 -> 真实首帧CAPS或最终 `GstVideoInfo` 隐式尺寸 -> 无直接结果时使用稳定1秒的 `VideoManager::videoSize` -> 仅1920×1080或1280×720分别锁存5.5x或6.0x上限并解锁控件 -> `A8MiniZoomPolicy`生成1.0x起始的唯一min锚网格并追加精确上限 -> tap立即发送同表相邻一档0x0f并在成功后显示目标 -> hold在420 ms成立后按总按压时长每600 ms计算相对起点档数，只发送同方向单调0x0f目标 -> 普通release调用 `stopZoom()`，取消、移出、隐藏、后台和销毁调用 `cancelZoom()`。0x18实际反馈独立保存，不覆盖当前目标倍率，也不锁定仍在线的视频会话。
 
 ### 4.6 GStreamer 拉流分辨率与 Android 视频解码策略
 
@@ -576,15 +577,15 @@ QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay�
 | `enabled` | bool / `true` | 启用私有SDK云台相机后端和合并的缩放/拍照/录像控制栏；关闭后才回退原生相机控件。 |
 | `sdkHost` | `192.168.144.25` | A8 Mini SDK IP。 |
 | `sdkPort` | 1-65535 / `37260` | A8 Mini 私有 UDP SDK 端口。 |
-| `zoomStep` | 0.1-4.5 / `1.0x` | 短按的绝对步进、长按显示分档及停止后的合法归整分度。合法目标为从1.0x递增的min锚网格、从拉流精确上限递减的max锚网格及端点的并集；步长1.0x时1080P正向为1.0/2.0/3.0/4.0/5.0/5.5、从上限反向为5.5/4.5/3.5/2.5/1.5/1.0，2K正向为1.0/2.0/3.0/3.5、反向为3.5/2.5/1.5/1.0。 |
+| `zoomStep` | 0.1-4.5 / `1.0x` | tap的绝对步进和hold目标分档。合法目标从1.0x按步长递增并追加拉流精确上限，正反方向共用同一表；默认1.0x时1080P为1.0/2.0/3.0/4.0/5.0/5.5，720P为1.0/2.0/3.0/4.0/5.0/6.0。 |
 | `mavlinkAutoVideoStream` | bool / `false` | 是否接受 MAVLink 相机流 URI 并允许其锁定视频源。修改后重启 QGC。 |
 | `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。注册 `hvc1 -> byte-stream/au` 适配器并优先真实厂商 MediaCodec H.265 硬解；无可用硬解时保留软件回退。修改后重启 QGC。 |
 
-Gimbal启用后，Manager即使不在Fly View也会持续运行，并每2秒向 `sdkHost:sdkPort`探测：GStreamer构建优先采用主显示sink直接报告的最终协商尺寸，仅在没有任何有效直接结果时用 `VideoManager::videoSizeChanged/decodingChanged` 启动1秒稳定兜底；非GStreamer构建直接使用这两个原生状态。每轮仍发送0x16和0x0a，但受支持拉流尺寸确认后0x16只记录诊断，不再改变UI上限。绝对目标和稳定确认由专用状态机管理：先留350 ms隔离窗口，再发送唯一在途的0x18；1秒未收到合法倍率才安排下一次隔离重试，10秒整体deadline不会被重试刷新。Fly View右侧纵向合并栏不等待探测结果，无论是否连接飞控或云台都立即显示；缩放按钮在受支持视频流确认时解锁，且不依赖 `sdkResponding`。只有来源逻辑IP匹配配置endpoint、通过帧头、精确长度、CRC、control=0x02及对应payload校验的SDK响应，`sdkResponding`才变为true。
+Gimbal启用后，Manager即使不在Fly View也会持续运行，并每2秒向 `sdkHost:sdkPort`探测：GStreamer构建优先采用主显示sink直接报告的最终协商尺寸，仅在没有任何有效直接结果时用 `VideoManager::videoSizeChanged/decodingChanged` 启动1秒稳定兜底；非GStreamer构建直接使用这两个原生状态。每轮仍发送0x16和0x0a，但0x16只记录诊断，不改变UI上限。新视频会话以0x18建立初始目标参考；此后任意合法0x0f在本地发送成功后立即更新并显示 `currentZoom`，实际0x18反馈独立核对且不覆盖当前目标。Fly View右侧纵向合并栏不等待探测结果，无论是否连接飞控或云台都立即显示；缩放按钮在受支持视频流确认时解锁，且不依赖 `sdkResponding`。只有来源逻辑IP匹配配置endpoint、通过帧头、精确长度、CRC、control=0x02及对应payload校验的SDK响应，`sdkResponding`才变为true。
 
-拉流物理上限取QGC实际解码尺寸：1280×720/736→6.0x、1920×1080/1088→5.5x、2560×1440→3.5x、3840/4096×2160→1.0x且不可继续数字变焦。GStreamer主视频在真实首帧到达时从sink、解码器peer或ghost target的current CAPS读取宽高，同时以主 `GstGLQt6VideoItem` 根据最终 `GstVideoInfo` 设置的隐式尺寸作为第二条直接来源。两条路径任一取得受支持尺寸就直接交给Manager，并由pad路径同步校正 `VideoManager::videoSize`。若两条直接路径都没有报告有效尺寸，Manager仅在原生视频状态已解码、尺寸属于白名单且连续稳定1秒时以 `VideoManager`兜底；有效直接尺寸会立即取消该兜底。受支持尺寸确认后精确物理上限直接成为合法末端停点，0x16不得再收紧它。新解码会话在未知或不支持尺寸下不会解锁；同一已解锁会话中偶发的异常/中间尺寸只记录并允许稳定VideoManager尺寸兜底，不能撤销已锁存解锁状态。`decoding=false`清除本次UI解锁和活动命令；若0x05连续变焦仍在运行，会先向其锁存endpoint发送停止及安全副本，再等待新视频会话重新确认。普通SDK在线探测使用1.5秒响应窗口，但心跳超时不锁缩放；倍率确认可在10秒整体deadline内重试。
+拉流物理上限取QGC实际解码尺寸：1280×720→6.0x、1920×1080→5.5x；其他尺寸不属于当前缩放白名单。GStreamer主视频在真实首帧到达时从sink、解码器peer或ghost target的current CAPS读取宽高，同时以主 `GstGLQt6VideoItem` 根据最终 `GstVideoInfo` 设置的隐式尺寸作为第二条直接来源。两条路径任一取得受支持尺寸就直接交给Manager，并由pad路径同步校正 `VideoManager::videoSize`。若两条直接路径都没有报告有效尺寸，Manager仅在原生视频状态已解码、尺寸属于白名单且连续稳定1秒时以 `VideoManager`兜底；有效直接尺寸会立即取消该兜底。新解码会话在未知或不支持尺寸下不会解锁；同一已解锁会话中的瞬态异常尺寸不能撤销已经锁存的解锁状态。`decoding=false`清除本次UI解锁和活动手势；普通SDK心跳超时不锁缩放。
 
-短按从“当前在途合法请求、最后确认bucket或最近0x18 raw参考”计算下一合法停点并立即发送0x0f。策略同时维护min锚和max锚网格：从1.0放大沿min锚递增并在末段收敛到精确上限，从精确上限缩小沿max锚递减并在末段收敛到1.0；因此默认步长1.0x时，5.5第一次缩小是4.5，3.5第一次缩小是2.5。已有绝对目标时，新点击从上一合法请求继续规划并当场替换；没有方向FIFO、180/1100 ms节流或稍后派发，任何超时或稳定未达都只丢弃旧手势。0x0f ACK只表示受理或拒绝；350 ms隔离后，主动0x18原始反馈跨过当前档与目标档中点才允许显示目标bucket。raw精确等于target时一份即可确认；非精确raw的首份只暂显合法目标，连续第二份归属同一target bucket才提交；下一份落回其他bucket、查询超时或整体超时才回退源档，新的显式tap直接建立替换事务。以1.0→2.0为例，中点为1.5，首份1.6可暂显2.0、第二份1.6提交2.0；1.6/1.8自身永不公开，也不成为新步长锚点。事务结束后的idle轮询继续以最近确认bucket为参照，重复的1.6不会把2.0重新置为unknown。长按在下一停点不是端点时使用0x05原生连续变焦并每120 ms串行读取0x18；每份有效运动反馈按手势方向和中点跨越实时更新合法显示，镜头运动仍由0x05连续完成，不是逐步0x0f泵。单次进度查询250 ms未响应就立即停止。默认步长1.0x时，1080P正向到5.0停止0x05并以0x0f精确到5.5，2K正向到3.0后切换到3.5；两者反向到1.5后都停止0x05并以0x0f精确到1.0。若长按开始时下一停点已是端点则直接0x0f，不启动0x05。仅当0x05已经启动时，松开、取消、移出、隐藏、断流或60秒看门狗才立即发送停止并在80 ms后安全重发；本地停止发送失败时除首次外最多再尝试两次、取消倍率收尾，新手势会先同步发送待处理stop并在失败时直接放弃，不排队。仅当stop本地发送成功时才执行停止收尾；非网格停止值在1秒内最多执行一次0x0f归整，单调计时的绝对截止校验防止事件循环延迟越过窗口。窗口过期后保留最近已确认合法bucket并等待新的显式操作，后台轮询不得复活普通步长归整；只有确认实际超过分辨率上限时允许安全回限。短按/长按pending和SDK心跳抖动均不撤销视频在线解锁或最后合法倍率显示。0x0c拍照/录像不带直接ACK：照片由0x0b确认；录像约400 ms查询0x0a并仅接受目标一致状态，2.5秒无结果标记unknown。
+tap以 `currentZoom`为基准，在唯一合法目标表中前进一档并立即发送0x0f；本地发送成功即显示目标，已有在途目标由新tap当场替换，没有方向FIFO或延迟派发。hold在420 ms成立时锁存起点、方向和总按压计时；目标档数为 `qRound(totalMs / 600.0)`，Manager只在计算结果比上次多一档时发送新的0x0f，并在1.0x与精确上限处钳制，所以整个序列严格单调。默认步长1.0x时，1080P正反都沿1/2/3/4/5/5.5，720P沿1/2/3/4/5/6。普通release调用 `stopZoom()`完成长按；取消、移出、隐藏、断流、应用后台或销毁调用 `cancelZoom()`，取消路径不生成新目标。0x18只记录和核对实际位置，不覆盖当前目标显示。0x0c拍照/录像不带直接ACK：照片由0x0b确认；录像约400 ms查询0x0a并仅接受目标一致状态，2.5秒无结果标记unknown。
 
 RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一定为 H.264；QGC 依据 RTSP SDP 中的 `H264`/`H265` 编码声明组建管线。Android 策略只过滤 `video/x-h265` decoder，不修改 H.264 decoder rank。
 
@@ -605,10 +606,10 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 使用流程：
 
 1. 电脑或遥控器网口连接A8 Mini，确认可访问 `192.168.144.25`；私有相机控制无需连接飞控，也无需等待QGC出现活动Vehicle。
-2. Application Settings -> Fly View -> SIYI Gimbal Camera 中确认IP、端口、缩放分度值和Enabled。页面标题说明保持简短，以免撑坏设置页布局；短按/长按、min/max双锚步长网格、精确拉流端点和反馈中点归属等完整规则以本节和Fact元数据为准。
+2. Application Settings -> Fly View -> SIYI Gimbal Camera 中确认IP、端口、缩放分度值和Enabled。页面标题说明保持简短，以免撑坏设置页布局；tap/hold、唯一min锚目标表、精确拉流端点和成功发送即显示目标等完整要求以本节和Fact元数据为准。
 3. Application Settings -> Video -> Video Stream Integration 中选择是否使用 MAVLink 自动视频流；Android 设备确认 H.265 硬解开关开启，然后重启 QGC。
-4. 返回Fly View。只要Gimbal Enabled，右侧单个纵向合并栏就应立即显示，不要求飞控或云台已连接；从上到下依次为 `+`、倍率、`-`、拍照和录像。尚未确认受支持视频流时倍率显示 `--`且缩放按钮禁用。视频第一帧到达后，正常直接路径应依次看到“Installed main pulled-video resolution observers”、negotiated/observed主拉流尺寸、“Latched pulled video resolution”和 `SIYI zoom controls unlocked by pulled video stream`；若直接观察器未回调但原生尺寸有效，则先看到“Waiting for stable VideoManager pulled-video resolution fallback”，约1秒后source为“stable VideoManager fallback”。0x16仍每2秒出现，但受支持尺寸确认后不能修改上限。第二次一致合法0x18后中心显示倍率。步长1.0x时，720P/1080P/2K/4K末端分别为6.0x/5.5x/3.5x/1.0x。
-5. 短按 `+`/`-` 每次立即发送一个合法停点。步长1.0x时，1080P放大必须为1→2→3→4→5→5.5，从上限缩小必须为5.5→4.5→3.5→2.5→1.5→1；2K放大必须为1→2→3→3.5，从上限缩小必须为3.5→2.5→1.5→1。按钮不因pending一起变灰；350 ms隔离后，精确target raw一份即显示并确认。非精确raw首份跨中点时暂显合法目标，连续第二份归属同一target bucket才提交，例如1.0→2.0时首份1.6可显示2.0、第二份1.6完成确认，但任何时候都不能显示1.6本身。快速点击 `+++`应立即依次发出2、3、4目标，后一次现场替换前一次确认事务，停止点击后不得在数秒后继续自己移动。按住约420 ms后，非终端段抓包应只出现一次0x05方向启动，随后每约120 ms串行查询0x18；倍率应随反馈跨中点实时显示2.0、3.0等合法档位，镜头保持平滑连续运动。默认步长1.0x时，1080P正向到5.0后应停止0x05并用0x0f精确到5.5，2K正向到3.0后应切换到3.5；两者反向到1.5后都应停止0x05并用0x0f精确到1.0。若按住时下一停点已是端点则只发送0x0f。仅对已经启动的0x05，松手、移出或取消必须立即出现停止并在约80 ms后出现一个安全副本，不能补短按。模拟负ACK、raw 1.6/1.8、进度查询丢包、stop本地失败或收尾超时时，不得显示raw小数、继续盲跑或在1秒窗口后重放旧移动；最近确认的合法bucket应由idle轮询保留，只要视频仍在解码，缩放控件保持解锁。
+4. 返回Fly View。只要Gimbal Enabled，右侧单个纵向合并栏就应立即显示，不要求飞控或云台已连接；从上到下依次为 `+`、当前目标倍率、`-`、拍照和录像。尚未确认受支持视频流时倍率显示 `--`且缩放按钮禁用。视频第一帧到达后，正常直接路径应依次看到“Installed main pulled-video resolution observers”、negotiated/observed主拉流尺寸、“Latched pulled video resolution”和 `SIYI zoom controls unlocked by pulled video stream`；若直接观察器未回调但原生尺寸有效，则先看到“Waiting for stable VideoManager pulled-video resolution fallback”，约1秒后source为“stable VideoManager fallback”。只有1280×720和1920×1080属于当前白名单，上限分别为6.0x和5.5x。
+5. 短按 `+`/`-` 每次立即发送同一合法目标表中的相邻一档，发送成功即显示target。默认步长1.0x时，1080P正向严格为1→2→3→4→5→5.5，反向沿同一表5.5→5→4→3→2→1；720P正反沿1→2→3→4→5→6。快速点击 `+++`应立即依次发出并显示2、3、4目标，后一次现场替换前一次目标。按住420 ms后进入hold，抓包只应出现0x0f绝对目标；相对起点的目标档数必须等于 `qRound(totalMs / 600.0)`，只有档数增加时才发送，整个序列沿按下方向单调并在端点停止。普通release调用 `stopZoom()`；移出、取消、隐藏、后台或销毁调用 `cancelZoom()`，不补短按也不产生新的倍率目标。0x18运动中raw只更新独立实际值，不得覆盖当前目标显示；只要视频仍在解码，pending和SDK心跳抖动都不能锁住缩放控件。
 6. 使用纵向栏下部的相机图标拍照；录像状态尚未同步或一次切换命令仍在pending时，REC按钮灰显并显示 `...`。发送切换后约400 ms主动查询0x0a，只有与本次开始/停止目标一致的状态才允许再次操作；延迟旧状态会继续等待，2.5秒未确认则回到unknown并重新同步。照片成功有绿色闪烁，录像期间显示本次会话计时；录像最终状态以0x0a为准，0x0b只补充失败反馈。
 7. 在没有飞控的纯云台场景验证缩放、拍照、录像均可用；随后连接或断开飞控，控制栏不应消失或切换后端。只有关闭Gimbal设置时，有活动飞行器才恢复原生 `PhotoVideoControl`。
 
@@ -624,7 +625,7 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 | `MNT_MODE_IN` | `MAVLink Gimbal Protocol v2` |
 | `MNT_MODE_OUT` | `MAVLink Gimbal Protocol v2` |
 
-TELEM2参数只负责飞控与云台的MAVLink集成，是飞行任务/姿态控制场景的推荐配置，不是本合并栏的前置条件。custom的单击0x0f绝对步进、非终端长按的0x05原生连续变焦及显式停止、终端段0x0f、拍照、录像和状态查询全部由电脑或遥控器直接发往 `192.168.144.25:37260/UDP`；纯云台无飞控时仍可使用，RTSP播放、私有SDK控制和飞控MAVLink是彼此独立的三条链路。
+TELEM2参数只负责飞控与云台的MAVLink集成，是飞行任务/姿态控制场景的推荐配置，不是本合并栏的前置条件。custom的tap/hold 0x0f绝对目标、拍照、录像和状态查询全部由电脑或遥控器直接发往 `192.168.144.25:37260/UDP`；纯云台无飞控时仍可使用，RTSP播放、私有SDK控制和飞控MAVLink是彼此独立的三条链路。
 
 ## 9. Android USB 飞控连接
 
@@ -730,15 +731,15 @@ QGCApplication
          -> GStreamer优先接收主显示sink最终协商尺寸；无直接结果时稳定1秒的VideoManager尺寸兜底
          -> 非GStreamer直接使用VideoManager解码状态和尺寸
          -> 每2秒查询0x16用于诊断；无论尺寸是否已知都不得激活或改变UI上限
-         -> 拉流映射：720P→6.0x、1080P→5.5x、2K→3.5x、4K→1.0x
-         -> 合法停点为1.0起算的min锚网格、拉流精确上限起算的max锚网格及端点并集
+         -> 拉流映射仅接受1280×720→6.0x、1920×1080→5.5x
+         -> 合法目标为1.0起算的唯一min锚网格，并追加拉流精确上限
          -> 每轮发送0x0a状态；取得能力后，缩放空闲时发送0x18
          -> 支持尺寸确认即解锁；真实断流撤销UI解锁，同尺寸重连重新解锁并立即重建0x18倍率参考
          -> 来源逻辑IP、精确帧长、CRC、control=0x02及payload均合法才置sdkResponding
-         -> 一个0x0f目标在途；350 ms隔离后由主动0x18跨相邻档中点确认bucket：精确一份，非精确连续两份
-         -> 短按立即发送/替换合法0x0f；不维护方向队列，也不延迟重放旧点击
-         -> 非终端长按一次0x05启动 + 120 ms进度查询并实时发布合法bucket；250 ms丢包即停，上下限末段切精确0x0f
-         -> 已启动0x05时释放立即停止并80 ms安全重发；stop成功后350 ms开始两份稳定0x18收尾，1秒内最多一次归整
+         -> 0x0f本地发送成功即更新并显示currentZoom目标；0x18实际值独立核对
+         -> tap立即发送/替换同表相邻一档0x0f；不维护方向队列，也不延迟重放
+         -> hold在420 ms成立，按qRound(totalMs/600.0)从起点计算档数，只发送单调0x0f目标
+         -> 普通release完成hold；取消/移出/隐藏/后台/销毁调用cancelZoom且不产生新目标
      -> AndroidVideoDecoderPolicy::apply()
         -> 枚举并预检 byte-stream/au 厂商 amcviddec-*
         -> 注册高 rank qgcandroidh265hwdec
@@ -797,12 +798,12 @@ Fly View
   -> custom FlyViewTopRightColumnLayout.qml
      -> Gimbal enabled
         -> 不检查activeVehicle，显式Loader常驻 GimbalCameraControl.qml
-        -> 合并栏始终显示，sdkResponding不决定可见性；SDK心跳超时不清空已确认倍率bucket，视频仍在时不锁缩放
+        -> 合并栏始终显示，sdkResponding不决定可见性；SDK心跳超时不清空当前目标倍率，视频仍在时不锁缩放
          -> 顶部 GimbalZoomControl.qml（+ / 倍率 / -）
-            -> 短按：双锚网格的下一合法停点 -> 立即0x0f -> 主动0x18跨中点确认目标bucket
-            -> 非终端长按420 ms：只启动一次原生0x05，镜头平滑连续运动并每120 ms读取0x18、实时显示跨过的合法档
-            -> 端点末段：1080P正向5.0切0x0f到5.5、2K正向3.0切到3.5，两者反向1.5切到1.0；下一停点已是端点则直接0x0f
-            -> 已启动0x05时松开/取消/移出/离线/销毁：立即停止及有界副本；不补发短按
+            -> tap：唯一min锚表的相邻目标 -> 立即0x0f -> 成功即显示currentZoom
+            -> hold 420 ms成立：按总按压时长每600 ms计算档数，只发送同方向单调0x0f
+            -> 1080P双向同表1/2/3/4/5/5.5；720P双向同表1/2/3/4/5/6
+            -> 普通release调用stopZoom；取消/移出/离线/销毁调用cancelZoom，不补短按
         -> 下部思翼机内相机控制
            -> QGC拍照/录像图标，无原生缩放滑块
            -> 0x0c拍照可离线重试；切换录像需先取得0x0a状态
@@ -859,17 +860,17 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
 4. 3D 图标白色，2D/3D 可往返切换。
 5. 本地 OSM、外部 OBJ/glTF/GLB 和可选 Google 3D 正常加载。
 6. 验证云台在线发现与飞控解耦：
-   - Gimbal Enabled但飞控和云台都未接入时，合并栏仍必须立即显示并占用完整布局尺寸；Manager继续在后台探测，状态点灰显、倍率显示 `--`，两个缩放按钮禁用且短按/长按均不得发送0x0f或0x05。拍照仍可尝试发送，录像保持 `...` 和禁用。错误来源逻辑IP、短包、错误帧头/长度/CRC、control不是0x02或业务payload非法都不能把 `sdkResponding`置true。
+   - Gimbal Enabled但飞控和云台都未接入时，合并栏仍必须立即显示并占用完整布局尺寸；Manager继续在后台探测，状态点灰显、倍率显示 `--`，两个缩放按钮禁用且tap/hold均不得发送0x0f。拍照仍可尝试发送，录像保持 `...` 和禁用。错误来源逻辑IP、短包、错误帧头/长度/CRC、control不是0x02或业务payload非法都不能把 `sdkResponding`置true。
    - 用测试socket分别回送原生IPv4来源和IPv4-mapped IPv6来源，二者表示同一配置IP时都必须通过来源检查；同IP但回包源端口不同且CRC合法时也必须接受。真正不同的来源IP仍须丢弃，并可在 `gcs.custom.gimbal.sdk` debug日志中看到原因。
-   - 只连接A8 Mini网络、正常拉流并接通私有SDK、完全不连接飞控时，合法回包必须把状态点切为绿色；受支持的实际拉流尺寸立即解锁缩放，两份一致合法0x18恢复数字显示，0x0a恢复机内录像状态。单独0x16或SDK绿色状态不能代替视频流解锁。连接或断开飞控不得影响控制栏可见性和后端选择。同分辨率断流重连时，Manager必须立即发送0x18重建倍率参考，不得等下一轮2秒后台轮询而造成第一个缩放手势无响应。
-   - 空闲探测时私有SDK超过1.5秒未响应但视频仍在正常解码，合并栏不得消失，状态点可变灰，但已经确认的合法倍率bucket不得因SDK heartbeat超时被清空，缩放按钮也不能重新锁定；用户下一次操作仍可尝试发送。只有 `VideoManager::decoding=false` 才锁定两方向并清除活动命令；若长按0x05仍在运行，断流路径必须向手势开始时锁存的endpoint发送停止及有界安全副本。同分辨率恢复解码后无需进入设置页即可重新解锁，并立即发起0x18稳定倍率同步，不能等2秒后台轮询。
+   - 只连接A8 Mini网络、正常拉流并接通私有SDK、完全不连接飞控时，合法回包必须把状态点切为绿色；受支持的实际拉流尺寸立即解锁缩放，初始0x18建立起始目标倍率，0x0a恢复机内录像状态。单独0x16或SDK绿色状态不能代替视频流解锁。连接或断开飞控不得影响控制栏可见性和后端选择。同分辨率断流重连时，Manager必须立即发送0x18重建倍率参考，不得等下一轮2秒后台轮询而造成第一个缩放手势无响应。
+   - 空闲探测时私有SDK超过1.5秒未响应但视频仍在正常解码，合并栏不得消失，状态点可变灰，当前目标倍率不得因SDK heartbeat超时被清空，缩放按钮也不能重新锁定；用户下一次操作仍可尝试发送。只有 `VideoManager::decoding=false` 才锁定两方向并取消活动手势。同分辨率恢复解码后无需进入设置页即可重新解锁，并立即发起初始0x18倍率同步，不能等2秒后台轮询。
 7. 验证合并控制栏的输入、安全、相机状态和布局：
-   - 验证实际拉流尺寸来源：1280×720/736、1920×1080/1088、2560×1440、3840/4096×2160必须分别确认6.0x、5.5x、3.5x、1.0x精确末端上限，默认步长1.0x也不得把5.5/3.5向下丢弃。先验证任一直接观察器报告尺寸时立即取消 `VideoManager`兜底；再模拟两个直接观察器均不回调，要求 `decoding=true`且同一受支持 `VideoManager::videoSize`连续稳定1秒后才采用。`decoding=false`应撤销UI解锁但可保留已确认能力；重连同一尺寸必须重新解锁。4K↔1080P的受支持尺寸切换必须更新上限；首次会话只出现640×480或1366×768时保持锁定，但已解锁会话中的单次异常/中间尺寸不得重新锁键，并应允许稳定VideoManager尺寸继续兜底。
-   - 无论拉流尺寸是否已确认，抓包都应看到Manager每2秒发送0x16。任意合法0x16值都只更新诊断记录：尺寸未知时不能据此解锁UI，尺寸已知时不得改变拉流映射出的6.0/5.5/3.5/1.0上限，不得取消用户pending、打断长按、把倍率置unknown或锁定按钮。0x16 `00 00`、超过6.0x、错误小数、错误长度/CRC/control仍必须拒绝。
+   - 验证实际拉流尺寸来源：只有1280×720和1920×1080分别确认6.0x和5.5x精确末端上限。任一直接观察器报告尺寸时应立即取消 `VideoManager`兜底；若两个直接观察器都未回调，则要求 `decoding=true`且同一白名单尺寸连续稳定1秒后才采用。`decoding=false`应撤销UI解锁但可保留已确认能力；重连同一尺寸必须重新解锁。其他尺寸在新会话中保持缩放锁定，已解锁会话中的单次异常/中间尺寸不得立即重新锁键。
+   - 无论拉流尺寸是否已确认，抓包都应看到Manager每2秒发送0x16。任意合法0x16值都只更新诊断记录：尺寸未知时不能据此解锁UI，尺寸已知时不得改变拉流映射出的6.0/5.5上限，不得取消用户pending、打断hold、把倍率置unknown或锁定按钮。0x16 `00 00`、超过6.0x、错误小数、错误长度/CRC/control仍必须拒绝。
    - 验证0x16/0x18双格式解析。新版：`01 00`→1.0x、`01 08`→1.8x、`02 08`→2.8x、`03 05`→3.5x、`05 05`→5.5x；真机旧版：`0A 00`→1.0x、`12 00`→1.8x、`1C 00`→2.8x、`23 00`→3.5x、`37 00`→5.5x。必须逐包先尝试新版，只有新版候选越过当前A8范围时才计算完整小端uint16/10旧版候选并再次校验；新版和旧版成功日志应分别带 `encoding integer plus decimal`和 `encoding little-endian tenths compatibility`。`00 00`、0.9x、超过当前上限、`FF FF`、非法小数字节、短/长payload及带尾随字节的完整帧均不得改变倍率或编码输出参数。
-   - `-`/`+`每次短按释放只调用一次方向接口并立即发送一个0x0f合法目标。步长1.0x且1080P上限5.5x时，放大严格覆盖1→2→3→4→5→5.5，从上限缩小严格覆盖5.5→4.5→3.5→2.5→1.5→1；2K上限3.5x时，放大覆盖1→2→3→3.5，从上限缩小覆盖3.5→2.5→1.5→1。必须实际验证5.5第一次缩小为4.5、3.5第一次缩小为2.5；raw 1.6/1.8不得形成漂移命令网格或直接出现在UI。快速点击 `+++`抓包应立即依次看到2.0、3.0、4.0，后一个目标现场替换前一个确认事务，不存在180/1100 ms等待、FIFO或停止点击后再派发。任何目标都只能从上一合法请求、最近确认bucket或当前方向路径规划；pending期间两方向不能因busy一起变灰，已经确认的合法数字不得只因pending被清空。
-   - 按住420 ms后，若下一合法停点不是端点，抓包应看到一次0x05方向命令而不是逐步0x0f泵；其后每约120 ms最多一个0x18进度查询在途，镜头应平滑连续运动，每份有效raw跨过当前方向的相邻中点时，中心数字都应实时更新为2.0、3.0等合法档位。单次进度查询250 ms未响应必须立即停止，不得继续盲跑。默认步长1.0x时，1080P正向到5.0应先看到0x05停止、再看到精确5.5的0x0f，2K正向到3.0应切到3.5；两者反向到1.5都应先停止0x05、再看到精确1.0的0x0f。如果按住时下一停点已经是端点，应直接发送0x0f而不启动自由连续变焦。仅在0x05已启动时，松开、取消、移出、控件隐藏/销毁、断流或60秒看门狗才必须立即发送0x05停止，约80 ms后再有一个安全停止副本，且不得补发短按。下一手势若在80 ms内到来，必须先同步发完旧停止副本再发送新命令，之后不能出现旧停止包。endpoint/Enabled变化要把停止发回原手势锁存endpoint；视频仍在线时不能撤销流会话解锁或清除最近确认bucket。
-   - 验证查询串行化、bucket确认和失败恢复：0x0f后先有约350 ms旧包隔离，同一时刻最多一个0x18查询在途。目标为2.0、参考档为1.0时，单份精确2.0应立即发布并提交；若依次回送1.2、1.6、1.6，则1.2未跨1.5中点，第一份1.6可暂显合法2.0但不提交事务，第二份1.6才提交2.0，整个过程都不得直接显示1.2或1.6。两份之间若0x18查询超时，必须回退1.0并从零重新累计，不能把相隔数秒的样本拼成“连续两份”；若第二份回到非目标bucket或10秒整体超时，也必须回退源档。pending完成后继续回送1.6/1.8，idle轮询应保持已确认的2.0 bucket，不得重新显示 `--`。换向时必须按新的相邻档位和方向重新计算中点，不能沿用上一次手势的候选证据。目标bucket外侧边界必须排除：1→2可接受2.4但不能把2.5归为2.0，5.5→4.5可接受4.1但不能把4.0归为4.5；稳定的合法外侧raw最终应按其实际合法档恢复。任意代0x05/0x0f ACK都只能产生诊断或心跳，不能直接更新倍率。若旧目标10秒仍无可归属结果，应清除pending且绝不保留等待重放的用户方向，最近确认合法bucket继续显示；后续普通范围内off-grid轮询不得在几秒后发送旧归整。已启动0x05且stop成功后只允许在1秒所有权窗口内完成反馈收尾或执行最多一次归整，窗口过期后普通步长不再自动移动。还要模拟首次stop或80 ms安全副本本地发送失败：除首次外最多两次stop尝试期间新运动必须被拒绝，任一次本地失败都取消倍率收尾，stop义务完成后也不能复活本次归整或再有延迟stop打断新手势。若实际倍率已经超过拉流分辨率上限，独立的超限安全分支仍允许在确认后立即回到精确上限，这属于安全纠偏而不是旧手势重放。另需覆盖SDK heartbeat false不锁且不清bucket、0x16抖动不锁、pending超时不锁、同一会话异常尺寸不锁、真实 `decoding=false`才锁，以及发送失败后下一次用户操作可重试。
+   - `-`/`+`每次tap只调用一次方向接口并立即发送同表相邻一档0x0f目标，本地发送成功后中心数字必须立即显示target。默认步长1.0x且1080P上限5.5x时，正向严格覆盖1→2→3→4→5→5.5，反向严格沿同一表5.5→5→4→3→2→1；720P正反沿1→2→3→4→5→6。必须验证5.5第一次缩小为5.0。快速 `+++`应依次发送并显示2.0、3.0、4.0，后一个目标现场替换前一个目标，不存在等待、FIFO或停止点击后再派发。
+   - 按住420 ms后进入hold。以手势按下起点为时间零点，目标档数必须等于 `qRound(totalMs / 600.0)`；只在计算档数增加时发送新的0x0f，并始终从hold起始目标沿同一方向表计算，不能因定时器抖动、反馈raw或快速回调倒退目标。覆盖420/600/900/1200 ms附近边界、正反方向、端点钳制和释放竞争。普通release调用一次 `stopZoom()`；取消、移出、控件隐藏/销毁、应用后台或断流调用 `cancelZoom()`，取消路径不得补tap或发送新的倍率目标。
+   - 验证目标显示与实际反馈解耦：0x0f本地发送成功即显示target；随后1.2、1.6、1.8或其他中间0x18只能更新内部实际值，不能把中心数字从target改回旧档。发送失败必须保持原目标；新tap或hold目标成功后立即替换显示。pending、SDK heartbeat false和0x16抖动不能清空当前目标或锁住仍在解码的视频会话；真实 `decoding=false`才锁定并显示 `--`。取消/隐藏/后台后不得在稍后重放旧hold目标。
    - 拍照按钮发送0x0c功能0，只有存在pending拍照请求时成功0x0b反馈才触发绿色提示并递增照片数；录像状态未同步或命令pending时按钮必须灰显且不能再次发送toggle。状态已知后发送0x0c功能2，必须先建立target/pending门控再发出乐观状态变化；约400 ms后发送0x0a查询，命令前在途旧状态及与target不一致的0/1不得完成pending，2/3立即报错，2.5秒未确认回到unknown。分别覆盖正常开始/停止、同步信号重入、快速连点、无存储卡状态2、录像数据丢失状态3及0x0b功能4失败；0x0b大于4的未知值必须在Protocol层拒绝，不能上报为业务反馈或当成录像成功。
    - 合并栏必须保持“上部缩放、下部拍照/录像”的纵向单栏结构，严格按 `+ -> 当前倍率 -> - -> 横向分隔线 -> 拍照 -> 录像` 排列，使用QGC相机图标且不出现原生缩放滑块。Gimbal启用时右侧Column宽度和Loader高度必须始终随控制栏完整隐式尺寸扩展，而不是在离线时缩为0、把整栏压成一个按钮高度或裁掉底部录像按钮；在Android 86%/100%、桌面、横竖屏、地图/视频主窗口、PIP、Viewer3D和小屏触摸场景检查不裁切、不重叠、按钮达到移动端最小触控尺寸。
    - Gimbal Disabled且存在活动飞行器时恢复原生 `PhotoVideoControl`；关闭时没有活动飞行器则不加载原生控件。关闭后回送关闭前轮询产生的迟到0x18/0x0a/0x0b或任意0x16，不能重新把私有SDK标记在线、改变已清空的状态或发送0x0f。Gimbal Enabled但离线时仍显示私有合并栏，以灰色状态明确离线，不得用原生控件替换或把整栏隐藏。
@@ -931,17 +932,17 @@ adb logcat -v threadtime | grep -Ei \
 
 Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。
 
-视频有画面但缩放按钮仍灰色时，优先检查“拉流是否被识别为受支持会话”，不要再用 `sdkResponding`或0x16判断解锁。直接路径应出现 `Installed main pulled-video resolution observers`，随后出现 `Negotiated main pulled-video resolution` 或 `Observed negotiated main pulled-video resolution`以及 `SIYI zoom controls unlocked by pulled video stream`；若两路直接观察器均未报告，则应出现 `Waiting for stable VideoManager pulled-video resolution fallback`，约1秒后以 `stable VideoManager fallback`为source确认。首次尺寸记录 `Latched pulled video resolution`，运行期变化记录 `Updated pulled video resolution`。命令22（0x16）仍每2秒发送，但受支持尺寸确认后只作诊断，不能影响按钮。新视频会话的初始倍率还需两份一致合法0x18建立稳定参考；在此之前按钮已经按视频会话解锁但倍率显示 `--`，若用户恰在该短窗口点击，日志会提示等待当前倍率而不会缓存该点击供以后重放。
+视频有画面但缩放按钮仍灰色时，优先检查“拉流是否被识别为受支持会话”，不要用 `sdkResponding`或0x16判断解锁。直接路径应出现 `Installed main pulled-video resolution observers`，随后出现 `Negotiated main pulled-video resolution` 或 `Observed negotiated main pulled-video resolution`以及 `SIYI zoom controls unlocked by pulled video stream`；若两路直接观察器均未报告，则应出现 `Waiting for stable VideoManager pulled-video resolution fallback`，约1秒后以 `stable VideoManager fallback`为source确认。当前只有1920×1080和1280×720可解锁缩放。新视频会话先以0x18建立起始目标；之后0x0f本地发送成功即更新显示，不等待实际回读。
 
-拉流尺寸白名单为1280×720/736、1920×1080/1088、2560×1440及3840/4096×2160，对应6.0x、5.5x、3.5x及1.0x精确上限。默认步长1.0x时必须保留5.5和3.5末端，不受0x16较小回包影响。未到边界时至少一个方向应可用；1.0x时减号灰显、分辨率精确上限时加号灰显是正确边界。只有4K上限本身为1.0x时两个方向都无目标；1080P/2K正常流会话中两键同时灰显属于错误。若设置页出现分组拉伸、顶部裁切或无法滚到底，检查 `FlyViewSettings.qml` 外层Loader的 `Layout.preferredHeight/minimumHeight`、两个设置组根Loader的 `implicitHeight` 透传，以及是否重新引入了用长说明撑大隐式宽度或手工写 `item.width` 的逻辑。
+拉流尺寸白名单只有1280×720和1920×1080，对应6.0x和5.5x精确上限。合法目标从1.0x按步长递增并追加精确上限；默认1.0x时1080P正反共用1/2/3/4/5/5.5，720P共用1/2/3/4/5/6。未到边界时至少一个方向应可用；1.0x时减号灰显、分辨率精确上限时加号灰显是正确边界。若设置页出现分组拉伸、顶部裁切或无法滚到底，检查 `FlyViewSettings.qml` 外层Loader的 `Layout.preferredHeight/minimumHeight`、两个设置组根Loader的 `implicitHeight` 透传，以及是否重新引入了用长说明撑大隐式宽度或手工写 `item.width` 的逻辑。
 
-初始镜头1.0x却显示错误、缩放后数字不更新、实际与显示档位不一致或缩放按钮始终灰色时，先区分“协议raw”和“UI合法bucket”。新版0x18 `01 00`表示1.0x、`01 08`表示1.8x；A8真机旧版会返回 `0A 00`表示1.0x、`10 00`表示1.6x、`14 00`表示2.0x。日志若持续出现 `Rejected invalid SIYI current zoom payload "0a 00"`，说明运行的仍是未加入兼容解析的旧构建；新实现应记录 `Decoded SIYI current zoom 1 encoding little-endian tenths compatibility`。0x0f出站仍必须使用官方“整数byte+小数byte”，2.0x为 `02 00`，不能因旧版0x18回读兼容而改成 `14 00`。
+初始镜头1.0x却显示错误、缩放后数字不更新或缩放按钮始终灰色时，先区分“协议actual raw”和“UI当前目标倍率”。新版0x18 `01 00`表示1.0x、`01 08`表示1.8x；A8真机旧版会返回 `0A 00`表示1.0x、`10 00`表示1.6x、`14 00`表示2.0x。日志若持续出现 `Rejected invalid SIYI current zoom payload "0a 00"`，说明运行的仍是未加入兼容解析的旧构建。0x0f出站仍使用官方“整数byte+小数byte”，2.0x为 `02 00`；成功发送后UI立即显示2.0x，运动中的0x18 raw保存在独立实际值状态中。
 
-目标2.0期间出现raw 1.6，表示设备报告了物理运动位置，不是2.0被误解码。当前状态机以源档1.0和目标档2.0的中点1.5判定归属：精确2.0一份即可提交；第一份非精确1.6会暂显合法2.0但仍保持pending，连续第二份归属同一bucket后才提交事务。日志应先后记录 `Mapped SIYI raw zoom 1.6 from logical source 1 to legal target 2 bucket confirmations 1`和同前缀的 `bucket confirmations 2`，UI始终显示合法2.0而不是原始1.6。若两份之间查询超时、第二份落回其他bucket或10秒整体超时，暂显值会回退到源档1.0并重新累计，绝不会用隔了数秒的样本完成旧证据。事务完成后的idle轮询继续收到1.6/1.8时应保留2.0 bucket；若重新变成 `--`，说明旧的“off-grid清空显示”逻辑仍在运行。绝对目标10秒超时只清除该事务和旧输入，必须保留最近确认合法bucket且不能在稍后重放命令。
+目标2.0期间出现raw 1.6，表示设备报告了尚未到达目标的物理运动位置，不是2.0被误解码。由于UI显示的是当前目标，0x0f成功后应继续显示2.0；后续raw 1.8或其他中间值只更新内部actual，不能把中心数字退回1.0或改成任意小数。目标3.0、4.0、5.0或5.5时遵循同一规则；发送失败才保持原目标，取消后的旧hold目标不得稍后重放。
 
-再次单击应立即看到 `Applied immediate SIYI tap direction ... target ...`和 `Started SIYI absolute zoom target ... replacing pending target`，不应再出现 `Queued SIYI zoom direction`、180/1100 ms派发或停止点击后继续发包；出现这些旧日志说明APK并非当前构建。默认步长1.0x且1080P时，放大必须为1→2→3→4→5→5.5，从上限缩小必须为5.5→4.5→3.5→2.5→1.5→1；2K对应1→2→3→3.5及3.5→2.5→1.5→1。若1080P从上限缩小后落在5.0，或UI拒绝4.5这一合法反向目标，说明仍在使用旧的单一min锚策略。双锚网格只规定可显示/可命令的逻辑档位，raw 1.6/1.8仍可作为跨中点的反馈证据但永不直接显示。
+再次tap应立即看到新的绝对target发送日志，并且中心数字在本地发送成功后同步更新；不应出现方向队列、延迟派发或停止点击后继续发包。默认步长1.0x且1080P时，正向必须为1→2→3→4→5→5.5，反向必须沿同一表5.5→5→4→3→2→1；若第一次缩小仍得到4.5，说明运行的还是旧的上限锚定反向目标表。720P正反同表为1→2→3→4→5→6。
 
-非终端长按应看到一次 `Started native continuous SIYI zoom direction`和0x05方向包，随后每约120 ms串行查询0x18；镜头应由0x05平滑连续运动，中心倍率根据每份有效raw在当前方向跨过的相邻中点实时显示合法档位，不应一直停在1.0或 `--`，也不应通过一串0x0f逐档驱动。默认步长1.0x时，1080P正向到5.0后应停止0x05并以0x0f精确到5.5，2K正向到3.0后应切换到3.5；两者反向到1.5后都应停止0x05并以0x0f精确到1.0。下一档已经是端点时，长按只出现0x0f目标而没有0x05 stop。仅对已启动的0x05，释放才应立即看到 `Stopped native continuous SIYI zoom direction`及停止安全副本；停止值非网格且stop本地发送成功时可在1秒内看到一次 `Aligned native continuous SIYI zoom raw ... to legal stop ...`。任何stop本地发送失败都会取消本次倍率收尾，只保留最多两次安全停止尝试，此后普通范围内不得再自己移动；进度0x18超过250 ms无响应时应主动停止而不是继续盲跑。拉流上限720P/1080P/2K/4K分别为6.0x/5.5x/3.5x/1.0x，pending、查询超时、SDK心跳抖动和bucket核对均不能锁住仍在解码的视频会话；只有真实断流才重新锁定。
+hold应在按下420 ms后成立，并只产生0x0f绝对目标。目标档数按从最初按下开始的总时长 `qRound(totalMs / 600.0)` 计算；例如默认1.0x从1.0正向长按时，档数增加才依次发送2.0、3.0、4.0，任何回调或actual raw都不能让目标倒退。普通release调用 `stopZoom()`；取消、移出、控件隐藏/销毁、应用后台或断流调用 `cancelZoom()`，取消后不补tap、不再发送新的目标。在线且倍率已知时，pending、实际核对和SDK心跳抖动都不能隐藏当前目标或锁住视频会话；只有真实断流才重新锁定。
 
 同分辨率断流重连还应立即看到 `Immediately resynchronizing SIYI zoom after same-resolution stream reconnect`及0x18查询，不能等2秒后才接受第一次操作。紧邻应用退出出现的 `PhotoVideoControl.qml`中 `cameraManager/currentCameraInstance`空对象警告来自QGC原生相机面板销毁时序，不参与custom缩放状态机，也不是本次锁定原因。
 

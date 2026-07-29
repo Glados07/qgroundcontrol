@@ -1,7 +1,9 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按立即发送一个配置步长；长按使用思翼原生连续变焦，释放立即停止。
+ * 短按立即发送并显示下一合法目标；长按420 ms后成立，并从最初按下起
+ * 按qRound(totalMs / 600)单调推进同方向0x0f绝对目标，不发送0x05。
+ * 正常释放完成目标，取消则只停止手势。
  *
  ****************************************************************************/
 
@@ -26,7 +28,6 @@ Item {
     readonly property int gestureConsumed: 3
     readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
-    readonly property bool zoomUncertain: Boolean(manager && manager.zoomValueUncertain)
     readonly property bool canSend: online
     readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
     readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
@@ -46,7 +47,7 @@ Item {
             zoomInMouseArea.consumeGesture()
         }
         if (shouldStop && manager) {
-            manager.stopZoom()
+            manager.cancelZoom()
         }
     }
 
@@ -150,6 +151,7 @@ Item {
                 pressAndHoldInterval: 420
 
                 property int gestureState: root.gestureIdle
+                property real pressStartedAtMs: 0
 
                 function consumeGesture() {
                     gestureState = pressed ? root.gestureConsumed : root.gestureIdle
@@ -168,6 +170,7 @@ Item {
                 }
 
                 onPressed: {
+                    pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
                 }
                 onPressAndHold: {
@@ -175,10 +178,16 @@ Item {
                         return
                     }
 
-                    // 先标记为已消费，避免 startZoom 同步改变 enabled 时重入并
-                    // 在释放阶段误补发一次短按命令。
+                    // 先标记为已消费，避免后端同步改变 enabled 时重入并在释放
+                    // 阶段误补发一次短按命令。长按420 ms后成立；Manager以真实
+                    // 按下时刻为时间零点，按qRound(totalMs / 600)只推进同方向
+                    // 0x0f合法绝对目标，不发送0x05。
                     gestureState = root.gestureConsumed
-                    if (root.manager && root.manager.startZoom(-1)) {
+                    const totalPressDurationMs = Math.max(
+                        420, Math.round(Date.now() - pressStartedAtMs))
+                    if (root.manager
+                            && root.manager.startZoomWithPressDuration(
+                                -1, totalPressDurationMs)) {
                         gestureState = root.gestureHolding
                     }
                 }
@@ -199,7 +208,7 @@ Item {
                     const completedState = gestureState
                     gestureState = root.gestureIdle
                     if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                        root.manager.cancelZoom()
                     }
                 }
                 onExited: {
@@ -210,7 +219,7 @@ Item {
                     const completedState = gestureState
                     gestureState = root.gestureConsumed
                     if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                        root.manager.cancelZoom()
                     }
                 }
             }
@@ -230,9 +239,8 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                // currentZoom只包含经过主动0x18回读确认的合法停点。运动中的
-                // 1.6x/1.8x等原始样本从不进入QML。
-                text: root.online && root.zoomKnown && !root.zoomUncertain
+                // currentZoom表示当前合法目标倍率；目标成功发送后立即显示。
+                text: root.online && root.zoomKnown
                       ? root.zoomValue.toFixed(1) + "x"
                       : "--"
                 color: "#101820"
@@ -281,6 +289,7 @@ Item {
                 pressAndHoldInterval: 420
 
                 property int gestureState: root.gestureIdle
+                property real pressStartedAtMs: 0
 
                 function consumeGesture() {
                     gestureState = pressed ? root.gestureConsumed : root.gestureIdle
@@ -299,6 +308,7 @@ Item {
                 }
 
                 onPressed: {
+                    pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
                 }
                 onPressAndHold: {
@@ -306,8 +316,15 @@ Item {
                         return
                     }
 
+                    // 长按420 ms后成立；Manager以真实按下时刻为时间零点，
+                    // 按qRound(totalMs / 600)只推进同方向0x0f合法绝对目标，
+                    // 不发送0x05；释放不会补发短按。
                     gestureState = root.gestureConsumed
-                    if (root.manager && root.manager.startZoom(1)) {
+                    const totalPressDurationMs = Math.max(
+                        420, Math.round(Date.now() - pressStartedAtMs))
+                    if (root.manager
+                            && root.manager.startZoomWithPressDuration(
+                                1, totalPressDurationMs)) {
                         gestureState = root.gestureHolding
                     }
                 }
@@ -328,7 +345,7 @@ Item {
                     const completedState = gestureState
                     gestureState = root.gestureIdle
                     if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                        root.manager.cancelZoom()
                     }
                 }
                 onExited: {
@@ -339,7 +356,7 @@ Item {
                     const completedState = gestureState
                     gestureState = root.gestureConsumed
                     if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                        root.manager.cancelZoom()
                     }
                 }
             }

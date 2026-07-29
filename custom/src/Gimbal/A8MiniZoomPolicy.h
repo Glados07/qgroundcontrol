@@ -11,10 +11,12 @@
 class A8MiniZoomPolicy
 {
 public:
+    static constexpr qint64 kMinimumHeldZoomElapsedMs = 420;
+    static constexpr qint64 kDefaultHeldZoomStepPeriodMs = 600;
+
     enum class TargetObservation {
         Waiting,
         TargetReached,
-        StableDifferent,
     };
 
     class TargetTracker
@@ -25,14 +27,10 @@ public:
         TargetObservation observe(double actualZoom);
 
         double targetZoom() const { return _targetZoom; }
-        double stableDifferentZoom() const { return _differentCandidate; }
 
     private:
         double _targetZoom = 1.0;
-        double _differentCandidate = 1.0;
         int _targetMatchCount = 0;
-        int _differentMatchCount = 0;
-        bool _differentCandidateValid = false;
         bool _active = false;
     };
 
@@ -47,9 +45,16 @@ public:
                               double zoomStep,
                               double minimumZoom,
                               double maximumZoom);
-    static bool feedbackReachesTarget(double actualZoom,
-                                      double sourceZoom,
-                                      double targetZoom);
+    static bool feedbackReachedStop(double actualZoom,
+                                    double targetZoom,
+                                    int direction);
+    static bool exactDirectionalProgressStop(double currentZoom,
+                                             double targetZoom,
+                                             double actualZoom,
+                                             double zoomStep,
+                                             double minimumZoom,
+                                             double maximumZoom,
+                                             double* progressZoom);
     static bool terminalHandoffStop(double zoomStep,
                                     double minimumZoom,
                                     double maximumZoom,
@@ -66,5 +71,20 @@ public:
                            double minimumZoom,
                            double maximumZoom,
                            int direction,
+                           double* targetZoom);
+    static bool heldTarget(double startZoom,
+                           int direction,
+                           qint64 elapsedMs,
+                           double zoomStep,
+                           double minimumZoom,
+                           double maximumZoom,
+                           double* targetZoom);
+    static bool heldTarget(double startZoom,
+                           int direction,
+                           qint64 elapsedMs,
+                           double zoomStep,
+                           double minimumZoom,
+                           double maximumZoom,
+                           qint64 stepPeriodMs,
                            double* targetZoom);
 };

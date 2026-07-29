@@ -31,7 +31,11 @@ private slots:
     void alignmentTargets();
     void repeatedStepSequences();
     void targetSampleThresholds();
+    void exactDirectionalProgressStops();
     void terminalHandoffStops();
+    void heldTargets();
+    void directionalTargetProperties();
+    void exactTargetFeedbackOnly();
     void targetTrackerRecovery();
 };
 
@@ -273,35 +277,34 @@ void SiyiProtocolTest::pulledVideoResolutionLimits_data()
 {
     QTest::addColumn<int>("width");
     QTest::addColumn<int>("height");
+    QTest::addColumn<bool>("supported");
     QTest::addColumn<double>("maximumZoom");
 
-    QTest::newRow("2k") << 2560 << 1440 << 3.5;
-    QTest::newRow("1080p") << 1920 << 1080 << 5.5;
-    QTest::newRow("1080p-coded-height") << 1920 << 1088 << 5.5;
-    QTest::newRow("720p") << 1280 << 720 << 6.0;
-    QTest::newRow("720p-coded-height") << 1280 << 736 << 6.0;
-    QTest::newRow("4k-uhd-no-zoom") << 3840 << 2160 << 1.0;
-    QTest::newRow("4k-dci-no-zoom") << 4096 << 2160 << 1.0;
+    QTest::newRow("1080p-exact") << 1920 << 1080 << true << 5.5;
+    QTest::newRow("720p-exact") << 1280 << 720 << true << 6.0;
+    QTest::newRow("2k-rejected") << 2560 << 1440 << false << 0.0;
+    QTest::newRow("1080p-coded-height-rejected") << 1920 << 1088 << false << 0.0;
+    QTest::newRow("720p-coded-height-rejected") << 1280 << 736 << false << 0.0;
+    QTest::newRow("4k-uhd-rejected") << 3840 << 2160 << false << 0.0;
+    QTest::newRow("4k-dci-rejected") << 4096 << 2160 << false << 0.0;
+    QTest::newRow("other-rejected") << 1366 << 768 << false << 0.0;
 }
 
 void SiyiProtocolTest::pulledVideoResolutionLimits()
 {
     QFETCH(int, width);
     QFETCH(int, height);
+    QFETCH(bool, supported);
     QFETCH(double, maximumZoom);
 
-    double resolvedMaximumZoom = 0.0;
-    QVERIFY(A8MiniZoomPolicy::maximumZoomForVideoResolution(
-        static_cast<quint16>(width),
-        static_cast<quint16>(height),
-        &resolvedMaximumZoom));
-    QCOMPARE(resolvedMaximumZoom, maximumZoom);
+    double resolvedMaximumZoom = 9.9;
+    QCOMPARE(A8MiniZoomPolicy::maximumZoomForVideoResolution(
+                 static_cast<quint16>(width),
+                 static_cast<quint16>(height),
+                 &resolvedMaximumZoom),
+             supported);
+    QCOMPARE(resolvedMaximumZoom, supported ? maximumZoom : 9.9);
 
-    resolvedMaximumZoom = 9.9;
-    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1366, 768, &resolvedMaximumZoom));
-    QCOMPARE(resolvedMaximumZoom, 9.9);
-    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(640, 480, &resolvedMaximumZoom));
-    QCOMPARE(resolvedMaximumZoom, 9.9);
     QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1920, 1080, nullptr));
 }
 
@@ -342,11 +345,11 @@ void SiyiProtocolTest::strictStepTargets()
     QCOMPARE(targetZoom, 5.5);
     QVERIFY(!A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.5, 1, &targetZoom));
     QVERIFY(A8MiniZoomPolicy::stepTarget(5.5, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 4.5);
+    QCOMPARE(targetZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QCOMPARE(targetZoom, 5.5);
+    QCOMPARE(targetZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(4.5, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 3.5);
+    QCOMPARE(targetZoom, 4.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(5.0, 1.0, 1.0, 5.5, -1, &targetZoom));
     QCOMPARE(targetZoom, 4.0);
 
@@ -356,7 +359,7 @@ void SiyiProtocolTest::strictStepTargets()
     QCOMPARE(targetZoom, 3.5);
     QVERIFY(!A8MiniZoomPolicy::stepTarget(3.5, 1.0, 1.0, 3.5, 1, &targetZoom));
     QVERIFY(A8MiniZoomPolicy::stepTarget(3.5, 1.0, 1.0, 3.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 2.5);
+    QCOMPARE(targetZoom, 3.0);
 
     QVERIFY(A8MiniZoomPolicy::stepTarget(1.8, 1.0, 1.0, 5.0, 1, &targetZoom));
     QCOMPARE(targetZoom, 2.0);
@@ -365,11 +368,11 @@ void SiyiProtocolTest::strictStepTargets()
     QVERIFY(A8MiniZoomPolicy::stepTarget(1.6, 1.0, 1.0, 5.5, 1, &targetZoom));
     QCOMPARE(targetZoom, 2.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(1.6, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 1.5);
+    QCOMPARE(targetZoom, 1.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.5, 1, &targetZoom));
     QCOMPARE(targetZoom, 3.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 2.5);
+    QCOMPARE(targetZoom, 2.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.0, 1, &targetZoom));
     QCOMPARE(targetZoom, 3.0);
     QVERIFY(A8MiniZoomPolicy::stepTarget(2.8, 1.0, 1.0, 5.0, -1, &targetZoom));
@@ -432,15 +435,17 @@ void SiyiProtocolTest::alignmentTargets()
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(3.5, 1.0, 1.0, 3.5, 0, &targetZoom));
     QCOMPARE(targetZoom, 3.5);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(1.5, 1.0, 1.0, 5.5, -1, &targetZoom));
-    QCOMPARE(targetZoom, 1.5);
+    QCOMPARE(targetZoom, 1.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(1.5, 1.0, 1.0, 5.5, 1, &targetZoom));
-    QCOMPARE(targetZoom, 1.5);
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::alignmentTarget(1.5, 1.0, 1.0, 5.5, 0, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
     QVERIFY(A8MiniZoomPolicy::alignmentTarget(5.5, 0.5, 1.0, 5.5, 0, &targetZoom));
     QCOMPARE(targetZoom, 5.5);
 
     QVERIFY(A8MiniZoomPolicy::isAlignedZoom(5.0, 1.0, 1.0, 5.5));
-    QVERIFY(A8MiniZoomPolicy::isAlignedZoom(4.5, 1.0, 1.0, 5.5));
-    QVERIFY(A8MiniZoomPolicy::isAlignedZoom(1.5, 1.0, 1.0, 5.5));
+    QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(4.5, 1.0, 1.0, 5.5));
+    QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(1.5, 1.0, 1.0, 5.5));
     QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(1.8, 1.0, 1.0, 5.5));
     QVERIFY(!A8MiniZoomPolicy::isAlignedZoom(4.5, 1.0, 1.0, 5.0));
     QVERIFY(A8MiniZoomPolicy::isAlignedZoom(5.5, 1.0, 1.0, 5.5));
@@ -460,7 +465,7 @@ void SiyiProtocolTest::repeatedStepSequences()
     }
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, 1, &targetZoom));
 
-    const QList<double> expected1080pZoomOut = {4.5, 3.5, 2.5, 1.5, 1.0};
+    const QList<double> expected1080pZoomOut = {5.0, 4.0, 3.0, 2.0, 1.0};
     for (const double expected : expected1080pZoomOut) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, -1, &targetZoom));
         QCOMPARE(targetZoom, expected);
@@ -469,21 +474,21 @@ void SiyiProtocolTest::repeatedStepSequences()
     QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 5.5, -1, &targetZoom));
 
     currentZoom = 1.0;
-    const QList<double> expected2kZoomIn = {2.0, 3.0, 3.5};
-    for (const double expected : expected2kZoomIn) {
-        QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, 1, &targetZoom));
+    const QList<double> expected720pZoomIn = {2.0, 3.0, 4.0, 5.0, 6.0};
+    for (const double expected : expected720pZoomIn) {
+        QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 6.0, 1, &targetZoom));
         QCOMPARE(targetZoom, expected);
         currentZoom = targetZoom;
     }
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, 1, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 6.0, 1, &targetZoom));
 
-    const QList<double> expected2kZoomOut = {2.5, 1.5, 1.0};
-    for (const double expected : expected2kZoomOut) {
-        QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, -1, &targetZoom));
+    const QList<double> expected720pZoomOut = {5.0, 4.0, 3.0, 2.0, 1.0};
+    for (const double expected : expected720pZoomOut) {
+        QVERIFY(A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 6.0, -1, &targetZoom));
         QCOMPARE(targetZoom, expected);
         currentZoom = targetZoom;
     }
-    QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 3.5, -1, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::stepTarget(currentZoom, 1.0, 1.0, 6.0, -1, &targetZoom));
 
     currentZoom = 1.0;
     for (int step = 1; step <= 9; ++step) {
@@ -517,7 +522,7 @@ void SiyiProtocolTest::repeatedStepSequences()
         currentZoom, 0.7, 1.0, 5.5, 1, &targetZoom));
 
     const QList<double> expectedPointSevenZoomOut =
-        {4.8, 4.1, 3.4, 2.7, 2.0, 1.3, 1.0};
+        {5.2, 4.5, 3.8, 3.1, 2.4, 1.7, 1.0};
     for (const double expected : expectedPointSevenZoomOut) {
         QVERIFY(A8MiniZoomPolicy::stepTarget(
             currentZoom, 0.7, 1.0, 5.5, -1, &targetZoom));
@@ -549,40 +554,72 @@ void SiyiProtocolTest::repeatedStepSequences()
 
 void SiyiProtocolTest::targetSampleThresholds()
 {
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(1.6, 1.0, 2.0));
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(2.4, 1.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(1.4, 1.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(2.5, 1.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(2.6, 1.0, 2.0));
+    // The legacy directional-progress helper advances only after real feedback
+    // reaches a legal stop. Intermediate 1.6x is never renamed 2.0x.
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(1.6, 2.0, 1));
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(1.9, 2.0, 1));
+    QVERIFY(A8MiniZoomPolicy::feedbackReachedStop(2.0, 2.0, 1));
+    QVERIFY(A8MiniZoomPolicy::feedbackReachedStop(2.1, 2.0, 1));
 
-    // A late sample from the replaced 1.0x -> 2.0x transaction must not
-    // confirm the newer 2.0x -> 3.0x target.
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(1.6, 2.0, 3.0));
+    const QList<double> zoomInStops = {2.0, 3.0, 4.0, 5.0, 5.5};
+    for (const double stop : zoomInStops) {
+        const double previousTenth = stop - 0.1;
+        QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(
+            previousTenth, stop, 1));
+        QVERIFY(A8MiniZoomPolicy::feedbackReachedStop(stop, stop, 1));
+    }
 
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(5.0, 5.5, 4.5));
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(4.1, 5.5, 4.5));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(5.1, 5.5, 4.5));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(4.0, 5.5, 4.5));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(3.9, 5.5, 4.5));
+    // Zoom-out follows the same canonical grid. Keep 5.5x visible until the
+    // device really reaches the next legal stop, 5.0x.
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(5.1, 5.0, -1));
+    QVERIFY(A8MiniZoomPolicy::feedbackReachedStop(5.0, 5.0, -1));
+    QVERIFY(A8MiniZoomPolicy::feedbackReachedStop(4.9, 5.0, -1));
 
-    // The midpoint test must remain safe at the configured 0.1x minimum
-    // step. An unchanged source sample is not evidence of movement.
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(1.0, 1.0, 1.1));
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(1.1, 1.0, 1.1));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(1.1, 1.1, 1.0));
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(1.0, 1.1, 1.0));
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(
+        std::numeric_limits<double>::quiet_NaN(), 2.0, 1));
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(
+        1.6, std::numeric_limits<double>::infinity(), 1));
+    QVERIFY(!A8MiniZoomPolicy::feedbackReachedStop(2.0, 2.0, 0));
+}
 
-    // A one-decimal feedback sample must actually cross an odd-tenth
-    // midpoint; it must not be pulled across by the equality tolerance.
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(5.2, 5.0, 5.5));
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(5.3, 5.0, 5.5));
+void SiyiProtocolTest::exactDirectionalProgressStops()
+{
+    double progressZoom = 0.0;
 
-    QVERIFY(A8MiniZoomPolicy::feedbackReachesTarget(2.0, 2.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(2.1, 2.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(
-        std::numeric_limits<double>::quiet_NaN(), 1.0, 2.0));
-    QVERIFY(!A8MiniZoomPolicy::feedbackReachesTarget(
-        1.6, std::numeric_limits<double>::infinity(), 2.0));
+    // The legacy progress helper accepts only exact stops on the canonical
+    // minimum-anchored path. Off-grid feedback remains private.
+    QVERIFY(!A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.5, 1.6, 1.0, 1.0, 5.5, &progressZoom));
+    QVERIFY(!A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.5, 2.5, 1.0, 1.0, 5.5, &progressZoom));
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.5, 2.0, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.5, 4.0, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 4.0);
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.5, 5.5, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 5.5);
+
+    // Zoom-out traverses the same canonical grid in reverse.
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        5.5, 1.0, 5.0, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 5.0);
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        5.5, 1.0, 2.0, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 2.0);
+
+    // A direct exact target is valid; unrelated legal values beyond that
+    // target are not progress evidence.
+    QVERIFY(A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.0, 5.0, 1.0, 1.0, 5.5, &progressZoom));
+    QCOMPARE(progressZoom, 5.0);
+    QVERIFY(!A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 5.0, 5.5, 1.0, 1.0, 5.5, &progressZoom));
+
+    QVERIFY(!A8MiniZoomPolicy::exactDirectionalProgressStop(
+        1.0, 2.0, 2.0, 1.0, 1.0, 5.5, nullptr));
 }
 
 void SiyiProtocolTest::terminalHandoffStops()
@@ -593,21 +630,21 @@ void SiyiProtocolTest::terminalHandoffStops()
     QCOMPARE(handoffZoom, 5.0);
     QVERIFY(A8MiniZoomPolicy::terminalHandoffStop(
         1.0, 1.0, 5.5, -1, &handoffZoom));
-    QCOMPARE(handoffZoom, 1.5);
+    QCOMPARE(handoffZoom, 2.0);
 
     QVERIFY(A8MiniZoomPolicy::terminalHandoffStop(
         1.0, 1.0, 3.5, 1, &handoffZoom));
     QCOMPARE(handoffZoom, 3.0);
     QVERIFY(A8MiniZoomPolicy::terminalHandoffStop(
         1.0, 1.0, 3.5, -1, &handoffZoom));
-    QCOMPARE(handoffZoom, 1.5);
+    QCOMPARE(handoffZoom, 2.0);
 
     QVERIFY(A8MiniZoomPolicy::terminalHandoffStop(
         0.7, 1.0, 5.5, 1, &handoffZoom));
     QCOMPARE(handoffZoom, 5.2);
     QVERIFY(A8MiniZoomPolicy::terminalHandoffStop(
         0.7, 1.0, 5.5, -1, &handoffZoom));
-    QCOMPARE(handoffZoom, 1.3);
+    QCOMPARE(handoffZoom, 1.7);
 
     QVERIFY(!A8MiniZoomPolicy::terminalHandoffStop(
         1.0, 1.0, 1.0, 1, &handoffZoom));
@@ -617,6 +654,241 @@ void SiyiProtocolTest::terminalHandoffStops()
         1.0, 1.0, 5.5, 0, &handoffZoom));
     QVERIFY(!A8MiniZoomPolicy::terminalHandoffStop(
         1.0, 1.0, 5.5, 1, nullptr));
+}
+
+void SiyiProtocolTest::heldTargets()
+{
+    struct HeldCase {
+        qint64 elapsedMs;
+        double zoomInTarget;
+        double zoomOutTarget;
+    };
+
+    const QList<HeldCase> cases = {
+        {420, 2.0, 5.0},
+        {899, 2.0, 5.0},
+        {900, 3.0, 4.0},
+        {1499, 3.0, 4.0},
+        {1500, 4.0, 3.0},
+        {2099, 4.0, 3.0},
+        {2100, 5.0, 2.0},
+        {2699, 5.0, 2.0},
+        {2700, 5.5, 1.0},
+    };
+
+    double targetZoom = 9.9;
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 419, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 9.9);
+    for (const HeldCase& testCase : cases) {
+        QVERIFY(A8MiniZoomPolicy::heldTarget(
+            1.0,
+            1,
+            testCase.elapsedMs,
+            1.0,
+            1.0,
+            5.5,
+            &targetZoom));
+        QCOMPARE(targetZoom, testCase.zoomInTarget);
+
+        QVERIFY(A8MiniZoomPolicy::heldTarget(
+            5.5,
+            -1,
+            testCase.elapsedMs,
+            1.0,
+            1.0,
+            5.5,
+            &targetZoom));
+        QCOMPARE(targetZoom, testCase.zoomOutTarget);
+    }
+
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        3.0, 1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 4.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        3.0, -1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        3.3, 1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 4.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        3.3, -1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 3.0);
+
+    // The short upper interval remains an exact endpoint in both directions.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        5.0, 1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 5.5);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        5.5, -1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        5.5, 1, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, -1, 420, 1.0, 1.0, 5.5, &targetZoom));
+
+    // The 0.7x grid is identical in both directions.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 420, 0.7, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 1.7);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 900, 0.7, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 2.4);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        5.5, -1, 420, 0.7, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 5.2);
+
+    // Explicit periods use the same half-up rounding; very long holds
+    // saturate at the endpoint without iterating for their full duration.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 900, 1.0, 1.0, 5.5, 1200, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0,
+        1,
+        std::numeric_limits<qint64>::max(),
+        1.0,
+        1.0,
+        5.5,
+        &targetZoom));
+    QCOMPARE(targetZoom, 5.5);
+
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 420, 1.0, 1.0, 5.5, 0, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, 0, 420, 1.0, 1.0, 5.5, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 420, 1.0, 1.0, 5.5, nullptr));
+}
+
+void SiyiProtocolTest::directionalTargetProperties()
+{
+    const QList<int> maximumTenthsValues = {35, 55, 60};
+    for (const int maximumTenths : maximumTenthsValues) {
+        const double maximumZoom = maximumTenths / 10.0;
+        for (int stepTenths = 1; stepTenths <= 45; ++stepTenths) {
+            const double zoomStep = stepTenths / 10.0;
+            for (int startTenths = 8;
+                 startTenths <= maximumTenths + 2;
+                 ++startTenths) {
+                const double startZoom = startTenths / 10.0;
+                for (const int direction : {-1, 1}) {
+                    double tapTarget = 0.0;
+                    if (A8MiniZoomPolicy::stepTarget(
+                            startZoom,
+                            zoomStep,
+                            1.0,
+                            maximumZoom,
+                            direction,
+                            &tapTarget)) {
+                        QVERIFY(A8MiniZoomPolicy::isAlignedZoom(
+                            tapTarget,
+                            zoomStep,
+                            1.0,
+                            maximumZoom));
+                        QVERIFY(direction > 0
+                                    ? tapTarget > startZoom
+                                    : tapTarget < startZoom);
+                    }
+
+                    bool previousHeldTargetValid = false;
+                    double previousHeldTarget = startZoom;
+                    for (qint64 elapsedMs = 420;
+                         elapsedMs <= 6000;
+                         elapsedMs += 120) {
+                        double heldTarget = 0.0;
+                        if (!A8MiniZoomPolicy::heldTarget(
+                                startZoom,
+                                direction,
+                                elapsedMs,
+                                zoomStep,
+                                1.0,
+                                maximumZoom,
+                                &heldTarget)) {
+                            continue;
+                        }
+
+                        QVERIFY(A8MiniZoomPolicy::isAlignedZoom(
+                            heldTarget,
+                            zoomStep,
+                            1.0,
+                            maximumZoom));
+                        QVERIFY(direction > 0
+                                    ? heldTarget > startZoom
+                                    : heldTarget < startZoom);
+                        if (previousHeldTargetValid) {
+                            QVERIFY(direction > 0
+                                        ? heldTarget >= previousHeldTarget
+                                        : heldTarget <= previousHeldTarget);
+                        }
+                        previousHeldTarget = heldTarget;
+                        previousHeldTargetValid = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void SiyiProtocolTest::exactTargetFeedbackOnly()
+{
+    using Observation = A8MiniZoomPolicy::TargetObservation;
+
+    struct ZoomTargetCase {
+        double target;
+        double previousLegalStop;
+        double intermediateFeedback;
+    };
+
+    const QList<ZoomTargetCase> zoomInCases = {
+        {2.0, 1.0, 1.6},
+        {3.0, 2.0, 2.6},
+        {4.0, 3.0, 3.6},
+        {5.0, 4.0, 4.6},
+        {5.5, 5.0, 5.3},
+    };
+
+    A8MiniZoomPolicy::TargetTracker tracker;
+    for (const ZoomTargetCase& testCase : zoomInCases) {
+        // Repeating a moving/intermediate 0x18 value must remain waiting; it
+        // cannot falsely confirm that the camera physically reached the
+        // displayed absolute target.
+        tracker.reset(testCase.target);
+        for (int sample = 0; sample < 5; ++sample) {
+            const Observation observation =
+                tracker.observe(testCase.intermediateFeedback);
+            QCOMPARE(observation, Observation::Waiting);
+            QVERIFY(observation != Observation::TargetReached);
+        }
+        QCOMPARE(tracker.observe(testCase.target),
+                 Observation::TargetReached);
+
+        // A repeated response from the previous legal stop is likewise not
+        // evidence that the newly commanded target has been reached.
+        tracker.reset(testCase.target);
+        for (int sample = 0; sample < 5; ++sample) {
+            const Observation observation =
+                tracker.observe(testCase.previousLegalStop);
+            QCOMPARE(observation, Observation::Waiting);
+            QVERIFY(observation != Observation::TargetReached);
+        }
+        QCOMPARE(tracker.observe(testCase.target),
+                 Observation::TargetReached);
+    }
+
+    // Explicit regressions for raw values which the former midpoint logic
+    // incorrectly renamed as the adjacent configured stop.
+    tracker.reset(2.0);
+    QCOMPARE(tracker.observe(1.6), Observation::Waiting);
+    QCOMPARE(tracker.observe(1.6), Observation::Waiting);
+    QVERIFY(tracker.observe(1.6) != Observation::TargetReached);
+    QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
+
+    tracker.reset(5.0);
+    QCOMPARE(tracker.observe(5.3), Observation::Waiting);
+    QCOMPARE(tracker.observe(5.3), Observation::Waiting);
+    QVERIFY(tracker.observe(5.3) != Observation::TargetReached);
+    QCOMPARE(tracker.observe(5.0), Observation::TargetReached);
 }
 
 void SiyiProtocolTest::targetTrackerRecovery()
@@ -636,12 +908,11 @@ void SiyiProtocolTest::targetTrackerRecovery()
     QCOMPARE(tracker.observe(1.0), Observation::Waiting);
     QCOMPARE(tracker.observe(1.0), Observation::Waiting);
     QCOMPARE(tracker.observe(1.0), Observation::Waiting);
-    QCOMPARE(tracker.stableDifferentZoom(), 1.0);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(1.6), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.6), Observation::StableDifferent);
+    QCOMPARE(tracker.observe(1.6), Observation::Waiting);
     QCOMPARE(tracker.observe(2.0), Observation::TargetReached);
 
     tracker.reset(2.0);
@@ -651,7 +922,7 @@ void SiyiProtocolTest::targetTrackerRecovery()
     QCOMPARE(tracker.observe(1.9), Observation::Waiting);
     QCOMPARE(tracker.observe(1.9), Observation::Waiting);
     QCOMPARE(tracker.observe(1.9), Observation::Waiting);
-    QCOMPARE(tracker.observe(1.9), Observation::StableDifferent);
+    QCOMPARE(tracker.observe(1.9), Observation::Waiting);
 
     tracker.clear();
     QCOMPARE(tracker.observe(2.0), Observation::Waiting);
