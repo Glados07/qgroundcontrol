@@ -11,7 +11,7 @@
 #include "Vehicle.h"
 
 VehicleDistanceSensorFactGroup::VehicleDistanceSensorFactGroup(QObject *parent)
-    : FactGroup(1000, QStringLiteral(":/json/Vehicle/DistanceSensorFact.json"), parent)
+    : FactGroup(250, QStringLiteral(":/json/Vehicle/DistanceSensorFact.json"), parent)
 {
     _addFact(&_rotationNoneFact);
     _addFact(&_rotationYaw45Fact);

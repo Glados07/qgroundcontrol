@@ -48,6 +48,17 @@ const QVariantList &CustomFirmwarePlugin::toolIndicators(const Vehicle *vehicle)
         } else {
             _toolIndicatorList.append(fuelStatusIndicator);
         }
+
+        const QVariant gpsIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/VehicleGPSIndicator.qml"));
+        const QVariant proximityRadarIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/ProximityRadarIndicator.qml"));
+        const auto gpsIndex = _toolIndicatorList.indexOf(gpsIndicator);
+
+        // Keep Proximity Radar next to GPS with the other vehicle sensor indicators.
+        if (gpsIndex >= 0) {
+            _toolIndicatorList.insert(gpsIndex + 1, proximityRadarIndicator);
+        } else {
+            _toolIndicatorList.append(proximityRadarIndicator);
+        }
     }
     return _toolIndicatorList;
 }

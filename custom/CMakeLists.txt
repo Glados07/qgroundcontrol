@@ -133,6 +133,10 @@ set_source_files_properties(
     PROPERTIES QT_RESOURCE_ALIAS FuelStatusIndicatorPage.qml
 )
 set_source_files_properties(
+    src/QmlControls/ProximityRadarIndicatorPage.qml
+    PROPERTIES QT_RESOURCE_ALIAS ProximityRadarIndicatorPage.qml
+)
+set_source_files_properties(
     src/FlightDisplay/GeneratorBusVoltageAlert.qml
     PROPERTIES QT_RESOURCE_ALIAS GeneratorBusVoltageAlert.qml
 )
@@ -142,6 +146,7 @@ qt_add_qml_module(CustomModule
     RESOURCE_PREFIX /qml
     QML_FILES
         src/QmlControls/FuelStatusIndicatorPage.qml
+        src/QmlControls/ProximityRadarIndicatorPage.qml
         src/FlightDisplay/GeneratorBusVoltageAlert.qml
     NO_PLUGIN
 )
