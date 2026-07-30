@@ -109,7 +109,13 @@ private slots:
     void _handleManualZoomFeedback(double zoomLevel);
     void _handleAbsoluteZoomFeedback(bool accepted);
     void _handleMaximumZoom(double maximumZoom);
+    void _handleRecordingStreamParameters(quint8 videoEncodingType,
+                                          quint16 width,
+                                          quint16 height,
+                                          quint16 bitrateKbps,
+                                          quint8 frameRate);
     void _handleCurrentZoom(double zoomLevel);
+    void _expireRecordingResolutionCapability();
     void _handlePulledVideoSize();
     void _handleVideoDecodingChanged();
     void _handleCameraSystemStatus(quint8 hdrStatus,
@@ -145,7 +151,8 @@ private:
                                  bool replacePendingTarget = false,
                                  bool manualFinalizeCorrection = false);
     bool _sendZoomStep(int direction);
-    bool _advanceHeldZoomTarget();
+    bool _advanceHeldZoomDisplayTarget();
+    bool _heldZoomDisplayAtTerminal() const;
     bool _zoomPlanningReference(double* zoomLevel) const;
     bool _zoomDirectionAvailable(int direction) const;
     bool _sendAlignmentCorrection(double targetZoom, double sourceZoom);
@@ -156,11 +163,7 @@ private:
     bool _sendPendingManualZoomStop();
     bool _manualZoomFinalizeDeadlineOpen() const;
     void _cancelManualZoomFinalize();
-    void _handleContinuousZoomSample(double zoomLevel);
-    void _publishAbsoluteZoomProgress(double zoomLevel);
-    void _publishZoomProgress(double zoomLevel);
     void _finishManualZoomStop(double zoomLevel);
-    void _publishLegalZoom(double zoomLevel);
     AlignmentAttemptResult _tryRealignStableZoom(double zoomLevel,
                                                   int direction = 0);
     bool _automaticAlignmentSuppressedFor(double zoomLevel) const;
@@ -209,6 +212,7 @@ private:
     static constexpr int kManualZoomQueryTimeoutMs = 250;
     static constexpr int kManualZoomStopQueryDelayMs = 350;
     static constexpr int kManualZoomStopRetryMs = 80;
+    static constexpr int kRecordingCapabilityTimeoutMs = 4500;
     static constexpr int kManualZoomFinalizeTimeoutMs = 1000;
     static constexpr int kManualZoomFinalConfirmationCount = 2;
     static constexpr int kManualZoomStopMaximumRetryAttempts = 2;
@@ -220,6 +224,7 @@ private:
     QTimer _zoomOperationTimer;
     QTimer _zoomQueryTimeoutTimer;
     QTimer _sdkPollTimer;
+    QTimer _recordingCapabilityTimeoutTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStepTimer;
     QTimer _manualZoomStopRetryTimer;
@@ -234,7 +239,7 @@ private:
     double _currentZoom = kMinZoom;
     double _maximumZoom = kDefaultMaxZoom;
     double _capabilityMaximumZoom = kDefaultMaxZoom;
-    double _pulledVideoMaximumZoom = kDefaultMaxZoom;
+    double _recordingResolutionMaximumZoom = kDefaultMaxZoom;
     double _deviceMaximumZoom = kProtocolMaxZoom;
     double _requestedZoom = kMinZoom;
     bool _lastEnabled = false;
@@ -242,10 +247,13 @@ private:
     bool _maximumZoomKnown = false;
     bool _videoStreamAvailable = false;
     bool _pulledVideoResolutionConfirmed = false;
+    bool _recordingResolutionConfirmed = false;
     bool _deviceMaximumZoomKnown = false;
     QSize _negotiatedPulledVideoSize;
+    QSize _recordingVideoSize;
     QSize _videoManagerFallbackCandidate;
     QSize _lastRejectedPulledVideoSize;
+    QSize _lastRejectedRecordingVideoSize;
     bool _zoomStatusKnown = false;
     bool _zoomValueUncertain = false;
     bool _zoomResponseBlocked = false;
@@ -277,6 +285,11 @@ private:
     double _manualZoomFinalCandidate = kMinZoom;
     int _manualZoomFinalMatchCount = 0;
     bool _suppressIdleAlignmentUntilExplicitZoom = false;
+    // A native 0x05 hold deliberately retains its legal elapsed-time target
+    // instead of letting delayed or quantized 0x18 feedback rename it or cause
+    // a reverse correction. Keep this latch until a later explicit target is
+    // accepted or the camera capability/session is reset.
+    bool _nativeHoldTargetLatched = false;
     QString _manualZoomSessionHost;
     quint16 _manualZoomSessionPort = 0;
     int _manualZoomStopRetryAttemptsRemaining = 0;

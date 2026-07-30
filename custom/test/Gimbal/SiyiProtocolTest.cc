@@ -18,14 +18,20 @@ class SiyiProtocolTest : public QObject
 private slots:
     void manualZoomPackets();
     void absoluteZoomPackets();
+    void cameraEncodingParameterPackets();
     void strictPacketFrames();
+    void multiFrameDatagrams();
     void manualZoomAckPayloads();
     void absoluteZoomAckPayloads();
+    void cameraEncodingParameterPayloads();
+    void invalidCameraEncodingParameterPayloads();
     void maximumZoomPayloads();
     void currentZoomPayloads();
     void invalidZoomPayloads();
-    void pulledVideoResolutionLimits_data();
-    void pulledVideoResolutionLimits();
+    void recordingResolutionLimits_data();
+    void recordingResolutionLimits();
+    void pulledVideoResolutionSupport_data();
+    void pulledVideoResolutionSupport();
     void alignedMaximumZooms();
     void strictStepTargets();
     void alignmentTargets();
@@ -64,6 +70,27 @@ void SiyiProtocolTest::absoluteZoomPackets()
 
     QCOMPARE(SiyiProtocol::requestMaximumZoomPacket().toHex(), QByteArrayLiteral("5566010000000016b2a6"));
     QCOMPARE(SiyiProtocol::requestCurrentZoomPacket().toHex(), QByteArrayLiteral("55660100000000187c47"));
+}
+
+void SiyiProtocolTest::cameraEncodingParameterPackets()
+{
+    // 0: recording stream, 1: main stream, 2: sub-stream.
+    QCOMPARE(SiyiProtocol::requestCameraEncodingParametersPacket(0).toHex(),
+             QByteArrayLiteral("556601010000002000bf8d"));
+    QCOMPARE(SiyiProtocol::requestCameraEncodingParametersPacket(1).toHex(),
+             QByteArrayLiteral("5566010100000020019e9d"));
+    QCOMPARE(SiyiProtocol::requestCameraEncodingParametersPacket(2).toHex(),
+             QByteArrayLiteral("556601010000002002fdad"));
+    QVERIFY(SiyiProtocol::requestCameraEncodingParametersPacket(3).isEmpty());
+
+    const auto decoded =
+        SiyiProtocol::decodePacket(
+            SiyiProtocol::requestCameraEncodingParametersPacket(0));
+    QVERIFY(decoded.valid);
+    QCOMPARE(decoded.control, quint8(0x01));
+    QCOMPARE(decoded.command,
+             quint8(SiyiProtocol::CommandCameraEncodingParameters));
+    QCOMPARE(decoded.payload, QByteArray::fromHex("00"));
 }
 
 void SiyiProtocolTest::strictPacketFrames()
@@ -106,6 +133,101 @@ void SiyiProtocolTest::strictPacketFrames()
     QVERIFY(!SiyiProtocol::decodePacket(packetWithReservedControl).valid);
     QVERIFY(!SiyiProtocol::decodePacket(QByteArray::fromHex("00660100000000187c47")).valid);
     QVERIFY(!SiyiProtocol::decodePacket(QByteArray::fromHex("5566010000000018")).valid);
+}
+
+void SiyiProtocolTest::multiFrameDatagrams()
+{
+    // A real A8 Mini UDP datagram captured from the camera. It contains three
+    // complete ACK frames: 0x16 maximum zoom, 0x0a camera status and 0x18
+    // current zoom. Treating the whole datagram as one strict frame used to
+    // discard all three replies.
+    const QByteArray threeFrameDatagram = QByteArray::fromHex(
+        "55660202004c00160505c4ad"
+        "55660208004d000a0000000201020000a0c7"
+        "55660202004e00181400a192");
+
+    QList<SiyiProtocol::DecodedPacket> packets;
+    QVERIFY(SiyiProtocol::decodeDatagram(threeFrameDatagram, &packets));
+    QCOMPARE(packets.size(), 3);
+
+    QVERIFY(packets.at(0).valid);
+    QCOMPARE(packets.at(0).control, quint8(0x02));
+    QCOMPARE(packets.at(0).sequence, quint16(0x004c));
+    QCOMPARE(packets.at(0).command,
+             quint8(SiyiProtocol::CommandMaximumZoomValue));
+    QCOMPARE(packets.at(0).payload, QByteArray::fromHex("0505"));
+
+    QVERIFY(packets.at(1).valid);
+    QCOMPARE(packets.at(1).control, quint8(0x02));
+    QCOMPARE(packets.at(1).sequence, quint16(0x004d));
+    QCOMPARE(packets.at(1).command,
+             quint8(SiyiProtocol::CommandCameraSystemInfo));
+    QCOMPARE(packets.at(1).payload,
+             QByteArray::fromHex("0000000201020000"));
+
+    QVERIFY(packets.at(2).valid);
+    QCOMPARE(packets.at(2).control, quint8(0x02));
+    QCOMPARE(packets.at(2).sequence, quint16(0x004e));
+    QCOMPARE(packets.at(2).command,
+             quint8(SiyiProtocol::CommandCurrentZoomValue));
+    QCOMPARE(packets.at(2).payload, QByteArray::fromHex("1400"));
+
+    // decodePacket deliberately remains a strict one-frame API.
+    QVERIFY(!SiyiProtocol::decodePacket(threeFrameDatagram).valid);
+
+    // The SDK routes ordinary one-frame UDP replies through the same API.
+    packets.clear();
+    QVERIFY(SiyiProtocol::decodeDatagram(
+        threeFrameDatagram.left(12), &packets));
+    QCOMPARE(packets.size(), 1);
+    QCOMPARE(packets.constFirst().command,
+             quint8(SiyiProtocol::CommandMaximumZoomValue));
+    QCOMPARE(packets.constFirst().payload, QByteArray::fromHex("0505"));
+
+    // Datagram decoding is atomic. A bad middle CRC must not expose the valid
+    // first frame or append anything to an output list supplied by the caller.
+    QList<SiyiProtocol::DecodedPacket> unchangedPackets;
+    SiyiProtocol::DecodedPacket sentinel;
+    sentinel.valid = true;
+    sentinel.control = 0x02;
+    sentinel.sequence = 0x1234;
+    sentinel.command = 0xee;
+    sentinel.payload = QByteArrayLiteral("unchanged");
+    unchangedPackets.append(sentinel);
+
+    QByteArray badMiddleCrc = threeFrameDatagram;
+    badMiddleCrc[29] =
+        static_cast<char>(
+            static_cast<quint8>(badMiddleCrc.at(29)) ^ 0x01);
+    QVERIFY(!SiyiProtocol::decodeDatagram(
+        badMiddleCrc, &unchangedPackets));
+    QCOMPARE(unchangedPackets.size(), 1);
+    QVERIFY(unchangedPackets.constFirst().valid);
+    QCOMPARE(unchangedPackets.constFirst().control, quint8(0x02));
+    QCOMPARE(unchangedPackets.constFirst().sequence, quint16(0x1234));
+    QCOMPARE(unchangedPackets.constFirst().command, quint8(0xee));
+    QCOMPARE(unchangedPackets.constFirst().payload,
+             QByteArrayLiteral("unchanged"));
+
+    QByteArray truncatedDatagram = threeFrameDatagram;
+    truncatedDatagram.chop(1);
+    QVERIFY(!SiyiProtocol::decodeDatagram(
+        truncatedDatagram, &unchangedPackets));
+    QCOMPARE(unchangedPackets.size(), 1);
+    QCOMPARE(unchangedPackets.constFirst().sequence, quint16(0x1234));
+
+    QByteArray datagramWithTrailingByte = threeFrameDatagram;
+    datagramWithTrailingByte.append('\0');
+    QVERIFY(!SiyiProtocol::decodeDatagram(
+        datagramWithTrailingByte, &unchangedPackets));
+    QCOMPARE(unchangedPackets.size(), 1);
+    QCOMPARE(unchangedPackets.constFirst().sequence, quint16(0x1234));
+
+    QVERIFY(!SiyiProtocol::decodeDatagram(
+        QByteArray(), &unchangedPackets));
+    QCOMPARE(unchangedPackets.size(), 1);
+    QVERIFY(!SiyiProtocol::decodeDatagram(
+        threeFrameDatagram, nullptr));
 }
 
 void SiyiProtocolTest::manualZoomAckPayloads()
@@ -154,6 +276,99 @@ void SiyiProtocolTest::absoluteZoomAckPayloads()
     QVERIFY(!SiyiProtocol::parseAbsoluteZoomAckPayload(QByteArray(), &accepted));
     QVERIFY(!SiyiProtocol::parseAbsoluteZoomAckPayload(QByteArray::fromHex("0001"), &accepted));
     QVERIFY(!SiyiProtocol::parseAbsoluteZoomAckPayload(QByteArray::fromHex("01"), nullptr));
+}
+
+void SiyiProtocolTest::cameraEncodingParameterPayloads()
+{
+    SiyiProtocol::CameraEncodingParameters parameters;
+
+    // Recording stream, H.265, 1920x1080, 12000 Kbps, 30 fps.
+    QVERIFY(SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("000280073804e02e1e"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(0));
+    QCOMPARE(parameters.videoEncodingType, quint8(2));
+    QCOMPARE(parameters.width, quint16(1920));
+    QCOMPARE(parameters.height, quint16(1080));
+    QCOMPARE(parameters.bitrateKbps, quint16(12000));
+    QCOMPARE(parameters.frameRate, quint8(30));
+
+    // The multi-byte fields are little-endian. Use values whose bytes make an
+    // accidental big-endian implementation immediately visible.
+    QVERIFY(SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("0002000aa005204e1e"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(0));
+    QCOMPARE(parameters.videoEncodingType, quint8(2));
+    QCOMPARE(parameters.width, quint16(2560));
+    QCOMPARE(parameters.height, quint16(1440));
+    QCOMPARE(parameters.bitrateKbps, quint16(20000));
+    QCOMPARE(parameters.frameRate, quint8(30));
+
+    // Main-stream and sub-stream replies are valid protocol records too. The
+    // Manager, rather than the payload parser, decides that only stream 0 owns
+    // the card-recording zoom capability.
+    QVERIFY(SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("01010005d002a00f19"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(1));
+    QCOMPARE(parameters.videoEncodingType, quint8(1));
+    QCOMPARE(parameters.width, quint16(1280));
+    QCOMPARE(parameters.height, quint16(720));
+    QCOMPARE(parameters.bitrateKbps, quint16(4000));
+    QCOMPARE(parameters.frameRate, quint8(25));
+
+    QVERIFY(SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("02028007380470171e"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(2));
+    QCOMPARE(parameters.videoEncodingType, quint8(2));
+    QCOMPARE(parameters.width, quint16(1920));
+    QCOMPARE(parameters.height, quint16(1080));
+    QCOMPARE(parameters.bitrateKbps, quint16(6000));
+    QCOMPARE(parameters.frameRate, quint8(30));
+
+    // Bitrate/FPS are informational for zoom capability. Firmware may report
+    // either as zero while applying a recording profile; a valid recording
+    // resolution must remain usable.
+    QVERIFY(SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("000280073804000000"), &parameters));
+    QCOMPARE(parameters.width, quint16(1920));
+    QCOMPARE(parameters.height, quint16(1080));
+    QCOMPARE(parameters.bitrateKbps, quint16(0));
+    QCOMPARE(parameters.frameRate, quint8(0));
+}
+
+void SiyiProtocolTest::invalidCameraEncodingParameterPayloads()
+{
+    SiyiProtocol::CameraEncodingParameters parameters;
+    parameters.streamType = 0xaa;
+    parameters.videoEncodingType = 0xbb;
+    parameters.width = 111;
+    parameters.height = 222;
+    parameters.bitrateKbps = 333;
+    parameters.frameRate = 44;
+
+    const QList<QByteArray> invalidPayloads = {
+        QByteArray(),
+        QByteArray::fromHex("000280073804e02e"),
+        QByteArray::fromHex("000280073804e02e1e00"),
+        QByteArray::fromHex("030280073804e02e1e"),
+        QByteArray::fromHex("000080073804e02e1e"),
+        QByteArray::fromHex("000380073804e02e1e"),
+        QByteArray::fromHex("000200003804e02e1e"),
+        QByteArray::fromHex("000280070000e02e1e"),
+    };
+
+    for (const QByteArray& payload : invalidPayloads) {
+        QVERIFY(!SiyiProtocol::parseCameraEncodingParametersPayload(
+            payload, &parameters));
+        QCOMPARE(parameters.streamType, quint8(0xaa));
+        QCOMPARE(parameters.videoEncodingType, quint8(0xbb));
+        QCOMPARE(parameters.width, quint16(111));
+        QCOMPARE(parameters.height, quint16(222));
+        QCOMPARE(parameters.bitrateKbps, quint16(333));
+        QCOMPARE(parameters.frameRate, quint8(44));
+    }
+
+    QVERIFY(!SiyiProtocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("000280073804e02e1e"), nullptr));
 }
 
 void SiyiProtocolTest::maximumZoomPayloads()
@@ -273,24 +488,25 @@ void SiyiProtocolTest::invalidZoomPayloads()
     QVERIFY(!SiyiProtocol::parseCurrentZoomPayload(QByteArray::fromHex("0100"), 1.0, 5.5, nullptr));
 }
 
-void SiyiProtocolTest::pulledVideoResolutionLimits_data()
+void SiyiProtocolTest::recordingResolutionLimits_data()
 {
     QTest::addColumn<int>("width");
     QTest::addColumn<int>("height");
     QTest::addColumn<bool>("supported");
     QTest::addColumn<double>("maximumZoom");
 
-    QTest::newRow("1080p-exact") << 1920 << 1080 << true << 5.5;
-    QTest::newRow("720p-exact") << 1280 << 720 << true << 6.0;
-    QTest::newRow("2k-rejected") << 2560 << 1440 << false << 0.0;
+    QTest::newRow("2k-recording") << 2560 << 1440 << true << 3.5;
+    QTest::newRow("1080p-recording") << 1920 << 1080 << true << 5.5;
+    QTest::newRow("720p-recording") << 1280 << 720 << true << 6.0;
+    QTest::newRow("4k-uhd-no-zoom") << 3840 << 2160 << true << 1.0;
+    QTest::newRow("4k-dci-no-zoom") << 4096 << 2160 << true << 1.0;
     QTest::newRow("1080p-coded-height-rejected") << 1920 << 1088 << false << 0.0;
     QTest::newRow("720p-coded-height-rejected") << 1280 << 736 << false << 0.0;
-    QTest::newRow("4k-uhd-rejected") << 3840 << 2160 << false << 0.0;
-    QTest::newRow("4k-dci-rejected") << 4096 << 2160 << false << 0.0;
     QTest::newRow("other-rejected") << 1366 << 768 << false << 0.0;
+    QTest::newRow("zero-rejected") << 0 << 0 << false << 0.0;
 }
 
-void SiyiProtocolTest::pulledVideoResolutionLimits()
+void SiyiProtocolTest::recordingResolutionLimits()
 {
     QFETCH(int, width);
     QFETCH(int, height);
@@ -298,14 +514,43 @@ void SiyiProtocolTest::pulledVideoResolutionLimits()
     QFETCH(double, maximumZoom);
 
     double resolvedMaximumZoom = 9.9;
-    QCOMPARE(A8MiniZoomPolicy::maximumZoomForVideoResolution(
+    QCOMPARE(A8MiniZoomPolicy::maximumZoomForRecordingResolution(
                  static_cast<quint16>(width),
                  static_cast<quint16>(height),
                  &resolvedMaximumZoom),
              supported);
     QCOMPARE(resolvedMaximumZoom, supported ? maximumZoom : 9.9);
 
-    QVERIFY(!A8MiniZoomPolicy::maximumZoomForVideoResolution(1920, 1080, nullptr));
+    QVERIFY(!A8MiniZoomPolicy::maximumZoomForRecordingResolution(
+        1920, 1080, nullptr));
+}
+
+void SiyiProtocolTest::pulledVideoResolutionSupport_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<bool>("supported");
+
+    QTest::newRow("1080p-pulled") << 1920 << 1080 << true;
+    QTest::newRow("720p-pulled") << 1280 << 720 << true;
+    QTest::newRow("2k-not-pulled") << 2560 << 1440 << false;
+    QTest::newRow("4k-not-pulled") << 3840 << 2160 << false;
+    QTest::newRow("coded-1088-not-pulled") << 1920 << 1088 << false;
+    QTest::newRow("coded-736-not-pulled") << 1280 << 736 << false;
+    QTest::newRow("other-not-pulled") << 1366 << 768 << false;
+    QTest::newRow("zero-not-pulled") << 0 << 0 << false;
+}
+
+void SiyiProtocolTest::pulledVideoResolutionSupport()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(bool, supported);
+
+    QCOMPARE(A8MiniZoomPolicy::isSupportedPulledVideoResolution(
+                 static_cast<quint16>(width),
+                 static_cast<quint16>(height)),
+             supported);
 }
 
 void SiyiProtocolTest::alignedMaximumZooms()
@@ -727,6 +972,21 @@ void SiyiProtocolTest::heldTargets()
     QVERIFY(!A8MiniZoomPolicy::heldTarget(
         1.0, -1, 420, 1.0, 1.0, 5.5, &targetZoom));
 
+    // A 2K recording stream has the shorter 3.5x terminal stop. The elapsed
+    // target saturates there without creating an off-grid intermediate value.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 1500, 1.0, 1.0, 3.5, &targetZoom));
+    QCOMPARE(targetZoom, 3.5);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        3.5, -1, 1500, 1.0, 1.0, 3.5, &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
+
+    // 4K recording is a valid capability with no zoom travel.
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 420, 1.0, 1.0, 1.0, &targetZoom));
+    QVERIFY(!A8MiniZoomPolicy::heldTarget(
+        1.0, -1, 420, 1.0, 1.0, 1.0, &targetZoom));
+
     // The 0.7x grid is identical in both directions.
     QVERIFY(A8MiniZoomPolicy::heldTarget(
         1.0, 1, 420, 0.7, 1.0, 5.5, &targetZoom));
@@ -737,6 +997,26 @@ void SiyiProtocolTest::heldTargets()
     QVERIFY(A8MiniZoomPolicy::heldTarget(
         5.5, -1, 420, 0.7, 1.0, 5.5, &targetZoom));
     QCOMPARE(targetZoom, 5.2);
+
+    // Changing zoomStep changes the legal timed display sequence while the
+    // native 0x05 motion itself remains uninterrupted.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 420, 0.5, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 1.5);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 900, 0.5, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        5.5, -1, 420, 0.5, 1.0, 5.5, &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+
+    // The 720P endpoint participates in the same duration calculation.
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        1.0, 1, 2700, 1.0, 1.0, 6.0, &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(A8MiniZoomPolicy::heldTarget(
+        6.0, -1, 2700, 1.0, 1.0, 6.0, &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
 
     // Explicit periods use the same half-up rounding; very long holds
     // saturate at the endpoint without iterating for their full duration.
@@ -763,7 +1043,7 @@ void SiyiProtocolTest::heldTargets()
 
 void SiyiProtocolTest::directionalTargetProperties()
 {
-    const QList<int> maximumTenthsValues = {35, 55, 60};
+    const QList<int> maximumTenthsValues = {10, 35, 55, 60};
     for (const int maximumTenths : maximumTenthsValues) {
         const double maximumZoom = maximumTenths / 10.0;
         for (int stepTenths = 1; stepTenths <= 45; ++stepTenths) {

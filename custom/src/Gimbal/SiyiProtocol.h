@@ -9,6 +9,7 @@
 #pragma once
 
 #include <QtCore/QByteArray>
+#include <QtCore/QList>
 #include <QtCore/QtGlobal>
 
 class SiyiProtocol
@@ -22,6 +23,13 @@ public:
         CommandAbsoluteZoom     = 0x0f,
         CommandMaximumZoomValue = 0x16,
         CommandCurrentZoomValue = 0x18,
+        CommandCameraEncodingParameters = 0x20,
+    };
+
+    enum CameraStreamType : quint8 {
+        CameraStreamRecording = 0,
+        CameraStreamMain = 1,
+        CameraStreamSub = 2,
     };
 
     struct CameraSystemStatus {
@@ -42,6 +50,15 @@ public:
         QByteArray payload;
     };
 
+    struct CameraEncodingParameters {
+        quint8 streamType = CameraStreamRecording;
+        quint8 videoEncodingType = 0;
+        quint16 width = 0;
+        quint16 height = 0;
+        quint16 bitrateKbps = 0;
+        quint8 frameRate = 0;
+    };
+
     static QByteArray manualZoomPacket(qint8 direction);
     static QByteArray requestCameraSystemStatusPacket();
     static QByteArray takePhotoPacket();
@@ -49,12 +66,18 @@ public:
     static QByteArray absoluteZoomPacket(double zoomLevel);
     static QByteArray requestMaximumZoomPacket();
     static QByteArray requestCurrentZoomPacket();
+    static QByteArray requestCameraEncodingParametersPacket(quint8 streamType);
     static DecodedPacket decodePacket(const QByteArray& packet);
+    static bool decodeDatagram(const QByteArray& datagram,
+                               QList<DecodedPacket>* packets);
     static bool isAckPacket(const DecodedPacket& packet);
     static bool parseManualZoomAckPayload(const QByteArray& payload, double* zoomLevel);
     static bool parseAbsoluteZoomAckPayload(const QByteArray& payload, bool* accepted);
     static bool parseCameraSystemStatusPayload(const QByteArray& payload, CameraSystemStatus* status);
     static bool parseFunctionFeedbackPayload(const QByteArray& payload, quint8* infoType);
+    static bool parseCameraEncodingParametersPayload(
+        const QByteArray& payload,
+        CameraEncodingParameters* parameters);
     static bool parseMaximumZoomPayload(const QByteArray& payload,
                                         double maximumSupportedZoom,
                                         double* zoomLevel,

@@ -90,6 +90,13 @@ bool SiyiSdk::requestCurrentZoom()
     return _sendPacket(SiyiProtocol::requestCurrentZoomPacket());
 }
 
+bool SiyiSdk::requestRecordingStreamParameters()
+{
+    return _sendPacket(
+        SiyiProtocol::requestCameraEncodingParametersPacket(
+            SiyiProtocol::CameraStreamRecording));
+}
+
 bool SiyiSdk::requestCameraSystemStatus()
 {
     return _sendPacket(SiyiProtocol::requestCameraSystemStatusPacket());
@@ -128,18 +135,12 @@ void SiyiSdk::_readPendingDatagrams()
             continue;
         }
 
-        const auto decoded = SiyiProtocol::decodePacket(datagram);
-        if (!decoded.valid) {
+        QList<SiyiProtocol::DecodedPacket> decodedPackets;
+        if (!SiyiProtocol::decodeDatagram(datagram, &decodedPackets)) {
             qCDebug(SiyiSdkLog) << "Ignoring invalid SIYI datagram from"
                                 << sender.toString() << senderPort
                                 << "size" << datagram.size()
                                 << "data" << datagram.toHex(' ');
-            continue;
-        }
-        if (!SiyiProtocol::isAckPacket(decoded)) {
-            qCDebug(SiyiSdkLog) << "Ignoring non-ACK SIYI packet"
-                                << "control" << decoded.control
-                                << "command" << static_cast<int>(decoded.command);
             continue;
         }
 
@@ -150,90 +151,132 @@ void SiyiSdk::_readPendingDatagrams()
                                 << sender.toString() << senderPort
                                 << "configured destination port" << _port;
         }
-        qCDebug(SiyiSdkLog) << "Accepted SIYI command" << static_cast<int>(decoded.command)
-                            << "from" << sender.toString() << senderPort
-                            << "local UDP port" << _socket.localPort()
-                            << "payload" << decoded.payload.toHex(' ');
 
-        if (decoded.command == SiyiProtocol::CommandManualZoom) {
-            double zoomLevel = 0.0;
-            if (SiyiProtocol::parseManualZoomAckPayload(decoded.payload, &zoomLevel)
-                && zoomLevel >= _minimumZoom
-                && zoomLevel <= _maximumZoom) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI manual zoom ACK" << zoomLevel;
-                emit packetReceived();
-                emit manualZoomReceived(zoomLevel);
-            } else {
-                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI manual zoom ACK payload"
-                                      << decoded.payload.toHex(' ');
+        for (const SiyiProtocol::DecodedPacket& decoded : decodedPackets) {
+            if (!SiyiProtocol::isAckPacket(decoded)) {
+                qCDebug(SiyiSdkLog) << "Ignoring non-ACK SIYI packet"
+                                    << "control" << decoded.control
+                                    << "command" << static_cast<int>(decoded.command);
+                continue;
             }
-        } else if (decoded.command == SiyiProtocol::CommandAbsoluteZoom) {
-            bool accepted = false;
-            if (SiyiProtocol::parseAbsoluteZoomAckPayload(decoded.payload, &accepted)) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI absolute zoom ACK"
-                                    << (accepted ? "accepted" : "rejected");
-                emit packetReceived();
-                emit absoluteZoomFeedbackReceived(accepted);
-            } else {
-                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI absolute zoom ACK payload"
-                                      << decoded.payload.toHex(' ');
+
+            qCDebug(SiyiSdkLog)
+                << "Accepted SIYI command"
+                << static_cast<int>(decoded.command)
+                << "from" << sender.toString() << senderPort
+                << "local UDP port" << _socket.localPort()
+                << "payload" << decoded.payload.toHex(' ');
+            _dispatchAck(decoded.command, decoded.payload);
+        }
+    }
+}
+
+void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
+{
+    if (command == SiyiProtocol::CommandManualZoom) {
+        double zoomLevel = 0.0;
+        if (SiyiProtocol::parseManualZoomAckPayload(payload, &zoomLevel)
+            && zoomLevel >= _minimumZoom
+            && zoomLevel <= _maximumZoom) {
+            qCDebug(SiyiSdkLog) << "Decoded SIYI manual zoom ACK" << zoomLevel;
+            emit packetReceived();
+            emit manualZoomReceived(zoomLevel);
+        } else {
+            qCWarning(SiyiSdkLog) << "Rejected invalid SIYI manual zoom ACK payload"
+                                  << payload.toHex(' ');
+        }
+    } else if (command == SiyiProtocol::CommandAbsoluteZoom) {
+        bool accepted = false;
+        if (SiyiProtocol::parseAbsoluteZoomAckPayload(payload, &accepted)) {
+            qCDebug(SiyiSdkLog) << "Decoded SIYI absolute zoom ACK"
+                                << (accepted ? "accepted" : "rejected");
+            emit packetReceived();
+            emit absoluteZoomFeedbackReceived(accepted);
+        } else {
+            qCWarning(SiyiSdkLog) << "Rejected invalid SIYI absolute zoom ACK payload"
+                                  << payload.toHex(' ');
+        }
+    } else if (command == SiyiProtocol::CommandCameraSystemInfo) {
+        SiyiProtocol::CameraSystemStatus status;
+        if (SiyiProtocol::parseCameraSystemStatusPayload(payload, &status)) {
+            emit packetReceived();
+            emit cameraSystemStatusReceived(status.hdrStatus,
+                                            status.recordingStatus,
+                                            status.gimbalMotionMode,
+                                            status.gimbalMountingDirection,
+                                            status.videoOutputStatus,
+                                            status.zoomLinkage);
+        }
+    } else if (command == SiyiProtocol::CommandFunctionFeedback) {
+        quint8 infoType = 0;
+        if (SiyiProtocol::parseFunctionFeedbackPayload(payload, &infoType)) {
+            emit packetReceived();
+            emit functionFeedbackReceived(infoType);
+        }
+    } else if (command == SiyiProtocol::CommandMaximumZoomValue) {
+        double zoomLevel = 0.0;
+        bool usedLegacyTenthsEncoding = false;
+        if (SiyiProtocol::parseMaximumZoomPayload(payload,
+                                                  _maximumZoom,
+                                                  &zoomLevel,
+                                                  &usedLegacyTenthsEncoding)) {
+            qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel
+                                << "encoding"
+                                << (usedLegacyTenthsEncoding
+                                        ? "little-endian tenths compatibility"
+                                        : "integer plus decimal");
+            emit packetReceived();
+            emit maximumZoomReceived(zoomLevel);
+        } else {
+            qCWarning(SiyiSdkLog) << "Rejected invalid SIYI maximum zoom payload"
+                                  << payload.toHex(' ')
+                                  << "accepted range" << 1.0 << _maximumZoom;
+        }
+    } else if (command == SiyiProtocol::CommandCurrentZoomValue) {
+        double zoomLevel = 0.0;
+        bool usedLegacyTenthsEncoding = false;
+        if (SiyiProtocol::parseCurrentZoomPayload(payload,
+                                                  _minimumZoom,
+                                                  _maximumZoom,
+                                                  &zoomLevel,
+                                                  &usedLegacyTenthsEncoding)) {
+            qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel
+                                << "encoding"
+                                << (usedLegacyTenthsEncoding
+                                        ? "little-endian tenths compatibility"
+                                        : "integer plus decimal");
+            emit packetReceived();
+            emit currentZoomReceived(zoomLevel);
+        } else {
+            qCWarning(SiyiSdkLog) << "Rejected invalid SIYI current zoom payload"
+                                  << payload.toHex(' ')
+                                  << "accepted range" << _minimumZoom << _maximumZoom;
+        }
+    } else if (command == SiyiProtocol::CommandCameraEncodingParameters) {
+        SiyiProtocol::CameraEncodingParameters parameters;
+        if (SiyiProtocol::parseCameraEncodingParametersPayload(
+                payload, &parameters)) {
+            qCDebug(SiyiSdkLog)
+                << "Decoded SIYI camera encoding parameters"
+                << "stream" << parameters.streamType
+                << "codec" << parameters.videoEncodingType
+                << "resolution" << parameters.width << "x" << parameters.height
+                << "bitrate kbps" << parameters.bitrateKbps
+                << "fps" << parameters.frameRate;
+            emit packetReceived();
+            if (parameters.streamType
+                == SiyiProtocol::CameraStreamRecording) {
+                emit recordingStreamParametersReceived(
+                    parameters.videoEncodingType,
+                    parameters.width,
+                    parameters.height,
+                    parameters.bitrateKbps,
+                    parameters.frameRate);
             }
-        } else if (decoded.command == SiyiProtocol::CommandCameraSystemInfo) {
-            SiyiProtocol::CameraSystemStatus status;
-            if (SiyiProtocol::parseCameraSystemStatusPayload(decoded.payload, &status)) {
-                emit packetReceived();
-                emit cameraSystemStatusReceived(status.hdrStatus,
-                                                status.recordingStatus,
-                                                status.gimbalMotionMode,
-                                                status.gimbalMountingDirection,
-                                                status.videoOutputStatus,
-                                                status.zoomLinkage);
-            }
-        } else if (decoded.command == SiyiProtocol::CommandFunctionFeedback) {
-            quint8 infoType = 0;
-            if (SiyiProtocol::parseFunctionFeedbackPayload(decoded.payload, &infoType)) {
-                emit packetReceived();
-                emit functionFeedbackReceived(infoType);
-            }
-        } else if (decoded.command == SiyiProtocol::CommandMaximumZoomValue) {
-            double zoomLevel = 0.0;
-            bool usedLegacyTenthsEncoding = false;
-            if (SiyiProtocol::parseMaximumZoomPayload(decoded.payload,
-                                                      _maximumZoom,
-                                                      &zoomLevel,
-                                                      &usedLegacyTenthsEncoding)) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel
-                                    << "encoding"
-                                    << (usedLegacyTenthsEncoding
-                                            ? "little-endian tenths compatibility"
-                                            : "integer plus decimal");
-                emit packetReceived();
-                emit maximumZoomReceived(zoomLevel);
-            } else {
-                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI maximum zoom payload"
-                                      << decoded.payload.toHex(' ')
-                                      << "accepted range" << 1.0 << _maximumZoom;
-            }
-        } else if (decoded.command == SiyiProtocol::CommandCurrentZoomValue) {
-            double zoomLevel = 0.0;
-            bool usedLegacyTenthsEncoding = false;
-            if (SiyiProtocol::parseCurrentZoomPayload(decoded.payload,
-                                                      _minimumZoom,
-                                                      _maximumZoom,
-                                                      &zoomLevel,
-                                                      &usedLegacyTenthsEncoding)) {
-                qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel
-                                    << "encoding"
-                                    << (usedLegacyTenthsEncoding
-                                            ? "little-endian tenths compatibility"
-                                            : "integer plus decimal");
-                emit packetReceived();
-                emit currentZoomReceived(zoomLevel);
-            } else {
-                qCWarning(SiyiSdkLog) << "Rejected invalid SIYI current zoom payload"
-                                      << decoded.payload.toHex(' ')
-                                      << "accepted range" << _minimumZoom << _maximumZoom;
-            }
+        } else {
+            qCWarning(SiyiSdkLog)
+                << "Rejected invalid SIYI camera encoding parameters payload"
+                << payload.toHex(' ');
         }
     }
 }

@@ -1,9 +1,10 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按立即发送并显示下一合法目标；长按420 ms后成立，并从最初按下起
- * 按qRound(totalMs / 600)单调推进同方向0x0f绝对目标，不发送0x05。
- * 正常释放完成目标，取消则只停止手势。
+ * 短按立即发送并显示下一合法0x0f目标；长按420 ms后通常只启动一次0x05
+ * 原生连续变倍，并从最初按下起按qRound(totalMs / 600)单调更新合法
+ * 显示目标。到达由卡录分辨率和设备反馈共同限定的有效端点立即停止，
+ * 且不做可能反向的绝对纠偏；拉流分辨率只负责视频会话可用门控。
  *
  ****************************************************************************/
 
@@ -181,7 +182,7 @@ Item {
                     // 先标记为已消费，避免后端同步改变 enabled 时重入并在释放
                     // 阶段误补发一次短按命令。长按420 ms后成立；Manager以真实
                     // 按下时刻为时间零点，按qRound(totalMs / 600)只推进同方向
-                    // 0x0f合法绝对目标，不发送0x05。
+                    // 合法显示目标；物理运动通常只启动一次原生0x05连续变倍。
                     gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))
@@ -317,8 +318,8 @@ Item {
                     }
 
                     // 长按420 ms后成立；Manager以真实按下时刻为时间零点，
-                    // 按qRound(totalMs / 600)只推进同方向0x0f合法绝对目标，
-                    // 不发送0x05；释放不会补发短按。
+                    // 按qRound(totalMs / 600)只推进同方向合法显示目标；物理
+                    // 运动通常只启动一次原生0x05连续变倍，释放不会补发短按。
                     gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))

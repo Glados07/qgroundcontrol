@@ -25,6 +25,7 @@ public:
     bool sendAbsoluteZoom(double zoomLevel);
     bool requestMaximumZoom();
     bool requestCurrentZoom();
+    bool requestRecordingStreamParameters();
     bool requestCameraSystemStatus();
     bool takePhoto();
     bool toggleVideoRecording();
@@ -34,6 +35,11 @@ signals:
     void absoluteZoomFeedbackReceived(bool accepted);
     void maximumZoomReceived(double zoomLevel);
     void currentZoomReceived(double zoomLevel);
+    void recordingStreamParametersReceived(quint8 videoEncodingType,
+                                            quint16 width,
+                                            quint16 height,
+                                            quint16 bitrateKbps,
+                                            quint8 frameRate);
     void cameraSystemStatusReceived(quint8 hdrStatus,
                                     quint8 recordingStatus,
                                     quint8 gimbalMotionMode,
@@ -50,6 +56,7 @@ private slots:
 private:
     bool _sendPacket(const QByteArray& packet);
     bool _sendPacketTo(const QByteArray& packet, const QHostAddress& host, quint16 port);
+    void _dispatchAck(quint8 command, const QByteArray& payload);
 
     QUdpSocket _socket;
     QHostAddress _host = QHostAddress(QStringLiteral("192.168.144.25"));

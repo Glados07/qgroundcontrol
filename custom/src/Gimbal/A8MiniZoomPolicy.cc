@@ -26,7 +26,7 @@ static bool isLegalZoomTenths(int zoomTenths,
     }
 
     // There is one canonical grid anchored at the minimum. The exact
-    // resolution ceiling is appended as the final legal stop when the last
+    // recording-mode ceiling is appended as the final legal stop when the last
     // interval is shorter than zoomStep.
     return zoomTenths == maximumTenths
         || (zoomTenths - minimumTenths) % stepTenths == 0;
@@ -106,14 +106,30 @@ A8MiniZoomPolicy::TargetTracker::observe(double actualZoom)
     return TargetObservation::Waiting;
 }
 
-bool A8MiniZoomPolicy::maximumZoomForVideoResolution(quint16 width,
-                                                     quint16 height,
-                                                     double* maximumZoom)
+bool A8MiniZoomPolicy::isSupportedPulledVideoResolution(quint16 width,
+                                                        quint16 height)
+{
+    return (width == 1920 && height == 1080)
+        || (width == 1280 && height == 720);
+}
+
+bool A8MiniZoomPolicy::maximumZoomForRecordingResolution(
+    quint16 width,
+    quint16 height,
+    double* maximumZoom)
 {
     if (!maximumZoom) {
         return false;
     }
 
+    if ((width == 3840 || width == 4096) && height == 2160) {
+        *maximumZoom = 1.0;
+        return true;
+    }
+    if (width == 2560 && height == 1440) {
+        *maximumZoom = 3.5;
+        return true;
+    }
     if (width == 1920 && height == 1080) {
         *maximumZoom = 5.5;
         return true;
@@ -146,7 +162,7 @@ bool A8MiniZoomPolicy::alignedMaximumZoom(double capabilityMaximumZoom,
         return false;
     }
 
-    // The pulled-video ceiling is itself a legal terminal stop even when the
+    // The recording-mode ceiling is itself a legal terminal stop even when the
     // final interval is shorter than zoomStep (for example 5.0 -> 5.5 at
     // 1080P with a 1.0x step). Keep the historical function name because it is
     // part of the custom policy API, but do not discard that terminal stop.

@@ -34,9 +34,11 @@ public:
         bool _active = false;
     };
 
-    static bool maximumZoomForVideoResolution(quint16 width,
-                                               quint16 height,
-                                               double* maximumZoom);
+    static bool isSupportedPulledVideoResolution(quint16 width,
+                                                  quint16 height);
+    static bool maximumZoomForRecordingResolution(quint16 width,
+                                                   quint16 height,
+                                                   double* maximumZoom);
     static bool alignedMaximumZoom(double capabilityMaximumZoom,
                                    double zoomStep,
                                    double minimumZoom,

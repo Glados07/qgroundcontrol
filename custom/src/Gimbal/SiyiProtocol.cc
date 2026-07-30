@@ -71,6 +71,17 @@ QByteArray SiyiProtocol::requestMaximumZoomPacket()
     return _encode(CommandMaximumZoomValue, QByteArray());
 }
 
+QByteArray SiyiProtocol::requestCameraEncodingParametersPacket(quint8 streamType)
+{
+    if (streamType > CameraStreamSub) {
+        return QByteArray();
+    }
+
+    QByteArray payload;
+    payload.append(static_cast<char>(streamType));
+    return _encode(CommandCameraEncodingParameters, payload);
+}
+
 SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
 {
     DecodedPacket result;
@@ -108,6 +119,44 @@ SiyiProtocol::DecodedPacket SiyiProtocol::decodePacket(const QByteArray& packet)
     result.command = at(7);
     result.payload = frame.mid(8, payloadLength);
     return result;
+}
+
+bool SiyiProtocol::decodeDatagram(const QByteArray& datagram,
+                                  QList<DecodedPacket>* packets)
+{
+    if (!packets || datagram.isEmpty()) {
+        return false;
+    }
+
+    QList<DecodedPacket> decodedPackets;
+    int offset = 0;
+    while (offset < datagram.size()) {
+        const int remaining = datagram.size() - offset;
+        if (remaining < 10) {
+            return false;
+        }
+
+        const auto at = [&datagram, offset](int index) {
+            return static_cast<quint8>(datagram.at(offset + index));
+        };
+        const quint16 payloadLength = static_cast<quint16>(at(3))
+            | (static_cast<quint16>(at(4)) << 8);
+        const int frameLength = 10 + static_cast<int>(payloadLength);
+        if (frameLength > remaining) {
+            return false;
+        }
+
+        const DecodedPacket decoded =
+            decodePacket(datagram.mid(offset, frameLength));
+        if (!decoded.valid) {
+            return false;
+        }
+        decodedPackets.append(decoded);
+        offset += frameLength;
+    }
+
+    *packets = decodedPackets;
+    return true;
 }
 
 bool SiyiProtocol::isAckPacket(const DecodedPacket& packet)
@@ -183,6 +232,41 @@ bool SiyiProtocol::parseFunctionFeedbackPayload(const QByteArray& payload, quint
     }
 
     *infoType = parsedInfoType;
+    return true;
+}
+
+bool SiyiProtocol::parseCameraEncodingParametersPayload(
+    const QByteArray& payload,
+    CameraEncodingParameters* parameters)
+{
+    if (!parameters || payload.size() != 9) {
+        return false;
+    }
+
+    const auto at = [&payload](int index) {
+        return static_cast<quint8>(payload.at(index));
+    };
+
+    CameraEncodingParameters parsed;
+    parsed.streamType = at(0);
+    parsed.videoEncodingType = at(1);
+    parsed.width = static_cast<quint16>(at(2))
+        | (static_cast<quint16>(at(3)) << 8);
+    parsed.height = static_cast<quint16>(at(4))
+        | (static_cast<quint16>(at(5)) << 8);
+    parsed.bitrateKbps = static_cast<quint16>(at(6))
+        | (static_cast<quint16>(at(7)) << 8);
+    parsed.frameRate = at(8);
+
+    if (parsed.streamType > CameraStreamSub
+        || (parsed.videoEncodingType != 1
+            && parsed.videoEncodingType != 2)
+        || parsed.width == 0
+        || parsed.height == 0) {
+        return false;
+    }
+
+    *parameters = parsed;
     return true;
 }
 

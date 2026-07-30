@@ -44,9 +44,12 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _zoomQueryTimeoutTimer.setSingleShot(true);
     _zoomQueryTimeoutTimer.setInterval(kDefaultZoomQueryTimeoutMs);
     _sdkPollTimer.setInterval(2000);
+    _recordingCapabilityTimeoutTimer.setSingleShot(true);
+    _recordingCapabilityTimeoutTimer.setInterval(
+        kRecordingCapabilityTimeoutMs);
     _continuousZoomWatchdog.setSingleShot(true);
-    // Held zoom advances bounded legal 0x0f targets. Sixty seconds is only a
-    // guard for a lost release/cancel event.
+    // Held zoom uses one native 0x05 run. Sixty seconds is only a guard for a
+    // lost release/cancel event and always sends a real stop when it expires.
     _continuousZoomWatchdog.setInterval(60000);
     _continuousZoomStepTimer.setSingleShot(true);
     _continuousZoomStepTimer.setInterval(kManualZoomPollIntervalMs);
@@ -75,6 +78,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
             this,
             &GimbalControlManager::_handleManualZoomFeedback);
     connect(_sdk, &SiyiSdk::maximumZoomReceived, this, &GimbalControlManager::_handleMaximumZoom);
+    connect(_sdk,
+            &SiyiSdk::recordingStreamParametersReceived,
+            this,
+            &GimbalControlManager::_handleRecordingStreamParameters);
     connect(_sdk, &SiyiSdk::currentZoomReceived, this, &GimbalControlManager::_handleCurrentZoom);
     connect(_sdk, &SiyiSdk::cameraSystemStatusReceived, this, &GimbalControlManager::_handleCameraSystemStatus);
     connect(_sdk, &SiyiSdk::functionFeedbackReceived, this, &GimbalControlManager::_handleFunctionFeedback);
@@ -98,6 +105,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
             this,
             &GimbalControlManager::_handleZoomQueryTimeout);
     connect(&_sdkPollTimer, &QTimer::timeout, this, &GimbalControlManager::_pollSdk);
+    connect(&_recordingCapabilityTimeoutTimer,
+            &QTimer::timeout,
+            this,
+            &GimbalControlManager::_expireRecordingResolutionCapability);
     connect(&_zoomSyncTimer, &QTimer::timeout, this, &GimbalControlManager::_requestZoomAfterSettle);
     connect(&_pulledVideoFallbackTimer,
             &QTimer::timeout,
@@ -154,9 +165,15 @@ GimbalControlManager::~GimbalControlManager()
     if (_continuousZoomActive && _sdk) {
         _stopContinuousZoom(false);
     }
-    // Retain compatibility with an already queued safety stop from a legacy
-    // manager path. Current held gestures never create one.
-    (void) _flushPendingManualZoomStop();
+    // Exhaust the small, stop-only retry budget synchronously while the SDK
+    // transport is still alive. A retry timer cannot fire after destruction.
+    for (int attempt = 0;
+         attempt < kManualZoomStopMaximumRetryAttempts;
+         ++attempt) {
+        if (_flushPendingManualZoomStop()) {
+            break;
+        }
+    }
 }
 
 bool GimbalControlManager::enabled() const
@@ -252,7 +269,9 @@ bool GimbalControlManager::_sendZoomStep(int direction)
         return false;
     }
     if (!zoomControlsUnlocked()) {
-        _setLastError(tr("Waiting for a supported pulled-video stream before controlling zoom."));
+        _setLastError(
+            tr("Waiting for a supported pulled-video session and a valid "
+               "SIYI recording-stream resolution before controlling zoom."));
         return false;
     }
     if (_continuousZoomActive) {
@@ -301,12 +320,15 @@ bool GimbalControlManager::_sendZoomStep(int direction)
     // legal requested stop. Rapid taps therefore update the latest desired
     // target immediately instead of building a seconds-long FIFO.
     const bool replacePendingTarget = _absoluteZoomPending;
-    _suppressIdleAlignmentUntilExplicitZoom = false;
     if (!_sendAbsoluteZoomTarget(targetZoom,
                                  false,
                                  replacePendingTarget)) {
         return false;
     }
+    // Only an accepted newer explicit absolute gesture releases a target
+    // retained by an earlier native hold. A failed send must leave the safety
+    // latch intact.
+    _nativeHoldTargetLatched = false;
     qCInfo(GimbalControlLog)
         << "Applied immediate SIYI tap direction" << direction
         << "reference" << referenceZoom
@@ -316,7 +338,7 @@ bool GimbalControlManager::_sendZoomStep(int direction)
     return true;
 }
 
-bool GimbalControlManager::_advanceHeldZoomTarget()
+bool GimbalControlManager::_advanceHeldZoomDisplayTarget()
 {
     if (!_continuousZoomActive || !_heldZoomElapsed.isValid()) {
         return true;
@@ -351,18 +373,37 @@ bool GimbalControlManager::_advanceHeldZoomTarget()
         return true;
     }
 
-    if (!_sendAbsoluteZoomTarget(timedTarget,
-                                 false,
-                                 _absoluteZoomPending)) {
-        return false;
-    }
-
+    // Native 0x05 owns the physical motion for the whole hold. Advancing the
+    // legal target shown to the operator must not restart the camera's zoom
+    // controller with another 0x0f packet.
     _heldZoomLastTarget = timedTarget;
+    _requestedZoom = timedTarget;
+    _setCurrentZoom(timedTarget);
+    _setZoomStatusKnown(true);
+    _setZoomValueUncertain(false);
+    _suppressIdleAlignmentUntilExplicitZoom = true;
+    emit zoomAvailabilityChanged();
     qCInfo(GimbalControlLog)
-        << "Advanced timed held SIYI zoom direction"
+        << "Advanced native held SIYI display target direction"
         << _continuousZoomDirection << "elapsed ms" << totalPressMs
         << "target" << timedTarget;
     return true;
+}
+
+bool GimbalControlManager::_heldZoomDisplayAtTerminal() const
+{
+    if (!_continuousZoomActive) {
+        return false;
+    }
+    if (_continuousZoomDirection > 0) {
+        return _heldZoomLastTarget
+            >= _maximumZoom - kZoomComparisonTolerance;
+    }
+    if (_continuousZoomDirection < 0) {
+        return _heldZoomLastTarget
+            <= kMinZoom + kZoomComparisonTolerance;
+    }
+    return false;
 }
 
 bool GimbalControlManager::setZoom(double zoomLevel)
@@ -371,7 +412,9 @@ bool GimbalControlManager::setZoom(double zoomLevel)
         return false;
     }
     if (!zoomControlsUnlocked()) {
-        _setLastError(tr("Waiting for a supported pulled-video stream before controlling zoom."));
+        _setLastError(
+            tr("Waiting for a supported pulled-video session and a valid "
+               "SIYI recording-stream resolution before controlling zoom."));
         return false;
     }
     if (!_zoomStatusKnown || _stableZoomConfirmationPending) {
@@ -388,7 +431,7 @@ bool GimbalControlManager::setZoom(double zoomLevel)
     const double targetZoom = qRound(zoomLevel * 10.0) / 10.0;
     if (targetZoom < kMinZoom - kZoomComparisonTolerance
         || targetZoom > _maximumZoom + kZoomComparisonTolerance) {
-        _setLastError(tr("The requested SIYI camera zoom is outside the latched pulled-video resolution limit."));
+        _setLastError(tr("The requested SIYI camera zoom is outside the effective recording-mode limit."));
         return false;
     }
     const double boundedTargetZoom = qBound(kMinZoom, targetZoom, _maximumZoom);
@@ -411,12 +454,12 @@ bool GimbalControlManager::setZoom(double zoomLevel)
         return false;
     }
     _cancelManualZoomFinalize();
-    _suppressIdleAlignmentUntilExplicitZoom = false;
     if (!_sendAbsoluteZoomTarget(boundedTargetZoom,
                                  false,
                                  _absoluteZoomPending)) {
         return false;
     }
+    _nativeHoldTargetLatched = false;
 
     _setLastError(QString());
     return true;
@@ -452,13 +495,15 @@ bool GimbalControlManager::startZoomWithPressDuration(
     }
 
     if (!zoomControlsUnlocked()) {
-        _setLastError(tr("Waiting for a supported pulled-video stream before controlling zoom."));
+        _setLastError(
+            tr("Waiting for a supported pulled-video session and a valid "
+               "SIYI recording-stream resolution before controlling zoom."));
         return false;
     }
 
-    // A held gesture supersedes every older release transaction. No 0x05
-    // command is used by this state machine, but flush a stop left by an older
-    // session before the first new absolute target.
+    // A held gesture supersedes every older release transaction. Complete a
+    // retained safety-stop copy before starting a new native 0x05 run so that
+    // no delayed stop can terminate the new gesture.
     if (!_flushPendingManualZoomStop()) {
         return false;
     }
@@ -489,28 +534,85 @@ bool GimbalControlManager::startZoomWithPressDuration(
         return false;
     }
 
-    _suppressIdleAlignmentUntilExplicitZoom = false;
-    if (!_sendAbsoluteZoomTarget(firstTarget,
-                                 false,
-                                 _absoluteZoomPending)) {
+    const bool firstTargetIsTerminal =
+        (normalizedDirection > 0
+         && firstTarget >= _maximumZoom - kZoomComparisonTolerance)
+        || (normalizedDirection < 0
+            && firstTarget <= kMinZoom + kZoomComparisonTolerance);
+    if (firstTargetIsTerminal) {
+        // When only the final legal interval remains, starting free-running
+        // 0x05 and stopping it one timer tick later cannot reliably reach the
+        // endpoint. A single absolute endpoint command is monotonic from the
+        // current legal reference and cannot overshoot then reverse.
+        if (!_sendAbsoluteZoomTarget(firstTarget,
+                                     false,
+                                     _absoluteZoomPending)) {
+            return false;
+        }
+        _nativeHoldTargetLatched = true;
+        _setLastError(QString());
+        qCInfo(GimbalControlLog)
+            << "Applied terminal SIYI held target with one absolute command"
+            << "direction" << normalizedDirection
+            << "origin" << referenceZoom << "target" << firstTarget;
+        return true;
+    }
+
+    // Long press uses the camera's native continuous command exactly once.
+    // Repeated 0x0f targets make the A8 Mini stop/restart at every legal step
+    // and are visibly jerky. Latch the endpoint so release can always send its
+    // stop to the same camera even if settings change during the gesture.
+    const QString sessionHost =
+        _settings->sdkHost()->rawValue().toString().trimmed();
+    const quint16 sessionPort = _sdkPort();
+
+    _continuousZoomStepTimer.stop();
+    _zoomSyncTimer.stop();
+    _zoomOperationTimer.stop();
+    _cancelOutstandingZoomQuery();
+    _zoomResponseBlocked = false;
+    _absoluteZoomPending = false;
+    _absoluteZoomTracker.clear();
+    _alignmentAttemptCount = 0;
+    _clearAutomaticAlignmentSuppression();
+    _clearStableZoomConfirmation();
+
+    _manualZoomStopRetryTimer.stop();
+    _manualZoomStopRetryAttemptsRemaining = 0;
+    _manualZoomSessionHost = sessionHost;
+    _manualZoomSessionPort = sessionPort;
+    if (!_sdk->sendManualZoomTo(
+            static_cast<qint8>(normalizedDirection),
+            sessionHost,
+            sessionPort)) {
+        _manualZoomSessionHost.clear();
+        _manualZoomSessionPort = 0;
         return false;
     }
+    _nativeHoldTargetLatched = true;
 
     // The gesture origin never changes. QML supplies the duration already
     // elapsed since the physical press, and every timer tick adds subsequent
-    // elapsed time. Delayed callbacks therefore keep the correct grid phase.
-    // Only strictly farther targets in the held direction are sent.
+    // elapsed time. Delayed callbacks therefore keep the correct grid phase,
+    // while the physical camera motion remains one uninterrupted 0x05 run.
     _heldZoomStartTarget = referenceZoom;
     _heldZoomLastTarget = firstTarget;
     _heldZoomInitialPressDurationMs = boundedPressDurationMs;
     _heldZoomElapsed.start();
+    _requestedZoom = firstTarget;
+    _setCurrentZoom(firstTarget);
+    _setZoomStatusKnown(true);
+    _setZoomValueUncertain(false);
+    _suppressIdleAlignmentUntilExplicitZoom = true;
     _setContinuousZoomState(true, normalizedDirection);
     _continuousZoomWatchdog.start();
     _continuousZoomStepTimer.start(kManualZoomPollIntervalMs);
     _sdkResponseTimer.start();
+    emit zoomAvailabilityChanged();
     _setLastError(QString());
     qCInfo(GimbalControlLog)
-        << "Started timed held SIYI zoom direction" << normalizedDirection
+        << "Started native continuous SIYI zoom direction"
+        << normalizedDirection
         << "origin" << referenceZoom << "first target" << firstTarget;
     return true;
 }
@@ -525,7 +627,7 @@ bool GimbalControlManager::stopZoom()
 bool GimbalControlManager::cancelZoom()
 {
     // Cancellation (pointer leave, application background, hidden control)
-    // freezes the last successfully sent target and never creates movement.
+    // does not advance the timed target, but it must stop native 0x05 motion.
     return _stopContinuousZoom(false);
 }
 
@@ -608,8 +710,8 @@ bool GimbalControlManager::requestCameraStatus()
 
 void GimbalControlManager::_settingsChanged()
 {
-    // Stop the local held-target sequence before applying endpoint or enabled
-    // state changes.
+    // Stop native held motion at its latched endpoint before applying endpoint
+    // or enabled-state changes.
     if (_continuousZoomActive) {
         _stopContinuousZoom(false);
     }
@@ -743,15 +845,133 @@ void GimbalControlManager::_handleMaximumZoom(double maximumZoom)
         return;
     }
 
-    // Keep 0x16 for protocol/device diagnostics only. The decoded stream
-    // resolution is the sole zoom-capability source, so this reply must never
-    // activate, shrink, reset or lock the controls.
-    _deviceMaximumZoom =
-        qRound(qBound(kMinZoom, maximumZoom, kProtocolMaxZoom) * 10.0) / 10.0;
+    const double normalizedMaximum = qRound(
+        qBound(kMinZoom, maximumZoom, kProtocolMaxZoom) * 10.0) / 10.0;
+    const bool deviceMaximumChanged = !_deviceMaximumZoomKnown
+        || qAbs(_deviceMaximumZoom - normalizedMaximum)
+            > kZoomComparisonTolerance;
+    _deviceMaximumZoom = normalizedMaximum;
     _deviceMaximumZoomKnown = true;
-    qCDebug(GimbalControlLog)
-        << "Recorded diagnostic SIYI 0x16 maximum zoom" << _deviceMaximumZoom
-        << "without changing the pulled-video zoom capability";
+    if (_recordingResolutionConfirmed) {
+        // The recording resolution defines the model capability. 0x16 is an
+        // independent device-side guard: a lower value is respected so that a
+        // stale or transitioning camera mode cannot receive an unreachable
+        // target, while a larger value can never expand the mapped mode.
+        if (deviceMaximumChanged
+            && qAbs(_deviceMaximumZoom - _recordingResolutionMaximumZoom)
+                > kZoomComparisonTolerance) {
+            qCWarning(GimbalControlLog)
+                << "SIYI recording-resolution maximum"
+                << _recordingResolutionMaximumZoom
+                << "differs from device 0x16 maximum"
+                << _deviceMaximumZoom;
+        }
+        _refreshMaximumZoomCapability(
+            "recording resolution with SIYI 0x16 safety cross-check");
+    } else {
+        qCDebug(GimbalControlLog)
+            << "Recorded SIYI 0x16 maximum zoom" << _deviceMaximumZoom
+            << "while waiting for recording-stream resolution";
+    }
+}
+
+void GimbalControlManager::_handleRecordingStreamParameters(
+    quint8 videoEncodingType,
+    quint16 width,
+    quint16 height,
+    quint16 bitrateKbps,
+    quint8 frameRate)
+{
+    if (!enabled()) {
+        return;
+    }
+
+    const QSize recordingSize(width, height);
+    double maximumZoom = 0.0;
+    if (!A8MiniZoomPolicy::maximumZoomForRecordingResolution(
+            width, height, &maximumZoom)) {
+        if (_lastRejectedRecordingVideoSize != recordingSize) {
+            _lastRejectedRecordingVideoSize = recordingSize;
+            qCWarning(GimbalControlLog)
+                << "Unsupported SIYI recording resolution"
+                << width << "x" << height
+                << "- zoom remains locked until a known recording mode is reported";
+        }
+        if (_continuousZoomActive) {
+            _stopContinuousZoom(false);
+        }
+        _resetMaximumZoomCapability();
+        return;
+    }
+
+    const bool capabilityChanged =
+        !_recordingResolutionConfirmed
+        || _recordingVideoSize != recordingSize
+        || qAbs(_recordingResolutionMaximumZoom - maximumZoom)
+            > kZoomComparisonTolerance;
+    _recordingResolutionConfirmed = true;
+    _recordingVideoSize = recordingSize;
+    _recordingResolutionMaximumZoom = maximumZoom;
+    _lastRejectedRecordingVideoSize = QSize();
+    _recordingCapabilityTimeoutTimer.start();
+    if (capabilityChanged
+        && _deviceMaximumZoomKnown
+        && qAbs(_deviceMaximumZoom - maximumZoom)
+            > kZoomComparisonTolerance) {
+        qCWarning(GimbalControlLog)
+            << "SIYI recording-resolution maximum" << maximumZoom
+            << "differs from device 0x16 maximum"
+            << _deviceMaximumZoom;
+    }
+    _refreshMaximumZoomCapability(
+        "SIYI 0x20 recording-stream resolution");
+
+    if (capabilityChanged) {
+        qCInfo(GimbalControlLog)
+            << "Updated SIYI recording-stream capability:"
+            << width << "x" << height
+            << "codec" << videoEncodingType
+            << "bitrate kbps" << bitrateKbps
+            << "fps" << frameRate
+            << "mapped maximum" << maximumZoom
+            << "device maximum"
+            << (_deviceMaximumZoomKnown ? _deviceMaximumZoom : -1.0)
+            << "effective terminal maximum" << _maximumZoom;
+    } else {
+        qCDebug(GimbalControlLog)
+            << "Confirmed unchanged SIYI recording-stream capability"
+            << width << "x" << height
+            << "effective terminal maximum" << _maximumZoom;
+    }
+}
+
+void GimbalControlManager::_expireRecordingResolutionCapability()
+{
+    if (!enabled() || !_recordingResolutionConfirmed) {
+        return;
+    }
+
+    qCWarning(GimbalControlLog)
+        << "SIYI recording-stream parameters timed out; invalidating zoom capability";
+    if (_continuousZoomActive) {
+        _stopContinuousZoom(false);
+    }
+    _cancelManualZoomFinalize();
+    _zoomSyncTimer.stop();
+    _zoomOperationTimer.stop();
+    _cancelOutstandingZoomQuery();
+    _zoomResponseBlocked = false;
+    _absoluteZoomPending = false;
+    _absoluteZoomTracker.clear();
+    _latestActualZoomKnown = false;
+    _alignmentAttemptCount = 0;
+    _clearAutomaticAlignmentSuppression();
+    _suppressIdleAlignmentUntilExplicitZoom = false;
+    _requestedZoom = _currentZoom;
+    _resetMaximumZoomCapability();
+    _setZoomStatusKnown(false);
+    _setLastError(
+        tr("Timed out waiting for the SIYI recording-stream resolution."));
 }
 
 void GimbalControlManager::_handlePulledVideoSize()
@@ -861,23 +1081,20 @@ void GimbalControlManager::_schedulePulledVideoResolutionFallback()
     }
 
     const QSize videoSize = _videoManager->videoSize();
-    double maximumZoom = 0.0;
     const bool supported = videoSize.isValid()
         && !videoSize.isEmpty()
         && videoSize.width() <= std::numeric_limits<quint16>::max()
         && videoSize.height() <= std::numeric_limits<quint16>::max()
-        && A8MiniZoomPolicy::maximumZoomForVideoResolution(
+        && A8MiniZoomPolicy::isSupportedPulledVideoResolution(
             static_cast<quint16>(videoSize.width()),
-            static_cast<quint16>(videoSize.height()),
-            &maximumZoom);
+            static_cast<quint16>(videoSize.height()));
     if (!supported) {
         _pulledVideoFallbackTimer.stop();
         _videoManagerFallbackCandidate = QSize();
         return;
     }
     if (_videoStreamAvailable
-        && _pulledVideoResolutionConfirmed
-        && qAbs(_pulledVideoMaximumZoom - maximumZoom) <= kZoomComparisonTolerance) {
+        && _pulledVideoResolutionConfirmed) {
         _pulledVideoFallbackTimer.stop();
         _videoManagerFallbackCandidate = QSize();
         return;
@@ -934,7 +1151,7 @@ void GimbalControlManager::_invalidatePulledVideoResolutionCapability(
         qCWarning(GimbalControlLog)
             << "Ignored unsupported transient pulled-video resolution from"
             << sourceDescription << videoSize.width() << "x" << videoSize.height()
-            << "- retaining the unlocked stream ceiling" << _maximumZoom;
+            << "- retaining the current decoded-video session";
         _schedulePulledVideoResolutionFallback();
         return;
     }
@@ -945,9 +1162,9 @@ void GimbalControlManager::_invalidatePulledVideoResolutionCapability(
         return;
     }
 
-    // A decoded but unsupported size cannot safely reuse a stale
-    // resolution-derived ceiling. Keep the UI locked until a supported
-    // pulled-video size is confirmed.
+    // Pull resolution is only the decoded-video session gate. An unsupported
+    // size locks the controls, but it must not replace or erase the independent
+    // recording-resolution zoom capability.
     _pulledVideoResolutionConfirmed = false;
     _stopContinuousZoom(false);
     _cancelManualZoomFinalize();
@@ -963,16 +1180,11 @@ void GimbalControlManager::_invalidatePulledVideoResolutionCapability(
     _clearAutomaticAlignmentSuppression();
     _suppressIdleAlignmentUntilExplicitZoom = false;
     _requestedZoom = _currentZoom;
-    _resetMaximumZoomCapability();
     _setZoomStatusKnown(false);
     qCWarning(GimbalControlLog)
-        << "Released stale pulled-video zoom capability after" << sourceDescription
+        << "Released stale pulled-video session after" << sourceDescription
         << videoSize.width() << "x" << videoSize.height()
-        << "- requesting SIYI current supported zoom range";
-    if (enabled()) {
-        _configureSdkEndpoint();
-        (void) _sdk->requestMaximumZoom();
-    }
+        << "- waiting for a supported decoded stream";
     _schedulePulledVideoResolutionFallback();
 }
 
@@ -1008,8 +1220,8 @@ void GimbalControlManager::_applyMaximumZoomCapability(
         return;
     }
 
-    // 能力来源恢复或上限改变后，先取得两份一致的合法0x18实际倍率。
-    // 用户绝对目标只由主动0x18反馈更新，不能用命令本身或ACK更新显示。
+    // 能力来源恢复或上限改变后，重新取得稳定的0x18实际倍率作为后续
+    // 绝对目标规划参考；显示仍只发布合法目标，不发布中间原始采样。
     _stopContinuousZoom(false);
     _cancelManualZoomFinalize();
     _sdkResponseTimer.stop();
@@ -1040,12 +1252,15 @@ void GimbalControlManager::_applyMaximumZoomCapability(
 void GimbalControlManager::_refreshMaximumZoomCapability(
     const char* sourceDescription)
 {
-    if (!_pulledVideoResolutionConfirmed) {
+    if (!_recordingResolutionConfirmed) {
         _resetMaximumZoomCapability();
         return;
     }
 
-    _applyMaximumZoomCapability(_pulledVideoMaximumZoom, sourceDescription);
+    const double effectiveMaximum = _deviceMaximumZoomKnown
+        ? qMin(_recordingResolutionMaximumZoom, _deviceMaximumZoom)
+        : _recordingResolutionMaximumZoom;
+    _applyMaximumZoomCapability(effectiveMaximum, sourceDescription);
 }
 
 bool GimbalControlManager::_confirmPulledVideoResolution(
@@ -1063,10 +1278,8 @@ bool GimbalControlManager::_confirmPulledVideoResolution(
     const quint16 width = static_cast<quint16>(videoSize.width());
     const quint16 height = static_cast<quint16>(videoSize.height());
 
-    double maximumZoom = 0.0;
-    if (!A8MiniZoomPolicy::maximumZoomForVideoResolution(width,
-                                                         height,
-                                                         &maximumZoom)) {
+    if (!A8MiniZoomPolicy::isSupportedPulledVideoResolution(width,
+                                                            height)) {
         if (_lastRejectedPulledVideoSize != videoSize) {
             _lastRejectedPulledVideoSize = videoSize;
             qCWarning(GimbalControlLog)
@@ -1078,14 +1291,11 @@ bool GimbalControlManager::_confirmPulledVideoResolution(
         return false;
     }
 
-    const bool capabilityChanged = !_pulledVideoResolutionConfirmed
-        || qAbs(_pulledVideoMaximumZoom - maximumZoom) > kZoomComparisonTolerance;
-    if (!capabilityChanged) {
-        // Re-decoding the same resolution starts a new usable stream session.
-        // Reuse its ceiling, but immediately rebuild the actual-zoom reference
-        // which the disconnect path intentionally discarded. Otherwise the
-        // buttons look usable while the first tap is rejected until the next
-        // two-second background poll.
+    if (_pulledVideoResolutionConfirmed) {
+        // Re-decoding a supported resolution starts a new usable stream
+        // session. The ceiling remains owned by the independent recording
+        // stream query, but rebuild the actual-zoom reference which the
+        // disconnect path intentionally discarded.
         const bool resumingStreamSession = !_videoStreamAvailable;
         _lastRejectedPulledVideoSize = QSize();
         _pulledVideoFallbackTimer.stop();
@@ -1110,22 +1320,18 @@ bool GimbalControlManager::_confirmPulledVideoResolution(
         return true;
     }
 
-    const bool replacingConfirmedResolution = _pulledVideoResolutionConfirmed;
     _lastRejectedPulledVideoSize = QSize();
     _pulledVideoFallbackTimer.stop();
     _videoManagerFallbackCandidate = QSize();
     _pulledVideoResolutionConfirmed = true;
-    _pulledVideoMaximumZoom = maximumZoom;
-    _refreshMaximumZoomCapability(sourceDescription);
     _setVideoStreamAvailable(true);
     qCInfo(GimbalControlLog)
-        << (replacingConfirmedResolution
-                ? "Updated pulled video resolution:"
-                : "Latched pulled video resolution:")
+        << "Latched pulled video session resolution:"
         << width << "x" << height
         << "source" << sourceDescription
-        << "pulled-video maximum zoom" << maximumZoom
-        << "effective terminal maximum zoom" << _maximumZoom;
+        << "recording capability known" << _maximumZoomKnown
+        << "effective terminal maximum zoom"
+        << (_maximumZoomKnown ? _maximumZoom : -1.0);
     return true;
 }
 
@@ -1216,6 +1422,34 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         return;
     }
 
+    if (_nativeHoldTargetLatched) {
+        // The displayed value is deliberately the legal elapsed-time target.
+        // After native motion stops, a nearby or delayed 0x18 observation must
+        // not rename that target or trigger an opposite-direction correction.
+        // Retain it until a newer explicit command is accepted.
+        double retainedTarget =
+            qBound(kMinZoom, _currentZoom, _maximumZoom);
+        if (!A8MiniZoomPolicy::isAlignedZoom(retainedTarget,
+                                             zoomStep(),
+                                             kMinZoom,
+                                             _maximumZoom)
+            && !A8MiniZoomPolicy::alignmentTarget(retainedTarget,
+                                                   zoomStep(),
+                                                   kMinZoom,
+                                                   _maximumZoom,
+                                                   0,
+                                                   &retainedTarget)) {
+            retainedTarget = kMinZoom;
+        }
+        _zoomOperationTimer.stop();
+        _clearStableZoomConfirmation();
+        _requestedZoom = retainedTarget;
+        _setCurrentZoom(retainedTarget);
+        _setZoomStatusKnown(true);
+        _setZoomValueUncertain(false);
+        return;
+    }
+
     if (_suppressIdleAlignmentUntilExplicitZoom && _zoomStatusKnown) {
         // After an explicit command, currentZoom intentionally remains the
         // user target. Idle 0x18 polling may update _latestActualZoom, but it
@@ -1252,7 +1486,7 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
             return;
         }
 
-        // 拉流上限降低时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
+        // 有效卡录/设备上限降低时镜头可能仍在更高倍率。先确认两次相同超限值，再命令
         // 回有效网格上限；确认期间保留上一合法档，不公开超限raw值。
         if (!_stableZoomConfirmationPending
             || !_stableZoomCandidateValid
@@ -1280,8 +1514,8 @@ void GimbalControlManager::_handleCurrentZoom(double zoomLevel)
         }
         qCWarning(GimbalControlLog)
             << "Confirmed SIYI zoom" << zoomLevel
-            << "above pulled-video limit" << _maximumZoom
-            << "- commanding the exact pulled-video terminal maximum";
+            << "above effective recording-mode limit" << _maximumZoom
+            << "- commanding the exact effective terminal maximum";
         return;
     }
 
@@ -1534,8 +1768,8 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
                                             kMinZoom,
                                             _maximumZoom)) {
         // SDK reachability is diagnostic and may briefly flap while the
-        // decoded-video session remains healthy. Keep the last feedback-
-        // confirmed legal stop visible and usable; no old movement is replayed.
+        // decoded-video session remains healthy. Keep the last published legal
+        // target visible and usable; no old movement is replayed.
         _requestedZoom = _currentZoom;
         _setZoomValueUncertain(false);
         emit zoomAvailabilityChanged();
@@ -1608,9 +1842,12 @@ void GimbalControlManager::_pollSdk()
     _tryConfirmPulledVideoResolution();
     _schedulePulledVideoResolutionFallback();
 
-    // Keep polling 0x16 for diagnostics. Once the pulled-video resolution is
-    // confirmed it no longer changes the UI ceiling.
+    // The recording stream (0x20, stream type 0) owns the mode-to-limit
+    // mapping. 0x16 is polled alongside it as a device-side safety cross-check.
+    // Replies may be coalesced into one UDP datagram; SiyiSdk splits and
+    // validates every frame before dispatching it.
     _configureSdkEndpoint();
+    (void) _sdk->requestRecordingStreamParameters();
     (void) _sdk->requestMaximumZoom();
 
     // 有绝对目标、稳定值确认或长按重复步骤时，由专用同步定时器串行查询。
@@ -1754,14 +1991,31 @@ void GimbalControlManager::_pollContinuousZoom()
             (void) _stopContinuousZoom(false);
             return;
         }
-        if (!_advanceHeldZoomTarget()) {
+        if (!_advanceHeldZoomDisplayTarget()) {
             (void) _stopContinuousZoom(false);
             if (_lastError.isEmpty()) {
                 _setLastError(
-                    tr("Failed to send the next timed SIYI zoom target."));
+                    tr("Failed to advance the timed SIYI zoom target."));
             }
             return;
         }
+        if (_heldZoomDisplayAtTerminal()) {
+            // The recording-mode endpoint is a hard logical boundary.
+            // Stop native motion as soon as the timed target first reaches it;
+            // never let free-running 0x05 continue toward another recording mode's
+            // larger range. No post-stop 0x0f correction is issued because it
+            // could reverse an overshot physical lens.
+            if (!_stopContinuousZoom(false) && _lastError.isEmpty()) {
+                _setLastError(
+                    tr("Failed to stop SIYI zoom at the timed recording-mode limit."));
+            }
+            return;
+        }
+
+        // Keep elapsed-time advancement and terminal stopping on an independent
+        // 120 ms cadence. Serializing it behind a diagnostic 0x18 query would
+        // let a lost reply delay the recording-limit stop by the query timeout.
+        // One settled 0x18 observation is requested after the real 0x05 stop.
         if (_continuousZoomActive) {
             _continuousZoomStepTimer.start(kManualZoomPollIntervalMs);
         }
@@ -1939,8 +2193,8 @@ bool GimbalControlManager::_sendAbsoluteZoomTarget(double zoomLevel,
         return false;
     }
 
-    // Drain any bounded stop retry retained by a pre-existing manager session
-    // before a new 0x0f command. New held gestures themselves use no 0x05.
+    // Drain any bounded native-hold stop retry before a new 0x0f command so a
+    // delayed stop can never arrive behind this absolute target.
     if (!_flushPendingManualZoomStop()) {
         return false;
     }
@@ -2033,26 +2287,79 @@ bool GimbalControlManager::_stopContinuousZoom(bool finalizeAfterStop)
         return true;
     }
 
+    // Normal release takes one final time sample before stopping. Cancellation
+    // intentionally preserves the last target already shown and creates no
+    // extra target transition.
+    const bool finalTargetResolved =
+        !finalizeAfterStop || _advanceHeldZoomDisplayTarget();
     const int stoppedDirection = _continuousZoomDirection;
-    const bool finalTargetSent =
-        !finalizeAfterStop || _advanceHeldZoomTarget();
+    const QString stopHost = _manualZoomSessionHost;
+    const quint16 stopPort = _manualZoomSessionPort;
 
-    // Held zoom consists only of bounded absolute targets. Releasing or
-    // cancelling therefore stops the local duration timer; there is no native
-    // 0x05 motion to stop and no post-release correction which could reverse
-    // direction.
+    // Clear the running state before the UDP write. A local write failure can
+    // synchronously emit communicationError; this ordering prevents recursive
+    // stop attempts while retaining the endpoint in local snapshots.
     _continuousZoomWatchdog.stop();
     _continuousZoomStepTimer.stop();
+    _manualZoomStopRetryTimer.stop();
+    _manualZoomStopRetryAttemptsRemaining = 0;
+    _zoomSyncTimer.stop();
+    _zoomOperationTimer.stop();
+    _cancelOutstandingZoomQuery();
+    _zoomResponseBlocked = true;
     _heldZoomElapsed.invalidate();
     _setContinuousZoomState(false);
+    _cancelManualZoomFinalize();
+
+    const bool stopEndpointValid =
+        _sdk && !stopHost.isEmpty() && stopPort != 0;
+    _manualZoomSessionHost = stopEndpointValid ? stopHost : QString();
+    _manualZoomSessionPort = stopEndpointValid ? stopPort : 0;
+    _manualZoomStopRetryAttemptsRemaining =
+        stopEndpointValid ? kManualZoomStopMaximumRetryAttempts : 0;
+    const bool stopSent =
+        stopEndpointValid && _sdk->sendManualZoomTo(0, stopHost, stopPort);
+
+    if (stopSent) {
+        // UDP write success does not prove delivery. Retain one bounded safety
+        // duplicate; a newer gesture flushes it before sending its start.
+        _manualZoomStopRetryTimer.start(kManualZoomStopRetryMs);
+    } else if (stopEndpointValid) {
+        // The start may have reached the camera even when the local stop write
+        // fails. Retry only stop packets and never replay the direction.
+        _manualZoomStopRetryTimer.start(kManualZoomStopRetryMs);
+    } else {
+        _manualZoomSessionHost.clear();
+        _manualZoomSessionPort = 0;
+        _manualZoomStopRetryAttemptsRemaining = 0;
+    }
+
+    // Keep the legal time-derived target. A settled 0x18 value may differ
+    // slightly because of camera quantization or motion timing, so it is useful
+    // as observation but never as grounds for a post-release absolute command
+    // that could reverse the just-finished gesture.
+    _requestedZoom = _currentZoom;
+    _suppressIdleAlignmentUntilExplicitZoom = true;
+    _setZoomValueUncertain(false);
+    if (enabled() && _maximumZoomKnown) {
+        _zoomSyncTimer.start(kManualZoomStopQueryDelayMs);
+    }
+    emit zoomAvailabilityChanged();
+
     qCInfo(GimbalControlLog)
-        << "Stopped timed held SIYI zoom direction" << stoppedDirection
-        << "final duration target sent" << finalTargetSent;
-    return finalTargetSent;
+        << "Stopped native continuous SIYI zoom direction"
+        << stoppedDirection
+        << "final display target resolved" << finalTargetResolved
+        << "target" << _currentZoom
+        << "stop sent" << stopSent;
+    return finalTargetResolved && stopSent;
 }
 
 bool GimbalControlManager::_flushPendingManualZoomStop()
 {
+    if (_continuousZoomActive) {
+        return false;
+    }
     if (!_manualZoomStopRetryTimer.isActive()
         && (_manualZoomSessionHost.isEmpty()
             || _manualZoomSessionPort == 0
@@ -2066,6 +2373,9 @@ bool GimbalControlManager::_flushPendingManualZoomStop()
 
 bool GimbalControlManager::_sendPendingManualZoomStop()
 {
+    if (_continuousZoomActive) {
+        return false;
+    }
     _manualZoomStopRetryTimer.stop();
     if (_manualZoomSessionHost.isEmpty()
         || _manualZoomSessionPort == 0
@@ -2152,275 +2462,34 @@ void GimbalControlManager::_cancelManualZoomFinalize()
     }
 }
 
-void GimbalControlManager::_publishLegalZoom(double zoomLevel)
-{
-    const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
-    if (!A8MiniZoomPolicy::isAlignedZoom(normalizedZoom,
-                                         zoomStep(),
-                                         kMinZoom,
-                                         _maximumZoom)) {
-        return;
-    }
-
-    _requestedZoom = normalizedZoom;
-    if (!_latestActualZoomKnown) {
-        _latestActualZoom = normalizedZoom;
-        _latestActualZoomKnown = true;
-    }
-    _setCurrentZoom(normalizedZoom);
-    _setZoomValueUncertain(false);
-    _setZoomStatusKnown(true);
-    emit zoomAvailabilityChanged();
-}
-
-void GimbalControlManager::_publishAbsoluteZoomProgress(double zoomLevel)
-{
-    if (!_absoluteZoomPending
-        || !_zoomStatusKnown
-        || !qIsFinite(zoomLevel)) {
-        return;
-    }
-
-    if (qAbs(zoomLevel - _currentZoom) <= kZoomComparisonTolerance) {
-        _setZoomValueUncertain(false);
-        return;
-    }
-
-    // Legacy progress helper: only an exact 0x18 value on the single canonical
-    // path can be promoted. Off-grid samples such as 1.6 remain private.
-    double progressZoom = 0.0;
-    if (A8MiniZoomPolicy::exactDirectionalProgressStop(
-            _currentZoom,
-            _requestedZoom,
-            zoomLevel,
-            zoomStep(),
-            kMinZoom,
-            _maximumZoom,
-            &progressZoom)) {
-        _setCurrentZoom(progressZoom);
-        _setZoomStatusKnown(true);
-        _setZoomValueUncertain(false);
-    }
-}
-
-void GimbalControlManager::_handleContinuousZoomSample(double zoomLevel)
-{
-    if (!_continuousZoomActive || !qIsFinite(zoomLevel)) {
-        return;
-    }
-
-    const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
-    _publishZoomProgress(normalizedZoom);
-
-    double boundaryTarget = 0.0;
-    if (_continuousZoomDirection > 0) {
-        if (normalizedZoom >= _maximumZoom - kZoomComparisonTolerance) {
-            boundaryTarget = _maximumZoom;
-        } else {
-            // Legacy native-motion handoff to the exact upper endpoint.
-            double previousMaximumStop = 0.0;
-            if (A8MiniZoomPolicy::terminalHandoffStop(
-                    zoomStep(),
-                    kMinZoom,
-                    _maximumZoom,
-                    1,
-                    &previousMaximumStop)
-                && normalizedZoom
-                    >= previousMaximumStop - kZoomComparisonTolerance) {
-                boundaryTarget = _maximumZoom;
-            }
-        }
-    } else if (_continuousZoomDirection < 0) {
-        if (normalizedZoom <= kMinZoom + kZoomComparisonTolerance) {
-            boundaryTarget = kMinZoom;
-        } else {
-            // Legacy native-motion handoff to the exact lower endpoint.
-            double previousMinimumStop = 0.0;
-            if (A8MiniZoomPolicy::terminalHandoffStop(
-                    zoomStep(),
-                    kMinZoom,
-                    _maximumZoom,
-                    -1,
-                    &previousMinimumStop)
-                && normalizedZoom
-                    <= previousMinimumStop + kZoomComparisonTolerance) {
-                boundaryTarget = kMinZoom;
-            }
-        }
-    }
-
-    if (boundaryTarget <= 0.0) {
-        return;
-    }
-
-    const bool stopped = _stopContinuousZoom(false);
-    // Complete the bounded duplicate stop synchronously before 0x0f. A delayed
-    // stop must never arrive behind the exact boundary target.
-    const bool duplicateStopSent = _flushPendingManualZoomStop();
-    _cancelManualZoomFinalize();
-    if (!stopped || !duplicateStopSent || !_maximumZoomKnown) {
-        _suppressIdleAlignmentUntilExplicitZoom = true;
-        return;
-    }
-
-    // A sample captured while 0x05 was running is never proof that the lens
-    // remained at that value after stop. Always command and confirm the exact
-    // legal boundary; do not publish the in-motion sample.
-    if (!_sendAbsoluteZoomTarget(boundaryTarget,
-                                 false,
-                                 false,
-                                 false)) {
-        _suppressIdleAlignmentUntilExplicitZoom = true;
-    }
-}
-
-void GimbalControlManager::_publishZoomProgress(double zoomLevel)
-{
-    int progressDirection = 0;
-    if (_continuousZoomActive) {
-        progressDirection = _continuousZoomDirection;
-    } else if (_manualZoomFinalizePending) {
-        progressDirection = _manualZoomFinalizeDirection;
-    }
-    if ((progressDirection != -1 && progressDirection != 1)
-        || !qIsFinite(zoomLevel)) {
-        return;
-    }
-
-    if (!_zoomStatusKnown
-        || !A8MiniZoomPolicy::isAlignedZoom(_currentZoom,
-                                             zoomStep(),
-                                             kMinZoom,
-                                             _maximumZoom)) {
-        // Never manufacture the first displayed stop from an off-grid sample.
-        // Initial synchronization or bounded release alignment must establish
-        // the first exact legal value.
-        return;
-    }
-    double logicalZoom = _currentZoom;
-
-    // A legacy progress sample may skip multiple configured stops. Walk the
-    // single legal table, never rounding an in-between raw value.
-    for (int crossedStops = 0; crossedStops < 64; ++crossedStops) {
-        double nextLogicalZoom = 0.0;
-        if (!A8MiniZoomPolicy::stepTarget(logicalZoom,
-                                          zoomStep(),
-                                          kMinZoom,
-                                          _maximumZoom,
-                                          progressDirection,
-                                          &nextLogicalZoom)) {
-            break;
-        }
-        if (!A8MiniZoomPolicy::feedbackReachedStop(
-                zoomLevel,
-                nextLogicalZoom,
-                progressDirection)) {
-            break;
-        }
-        logicalZoom = nextLogicalZoom;
-    }
-
-    if (!A8MiniZoomPolicy::isAlignedZoom(logicalZoom,
-                                         zoomStep(),
-                                         kMinZoom,
-                                         _maximumZoom)) {
-        return;
-    }
-
-    if (!_absoluteZoomPending) {
-        _requestedZoom = logicalZoom;
-    }
-    _setCurrentZoom(logicalZoom);
-    _setZoomStatusKnown(true);
-    _setZoomValueUncertain(false);
-}
-
 void GimbalControlManager::_finishManualZoomStop(double zoomLevel)
 {
     if (!_manualZoomFinalizePending || !qIsFinite(zoomLevel)) {
         return;
     }
-    if (!_manualZoomFinalizeDeadlineOpen()) {
-        _expireManualZoomFinalize();
-        return;
-    }
 
-    const double normalizedZoom = qRound(zoomLevel * 10.0) / 10.0;
-    _publishZoomProgress(normalizedZoom);
-    if (!_manualZoomFinalCandidateValid
-        || qAbs(normalizedZoom - _manualZoomFinalCandidate)
-            > kZoomComparisonTolerance) {
-        _manualZoomFinalCandidate = normalizedZoom;
-        _manualZoomFinalCandidateValid = true;
-        _manualZoomFinalMatchCount = 1;
-        _continuousZoomStepTimer.start(kManualZoomPollIntervalMs);
-        return;
-    }
-
-    ++_manualZoomFinalMatchCount;
-    if (_manualZoomFinalMatchCount < kManualZoomFinalConfirmationCount) {
-        _continuousZoomStepTimer.start(kManualZoomPollIntervalMs);
-        return;
-    }
-
-    double alignedZoom = _currentZoom;
-    if (!_zoomStatusKnown
-        || !A8MiniZoomPolicy::isAlignedZoom(alignedZoom,
-                                             zoomStep(),
-                                             kMinZoom,
-                                             _maximumZoom)) {
-        if (!A8MiniZoomPolicy::alignmentTarget(
-                qBound(kMinZoom, normalizedZoom, _maximumZoom),
-                zoomStep(),
-                kMinZoom,
-                _maximumZoom,
-                0,
-                &alignedZoom)) {
-            _cancelManualZoomFinalize();
-            _suppressIdleAlignmentUntilExplicitZoom = true;
-            _setLastError(tr("Failed to resolve the stopped SIYI zoom to a legal step."));
-            return;
-        }
-    }
-
-    if (qAbs(normalizedZoom - alignedZoom) <= kZoomComparisonTolerance) {
-        _cancelManualZoomFinalize();
-        _suppressIdleAlignmentUntilExplicitZoom = false;
-        _publishLegalZoom(alignedZoom);
-        _setLastError(QString());
-        return;
-    }
-
-    // This is the only post-release movement allowed, and it is issued inside
-    // the bounded finalize window. If that window expires, no correction is
-    // sent later.
-    if (!_manualZoomFinalizeDeadlineOpen()) {
-        _expireManualZoomFinalize();
-        return;
-    }
-    _suppressIdleAlignmentUntilExplicitZoom = false;
-    if (!_sendAbsoluteZoomTarget(alignedZoom,
-                                 false,
-                                 false,
-                                 true)) {
-        if (_manualZoomFinalizePending) {
-            _cancelManualZoomFinalize();
-        }
-        _suppressIdleAlignmentUntilExplicitZoom = true;
-        _setZoomValueUncertain(false);
-        if (_lastError.isEmpty()) {
-            _setLastError(tr("Failed to align the stopped SIYI zoom to a legal step."));
-        }
-        return;
-    }
-    qCInfo(GimbalControlLog)
-        << "Aligned native continuous SIYI zoom raw" << normalizedZoom
-        << "to legal stop" << alignedZoom;
+    // Compatibility cleanup only. Current native holds never enter a finalize
+    // transaction, and even an unexpected legacy state must remain read-only:
+    // delayed or quantized 0x18 feedback is not sufficient grounds for an
+    // absolute correction which could reverse the lens.
+    _cancelManualZoomFinalize();
+    _nativeHoldTargetLatched = true;
+    _requestedZoom = _currentZoom;
+    _suppressIdleAlignmentUntilExplicitZoom = true;
+    _setZoomValueUncertain(false);
+    qCWarning(GimbalControlLog)
+        << "Discarded legacy SIYI manual-finalize sample" << zoomLevel
+        << "without sending an absolute correction";
 }
 
 GimbalControlManager::AlignmentAttemptResult
 GimbalControlManager::_tryRealignStableZoom(double zoomLevel, int direction)
 {
+    if (_nativeHoldTargetLatched) {
+        // Defense in depth: reconnect/settings code may request a stable
+        // normalization pass, but a native hold owns no delayed movement.
+        return AlignmentAttemptResult::NotNeeded;
+    }
     if (_automaticAlignmentSuppressedFor(zoomLevel)) {
         return AlignmentAttemptResult::NotNeeded;
     }
@@ -2594,30 +2663,25 @@ void GimbalControlManager::_finalizeConfirmedZoom(double zoomLevel)
 
 void GimbalControlManager::_resetMaximumZoomCapability()
 {
-    // SDK timeout clears only the diagnostic 0x16 value. A confirmed stream
-    // resolution keeps its exact ceiling and keeps the controls unlocked.
+    // Neither a pulled-video size nor a stale device maximum may substitute
+    // for the recording-stream resolution. A fresh 0x20 reply is required
+    // before zoom controls can be unlocked again.
+    _recordingCapabilityTimeoutTimer.stop();
+    _recordingResolutionConfirmed = false;
+    _recordingVideoSize = QSize();
+    _recordingResolutionMaximumZoom = kDefaultMaxZoom;
     _deviceMaximumZoomKnown = false;
     _deviceMaximumZoom = kProtocolMaxZoom;
+    _nativeHoldTargetLatched = false;
     _clearAutomaticAlignmentSuppression();
-    _setMaximumZoomKnown(_pulledVideoResolutionConfirmed);
-    if (_pulledVideoResolutionConfirmed) {
-        _capabilityMaximumZoom = _pulledVideoMaximumZoom;
-        double alignedMaximum = kMinZoom;
-        if (A8MiniZoomPolicy::alignedMaximumZoom(_capabilityMaximumZoom,
-                                                  zoomStep(),
-                                                  kMinZoom,
-                                                  &alignedMaximum)) {
-            _setMaximumZoom(alignedMaximum);
-        }
-    } else {
-        _capabilityMaximumZoom = kDefaultMaxZoom;
-        double alignedMaximum = kMinZoom;
-        if (A8MiniZoomPolicy::alignedMaximumZoom(kDefaultMaxZoom,
-                                                  zoomStep(),
-                                                  kMinZoom,
-                                                  &alignedMaximum)) {
-            _setMaximumZoom(alignedMaximum);
-        }
+    _setMaximumZoomKnown(false);
+    _capabilityMaximumZoom = kDefaultMaxZoom;
+    double alignedMaximum = kMinZoom;
+    if (A8MiniZoomPolicy::alignedMaximumZoom(kDefaultMaxZoom,
+                                              zoomStep(),
+                                              kMinZoom,
+                                              &alignedMaximum)) {
+        _setMaximumZoom(alignedMaximum);
     }
     _clearStableZoomConfirmation();
 }
@@ -2632,8 +2696,8 @@ void GimbalControlManager::_scheduleZoomSync()
 void GimbalControlManager::_setCurrentZoom(double zoomLevel)
 {
     // currentZoom is the published legal target. It may come from a locally
-    // accepted 0x0f command or from a validated idle device observation, but
-    // an off-grid/intermediate device sample must never be published here.
+    // accepted tap 0x0f, a time-derived native-hold target, or a validated idle
+    // device observation. Off-grid/intermediate device samples stay private.
     if (!qIsFinite(zoomLevel)
         || !A8MiniZoomPolicy::isAlignedZoom(zoomLevel,
                                             zoomStep(),
@@ -2691,8 +2755,9 @@ void GimbalControlManager::_setVideoStreamAvailable(bool available)
     emit zoomAvailabilityChanged();
     qCInfo(GimbalControlLog)
         << "SIYI zoom controls"
-        << (zoomControlsUnlocked() ? "unlocked by pulled video stream"
-                                   : "locked because pulled video stream is unavailable");
+        << (zoomControlsUnlocked()
+                ? "unlocked by video session and recording capability"
+                : "locked pending video session or recording capability");
 }
 
 void GimbalControlManager::_setSdkResponding(bool responding)
