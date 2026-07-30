@@ -118,8 +118,8 @@ void SiyiSdk::_readPendingDatagrams()
         QByteArray datagram;
         datagram.resize(static_cast<int>(_socket.pendingDatagramSize()));
         QHostAddress sender;
-        quint16 senderPort = 0;
-        const qint64 bytesRead = _socket.readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        const qint64 bytesRead =
+            _socket.readDatagram(datagram.data(), datagram.size(), &sender);
         if (bytesRead <= 0) {
             continue;
         }
@@ -129,43 +129,19 @@ void SiyiSdk::_readPendingDatagrams()
         // (for example ::ffff:192.168.144.25). operator== uses strict conversion;
         // isEqual uses tolerant conversion and compares the logical IP address.
         if (!sender.isEqual(_host)) {
-            qCDebug(SiyiSdkLog) << "Ignoring SIYI datagram from unexpected host"
-                                << sender.toString() << senderPort
-                                << "configured endpoint" << _host.toString() << _port;
             continue;
         }
 
         QList<SiyiProtocol::DecodedPacket> decodedPackets;
         if (!SiyiProtocol::decodeDatagram(datagram, &decodedPackets)) {
-            qCDebug(SiyiSdkLog) << "Ignoring invalid SIYI datagram from"
-                                << sender.toString() << senderPort
-                                << "size" << datagram.size()
-                                << "data" << datagram.toHex(' ');
             continue;
-        }
-
-        // 37260 is the request destination. A proxy or NAT can change the reply
-        // source port, so it cannot be an online gate. Host and CRC are still checked.
-        if (senderPort != _port) {
-            qCDebug(SiyiSdkLog) << "Accepting valid SIYI datagram from alternate source port"
-                                << sender.toString() << senderPort
-                                << "configured destination port" << _port;
         }
 
         for (const SiyiProtocol::DecodedPacket& decoded : decodedPackets) {
             if (!SiyiProtocol::isAckPacket(decoded)) {
-                qCDebug(SiyiSdkLog) << "Ignoring non-ACK SIYI packet"
-                                    << "control" << decoded.control
-                                    << "command" << static_cast<int>(decoded.command);
                 continue;
             }
 
-            qCDebug(SiyiSdkLog)
-                << "Accepted SIYI command"
-                << static_cast<int>(decoded.command)
-                << "from" << sender.toString() << senderPort
-                << "local UDP port" << _socket.localPort()
-                << "payload" << decoded.payload.toHex(' ');
             _dispatchAck(decoded.command, decoded.payload);
         }
     }
@@ -178,7 +154,6 @@ void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
         if (SiyiProtocol::parseManualZoomAckPayload(payload, &zoomLevel)
             && zoomLevel >= _minimumZoom
             && zoomLevel <= _maximumZoom) {
-            qCDebug(SiyiSdkLog) << "Decoded SIYI manual zoom ACK" << zoomLevel;
             emit packetReceived();
             emit manualZoomReceived(zoomLevel);
         } else {
@@ -188,8 +163,6 @@ void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
     } else if (command == SiyiProtocol::CommandAbsoluteZoom) {
         bool accepted = false;
         if (SiyiProtocol::parseAbsoluteZoomAckPayload(payload, &accepted)) {
-            qCDebug(SiyiSdkLog) << "Decoded SIYI absolute zoom ACK"
-                                << (accepted ? "accepted" : "rejected");
             emit packetReceived();
             emit absoluteZoomFeedbackReceived(accepted);
         } else {
@@ -215,16 +188,9 @@ void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
         }
     } else if (command == SiyiProtocol::CommandMaximumZoomValue) {
         double zoomLevel = 0.0;
-        bool usedLegacyTenthsEncoding = false;
         if (SiyiProtocol::parseMaximumZoomPayload(payload,
                                                   _maximumZoom,
-                                                  &zoomLevel,
-                                                  &usedLegacyTenthsEncoding)) {
-            qCDebug(SiyiSdkLog) << "Decoded SIYI maximum zoom" << zoomLevel
-                                << "encoding"
-                                << (usedLegacyTenthsEncoding
-                                        ? "little-endian tenths compatibility"
-                                        : "integer plus decimal");
+                                                  &zoomLevel)) {
             emit packetReceived();
             emit maximumZoomReceived(zoomLevel);
         } else {
@@ -234,17 +200,10 @@ void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
         }
     } else if (command == SiyiProtocol::CommandCurrentZoomValue) {
         double zoomLevel = 0.0;
-        bool usedLegacyTenthsEncoding = false;
         if (SiyiProtocol::parseCurrentZoomPayload(payload,
                                                   _minimumZoom,
                                                   _maximumZoom,
-                                                  &zoomLevel,
-                                                  &usedLegacyTenthsEncoding)) {
-            qCDebug(SiyiSdkLog) << "Decoded SIYI current zoom" << zoomLevel
-                                << "encoding"
-                                << (usedLegacyTenthsEncoding
-                                        ? "little-endian tenths compatibility"
-                                        : "integer plus decimal");
+                                                  &zoomLevel)) {
             emit packetReceived();
             emit currentZoomReceived(zoomLevel);
         } else {
@@ -256,13 +215,6 @@ void SiyiSdk::_dispatchAck(quint8 command, const QByteArray& payload)
         SiyiProtocol::CameraEncodingParameters parameters;
         if (SiyiProtocol::parseCameraEncodingParametersPayload(
                 payload, &parameters)) {
-            qCDebug(SiyiSdkLog)
-                << "Decoded SIYI camera encoding parameters"
-                << "stream" << parameters.streamType
-                << "codec" << parameters.videoEncodingType
-                << "resolution" << parameters.width << "x" << parameters.height
-                << "bitrate kbps" << parameters.bitrateKbps
-                << "fps" << parameters.frameRate;
             emit packetReceived();
             if (parameters.streamType
                 == SiyiProtocol::CameraStreamRecording) {
@@ -302,14 +254,6 @@ bool SiyiSdk::_sendPacketTo(const QByteArray& packet, const QHostAddress& host, 
     if (written != packet.size()) {
         emit communicationError(tr("Failed to send SIYI SDK packet."));
         return false;
-    }
-
-    const auto decoded = SiyiProtocol::decodePacket(packet);
-    if (decoded.valid) {
-        qCDebug(SiyiSdkLog) << "Sent SIYI command" << static_cast<int>(decoded.command)
-                            << "to" << host.toString() << port
-                            << "local UDP port" << _socket.localPort()
-                            << "payload" << decoded.payload.toHex(' ');
     }
 
     return true;

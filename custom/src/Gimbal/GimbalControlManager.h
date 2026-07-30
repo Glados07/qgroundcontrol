@@ -173,14 +173,13 @@ private:
     void _beginStableZoomConfirmation(bool normalizeToStepGrid, int direction);
     void _finalizeConfirmedZoom(double zoomLevel);
     void _resetMaximumZoomCapability();
-    void _refreshMaximumZoomCapability(const char* sourceDescription);
+    void _refreshMaximumZoomCapability();
     void _tryConfirmPulledVideoResolution();
     void _schedulePulledVideoResolutionFallback();
     void _tryConfirmPulledVideoResolutionFallback();
     void _invalidatePulledVideoResolutionCapability(const QSize& videoSize,
                                                     const char* sourceDescription);
-    void _applyMaximumZoomCapability(double maximumZoom,
-                                     const char* sourceDescription);
+    void _applyMaximumZoomCapability(double maximumZoom);
     bool _confirmPulledVideoResolution(const QSize& videoSize,
                                        const char* sourceDescription);
     void _scheduleZoomSync();
@@ -290,6 +289,9 @@ private:
     // a reverse correction. Keep this latch until a later explicit target is
     // accepted or the camera capability/session is reset.
     bool _nativeHoldTargetLatched = false;
+    // Log exactly one solicited 0x18 observation after a native hold stops.
+    // Periodic idle feedback remains silent.
+    bool _nativeHoldFeedbackLogPending = false;
     QString _manualZoomSessionHost;
     quint16 _manualZoomSessionPort = 0;
     int _manualZoomStopRetryAttemptsRemaining = 0;
