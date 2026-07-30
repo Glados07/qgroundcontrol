@@ -74,6 +74,72 @@
     </message>
 </context>
 <context>
+    <name>ProximityRadarIndicator</name>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="38"/>
+        <source>Forward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="39"/>
+        <source>Forward/Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="40"/>
+        <source>Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="41"/>
+        <source>Rear/Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="42"/>
+        <source>Rear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="43"/>
+        <source>Rear/Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="44"/>
+        <source>Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="45"/>
+        <source>Forward/Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="46"/>
+        <source>Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="47"/>
+        <source>Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ProximityRadarIndicatorPage</name>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="26"/>
+        <source>Proximity Radar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="47"/>
+        <source>%1 Radar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>VideoSettings</name>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
