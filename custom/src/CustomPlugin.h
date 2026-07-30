@@ -49,6 +49,7 @@ public:
     void cleanup() final;
     bool adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData) final;
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
+    void *createVideoSink(QQuickItem *widget, QObject *parent) final;
     bool mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message) final;
 
     QObject *viewer3DSettings();

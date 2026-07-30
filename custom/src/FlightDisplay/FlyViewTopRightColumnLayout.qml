@@ -34,7 +34,8 @@ ColumnLayout {
 
     // 新增 QML 未注册到原生 FlightDisplay 模块，必须通过 custom QRC 地址显式加载。
     // 启用私有相机模块后始终显示控制栏；SDK在线状态只控制按钮可用性，不再控制可见性。
-    // preferredWidth/Height 跟随实际控件，避免 Loader 在布局中形成零尺寸透明占位。
+    // preferredWidth/Height 跟随纵向控件的完整隐式尺寸，避免 Loader 在布局中
+    // 形成零尺寸透明占位或把整栏压缩成单个按钮高度。
     Loader {
         id:                     gimbalCameraControlLoader
         active:                 root._usePrivateCameraControl

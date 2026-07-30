@@ -14,6 +14,8 @@ import QGroundControl.FactControls
 Loader {
     id: root
 
+    implicitWidth: item ? item.implicitWidth : 0
+    implicitHeight: item ? item.implicitHeight : 0
     active: QGroundControl.corePlugin && QGroundControl.corePlugin.gimbalControlSettings
     sourceComponent: settingsComponent
 
@@ -25,7 +27,7 @@ Loader {
         SettingsGroupLayout {
             Layout.fillWidth: true
             heading: qsTr("SIYI Gimbal Camera")
-            headingDescription: qsTr("Controls zoom, photo capture and video recording through the private UDP SDK. Tap zoom for one step or press and hold for continuous zoom.")
+            headingDescription: qsTr("Private SDK camera controls.")
 
             FactCheckBoxSlider {
                 Layout.fillWidth: true

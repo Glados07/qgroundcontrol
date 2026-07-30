@@ -1,7 +1,10 @@
 /****************************************************************************
  *
  * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按按配置步长单步缩放；长按启动相机原生连续缩放，释放或取消时停止。
+ * 短按立即发送并显示下一合法0x0f目标；长按420 ms后通常只启动一次0x05
+ * 原生连续变倍，并从最初按下起按qRound(totalMs / 600)单调更新合法
+ * 显示目标。到达由卡录分辨率和设备反馈共同限定的有效端点立即停止，
+ * 且不做可能反向的绝对纠偏；拉流分辨率只负责视频会话可用门控。
  *
  ****************************************************************************/
 
@@ -20,58 +23,110 @@ Item {
                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
 
-    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
+    readonly property int gestureIdle: 0
+    readonly property int gesturePressed: 1
+    readonly property int gestureHolding: 2
+    readonly property int gestureConsumed: 3
+    readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
+    readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
+    readonly property bool canSend: online
+    readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
+    readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
-    implicitWidth: zoomRow.implicitWidth
-    implicitHeight: controlSize
+    implicitWidth: zoomColumn.implicitWidth
+    implicitHeight: zoomColumn.implicitHeight
 
-    function cancelContinuousZoom() {
-        if (manager && manager.continuousZoomActive) {
-            manager.stopZoom()
+    function cancelZoomGesture() {
+        var shouldStop = Boolean(zoomOutMouseArea && zoomOutMouseArea.gestureState === gestureHolding)
+                         || Boolean(zoomInMouseArea && zoomInMouseArea.gestureState === gestureHolding)
+                         || Boolean(manager && manager.continuousZoomActive)
+        if (zoomOutMouseArea) {
+            zoomOutMouseArea.consumeGesture()
+        }
+        if (zoomInMouseArea) {
+            zoomInMouseArea.consumeGesture()
+        }
+        if (shouldStop && manager) {
+            manager.cancelZoom()
         }
     }
 
     onOnlineChanged: {
         if (!online) {
-            cancelContinuousZoom()
+            cancelZoomGesture()
         }
     }
     onVisibleChanged: {
         if (!visible) {
-            cancelContinuousZoom()
+            cancelZoomGesture()
+        } else {
+            if (zoomOutMouseArea) {
+                zoomOutMouseArea.resetGestureIfReleased()
+            }
+            if (zoomInMouseArea) {
+                zoomInMouseArea.resetGestureIfReleased()
+            }
         }
     }
-    Component.onDestruction: cancelContinuousZoom()
+    Component.onDestruction: cancelZoomGesture()
 
     Connections {
         target: Qt.application
 
         function onStateChanged() {
             if (Qt.application.state !== Qt.ApplicationActive) {
-                root.cancelContinuousZoom()
+                root.cancelZoomGesture()
+            } else {
+                if (zoomOutMouseArea) {
+                    zoomOutMouseArea.resetGestureIfReleased()
+                }
+                if (zoomInMouseArea) {
+                    zoomInMouseArea.resetGestureIfReleased()
+                }
             }
         }
     }
 
-    RowLayout {
-        id: zoomRow
+    Connections {
+        target: root.manager
+        ignoreUnknownSignals: true
+
+        function onContinuousZoomActiveChanged() {
+            if (!root.manager || !root.manager.continuousZoomActive) {
+                if (zoomOutMouseArea) {
+                    zoomOutMouseArea.consumeExternalStop()
+                }
+                if (zoomInMouseArea) {
+                    zoomInMouseArea.consumeExternalStop()
+                }
+            }
+        }
+    }
+
+    GridLayout {
+        id: zoomColumn
 
         anchors.fill: parent
-        spacing: root.controlSpacing
+        columns: 1
+        columnSpacing: 0
+        rowSpacing: root.controlSpacing
 
         Rectangle {
             id: zoomOutButton
 
+            Layout.row: 2
+            Layout.column: 0
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
+            Layout.alignment: Qt.AlignHCenter
             radius: width / 2
             color: zoomOutMouseArea.pressed ? "#f2ffffff" : (zoomOutMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomOutMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: root.online
-                     && root.zoomValue > (root.manager.minimumZoom + 0.05)
-                     && (!root.manager.continuousZoomActive || zoomOutMouseArea.pressed)
+            enabled: root.canSend
+                     && (zoomOutMouseArea.gestureState !== root.gestureIdle
+                         || root.canZoomOut)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
 
@@ -96,49 +151,88 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 pressAndHoldInterval: 420
 
-                property bool holdTriggered: false
-                property bool continuousStarted: false
+                property int gestureState: root.gestureIdle
+                property real pressStartedAtMs: 0
+
+                function consumeGesture() {
+                    gestureState = pressed ? root.gestureConsumed : root.gestureIdle
+                }
+
+                function consumeExternalStop() {
+                    if (gestureState === root.gestureHolding) {
+                        consumeGesture()
+                    }
+                }
+
+                function resetGestureIfReleased() {
+                    if (!pressed) {
+                        gestureState = root.gestureIdle
+                    }
+                }
 
                 onPressed: {
-                    holdTriggered = false
-                    continuousStarted = false
+                    pressStartedAtMs = Date.now()
+                    gestureState = root.gesturePressed
                 }
                 onPressAndHold: {
-                    holdTriggered = true
-                    continuousStarted = root.manager.startZoom(-1)
+                    if (gestureState !== root.gesturePressed) {
+                        return
+                    }
+
+                    // 先标记为已消费，避免后端同步改变 enabled 时重入并在释放
+                    // 阶段误补发一次短按命令。长按420 ms后成立；Manager以真实
+                    // 按下时刻为时间零点，按qRound(totalMs / 600)只推进同方向
+                    // 合法显示目标；物理运动通常只启动一次原生0x05连续变倍。
+                    gestureState = root.gestureConsumed
+                    const totalPressDurationMs = Math.max(
+                        420, Math.round(Date.now() - pressStartedAtMs))
+                    if (root.manager
+                            && root.manager.startZoomWithPressDuration(
+                                -1, totalPressDurationMs)) {
+                        gestureState = root.gestureHolding
+                    }
                 }
-                onReleased: {
-                    if (holdTriggered) {
-                        if (continuousStarted || root.manager.continuousZoomActive) {
-                            root.manager.stopZoom()
-                        }
-                    } else if (containsMouse) {
+                onReleased: function(mouse) {
+                    const completedState = gestureState
+                    const releasedInside = mouse.x >= 0 && mouse.x <= width
+                                           && mouse.y >= 0 && mouse.y <= height
+                    gestureState = root.gestureIdle
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.stopZoom()
+                    } else if (completedState === root.gesturePressed
+                               && releasedInside
+                               && root.manager) {
                         root.manager.zoomOut()
                     }
-                    holdTriggered = false
-                    continuousStarted = false
                 }
                 onCanceled: {
-                    if (continuousStarted || (root.manager && root.manager.continuousZoomActive)) {
-                        root.manager.stopZoom()
+                    const completedState = gestureState
+                    gestureState = root.gestureIdle
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.cancelZoom()
                     }
-                    holdTriggered = false
-                    continuousStarted = false
                 }
                 onExited: {
-                    if (pressed && continuousStarted) {
-                        holdTriggered = true
-                        root.manager.stopZoom()
-                        continuousStarted = false
+                    if (!pressed) {
+                        return
+                    }
+
+                    const completedState = gestureState
+                    gestureState = root.gestureConsumed
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.cancelZoom()
                     }
                 }
             }
         }
 
         Rectangle {
-            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5.2
+            Layout.row: 1
+            Layout.column: 0
+            Layout.preferredWidth: Math.max(root.controlSize,
+                                            ScreenTools.defaultFontPixelWidth * 5.2)
             Layout.preferredHeight: root.controlSize * 0.78
-            Layout.alignment: Qt.AlignVCenter
+            Layout.alignment: Qt.AlignHCenter
             radius: height / 2
             color: "#e8ffffff"
             border.color: "#80ffffff"
@@ -146,7 +240,10 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                text: root.online ? root.zoomValue.toFixed(1) + "x" : "--"
+                // currentZoom表示当前合法目标倍率；目标成功发送后立即显示。
+                text: root.online && root.zoomKnown
+                      ? root.zoomValue.toFixed(1) + "x"
+                      : "--"
                 color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize
@@ -156,15 +253,18 @@ Item {
         Rectangle {
             id: zoomInButton
 
+            Layout.row: 0
+            Layout.column: 0
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
+            Layout.alignment: Qt.AlignHCenter
             radius: width / 2
             color: zoomInMouseArea.pressed ? "#f2ffffff" : (zoomInMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
             border.color: zoomInMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
             border.width: 1
-            enabled: root.online
-                     && root.zoomValue < (root.manager.maximumZoom - 0.05)
-                     && (!root.manager.continuousZoomActive || zoomInMouseArea.pressed)
+            enabled: root.canSend
+                     && (zoomInMouseArea.gestureState !== root.gestureIdle
+                         || root.canZoomIn)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomInMouseArea.pressed ? 0.94 : 1.0
 
@@ -189,40 +289,75 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 pressAndHoldInterval: 420
 
-                property bool holdTriggered: false
-                property bool continuousStarted: false
+                property int gestureState: root.gestureIdle
+                property real pressStartedAtMs: 0
+
+                function consumeGesture() {
+                    gestureState = pressed ? root.gestureConsumed : root.gestureIdle
+                }
+
+                function consumeExternalStop() {
+                    if (gestureState === root.gestureHolding) {
+                        consumeGesture()
+                    }
+                }
+
+                function resetGestureIfReleased() {
+                    if (!pressed) {
+                        gestureState = root.gestureIdle
+                    }
+                }
 
                 onPressed: {
-                    holdTriggered = false
-                    continuousStarted = false
+                    pressStartedAtMs = Date.now()
+                    gestureState = root.gesturePressed
                 }
                 onPressAndHold: {
-                    holdTriggered = true
-                    continuousStarted = root.manager.startZoom(1)
+                    if (gestureState !== root.gesturePressed) {
+                        return
+                    }
+
+                    // 长按420 ms后成立；Manager以真实按下时刻为时间零点，
+                    // 按qRound(totalMs / 600)只推进同方向合法显示目标；物理
+                    // 运动通常只启动一次原生0x05连续变倍，释放不会补发短按。
+                    gestureState = root.gestureConsumed
+                    const totalPressDurationMs = Math.max(
+                        420, Math.round(Date.now() - pressStartedAtMs))
+                    if (root.manager
+                            && root.manager.startZoomWithPressDuration(
+                                1, totalPressDurationMs)) {
+                        gestureState = root.gestureHolding
+                    }
                 }
-                onReleased: {
-                    if (holdTriggered) {
-                        if (continuousStarted || root.manager.continuousZoomActive) {
-                            root.manager.stopZoom()
-                        }
-                    } else if (containsMouse) {
+                onReleased: function(mouse) {
+                    const completedState = gestureState
+                    const releasedInside = mouse.x >= 0 && mouse.x <= width
+                                           && mouse.y >= 0 && mouse.y <= height
+                    gestureState = root.gestureIdle
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.stopZoom()
+                    } else if (completedState === root.gesturePressed
+                               && releasedInside
+                               && root.manager) {
                         root.manager.zoomIn()
                     }
-                    holdTriggered = false
-                    continuousStarted = false
                 }
                 onCanceled: {
-                    if (continuousStarted || (root.manager && root.manager.continuousZoomActive)) {
-                        root.manager.stopZoom()
+                    const completedState = gestureState
+                    gestureState = root.gestureIdle
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.cancelZoom()
                     }
-                    holdTriggered = false
-                    continuousStarted = false
                 }
                 onExited: {
-                    if (pressed && continuousStarted) {
-                        holdTriggered = true
-                        root.manager.stopZoom()
-                        continuousStarted = false
+                    if (!pressed) {
+                        return
+                    }
+
+                    const completedState = gestureState
+                    gestureState = root.gestureConsumed
+                    if (completedState === root.gestureHolding && root.manager) {
+                        root.manager.cancelZoom()
                     }
                 }
             }

@@ -231,6 +231,31 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     CACHE INTERNAL "" FORCE
 )
 
+# 协议测试保持在 custom 内，避免为了私有云台功能修改原生 test 框架。
+# 移动端构建不生成额外测试应用；桌面 Debug/显式测试构建可直接运行该用例。
+if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    enable_testing()
+    qt_add_executable(SiyiProtocolTest
+        test/Gimbal/SiyiProtocolTest.cc
+        src/Gimbal/A8MiniZoomPolicy.cc
+        src/Gimbal/A8MiniZoomPolicy.h
+        src/Gimbal/SiyiProtocol.cc
+        src/Gimbal/SiyiProtocol.h
+    )
+    target_include_directories(SiyiProtocolTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(SiyiProtocolTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME SiyiProtocolTest COMMAND $<TARGET_FILE:SiyiProtocolTest>)
+    add_custom_target(check_siyi_protocol
+        COMMAND $<TARGET_FILE:SiyiProtocolTest>
+        DEPENDS SiyiProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+endif()
+
 # custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。
 file(GLOB CUSTOM_TS_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/translations/custom_*.ts"

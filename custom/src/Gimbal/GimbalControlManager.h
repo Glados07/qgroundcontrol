@@ -7,12 +7,18 @@
 
 #pragma once
 
+#include "A8MiniZoomPolicy.h"
+
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
+#include <QtCore/QSize>
+#include <QtCore/QString>
 #include <QtCore/QTimer>
 
 class Fact;
 class GimbalControlSettings;
 class SiyiSdk;
+class VideoManager;
 
 class GimbalControlManager : public QObject
 {
@@ -21,8 +27,14 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(double currentZoom READ currentZoom NOTIFY currentZoomChanged)
     Q_PROPERTY(double zoomStep READ zoomStep NOTIFY zoomStepChanged)
     Q_PROPERTY(double minimumZoom READ minimumZoom CONSTANT)
-    Q_PROPERTY(double maximumZoom READ maximumZoom CONSTANT)
+    Q_PROPERTY(double maximumZoom READ maximumZoom NOTIFY maximumZoomChanged)
     Q_PROPERTY(bool sdkResponding READ sdkResponding NOTIFY sdkRespondingChanged)
+    Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
+    Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomControlsUnlocked READ zoomControlsUnlocked NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomCommandPending READ zoomCommandPending NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomValueUncertain READ zoomValueUncertain NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
     Q_PROPERTY(bool cameraStatusKnown READ cameraStatusKnown NOTIFY cameraStatusKnownChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
@@ -38,8 +50,20 @@ public:
     double currentZoom() const { return _currentZoom; }
     double zoomStep() const;
     double minimumZoom() const { return kMinZoom; }
-    double maximumZoom() const { return kMaxZoom; }
+    double maximumZoom() const { return _maximumZoom; }
     bool sdkResponding() const { return _sdkResponding; }
+    bool zoomStatusKnown() const { return _zoomStatusKnown; }
+    bool zoomInAvailable() const;
+    bool zoomOutAvailable() const;
+    bool zoomControlsUnlocked() const {
+        return enabled() && _videoStreamAvailable && _maximumZoomKnown;
+    }
+    bool zoomCommandPending() const {
+        return _absoluteZoomPending
+            || _stableZoomConfirmationPending
+            || _manualZoomFinalizePending;
+    }
+    bool zoomValueUncertain() const { return _zoomValueUncertain; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
     bool cameraStatusKnown() const { return _cameraStatusKnown; }
     bool recording() const { return _recording; }
@@ -51,17 +75,27 @@ public:
     Q_INVOKABLE bool zoomOut();
     Q_INVOKABLE bool setZoom(double zoomLevel);
     Q_INVOKABLE bool startZoom(int direction);
+    Q_INVOKABLE bool startZoomWithPressDuration(int direction,
+                                                int pressDurationMs);
     Q_INVOKABLE bool stopZoom();
+    Q_INVOKABLE bool cancelZoom();
     Q_INVOKABLE bool takePhoto();
     Q_INVOKABLE bool toggleVideoRecording();
     Q_INVOKABLE bool requestCurrentZoom();
     Q_INVOKABLE bool requestCameraStatus();
 
+    /// Accepts the decoded main-stream size reported by the negotiated video
+    /// sink. The caller must invoke this method on the manager's Qt thread.
+    void setNegotiatedPulledVideoResolution(const QSize& videoSize);
+
 signals:
     void enabledChanged();
     void currentZoomChanged();
     void zoomStepChanged();
+    void maximumZoomChanged();
     void sdkRespondingChanged();
+    void zoomStatusKnownChanged();
+    void zoomAvailabilityChanged();
     void continuousZoomActiveChanged();
     void cameraStatusKnownChanged();
     void recordingChanged();
@@ -71,8 +105,19 @@ signals:
 
 private slots:
     void _settingsChanged();
+    void _handleZoomStepChanged();
+    void _handleManualZoomFeedback(double zoomLevel);
+    void _handleAbsoluteZoomFeedback(bool accepted);
+    void _handleMaximumZoom(double maximumZoom);
+    void _handleRecordingStreamParameters(quint8 videoEncodingType,
+                                          quint16 width,
+                                          quint16 height,
+                                          quint16 bitrateKbps,
+                                          quint8 frameRate);
     void _handleCurrentZoom(double zoomLevel);
-    void _handleManualZoom(double zoomLevel);
+    void _expireRecordingResolutionCapability();
+    void _handlePulledVideoSize();
+    void _handleVideoDecodingChanged();
     void _handleCameraSystemStatus(quint8 hdrStatus,
                                    quint8 recordingStatus,
                                    quint8 gimbalMotionMode,
@@ -82,19 +127,69 @@ private slots:
     void _handleFunctionFeedback(quint8 infoType);
     void _handleCommunicationError(const QString& message);
     void _markSdkNotResponding();
+    void _markZoomStatusUnknown();
+    void _handleZoomQueryTimeout();
     void _pollSdk();
-    void _advanceZoomStopSequence();
+    void _requestZoomAfterSettle();
+    void _pollContinuousZoom();
+    void _retryManualZoomStop();
+    void _expireManualZoomFinalize();
     void _stopContinuousZoomForSafety();
     void _requestRecordingStatusAfterDelay();
     void _handleRecordingCommandTimeout();
 
 private:
+    enum class AlignmentAttemptResult {
+        NotNeeded,
+        CommandSent,
+        SendFailed,
+    };
+
     void _configureSdkEndpoint();
-    bool _beginZoomStopSequence(const QString& host, quint16 port);
-    void _finishZoomStopSequenceBeforeStart();
-    void _clearZoomStopSequence();
+    bool _sendAbsoluteZoomTarget(double zoomLevel,
+                                 bool alignmentCorrection = false,
+                                 bool replacePendingTarget = false,
+                                 bool manualFinalizeCorrection = false);
+    bool _sendZoomStep(int direction);
+    bool _advanceHeldZoomDisplayTarget();
+    bool _heldZoomDisplayAtTerminal() const;
+    bool _zoomPlanningReference(double* zoomLevel) const;
+    bool _zoomDirectionAvailable(int direction) const;
+    bool _sendAlignmentCorrection(double targetZoom, double sourceZoom);
+    bool _sendCurrentZoomQuery(bool startOperationDeadline);
+    void _cancelOutstandingZoomQuery();
+    bool _stopContinuousZoom(bool finalizeAfterStop = true);
+    bool _flushPendingManualZoomStop();
+    bool _sendPendingManualZoomStop();
+    bool _manualZoomFinalizeDeadlineOpen() const;
+    void _cancelManualZoomFinalize();
+    void _finishManualZoomStop(double zoomLevel);
+    AlignmentAttemptResult _tryRealignStableZoom(double zoomLevel,
+                                                  int direction = 0);
+    bool _automaticAlignmentSuppressedFor(double zoomLevel) const;
+    void _suppressAutomaticAlignment(double zoomLevel);
+    void _clearAutomaticAlignmentSuppression();
+    void _clearStableZoomConfirmation();
+    void _beginStableZoomConfirmation(bool normalizeToStepGrid, int direction);
+    void _finalizeConfirmedZoom(double zoomLevel);
+    void _resetMaximumZoomCapability();
+    void _refreshMaximumZoomCapability();
+    void _tryConfirmPulledVideoResolution();
+    void _schedulePulledVideoResolutionFallback();
+    void _tryConfirmPulledVideoResolutionFallback();
+    void _invalidatePulledVideoResolutionCapability(const QSize& videoSize,
+                                                    const char* sourceDescription);
+    void _applyMaximumZoomCapability(double maximumZoom);
+    bool _confirmPulledVideoResolution(const QSize& videoSize,
+                                       const char* sourceDescription);
+    void _scheduleZoomSync();
     void _setCurrentZoom(double zoomLevel);
+    void _setMaximumZoom(double zoomLevel);
+    void _setMaximumZoomKnown(bool known);
+    void _setVideoStreamAvailable(bool available);
     void _setSdkResponding(bool responding);
+    void _setZoomStatusKnown(bool known);
+    void _setZoomValueUncertain(bool uncertain);
     void _setContinuousZoomState(bool active, int direction = 0);
     void _setCameraStatusKnown(bool known);
     void _setRecording(bool recording);
@@ -103,34 +198,103 @@ private:
     void _syncCameraStatus();
     void _setLastError(const QString& message);
     bool _cameraCommandAvailable();
-    bool _sendZoomStopTo(const QString& host, quint16 port);
-    QString _sdkHost() const;
-    double _clampZoom(double zoomLevel) const;
     quint16 _sdkPort() const;
 
     static constexpr double kMinZoom = 1.0;
-    static constexpr double kMaxZoom = 5.5;
+    static constexpr double kDefaultMaxZoom = 5.5;
+    static constexpr double kProtocolMaxZoom = 6.0;
+    static constexpr int kMaximumAlignmentAttempts = 2;
+    static constexpr int kDefaultZoomQueryTimeoutMs = 1000;
+    static constexpr int kManualZoomPollIntervalMs = 120;
+    static constexpr int kHeldZoomPressThresholdMs = 420;
+    static constexpr int kHeldZoomStepPeriodMs = 600;
+    static constexpr int kManualZoomQueryTimeoutMs = 250;
+    static constexpr int kManualZoomStopQueryDelayMs = 350;
+    static constexpr int kManualZoomStopRetryMs = 80;
+    static constexpr int kRecordingCapabilityTimeoutMs = 4500;
+    static constexpr int kManualZoomFinalizeTimeoutMs = 1000;
+    static constexpr int kManualZoomFinalConfirmationCount = 2;
+    static constexpr int kManualZoomStopMaximumRetryAttempts = 2;
 
     GimbalControlSettings* _settings = nullptr;
     SiyiSdk* _sdk = nullptr;
+    VideoManager* _videoManager = nullptr;
     QTimer _sdkResponseTimer;
+    QTimer _zoomOperationTimer;
+    QTimer _zoomQueryTimeoutTimer;
     QTimer _sdkPollTimer;
+    QTimer _recordingCapabilityTimeoutTimer;
     QTimer _continuousZoomWatchdog;
-    QTimer _zoomStopRetryTimer;
+    QTimer _continuousZoomStepTimer;
+    QTimer _manualZoomStopRetryTimer;
+    QTimer _manualZoomFinalizeTimer;
+    QTimer _zoomSyncTimer;
+    QTimer _pulledVideoFallbackTimer;
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
+    QElapsedTimer _manualZoomFinalizeElapsed;
+    QElapsedTimer _heldZoomElapsed;
     double _currentZoom = kMinZoom;
+    double _maximumZoom = kDefaultMaxZoom;
+    double _capabilityMaximumZoom = kDefaultMaxZoom;
+    double _recordingResolutionMaximumZoom = kDefaultMaxZoom;
+    double _deviceMaximumZoom = kProtocolMaxZoom;
+    double _requestedZoom = kMinZoom;
     bool _lastEnabled = false;
     bool _sdkResponding = false;
+    bool _maximumZoomKnown = false;
+    bool _videoStreamAvailable = false;
+    bool _pulledVideoResolutionConfirmed = false;
+    bool _recordingResolutionConfirmed = false;
+    bool _deviceMaximumZoomKnown = false;
+    QSize _negotiatedPulledVideoSize;
+    QSize _recordingVideoSize;
+    QSize _videoManagerFallbackCandidate;
+    QSize _lastRejectedPulledVideoSize;
+    QSize _lastRejectedRecordingVideoSize;
+    bool _zoomStatusKnown = false;
+    bool _zoomValueUncertain = false;
+    bool _zoomResponseBlocked = false;
+    bool _zoomQueryOutstanding = false;
+    bool _absoluteZoomPending = false;
+    bool _latestActualZoomKnown = false;
+    double _latestActualZoom = kMinZoom;
+    int _alignmentAttemptCount = 0;
+    bool _automaticAlignmentSuppressed = false;
+    double _suppressedAlignmentZoom = kMinZoom;
+    double _suppressedAlignmentStep = 1.0;
+    double _suppressedAlignmentMaximum = kDefaultMaxZoom;
+    bool _alignmentSourceZoomValid = false;
+    double _alignmentSourceZoom = kMinZoom;
+    A8MiniZoomPolicy::TargetTracker _absoluteZoomTracker;
+    bool _stableZoomConfirmationPending = false;
+    bool _stableZoomCandidateValid = false;
+    double _stableZoomCandidate = kMinZoom;
+    bool _normalizeAfterStableZoom = false;
+    int _stableZoomDirection = 0;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
-    QString _continuousZoomHost;
-    quint16 _continuousZoomPort = 0;
-    bool _zoomStopPending = false;
-    QString _zoomStopHost;
-    quint16 _zoomStopPort = 0;
-    int _zoomStopRetryStage = 0;
+    double _heldZoomStartTarget = kMinZoom;
+    double _heldZoomLastTarget = kMinZoom;
+    int _heldZoomInitialPressDurationMs = kHeldZoomPressThresholdMs;
+    bool _manualZoomFinalizePending = false;
+    int _manualZoomFinalizeDirection = 0;
+    bool _manualZoomFinalCandidateValid = false;
+    double _manualZoomFinalCandidate = kMinZoom;
+    int _manualZoomFinalMatchCount = 0;
+    bool _suppressIdleAlignmentUntilExplicitZoom = false;
+    // A native 0x05 hold deliberately retains its legal elapsed-time target
+    // instead of letting delayed or quantized 0x18 feedback rename it or cause
+    // a reverse correction. Keep this latch until a later explicit target is
+    // accepted or the camera capability/session is reset.
+    bool _nativeHoldTargetLatched = false;
+    // Log exactly one solicited 0x18 observation after a native hold stops.
+    // Periodic idle feedback remains silent.
+    bool _nativeHoldFeedbackLogPending = false;
+    QString _manualZoomSessionHost;
+    quint16 _manualZoomSessionPort = 0;
+    int _manualZoomStopRetryAttemptsRemaining = 0;
     bool _cameraStatusKnown = false;
     bool _recording = false;
     bool _recordingCommandPending = false;
