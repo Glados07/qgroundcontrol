@@ -74,6 +74,72 @@
     </message>
 </context>
 <context>
+    <name>ProximityRadarIndicator</name>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="38"/>
+        <source>Forward</source>
+        <translation>前方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="39"/>
+        <source>Forward/Right</source>
+        <translation>右前方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="40"/>
+        <source>Right</source>
+        <translation>右侧</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="41"/>
+        <source>Rear/Right</source>
+        <translation>右后方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="42"/>
+        <source>Rear</source>
+        <translation>后方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="43"/>
+        <source>Rear/Left</source>
+        <translation>左后方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="44"/>
+        <source>Left</source>
+        <translation>左侧</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="45"/>
+        <source>Forward/Left</source>
+        <translation>左前方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="46"/>
+        <source>Up</source>
+        <translation>上方</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/ProximityRadarIndicator.qml" line="47"/>
+        <source>Down</source>
+        <translation>下方</translation>
+    </message>
+</context>
+<context>
+    <name>ProximityRadarIndicatorPage</name>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="26"/>
+        <source>Proximity Radar</source>
+        <translation>近距雷达</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="47"/>
+        <source>%1 Radar</source>
+        <translation>%1雷达</translation>
+    </message>
+</context>
+<context>
     <name>VideoSettings</name>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>

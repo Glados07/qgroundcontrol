@@ -28,27 +28,28 @@ ToolIndicatorPage {
             contentSpacing: 0
 
             Repeater {
-                model: root.radarData.facts
+                model: root.radarData.entries
 
                 delegate: RowLayout {
                     id: radarRow
 
                     required property var modelData
 
-                    readonly property bool  proximityAlert: root.radarData.factInAlert(modelData)
+                    readonly property var   fact:           modelData ? modelData.fact : null
+                    readonly property bool  proximityAlert: root.radarData.factInAlert(fact)
                     readonly property color textColor:       proximityAlert ? QGroundControl.globalPalette.colorRed : QGroundControl.globalPalette.text
 
-                    visible: root.radarData.factAvailable(modelData)
+                    visible: root.radarData.factAvailable(fact)
                     spacing: ScreenTools.defaultFontPixelWidth * 2
 
                     QGCLabel {
                         Layout.fillWidth: true
-                        text:             radarRow.modelData ? qsTr("%1 Radar").arg(radarRow.modelData.shortDescription) : ""
+                        text:             radarRow.modelData ? qsTr("%1 Radar").arg(radarRow.modelData.direction) : ""
                         color:            radarRow.textColor
                     }
 
                     QGCLabel {
-                        text:  radarRow.modelData ? radarRow.modelData.valueString + " " + radarRow.modelData.units : ""
+                        text:  radarRow.fact ? radarRow.fact.valueString + " " + radarRow.fact.units : ""
                         color: radarRow.textColor
                     }
                 }

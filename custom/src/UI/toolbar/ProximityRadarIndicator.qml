@@ -34,17 +34,17 @@ Item {
         readonly property real alertDistanceMeters: 5.0
         readonly property var  activeVehicle:        QGroundControl.multiVehicleManager.activeVehicle
         readonly property var  distanceSensors:      activeVehicle ? activeVehicle.distanceSensors : null
-        readonly property var  facts:                distanceSensors ? [
-            distanceSensors.rotationNone,
-            distanceSensors.rotationYaw45,
-            distanceSensors.rotationYaw90,
-            distanceSensors.rotationYaw135,
-            distanceSensors.rotationYaw180,
-            distanceSensors.rotationYaw225,
-            distanceSensors.rotationYaw270,
-            distanceSensors.rotationYaw315,
-            distanceSensors.rotationPitch90,
-            distanceSensors.rotationPitch270
+        readonly property var  entries:              distanceSensors ? [
+            { fact: distanceSensors.rotationNone,     direction: qsTr("Forward") },
+            { fact: distanceSensors.rotationYaw45,    direction: qsTr("Forward/Right") },
+            { fact: distanceSensors.rotationYaw90,    direction: qsTr("Right") },
+            { fact: distanceSensors.rotationYaw135,   direction: qsTr("Rear/Right") },
+            { fact: distanceSensors.rotationYaw180,   direction: qsTr("Rear") },
+            { fact: distanceSensors.rotationYaw225,   direction: qsTr("Rear/Left") },
+            { fact: distanceSensors.rotationYaw270,   direction: qsTr("Left") },
+            { fact: distanceSensors.rotationYaw315,   direction: qsTr("Forward/Left") },
+            { fact: distanceSensors.rotationPitch90,  direction: qsTr("Up") },
+            { fact: distanceSensors.rotationPitch270, direction: qsTr("Down") }
         ] : []
         readonly property bool telemetryAvailable: _hasTelemetry()
         readonly property bool proximityAlert:     _hasProximityAlert()
@@ -58,8 +58,8 @@ Item {
         }
 
         function _hasTelemetry() {
-            for (let i = 0; i < facts.length; i++) {
-                if (factAvailable(facts[i])) {
+            for (let i = 0; i < entries.length; i++) {
+                if (factAvailable(entries[i].fact)) {
                     return true
                 }
             }
@@ -67,8 +67,8 @@ Item {
         }
 
         function _hasProximityAlert() {
-            for (let i = 0; i < facts.length; i++) {
-                if (factInAlert(facts[i])) {
+            for (let i = 0; i < entries.length; i++) {
+                if (factInAlert(entries[i].fact)) {
                     return true
                 }
             }
