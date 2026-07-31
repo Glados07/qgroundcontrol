@@ -46,9 +46,21 @@ Item {
     property var    _pendingGimbal:             null
     property int    _pendingGeneration:         0
     property bool   _pendingCheckScheduled:     false
+    property bool   _centerPrimerAwaitingAck:   false
+    property bool   _centerReplayScheduled:     false
+    property int    _centerPrimerGeneration:    -1
+    property int    _centerReplayGeneration:    -1
+    property int    _centerPrimerVehicleId:     -1
+    property int    _centerPrimerManagerCompid: -1
     property bool   _toolbarPostureDispatchInProgress: false
 
-    readonly property int _pendingOwnershipTimeoutMs: 7000
+    // Covers the slow 0.2 Hz ownership-status fallback, one normal 3-second
+    // COMMAND_ACK window for the Center primer, and its short settle delay.
+    readonly property int _pendingOwnershipTimeoutMs: 10000
+    // MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW and MAV_RESULT_ACCEPTED are not
+    // exposed through the MAVLink QML enum wrapper in this QGC version.
+    readonly property int _mavCmdGimbalManagerPitchYaw: 1000
+    readonly property int _mavResultAccepted:             0
 
     function _hasConfirmedOwnership(gimbal) {
         return !!gimbal
@@ -70,7 +82,14 @@ Item {
         _pendingController = null
         _pendingGimbal = null
         _pendingCheckScheduled = false
+        _centerPrimerAwaitingAck = false
+        _centerReplayScheduled = false
+        _centerPrimerGeneration = -1
+        _centerReplayGeneration = -1
+        _centerPrimerVehicleId = -1
+        _centerPrimerManagerCompid = -1
         pendingOwnershipTimeout.stop()
+        centerReplayDelay.stop()
     }
 
     function _invokeOwnershipAction(controller, gimbal, action) {
@@ -89,6 +108,36 @@ Item {
             case "retract":
                 controller.toggleGimbalRetracted(true)
                 break
+            }
+        } finally {
+            _toolbarPostureDispatchInProgress = false
+        }
+    }
+
+    function _invokeCenterPrimer(controller, gimbal) {
+        // Cache all telemetry before calling into C++: both send functions
+        // immediately update a local pitch Fact as part of command dispatch.
+        var pitch = Number(gimbal.absolutePitch.rawValue)
+        var yawLock = gimbal.yawLock
+        var yaw = Number((yawLock ? gimbal.absoluteYaw : gimbal.bodyYaw).rawValue)
+        if (!isFinite(pitch)) {
+            pitch = 0
+        }
+        if (!isFinite(yaw)) {
+            yaw = 0
+        }
+
+        _toolbarPostureDispatchInProgress = true
+        try {
+            // Keep the current physical pose and the current yaw mode. This
+            // gives RC -> MAVLink output bridges a non-stale angle/mode sample
+            // without the visible -90 degree movement of the old workaround.
+            // These angle senders also stop the native 500 ms rate timer, so
+            // it cannot create an indistinguishable command-1000 result.
+            if (yawLock) {
+                controller.sendPitchAbsoluteYaw(pitch, yaw, false)
+            } else {
+                controller.sendPitchBodyYaw(pitch, yaw, false)
             }
         } finally {
             _toolbarPostureDispatchInProgress = false
@@ -115,6 +164,9 @@ Item {
         if (_pendingOwnershipAction === null) {
             return
         }
+        if (_centerPrimerAwaitingAck || _centerReplayScheduled) {
+            return
+        }
         if (!_pendingContextIsCurrent()) {
             _clearPendingOwnershipAction()
             return
@@ -127,6 +179,23 @@ Item {
         var action = _pendingOwnershipAction
         var controller = _pendingController
         var gimbal = _pendingGimbal
+
+        if (action.id === "center") {
+            // Some RC -> gimbal output chains keep the previous MAVLink 0/0
+            // target cached while RC is active. Their first post-takeover 0/0
+            // is then acknowledged but produces no update. Prime that chain
+            // with the current pose, and replay Center only after its ACK.
+            _centerPrimerAwaitingAck = true
+            _centerPrimerGeneration = generation
+            _centerPrimerVehicleId = Number(_pendingVehicle.id)
+            _centerPrimerManagerCompid = Number(gimbal.managerCompid.rawValue)
+            _invokeCenterPrimer(controller, gimbal)
+            if (_pendingGeneration !== generation) {
+                return
+            }
+            return
+        }
+
         _invokeOwnershipAction(controller, gimbal, action)
 
         // The popup handler synchronously invalidates this generation if RC
@@ -148,7 +217,7 @@ Item {
         if (_pendingOwnershipAction !== null) {
             if (_pendingContextIsCurrent()) {
                 // Last gesture wins. Do not send another CONFIGURE and do not
-                // reset the original seven-second deadline.
+                // reset the original ten-second deadline.
                 _pendingOwnershipAction = action
                 _schedulePendingOwnershipCheck()
                 return
@@ -175,6 +244,59 @@ Item {
         _schedulePendingOwnershipCheck()
     }
 
+    function _handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult) {
+        if (!_centerPrimerAwaitingAck
+                || _pendingOwnershipAction === null
+                || !_pendingContextIsCurrent()
+                || _centerPrimerGeneration !== _pendingGeneration
+                || vehicleId !== _centerPrimerVehicleId
+                || command !== _mavCmdGimbalManagerPitchYaw
+                || targetComponent !== _centerPrimerManagerCompid) {
+            return
+        }
+
+        _centerPrimerAwaitingAck = false
+        if (ackResult !== _mavResultAccepted) {
+            _clearPendingOwnershipAction()
+            return
+        }
+
+        // Vehicle removes the first command from its pending list before
+        // emitting mavCommandResult. A short settle window also lets a
+        // downstream MAVLink-v1/vendor bridge latch the priming setpoint.
+        _centerReplayScheduled = true
+        _centerReplayGeneration = _pendingGeneration
+        centerReplayDelay.restart()
+    }
+
+    function _finishCenterReplay() {
+        if (!_centerReplayScheduled) {
+            return
+        }
+        if (_pendingOwnershipAction === null
+                || _centerReplayGeneration !== _pendingGeneration) {
+            _clearPendingOwnershipAction()
+            return
+        }
+        _centerReplayScheduled = false
+
+        if (!_pendingContextIsCurrent()
+                || !_hasConfirmedOwnership(_pendingGimbal)) {
+            _clearPendingOwnershipAction()
+            return
+        }
+
+        var generation = _pendingGeneration
+        var action = _pendingOwnershipAction
+        var controller = _pendingController
+        var gimbal = _pendingGimbal
+        _invokeOwnershipAction(controller, gimbal, action)
+        if (_pendingGeneration !== generation) {
+            return
+        }
+        _clearPendingOwnershipAction()
+    }
+
     onActiveVehicleChanged: {
         if (_pendingOwnershipAction !== null) {
             _clearPendingOwnershipAction()
@@ -198,6 +320,13 @@ Item {
         interval:    control._pendingOwnershipTimeoutMs
         repeat:      false
         onTriggered: control._clearPendingOwnershipAction()
+    }
+
+    Timer {
+        id:          centerReplayDelay
+        interval:    150
+        repeat:      false
+        onTriggered: control._finishCenterReplay()
     }
 
     // Popup panel, appears when clicking top toolbar gimbal indicator
@@ -601,6 +730,9 @@ Item {
 
     Connections {
         target: activeVehicle
+        function onMavCommandResult(vehicleId, targetComponent, command, ackResult, failureCode) {
+            control._handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult)
+        }
         function onDestroyed() {
             if (control._pendingOwnershipAction !== null) {
                 control._clearPendingOwnershipAction()
