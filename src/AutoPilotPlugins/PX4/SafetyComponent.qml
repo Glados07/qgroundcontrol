@@ -55,6 +55,10 @@ SetupPage {
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
             property bool _hitlAvailable:       controller.parameterExists(-1, hitlParam)
             property Fact _hitlEnabled:         controller.getParameterFact(-1, hitlParam, false)
+            property bool _generatorLowVoltageAvailable:  controller.parameterExists(-1, "COM_GEN_V_LOW")
+            property Fact _generatorLowVoltage:           _generatorLowVoltageAvailable
+                                                          ? controller.getParameterFact(-1, "COM_GEN_V_LOW", false)
+                                                          : null
 
             ColumnLayout {
                 id:         outerColumn
@@ -127,6 +131,47 @@ SetupPage {
                                 fact:               controller.getParameterFact(-1, "BAT_EMERGEN_THR")
                                 Layout.fillWidth:   true
                             }
+                        }
+                    }
+                }
+
+                QGCLabel {
+                    text:                   qsTr("Generator Bus Voltage Alert")
+                    visible:                _generatorLowVoltageAvailable
+                }
+
+                Rectangle {
+                    width:                  generatorLowVoltageGrid.width + (_margins * 2)
+                    height:                 generatorLowVoltageGrid.height + (_margins * 2)
+                    color:                  qgcPal.windowShade
+                    visible:                _generatorLowVoltageAvailable
+
+                    GridLayout {
+                        id:                 generatorLowVoltageGrid
+                        columns:            2
+                        anchors.centerIn:   parent
+
+                        QGCLabel {
+                            text:               qsTr("Low Voltage Threshold:")
+                            Layout.minimumWidth:_labelWidth
+                            Layout.fillWidth:   true
+                        }
+
+                        FactTextField {
+                            fact:               _generatorLowVoltage
+                            enabled:            controller.vehicle &&
+                                                !controller.vehicle.armed &&
+                                                !controller.vehicle.flying
+                            Layout.minimumWidth:_editFieldWidth
+                            Layout.fillWidth:   true
+                        }
+
+                        QGCLabel {
+                            text:               qsTr("Fly View displays a warning when the generator bus voltage falls below this value.")
+                            wrapMode:           Text.WordWrap
+                            Layout.columnSpan:  2
+                            Layout.maximumWidth:_labelWidth + _editFieldWidth
+                            Layout.fillWidth:   true
                         }
                     }
                 }
