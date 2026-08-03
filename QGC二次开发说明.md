@@ -2,15 +2,15 @@
 
 适用工程：`F:\qgroundcontrol_viewer3d`
 
-当前分支：`SecDev/ft/gimbalcontrol`
+当前分支：`SecDev/ft/rccontrol`
 
-最后更新：2026-07-29
+最后更新：2026-07-31
 
 ## 1. 当前开发进度
 
 ### 1.1 总体进度
 
-当前开发分支为 `SecDev/ft/gimbalcontrol`，二次开发已形成九个面向用户的功能模块和一套 `custom` 工程化集成架构：
+当前开发分支为 `SecDev/ft/rccontrol`，二次开发已形成九个面向用户的功能模块和一套 `custom` 工程化集成架构：
 
 1. Viewer3D 三维飞行视图。
 2. 思翼 A8 Mini 云台控制。
@@ -50,6 +50,10 @@
 - 拍照成功只在存在本次拍照请求时由0x0b功能反馈累计本进程照片数并触发成功提示；录像按钮必须先取得0x0a录像状态，避免把“尚未同步”误当成“未录像”。0x0c录像切换没有ACK，发送后先建立目标状态和pending门控、再乐观更新UI，约400 ms后主动查询0x0a；只有与本次目标一致的状态0/1才能完成pending，延迟旧状态继续忽略，状态2/3错误立即结束，2.5秒仍未确认则重新标记unknown。0x0b只用于拍照结果、HDR结果和录像失败反馈，不能虚构录像成功反馈码。录制发生在思翼相机机内存储卡，而不是QGC本地录像支路。
 - Gimbal关闭时才在存在活动飞行器的前提下回退QGC原生 `PhotoVideoControl`。缩放手势统一为Idle/Pressed/Holding/Consumed状态：短按释放立即发送并显示同一合法表的下一档0x0f目标；按住420 ms后进入Holding，通常只启动一次0x05连续变倍，并以总按压时长 `qRound(totalMs / 600.0)` 计算相对手势起点的合法显示目标，到端点时Manager主动停止。正常release调用 `stopZoom()`完成最后一次时间计算；取消、移出、控件隐藏、应用后台及销毁调用 `cancelZoom()`且不推进目标，活动0x05路径均发送停止。QML释放判断使用本次释放事件坐标，不依赖Android上不稳定的 `containsMouse`悬停状态，长按释放不会再补发短按。
 - 在Fly View设置页以 `SIYI Gimbal Camera` 标题提供云台相机启用、SDK IP、SDK端口和缩放步长设置，并明确tap每次发送一档0x0f且成功即显示目标、hold从420 ms成立起用一次0x05连续运动并按总按压时长每600 ms计算单调显示目标；合法目标只包含1.0x起始的min锚网格和当前卡录能力的有效精确上限。
+- 顶部原生云台姿态栏与上述思翼私有UDP相机栏是两条独立控制链路。`custom/src/UI/toolbar/GimbalIndicator.qml` 以原生同名QML为基线，只为 `Yaw Lock/Follow`、`Center`、`Tilt 90` 和 `Retract` 增加MAVLink控制权自动接管：若同一活动云台尚未确认由QGC控制，则缓存最后一次点击，只发送一次 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`，等待 `GIMBAL_MANAGER_STATUS` 同时确认 `gimbalHaveControl=true`、`gimbalOthersHaveControl=false` 后再执行按钮动作，不再弹出接管确认框。
+- 真机对照进一步确认：RC之前最后一个MAVLink目标不是 `0°,0°` 时，RC移动后Center可用；最后目标恰为 `0°,0°` 时，RC虽然改变了物理姿态，再发Center仍无动作，而Tilt 90或Yaw模式命令先执行后Center立即恢复。这说明控制权切换和Center专属的旧目标去重是两个问题。上一版发送“当前实际姿态”的无位移预激活仍可能同时等于RC当前输出，继续被下游变化检测吞掉，因此已改为确定变化的预激活：先缓存当前pitch，把它钳制到本项目原生Center/Tilt 90已经验证合法的 `[-90°,0°]` 区间，再选取与该值相差1°、严格非0且仍在区间内的pitch；通过原生 `sendPitchBodyYaw(primerPitch, 0, false)` 使用与最终Center完全相同的body-yaw坐标系、yaw目标和flags，只让pitch不同。该接口还会停止500 ms速率发送Timer，避免另一条命令1000干扰ACK归属。严格等待预激活的 `COMMAND_ACK=ACCEPTED`，再延迟400 ms让飞控到厂商云台的输出桥锁存，复核同一对象和控制权后调用原生 `centerGimbal()`；最终Center自己的ACK也必须Accepted才清除该云台的预激活标记，Duplicate、Denied、无响应或断链都保留标记供下次重试。预激活命令目标相对钳制后的上报pitch严格相差1°；遥测新鲜时额外预动作通常也约1°，但遥测陈旧时不能承诺实际物理位移只有1°。该有意变化用于绕过下游旧目标去重，最终Center仍保持精确 `0°,0°` 语义。
+- 自动接管不是循环争抢。控制权、预激活ACK和400 ms稳定窗口的事务等待时限为10秒，用于覆盖最慢约5秒一次的状态兜底和普通链路3秒命令ACK窗口；最终Center发出后另有4秒结果监视，只决定是否清除预激活标记，不延迟已经发出的居中动作。切换活动Vehicle、GimbalController或活动云台、对象销毁、手动Acquire/Release、预激活ACK失败以及超时都会取消待执行动作，迟到状态或ACK不能跨对象重放。接管等待期间快速点击多个姿态按钮采用last-click-wins，只保留最后一个动作且不重复发送Configure；若RC持续输入重新取得控制，QGC不会在后台反复抢权。速率控制、屏幕拖动和摇杆连续输入不进入延迟重放。
+- `Point Home` 保持原生 `Vehicle.guidedModeROI(homePosition)` 直发并取消此前待执行姿态动作，因为它是飞控级ROI命令，不是Gimbal Manager的pitch/yaw控制权命令。显式Acquire/Release按钮也保持原生含义；本功能不调用思翼私有SDK。
 
 ### 1.4 RTSP 与 Android H.265 视频链路（代码已集成，待真机验收）
 
@@ -113,9 +117,9 @@
 
 ### 1.11 custom 架构、设置和翻译（已集成）
 
-- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 107 个文件。
+- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 110 个文件。
 - 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、QML URL 拦截和 Android overlay 接入。
-- General、Fly View 和 Video 设置页均按 `src/UI/AppSettings` 文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
+- General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
 - Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
 - 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
 - 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
@@ -125,7 +129,7 @@
 
 1. 除 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需改动外，不修改其他 `src` 文件。
 2. custom 新增代码按 QGC 模块放置，例如 `FlightDisplay`、`FlightMap/Images`、`Settings`、`Gimbal`、`Comms`、`QmlControls`、`UI/AppSettings`、`VideoManager/VideoReceiver/GStreamer`；Android Java 同名覆盖按根目录 `android` 的文件树放在 `custom/android`。
-3. Application Settings 的 General、Fly View 和 Video 页面由项目在 custom 显式接管并保存同名覆盖；其他没有差异、也不需要项目接管的 QML 继续使用 `src`。
+3. Application Settings 的 General、Fly View、Video 页面和顶部工具栏 `GimbalIndicator.qml` 由项目在 custom 显式接管并保存同名覆盖；其他没有差异、也不需要项目接管的 QML 继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
 5. custom QML 覆盖使用 `/Custom/qml` 前缀，Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
 6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 航向罗盘条和链路设置。
@@ -134,7 +138,7 @@
 
 ## 3. custom 完整目录结构
 
-当前共 107 个文件：
+当前共 110 个文件：
 
 ```text
 custom/
@@ -198,6 +202,7 @@ custom/
         Viewer3DSettingsGroup.qml
         GimbalControlSettingsGroup.qml
       toolbar/
+        GimbalIndicator.qml
         FuelStatusIndicator.qml
         Images/FuelIcon.svg
     VideoManager/
@@ -261,7 +266,7 @@ custom/
 | 文件 | 详细作用 |
 |---|---|
 | `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及 15 个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建只包含 Fuel 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建还创建独立 `SiyiProtocolTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，校验USB custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
-| `custom/custom.qrc` | custom RCC运行时资源清单，共62个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、12个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。本分支新增 `GimbalCameraControl.qml` 并继续显式注册 `GimbalZoomControl.qml`；Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
+| `custom/custom.qrc` | custom RCC运行时资源清单，共63个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、13个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。`GimbalIndicator.qml` 以 `QGroundControl/Toolbar/GimbalIndicator.qml` alias注册，使既有URL拦截器自动替换原生顶部云台栏；`GimbalCameraControl.qml` 和 `GimbalZoomControl.qml` 继续显式注册。Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
 ### 4.2 CustomPlugin 与通信链路
@@ -339,7 +344,7 @@ custom/
 
 Android H.265选择链为：`CustomPlugin::init()`读取重启后生效的Fact -> `AndroidVideoDecoderPolicy` 在管线创建前调整factory候选/rank -> `decodebin3`依据caps与rank选择decoder。直接兼容hvc1的厂商MediaCodec可直接入选；只兼容Annex-B的厂商decoder由 `qgcandroidh265hwdec` 包装，实际数据路径为 `hvc1 -> h265parse -> video/x-h265,stream-format=byte-stream,alignment=au -> 厂商MediaCodec -> 最多2帧的leaky raw队列 -> video/x-raw -> 原生QGC显示链`。rank只能影响选择优先级；确认运行链路必须看实际factory和首个raw buffer日志，不能只看READY预检。
 
-### 4.7 Application Settings、通用默认值、Fly View custom Settings、Fuel 和 qmldir
+### 4.7 Application Settings、通用默认值、Fly View custom Settings、顶部云台栏、Fuel 和 qmldir
 
 General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整数 Fact；Android 12 pt 缺省值由 4.2 节的 `CustomPlugin` metadata hook 在 Fact 创建时提供。页面不负责写入缺省值，也不新增 SettingsGroup 或 JSON，避免只有打开 General 页面后设置才生效。
 
@@ -355,6 +360,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生 Video Source、Connection、播放设置和录像存储组，再读取 `GimbalControlSettings` 中的两个视频集成 Fact，增加 `Use MAVLink automatic video stream` 与 `Force Android H.265 hardware decoder` 开关及重启提示；自动流开关只有 Gimbal Enabled 时允许操作，硬解开关在所有平台可见但仅 Android策略使用。本页只改Fact，真正的MAVLink消息过滤由 `GimbalVideoStreamSupport` 执行，解码器选择由 `AndroidVideoDecoderPolicy` 执行。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 由 `FlyViewSettings.qml` 显式加载的 Viewer3D 设置面板。根Loader将内容的 `implicitWidth/implicitHeight` 向外透传，供设置页正确计算分组高度和滚动范围；不再用 `onLoaded/onWidthChanged` 手工写子项宽度。只有设置对象及14个所需Fact可用时才创建内容；Google与外部模型两个开关相互排斥，两者都关闭时隐式进入本地OSM模式。页面编辑API Key、外部模型文件、WGS84原点、单位换算、比例、yaw、OSM路径、建筑层高和车辆高度偏移；外部文件选择交给 `External3DMapManager.importModelFile()` 检查/转换并返回状态，本文件不创建或渲染三维场景。页面的 Clear只修改保存的路径值，不删除磁盘文件。 |
 | `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | `SIYI Gimbal Camera`私有UDP设置面板。根Loader将内容隐式尺寸向外透传；标题说明保持简短，详细的卡录分辨率上限、拉流会话门控和完整步长网格规则集中写在本开发说明及Fact元数据中，避免长说明参与 `SettingsPage` 隐式宽度计算而把整页横向撑开。绑定 `enabled`、`sdkHost`、`sdkPort`和 `zoomStep`。 |
+| `custom/src/UI/toolbar/GimbalIndicator.qml` | 原生 `src/UI/toolbar/GimbalIndicator.qml` 的同路径custom覆盖，保留遥测、设置、多云台选择和显式Acquire/Release界面。`Yaw Lock/Follow`、`Center`、`Tilt 90`、`Retract` 在控制权不足时建立一个带Vehicle/Controller/Gimbal身份和代次token的待执行动作，只发送一次Configure；同一上下文后续点击只替换动作内容。任一控制权属性表明QGC失权时还会按 `Vehicle id + manager compid + device id` 记住该具体云台的Center需要重新激活，因此切换活动Vehicle/云台再返回，或点击前状态已经恢复成QGC持权，都不会误清其他云台的标记或绕过修复。待两个控制权属性经下一事件循环共同确认后，普通姿态动作在受保护窗口中重放一次；需要重新激活的Center先缓存当前pitch，在已验证合法的 `[-90°,0°]` 内计算一个与钳制值相差1°、严格非0的目标，再调用与最终Center相同坐标系和flags的 `sendPitchBodyYaw(primerPitch, 0, false)` 并停止原生速率Timer。它监听同一Vehicle的 `mavCommandResult`，同时核对代次、Vehicle id、manager component、命令1000和原生命令结果类型，只在预激活ACK Accepted后等待400 ms，再复核上下文/控制权并执行最新动作；最终Center的Accepted ACK才清除对应云台的重新激活标记，失败或4秒无结果则保留。10秒Timer、ACK失败、上下文变化、对象销毁、显式Acquire/Release和Point Home都会使旧待执行动作失效；pending或姿态执行窗口内由原生 `_tryGetGimbalControl()` 产生的确认信号只被静默抑制，不触发重试；自动流程不活跃时，其他调用来源仍保留原生确认框。Point Home继续直发Vehicle ROI；本文件不实现RC输入、不修改MAVLink协议、也不调用思翼UDP SDK。 |
 | `custom/src/UI/toolbar/FuelStatusIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后的顶部工具栏组件。监听活动飞行器 `fuelStatus.telemetryAvailable`，无 `FUEL_STATUS` 数据时隐藏且不占可见空间，有数据时显示 `FuelIcon.svg` 与剩余百分比；点击后通过主窗口弹出 `FuelStatusIndicatorPage.qml`。它不生成 Fuel 遥测，也不负责母线低电压告警。 |
 | `custom/src/UI/toolbar/Images/FuelIcon.svg` | Fuel 顶部指示器使用的气瓶矢量图形，只提供可缩放轮廓，不包含状态逻辑；由 `custom.qrc` 注册为 `qrc:/custom/img/FuelIcon.svg`，`FuelStatusIndicator.qml` 根据主题对其着色和显示。 |
 
@@ -503,14 +509,14 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 ## 6. 受控 src 修改
 
-当前分支 `SecDev/ft/gimbalcontrol` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
+当前分支 `SecDev/ft/rccontrol` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
 
 | 文件 | 修改原因 |
 |---|---|
 | `src/CMakeLists.txt` | 原生 PX4 Factory 被关闭时仍链接 `AutoPilotPluginsPX4Module`，保证 VehicleSummary 和 CustomAutoPilotPlugin 使用的 PX4 QML 页面存在。 |
 | `src/Vehicle/VehicleSetup/VehicleSummary.qml` | 注释 APM QML import；当前构建关闭 APM 模块，继续导入会造成运行时 `module QGroundControl.AutoPilotPlugins.APM is not installed`。 |
 
-除这两处外，当前二次开发功能没有其他 `src` 差异。底部航向罗盘条、Android H.265 与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现，未新增任何 `src` 修改。
+除这两处外，当前二次开发功能没有其他 `src` 差异。顶部云台栏自动接管、底部航向罗盘条、Android H.265 与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现，未新增任何 `src` 修改。
 
 ## 7. Viewer3D 参数
 
@@ -572,6 +578,8 @@ QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay�
 
 ### 8.3 Gimbal 与视频参数
 
+#### 8.3.1 思翼私有SDK相机控制与视频
+
 | Fact | 范围/默认值 | 说明 |
 |---|---|---|
 | `enabled` | bool / `true` | 启用私有SDK云台相机后端和合并的缩放/拍照/录像控制栏；关闭后才回退原生相机控件。 |
@@ -614,6 +622,21 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 6. 使用纵向栏下部的相机图标拍照；录像状态尚未同步或一次切换命令仍在pending时，REC按钮灰显并显示 `...`。发送切换后约400 ms主动查询0x0a，只有与本次开始/停止目标一致的状态才允许再次操作；延迟旧状态会继续等待，2.5秒未确认则回到unknown并重新同步。照片成功有绿色闪烁，录像期间显示本次会话计时；录像最终状态以0x0a为准，0x0b只补充失败反馈。
 7. 在没有飞控的纯云台场景验证缩放、拍照、录像均可用；随后连接或断开飞控，控制栏不应消失或切换后端。只有关闭Gimbal设置时，有活动飞行器才恢复原生 `PhotoVideoControl`。
 
+#### 8.3.2 原生顶部云台姿态栏自动接管
+
+该功能处理的是QGC、RC与飞控Gimbal Manager之间的MAVLink控制权，不经过A8 Mini私有UDP SDK。PX4的 `MNT_MODE_IN=Auto (0)` 会按最近输入在RC和MAVLink之间切换；较大的RC摇杆动作可把输入切回RC。本分支在custom顶部栏中把自动接管和原始按钮动作合并为一次用户操作。
+
+源码对比和真机结果同时表明，控制权问题与Center专属问题是两个阶段：QGC的Center和Tilt 90都无条件调用 `MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW(1000)`，相同target、NaN角速度和相同flags下，主要差别只有pitch为 `0` 或 `-90`。MAVLink规范用NaN表示未设置，`0°`是合法角度；标准PX4输入实现也不会过滤 `0,0`。关键对照是：RC前最后MAVLink目标非0时，RC后Center可用；RC前最后目标为 `0,0` 时，RC只改变物理姿态却没有刷新飞控输出桥保存的MAVLink目标，随后相同的Center会被下游change-detection当成旧值；Tilt 90或Yaw模式命令改变目标/模式后，Center才重新成为变化。上一版“发送当前实际姿态”也不能保证变化，因为它可能等于RC正在输出的实际姿态。因此修复不能只清QGC缓存或重发同一个 `0,0`，而要先发送一个既不同于旧 `0,0`、也不同于钳制后上报pitch的受限小偏移目标。若失败Center的命令1000 ACK确认为Accepted，可基本把问题定位到Gimbal Manager之后的输出/设备链；若ACK为Denied，则仍是控制权被RC抢回；无ACK则先处理链路。
+
+1. 点击 `Yaw Lock/Follow`、`Center`、`Tilt 90` 或 `Retract`。如果同一活动云台已经满足 `gimbalHaveControl && !gimbalOthersHaveControl`，普通姿态动作直接执行且不额外发送Configure；如果此前任何控制权通知曾表明QGC失权，则按 `Vehicle id + manager compid + device id` 保存该云台的“需要预激活”标记，即使点击时状态已经恢复为QGC持权也进入预激活流程，但不再发送Configure。标记按云台身份隔离，切换活动云台或Vehicle不会用新对象的当前状态覆盖旧对象记录。
+2. 如果控制权属于RC/其他控制端，QGC静默调用一次 `acquireGimbalControl()`，发送 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`，不显示“是否接管”确认框，也不立即盲发姿态目标。待执行事务记录本次是否已经发送Configure；若点击瞬间仍显示QGC持权、但延迟到下一事件循环做稳定复核前RC恰好夺权，也会在复核处补发唯一一次Configure，而不是无命令地等到10秒超时。
+3. 只有同一Vehicle、同一GimbalController和同一活动Gimbal的 `GIMBAL_MANAGER_STATUS` 确认QGC成为primary后，才进入动作阶段。`gimbalHaveControlChanged` 比 `gimbalOthersHaveControlChanged` 先发出的当前原生更新顺序由 `Qt.callLater` 合并复核，不能只看到第一个布尔值就提前发送。
+4. 如果最新待执行动作不是Center，直接重放一次。如果仍为Center，则先缓存当前遥测pitch。QGC当前没有向QML暴露设备上报的pitch min/max，但本项目原生Center和Tilt 90已真机验证 `0°`、`-90°` 两端合法，因此先把pitch钳制到 `[-90°,0°]`：钳制值不高于 `-2°` 时向0方向增加1°，否则减小1°。所得目标始终在该区间、严格非0，并与钳制值相差1°。随后调用原生 `sendPitchBodyYaw(primerPitch, 0, false)`，使预激活和最终Center采用相同的body-yaw坐标系、yaw=0和flags，只有pitch由非0变为0；该接口同时停止原生500 ms速率Timer，防止它并发发送同一个命令1000。该目标相对钳制后的上报pitch差1°，但遥测陈旧时不等于对实际物理姿态只移动1°，因此不能再把它描述为无位移命令。
+5. 预激活和真正Center都是命令1000。必须监听同一Vehicle的 `mavCommandResult`，严格匹配manager component、命令号、当前代次和 `failureCode=MavCmdResultCommandResultOnly`；Vehicle在发出正常最终结果信号前已经移除在途项。只有预激活ACK Accepted才启动400 ms稳定窗口，因为ACK仅代表Gimbal Manager接受命令，不代表较慢的飞控到厂商云台输出桥已经锁存。窗口结束后再次确认对象和控制权，再调用一次原生 `centerGimbal()`。最终Center另建独立结果门控：同Vehicle、manager component和命令1000的ACK必须是Accepted且failureCode为原生命令结果，才删除该身份键的预激活标记；Duplicate、Denied、Failed、NoResponse或4秒没有结果都只结束结果等待并保留标记，下次Center仍会重新预激活。预激活ACK失败、无响应、QGC本地Duplicate或RC重抢都立即取消，不能在首条ACK前盲发第二条。
+6. 等待中的多次姿态点击只保留最后一次，例如 `Center -> Tilt 90 -> Retract` 最终只执行Retract；整个等待过程仍只有一次Configure。10秒没有完成、切换车辆/控制器/活动云台、对象销毁、点击Point Home或手动Acquire/Release都会取消，不允许迟到状态或ACK把命令发到新对象。
+7. 持续摇动RC时不会循环Configure或后台抢权。若RC在重放瞬间再次取得控制，原生确认信号被静默抑制，本次动作结束且不自动重试；松开/回中摇杆后由用户再次点击。摇杆速率、屏幕拖动等连续控制也不进入pending队列。
+8. `Point Home` 保持 `Vehicle.guidedModeROI(homePosition)` 直发，因为它是飞控ROI行为而不是同一Gimbal Manager姿态控制接口；点击它会先取消未完成的姿态重放。
+
 推荐 PX4 TELEM2 参数：
 
 | 参数 | 值 |
@@ -623,10 +646,10 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 | `MAV_1_MODE` | `Gimbal` |
 | `MAV_1_FLOW_CTRL` | `Off` |
 | `MAV_1_FORWARD` | `Enabled` |
-| `MNT_MODE_IN` | `MAVLink Gimbal Protocol v2` |
+| `MNT_MODE_IN` | `Auto (0)`，允许RC与MAVLink Gimbal Protocol v2按最近输入自动切换 |
 | `MNT_MODE_OUT` | `MAVLink Gimbal Protocol v2` |
 
-TELEM2参数只负责飞控与云台的MAVLink集成，是飞行任务/姿态控制场景的推荐配置，不是本合并栏的前置条件。custom的tap 0x0f、hold 0x05、拍照、录像和状态查询全部由电脑或遥控器直接发往 `192.168.144.25:37260/UDP`；纯云台无飞控时仍可使用，RTSP播放、私有SDK控制和飞控MAVLink是彼此独立的三条链路。
+需要同时使用RC通道和顶部MAVLink姿态栏时使用 `MNT_MODE_IN=Auto (0)`；若只允许地面站控制可改为 `MAVLink Gimbal Protocol v2 (4)`，若只允许RC则改为 `RC (1)`，修改后按PX4要求重启。PX4官方说明见 [Gimbal Configuration](https://docs.px4.io/v1.15/en/advanced/gimbal_control)。TELEM2参数只负责飞控与云台的MAVLink集成，是飞行任务/姿态控制场景的推荐配置，不是思翼私有合并栏的前置条件。custom的tap 0x0f、hold 0x05、拍照、录像和状态查询全部由电脑或遥控器直接发往 `192.168.144.25:37260/UDP`；纯云台无飞控时仍可使用，RTSP播放、私有SDK控制和飞控MAVLink是彼此独立的三条链路。
 
 ## 9. Android USB 飞控连接
 
@@ -875,30 +898,40 @@ grep 'QGC_CUSTOM_ANDROID_USB_SERIAL_MANAGER_V1' \
    - 拍照按钮发送0x0c功能0，只有存在pending拍照请求时成功0x0b反馈才触发绿色提示并递增照片数；录像状态未同步或命令pending时按钮必须灰显且不能再次发送toggle。状态已知后发送0x0c功能2，必须先建立target/pending门控再发出乐观状态变化；约400 ms后发送0x0a查询，命令前在途旧状态及与target不一致的0/1不得完成pending，2/3立即报错，2.5秒未确认回到unknown。分别覆盖正常开始/停止、同步信号重入、快速连点、无存储卡状态2、录像数据丢失状态3及0x0b功能4失败；0x0b大于4的未知值必须在Protocol层拒绝，不能上报为业务反馈或当成录像成功。
    - 合并栏必须保持“上部缩放、下部拍照/录像”的纵向单栏结构，严格按 `+ -> 当前倍率 -> - -> 横向分隔线 -> 拍照 -> 录像` 排列，使用QGC相机图标且不出现原生缩放滑块。Gimbal启用时右侧Column宽度和Loader高度必须始终随控制栏完整隐式尺寸扩展，而不是在离线时缩为0、把整栏压成一个按钮高度或裁掉底部录像按钮；在Android 86%/100%、桌面、横竖屏、地图/视频主窗口、PIP、Viewer3D和小屏触摸场景检查不裁切、不重叠、按钮达到移动端最小触控尺寸。
    - Gimbal Disabled且存在活动飞行器时恢复原生 `PhotoVideoControl`；关闭时没有活动飞行器则不加载原生控件。关闭后回送关闭前轮询产生的迟到0x18/0x20/0x0a/0x0b或任意0x16，不能重新把私有SDK标记在线、恢复能力、改变已清空的状态或发送0x0f。Gimbal Enabled但离线时仍显示私有合并栏，以灰色状态明确离线，不得用原生控件替换或把整栏隐藏。
-8. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将 `192.168.144.25` 加入忽略列表。
-9. Android 使用云台 H.264 编码回归测试，画面、延迟和断流重连均不退化。
-10. Android 使用云台 H.265 编码连续播放至少 10 分钟，分别记录开始、5 分钟和 10 分钟的端到端延迟，确认延迟不持续增长；同时测试应用前后台切换和断流重连。
-11. 真机日志中确认 `qgcandroidh265hwdec` 使用厂商 `amcviddec-*`，其输入 caps 为 `stream-format=byte-stream,alignment=au`，并出现首个 raw frame 的 `hardware confirmed` 日志；不能再用 rank 单独判断硬解是否成功。
-12. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
-13. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
-14. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
-15. 缺少 `local` 链路时下次启动自动补建，已有同名链路不会重复或被覆盖。
-16. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
-17. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
-18. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
-19. Android 冷启动前已插入飞控，以及 QGC 启动后再插入飞控，两种顺序均可自动连接；无权限时只请求一次，当前 attach 会话已有权限时不重复弹窗。
-20. 同一根 USB 线不拔，QGC 主动断开/重新连接至少 20 次；不得出现 `Attempt to open unknown device` 或重复端口，每次 close 日志回到 `openResources=0`，下一次 open 为 `openResources=1`，driver 和 pending permission 数量不持续增长。
-21. 保持 MAVLink 已连接时拔出/插回至少 20 次，并覆盖飞控 bootloader 到 application 的重枚举；每轮都先释放旧端口再创建新端口。
-22. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
-23. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
-24. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
-25. `Show Heading Compass Bar` 开关无需重启即可立即显示/隐藏，重启 QGC 后保持用户选择；没有活动飞行器或 `heading` 为 NaN 时不显示伪造的 0°/N。
-26. 使用模拟或真机航向覆盖 N、NE、E、SE、S、SW、W、NW，并重点检查 359° -> 0° -> 1° 连续过渡，中央数值、固定指针和移动方位必须一致。
-27. 在地图主窗口、视频主窗口、地图/视频 PIP 互换、虚拟摇杆、右下仪表盘、Viewer3D、横竖屏和小屏布局下检查罗盘条底边位置、宽度及 `bottomEdgeCenterInset`；重点在目标遥控器 86% 缩放下把左下 PIP 从 10% 连续拖到 75%，以及改变右下仪表宽度，罗盘条必须保持示例的首选宽度，不能缩成点、短条或消失。常规尺寸下检查无不必要遮挡；极端放大的角落控件允许与罗盘条视觉层叠，但 PIP 调整和罗盘条区域的地图拖动、缩放必须仍然有效；全屏视频模式按原生语义隐藏。
-28. Android H.265 连续播放测试期间同时保持罗盘条开启并改变航向，确认 11 个方位 Label 的更新不造成新增卡顿或持续帧率下降。
-29. 在采用 14 pt 平台基准的目标 Android 遥控器上清除应用数据或净安装 APK，首次进入 Application Settings -> General 时 UI Scaling 应显示 86%，运行中的 `appFontPointSize` Fact 应为整数 12 pt。
-30. 在 Android 上使用原生 `-`/`+` 修改整数点数并重启 QGC、覆盖安装保留数据的新 APK，必须保持用户值而不是恢复 86%；执行“清除全部设置”后才恢复 12 pt 缺省值。分别净安装 Ubuntu、Windows、macOS/iOS 构建，默认应保持原生 100%。
-31. 物理宽度小于 120 mm 的极小 Android 设备单独确认平台基准和页面显示值；其 11 pt 基准无法用整数点数精确表示 86%，不得把固定 12 pt 一概描述为所有 Android 屏幕的 86%。
+8. 使用 `MNT_MODE_IN=Auto (0)` 验证顶部原生云台姿态栏自动接管：
+   - 从未发生失权且QGC已拥有控制权时，Center/Tilt 90/Yaw Lock/Follow/Retract各点击一次只产生一次原生动作，不额外发送Configure；发生过失权但点击Center前状态已恢复为QGC持权时，不发送Configure，但仍必须出现预激活和最终Center两条命令。
+   - 先用RC大幅移动云台使控制权切到RC，再分别点击Tilt 90、Yaw Lock/Follow和Retract；抓包应看到一次 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`，状态确认QGC成为primary后只出现最后一次目标命令，全程无接管确认框。
+   - 分别把RC前最后MAVLink目标设为 `0,0` 和非 `0,0`，再用RC移动后单独点击Center，两种场景都必须成功。需要预激活时，状态确认后先出现一条命令1000：body yaw为0，pitch在 `[-90°,0°]` 内、严格非0，并与钳制后的当时上报pitch相差1°；其ACK Accepted后约400 ms出现第二条同坐标系、同flags的命令1000，pitch/yaw必须为 `0,0`。记录第一条实际物理动作；遥测新鲜时额外俯仰通常约1°，遥测陈旧时允许更大但目标仍须在上述区间，第二条必须最终使云台居中。
+   - 分别注入预激活ACK Accepted、Denied和无ACK：Accepted才允许第二条Center；Denied立即取消；无ACK由10秒事务超时取消。再分别给最终Center注入Accepted、Denied、Duplicate和无ACK：只有Accepted清除身份键；其余情况4秒内结束结果等待但保留标记，下一次Center仍必须先发预激活。两条命令不能在首条ACK前同时进入Vehicle pending列表。
+   - 在等待状态期间快速点击 `Center -> Tilt 90 -> Retract`，Configure仍只能有一次，最终只能执行Retract；切换活动云台或Vehicle后旧动作不得发送到新对象。
+   - 在“点击Center时QGC仍持权、下一事件循环复核前切到RC”的窄竞态中，必须补发且只补发一次Configure；不能直接发Center，也不能无Configure空等10秒。
+   - 多Vehicle或多云台时，让云台A失权后切到B再切回A；A的预激活标记必须仍在，B的正常Center不能误清A的标记，只有A的最终Center收到Accepted ACK后才清除A对应身份键。
+   - 阻断 `GIMBAL_MANAGER_STATUS` 超过10秒后恢复，迟到状态不得触发运动；持续推动RC时不得周期性出现Configure，松杆后由用户重新点击。
+   - Point Home继续直发ROI且会取消旧pending；显式Acquire/Release保持原生按钮语义。私有UDP缩放/拍照/录像抓包不应因本测试出现额外数据。
+9. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将 `192.168.144.25` 加入忽略列表。
+10. Android 使用云台 H.264 编码回归测试，画面、延迟和断流重连均不退化。
+11. Android 使用云台 H.265 编码连续播放至少 10 分钟，分别记录开始、5 分钟和 10 分钟的端到端延迟，确认延迟不持续增长；同时测试应用前后台切换和断流重连。
+12. 真机日志中确认 `qgcandroidh265hwdec` 使用厂商 `amcviddec-*`，其输入 caps 为 `stream-format=byte-stream,alignment=au`，并出现首个 raw frame 的 `hardware confirmed` 日志；不能再用 rank 单独判断硬解是否成功。
+13. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
+14. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
+15. Fuel 遥测存在时顶部显示 Fuel，无数据时隐藏。
+16. 缺少 `local` 链路时下次启动自动补建，已有同名链路不会重复或被覆盖。
+17. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
+18. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
+19. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
+20. Android 冷启动前已插入飞控，以及 QGC 启动后再插入飞控，两种顺序均可自动连接；无权限时只请求一次，当前 attach 会话已有权限时不重复弹窗。
+21. 同一根 USB 线不拔，QGC 主动断开/重新连接至少 20 次；不得出现 `Attempt to open unknown device` 或重复端口，每次 close 日志回到 `openResources=0`，下一次 open 为 `openResources=1`，driver 和 pending permission 数量不持续增长。
+22. 保持 MAVLink 已连接时拔出/插回至少 20 次，并覆盖飞控 bootloader 到 application 的重枚举；每轮都先释放旧端口再创建新端口。
+23. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
+24. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
+25. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
+26. `Show Heading Compass Bar` 开关无需重启即可立即显示/隐藏，重启 QGC 后保持用户选择；没有活动飞行器或 `heading` 为 NaN 时不显示伪造的 0°/N。
+27. 使用模拟或真机航向覆盖 N、NE、E、SE、S、SW、W、NW，并重点检查 359° -> 0° -> 1° 连续过渡，中央数值、固定指针和移动方位必须一致。
+28. 在地图主窗口、视频主窗口、地图/视频 PIP 互换、虚拟摇杆、右下仪表盘、Viewer3D、横竖屏和小屏布局下检查罗盘条底边位置、宽度及 `bottomEdgeCenterInset`；重点在目标遥控器 86% 缩放下把左下 PIP 从 10% 连续拖到 75%，以及改变右下仪表宽度，罗盘条必须保持示例的首选宽度，不能缩成点、短条或消失。常规尺寸下检查无不必要遮挡；极端放大的角落控件允许与罗盘条视觉层叠，但 PIP 调整和罗盘条区域的地图拖动、缩放必须仍然有效；全屏视频模式按原生语义隐藏。
+29. Android H.265 连续播放测试期间同时保持罗盘条开启并改变航向，确认 11 个方位 Label 的更新不造成新增卡顿或持续帧率下降。
+30. 在采用 14 pt 平台基准的目标 Android 遥控器上清除应用数据或净安装 APK，首次进入 Application Settings -> General 时 UI Scaling 应显示 86%，运行中的 `appFontPointSize` Fact 应为整数 12 pt。
+31. 在 Android 上使用原生 `-`/`+` 修改整数点数并重启 QGC、覆盖安装保留数据的新 APK，必须保持用户值而不是恢复 86%；执行“清除全部设置”后才恢复 12 pt 缺省值。分别净安装 Ubuntu、Windows、macOS/iOS 构建，默认应保持原生 100%。
+32. 物理宽度小于 120 mm 的极小 Android 设备单独确认平台基准和页面显示值；其 11 pt 基准无法用整数点数精确表示 86%，不得把固定 12 pt 一概描述为所有 Android 屏幕的 86%。
 
 Android 调试时同时关注 `gcs.custom.video.androidvideodecoderpolicy` 和 `gcs.custom.video.androidh265hardwaredecoderadapter`。可用 QGC Application Messages 或 `adb logcat` 查看：
 
@@ -931,6 +964,8 @@ adb logcat -v threadtime | grep -Ei \
 
 运行日志出现 `GimbalCameraControl is not a type`、`GimbalZoomControl is not a type` 或 `Gimbal camera control failed to load`，首先检查 `custom.qrc` 是否同时注册 `QGroundControl/FlightDisplay/GimbalCameraControl.qml` 和 `GimbalZoomControl.qml`。顶层由 `FlyViewTopRightColumnLayout.qml`使用完整 `qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml`地址显式加载，缩放子控件再从同一资源目录解析；它们不加入原生FlightDisplay qmldir。新增QRC文件后必须重新构建资源，若仍命中旧缓存，应新建构建目录后重新configure，而不是修改 `src` qmldir。
 
+RC控制后顶部Center仍在第一次点击弹确认框或无动作时，先确认APK/桌面程序已重新编译 `custom.qrc`，其中存在 `QGroundControl/Toolbar/GimbalIndicator.qml` alias；该URL由拦截器从原生 `qrc:/qml/QGroundControl/Toolbar/GimbalIndicator.qml` 重定向，旧资源缓存仍会运行原生逻辑。随后抓取 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`、`GIMBAL_MANAGER_STATUS`、两条 `MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW` 及各自 `COMMAND_ACK`：Configure只有一次但10秒内始终没有状态确认，应检查MAVLink转发和Gimbal Manager状态上报；状态确认后立刻又回到RC或命令1000返回Denied，说明摇杆仍在持续产生输入，本实现按安全边界不循环争抢。需要预激活的Center应先出现一条body yaw为0、pitch为受限非零1°偏移的命令；若第一条仍等于钳制后的上报pitch或仍为 `0,0`，说明运行的还是上一版“当前姿态预激活”资源。第一条ACK Accepted约400 ms后才应出现 `0,0,NaN,NaN` 的真正Center；只有一条1000说明预激活ACK未匹配或超时。最终Center的ACK若不是Accepted，身份标记会保留供下次重试。两条均ACK Accepted但第二条仍无物理动作时，应检查 `MNT_MODE_OUT`、飞控到云台的下行MAVLink及厂商固件，不再归因于QGC按钮或控制权弹窗。
+
 Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。
 
 视频有画面但缩放按钮仍灰色时，要分别检查视频门控和卡录能力。直接路径应出现 `Installed main pulled-video resolution observers`，随后出现 negotiated/observed主拉流尺寸；当前只有1920×1080和1280×720属于会话白名单。视频门控成立后还必须持续收到合法0x20录像流参数，能力首次确认或发生变化时日志应出现 `Updated SIYI recording-stream capability`；仅有 `sdkResponding`、0x16或拉流尺寸都不能替代0x20。若超过4.5秒没有有效0x20，会出现 `recording-stream parameters timed out`并主动锁定缩放。若两路视频直接观察器均未报告，则检查约1秒后的 `stable VideoManager fallback`。能力确认后以0x18建立起始目标；之后0x0f本地发送成功即更新显示，不等待实际回读。
@@ -953,7 +988,7 @@ hold应在按下420 ms后成立，普通路径只发送一次0x05方向命令，
 
 ```powershell
 rg --files custom
-rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|FlyViewCustomSettings|showHeadingCompassBar|GimbalCameraControl|A8MiniZoomPolicy|startZoom|takePhoto|toggleVideoRecording|CommandManualZoom|CommandMaximumZoomValue|CommandCurrentZoomValue|CommandCameraSystemInfo|CommandFunctionFeedback|CommandPhotoAndRecord" custom
+rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|FlyViewCustomSettings|showHeadingCompassBar|GimbalIndicator|_pendingOwnershipAction|acquireGimbalControl|GimbalCameraControl|A8MiniZoomPolicy|startZoom|takePhoto|toggleVideoRecording|CommandManualZoom|CommandMaximumZoomValue|CommandCurrentZoomValue|CommandCameraSystemInfo|CommandFunctionFeedback|CommandPhotoAndRecord" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
