@@ -46,26 +46,79 @@ Item {
     property var    _pendingGimbal:             null
     property int    _pendingGeneration:         0
     property bool   _pendingCheckScheduled:     false
+    property bool   _pendingAcquireSent:        false
     property bool   _centerPrimerAwaitingAck:   false
     property bool   _centerReplayScheduled:     false
     property int    _centerPrimerGeneration:    -1
     property int    _centerReplayGeneration:    -1
     property int    _centerPrimerVehicleId:     -1
     property int    _centerPrimerManagerCompid: -1
+    property bool   _centerFinalAwaitingAck:    false
+    property int    _centerFinalVehicleId:      -1
+    property int    _centerFinalManagerCompid:  -1
+    property string _centerFinalPrimerKey:      ""
+    // Remember stale-target risk per Vehicle/manager/device instead of as one
+    // global bit, so switching between native multi-gimbal entries cannot
+    // accidentally clear another gimbal's required wake-up.
+    property var    _centerPrimerRequiredKeys:  ({})
     property bool   _toolbarPostureDispatchInProgress: false
 
     // Covers the slow 0.2 Hz ownership-status fallback, one normal 3-second
     // COMMAND_ACK window for the Center primer, and its short settle delay.
     readonly property int _pendingOwnershipTimeoutMs: 10000
+    readonly property int _centerFinalAckTimeoutMs:     4000
     // MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW and MAV_RESULT_ACCEPTED are not
     // exposed through the MAVLink QML enum wrapper in this QGC version.
     readonly property int _mavCmdGimbalManagerPitchYaw: 1000
     readonly property int _mavResultAccepted:             0
+    readonly property int _mavCmdResultCommandOnly:       0
+    // Center and Tilt 90 prove that this project gimbal accepts [-90, 0].
+    // Keep the wake-up target inside that known-safe interval.
+    readonly property real _centerPrimerPitchMin:          -90.0
+    readonly property real _centerPrimerPitchMax:            0.0
+    readonly property real _centerPrimerPitchStep:           1.0
 
     function _hasConfirmedOwnership(gimbal) {
         return !!gimbal
                 && gimbal.gimbalHaveControl
                 && !gimbal.gimbalOthersHaveControl
+    }
+
+    function _centerPrimerKey(vehicle, gimbal) {
+        if (!vehicle || !gimbal) {
+            return ""
+        }
+
+        var vehicleId = Number(vehicle.id)
+        var managerCompid = Number(gimbal.managerCompid.rawValue)
+        var deviceId = Number(gimbal.deviceId.rawValue)
+        if (!isFinite(vehicleId)
+                || !isFinite(managerCompid)
+                || !isFinite(deviceId)) {
+            return ""
+        }
+
+        return vehicleId + ":" + managerCompid + ":" + deviceId
+    }
+
+    function _centerPrimerIsRequired(vehicle, gimbal) {
+        var key = _centerPrimerKey(vehicle, gimbal)
+        return key !== "" && _centerPrimerRequiredKeys[key] === true
+    }
+
+    function _markCenterPrimerRequired(vehicle, gimbal) {
+        var key = _centerPrimerKey(vehicle, gimbal)
+        if (key !== "") {
+            _centerPrimerRequiredKeys[key] = true
+        }
+    }
+
+    function _clearCenterFinalAckWait() {
+        _centerFinalAwaitingAck = false
+        _centerFinalVehicleId = -1
+        _centerFinalManagerCompid = -1
+        _centerFinalPrimerKey = ""
+        centerFinalAckTimeout.stop()
     }
 
     function _pendingContextIsCurrent() {
@@ -82,6 +135,7 @@ Item {
         _pendingController = null
         _pendingGimbal = null
         _pendingCheckScheduled = false
+        _pendingAcquireSent = false
         _centerPrimerAwaitingAck = false
         _centerReplayScheduled = false
         _centerPrimerGeneration = -1
@@ -115,30 +169,31 @@ Item {
     }
 
     function _invokeCenterPrimer(controller, gimbal) {
-        // Cache all telemetry before calling into C++: both send functions
-        // immediately update a local pitch Fact as part of command dispatch.
-        var pitch = Number(gimbal.absolutePitch.rawValue)
-        var yawLock = gimbal.yawLock
-        var yaw = Number((yawLock ? gimbal.absoluteYaw : gimbal.bodyYaw).rawValue)
-        if (!isFinite(pitch)) {
-            pitch = 0
+        // Cache telemetry before calling into C++: sendPitchBodyYaw
+        // immediately sets the local pitch Fact to zero during dispatch.
+        var currentPitch = Number(gimbal.absolutePitch.rawValue)
+        if (!isFinite(currentPitch)) {
+            currentPitch = _centerPrimerPitchMax
         }
-        if (!isFinite(yaw)) {
-            yaw = 0
-        }
+
+        // A same-pose sample is still a no-op in the affected RC/MAVLink
+        // bridge. Clamp the telemetry to the two native toolbar endpoints,
+        // then move exactly one degree. The split keeps the result non-zero,
+        // in range, and different from the reported/clamped pitch even at
+        // either endpoint.
+        var boundedPitch = Math.max(_centerPrimerPitchMin,
+                                    Math.min(_centerPrimerPitchMax, currentPitch))
+        var pitch = boundedPitch <= _centerPrimerPitchMax - 2 * _centerPrimerPitchStep
+                ? boundedPitch + _centerPrimerPitchStep
+                : boundedPitch - _centerPrimerPitchStep
 
         _toolbarPostureDispatchInProgress = true
         try {
-            // Keep the current physical pose and the current yaw mode. This
-            // gives RC -> MAVLink output bridges a non-stale angle/mode sample
-            // without the visible -90 degree movement of the old workaround.
-            // These angle senders also stop the native 500 ms rate timer, so
-            // it cannot create an indistinguishable command-1000 result.
-            if (yawLock) {
-                controller.sendPitchAbsoluteYaw(pitch, yaw, false)
-            } else {
-                controller.sendPitchBodyYaw(pitch, yaw, false)
-            }
+            // Use the exact body-yaw coordinate mode and yaw target of native
+            // Center. Only pitch differs. This avoids an unnecessary
+            // earth/body-frame transition and also stops the native 500 ms
+            // rate timer before waiting for this command-1000 result.
+            controller.sendPitchBodyYaw(pitch, 0, false)
         } finally {
             _toolbarPostureDispatchInProgress = false
         }
@@ -172,6 +227,13 @@ Item {
             return
         }
         if (!_hasConfirmedOwnership(_pendingGimbal)) {
+            // Ownership may be lost between the click-time snapshot and this
+            // deferred stable check. Send the one allowed CONFIGURE here too,
+            // rather than waiting silently until the ten-second timeout.
+            if (!_pendingAcquireSent) {
+                _pendingAcquireSent = true
+                _pendingController.acquireGimbalControl()
+            }
             return
         }
 
@@ -184,7 +246,8 @@ Item {
             // Some RC -> gimbal output chains keep the previous MAVLink 0/0
             // target cached while RC is active. Their first post-takeover 0/0
             // is then acknowledged but produces no update. Prime that chain
-            // with the current pose, and replay Center only after its ACK.
+            // with a bounded, definitely changed pitch target, and replay
+            // Center only after its ACK.
             _centerPrimerAwaitingAck = true
             _centerPrimerGeneration = generation
             _centerPrimerVehicleId = Number(_pendingVehicle.id)
@@ -219,32 +282,45 @@ Item {
                 // Last gesture wins. Do not send another CONFIGURE and do not
                 // reset the original ten-second deadline.
                 _pendingOwnershipAction = action
+                if (action.id === "center") {
+                    _markCenterPrimerRequired(vehicle, gimbal)
+                }
                 _schedulePendingOwnershipCheck()
                 return
             }
             _clearPendingOwnershipAction()
         }
 
-        if (_hasConfirmedOwnership(gimbal)) {
+        var hasOwnership = _hasConfirmedOwnership(gimbal)
+        if (hasOwnership
+                && (action.id !== "center"
+                    || !_centerPrimerIsRequired(vehicle, gimbal))) {
             _invokeOwnershipAction(controller, gimbal, action)
             return
         }
 
+        if (action.id === "center") {
+            _markCenterPrimerRequired(vehicle, gimbal)
+        }
         ++_pendingGeneration
         _pendingOwnershipAction = action
         _pendingVehicle = vehicle
         _pendingController = controller
         _pendingGimbal = gimbal
         _pendingCheckScheduled = false
+        _pendingAcquireSent = false
         pendingOwnershipTimeout.restart()
 
         // One pending sequence sends exactly one automatic acquire request.
         // Never fight continuous RC ownership with repeated CONFIGURE commands.
-        controller.acquireGimbalControl()
+        if (!hasOwnership) {
+            _pendingAcquireSent = true
+            controller.acquireGimbalControl()
+        }
         _schedulePendingOwnershipCheck()
     }
 
-    function _handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult) {
+    function _handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult, failureCode) {
         if (!_centerPrimerAwaitingAck
                 || _pendingOwnershipAction === null
                 || !_pendingContextIsCurrent()
@@ -256,7 +332,8 @@ Item {
         }
 
         _centerPrimerAwaitingAck = false
-        if (ackResult !== _mavResultAccepted) {
+        if (ackResult !== _mavResultAccepted
+                || failureCode !== _mavCmdResultCommandOnly) {
             _clearPendingOwnershipAction()
             return
         }
@@ -267,6 +344,23 @@ Item {
         _centerReplayScheduled = true
         _centerReplayGeneration = _pendingGeneration
         centerReplayDelay.restart()
+    }
+
+    function _handleCenterFinalResult(vehicleId, targetComponent, command, ackResult, failureCode) {
+        if (!_centerFinalAwaitingAck
+                || vehicleId !== _centerFinalVehicleId
+                || command !== _mavCmdGimbalManagerPitchYaw
+                || targetComponent !== _centerFinalManagerCompid) {
+            return
+        }
+
+        var primerKey = _centerFinalPrimerKey
+        _clearCenterFinalAckWait()
+        if (ackResult === _mavResultAccepted
+                && failureCode === _mavCmdResultCommandOnly
+                && primerKey !== "") {
+            delete _centerPrimerRequiredKeys[primerKey]
+        }
     }
 
     function _finishCenterReplay() {
@@ -290,9 +384,25 @@ Item {
         var action = _pendingOwnershipAction
         var controller = _pendingController
         var gimbal = _pendingGimbal
+        if (action.id === "center") {
+            // Keep the stale-target marker until this final command's own ACK
+            // is accepted. A synchronous Duplicate is therefore a safe
+            // failure and the next Center will still run the primer.
+            _clearCenterFinalAckWait()
+            _centerFinalAwaitingAck = true
+            _centerFinalVehicleId = Number(_pendingVehicle.id)
+            _centerFinalManagerCompid = Number(gimbal.managerCompid.rawValue)
+            _centerFinalPrimerKey = _centerPrimerKey(_pendingVehicle, gimbal)
+        }
         _invokeOwnershipAction(controller, gimbal, action)
         if (_pendingGeneration !== generation) {
+            if (action.id === "center") {
+                _clearCenterFinalAckWait()
+            }
             return
+        }
+        if (action.id === "center" && _centerFinalAwaitingAck) {
+            centerFinalAckTimeout.restart()
         }
         _clearPendingOwnershipAction()
     }
@@ -301,6 +411,7 @@ Item {
         if (_pendingOwnershipAction !== null) {
             _clearPendingOwnershipAction()
         }
+        _clearCenterFinalAckWait()
     }
     onGimbalControllerChanged: {
         if (_pendingOwnershipAction !== null) {
@@ -311,9 +422,15 @@ Item {
         if (_pendingOwnershipAction !== null) {
             _clearPendingOwnershipAction()
         }
+        if (activeGimbal && !_hasConfirmedOwnership(activeGimbal)) {
+            _markCenterPrimerRequired(activeVehicle, activeGimbal)
+        }
     }
 
-    Component.onDestruction: _clearPendingOwnershipAction()
+    Component.onDestruction: {
+        _clearPendingOwnershipAction()
+        _clearCenterFinalAckWait()
+    }
 
     Timer {
         id:          pendingOwnershipTimeout
@@ -324,9 +441,19 @@ Item {
 
     Timer {
         id:          centerReplayDelay
-        interval:    150
+        // COMMAND_ACK only means that the manager accepted the primer. Give
+        // the slower FC -> vendor-gimbal output bridge time to publish/latch
+        // that changed target before sending 0/0.
+        interval:    400
         repeat:      false
         onTriggered: control._finishCenterReplay()
+    }
+
+    Timer {
+        id:          centerFinalAckTimeout
+        interval:    control._centerFinalAckTimeoutMs
+        repeat:      false
+        onTriggered: control._clearCenterFinalAckWait()
     }
 
     // Popup panel, appears when clicking top toolbar gimbal indicator
@@ -716,9 +843,15 @@ Item {
         // GimbalController updates these two properties sequentially. Defer
         // both notifications and then require the complete stable predicate.
         function onGimbalHaveControlChanged() {
+            if (!control._hasConfirmedOwnership(activeGimbal)) {
+                control._markCenterPrimerRequired(activeVehicle, activeGimbal)
+            }
             control._schedulePendingOwnershipCheck()
         }
         function onGimbalOthersHaveControlChanged() {
+            if (!control._hasConfirmedOwnership(activeGimbal)) {
+                control._markCenterPrimerRequired(activeVehicle, activeGimbal)
+            }
             control._schedulePendingOwnershipCheck()
         }
         function onDestroyed() {
@@ -731,12 +864,17 @@ Item {
     Connections {
         target: activeVehicle
         function onMavCommandResult(vehicleId, targetComponent, command, ackResult, failureCode) {
-            control._handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult)
+            // A previous gimbal's final ACK and the active gimbal's primer ACK
+            // can coexist because Vehicle keys commands by component. Let both
+            // phase handlers apply their own identity filters.
+            control._handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult, failureCode)
+            control._handleCenterFinalResult(vehicleId, targetComponent, command, ackResult, failureCode)
         }
         function onDestroyed() {
             if (control._pendingOwnershipAction !== null) {
                 control._clearPendingOwnershipAction()
             }
+            control._clearCenterFinalAckWait()
         }
     }
 
