@@ -141,37 +141,56 @@ SetupPage {
                 }
 
                 Rectangle {
-                    width:                  generatorLowVoltageGrid.width + (_margins * 2)
-                    height:                 generatorLowVoltageGrid.height + (_margins * 2)
+                    width:                  generatorLowVoltageRow.width + (_margins * 2)
+                    height:                 generatorLowVoltageRow.height + (_margins * 2)
                     color:                  qgcPal.windowShade
                     visible:                _generatorLowVoltageAvailable
 
-                    GridLayout {
-                        id:                 generatorLowVoltageGrid
-                        columns:            2
+                    Row {
+                        id:                 generatorLowVoltageRow
+                        spacing:            _margins
                         anchors.centerIn:   parent
 
-                        QGCLabel {
-                            text:               qsTr("Low Voltage Threshold:")
-                            Layout.minimumWidth:_labelWidth
-                            Layout.fillWidth:   true
+                        Item {
+                            width:                  _imageWidth
+                            height:                 _imageHeight
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            QGCColoredImage {
+                                color:              qgcPal.text
+                                source:             "/InstrumentValueIcons/bolt.svg"
+                                height:             _imageHeight
+                                width:              _imageHeight
+                                anchors.centerIn:   parent
+                            }
                         }
 
-                        FactTextField {
-                            fact:               _generatorLowVoltage
-                            enabled:            controller.vehicle &&
-                                                !controller.vehicle.armed &&
-                                                !controller.vehicle.flying
-                            Layout.minimumWidth:_editFieldWidth
-                            Layout.fillWidth:   true
-                        }
+                        GridLayout {
+                            columns:                2
+                            anchors.verticalCenter: parent.verticalCenter
 
-                        QGCLabel {
-                            text:               qsTr("Fly View displays a warning when the generator bus voltage falls below this value.")
-                            wrapMode:           Text.WordWrap
-                            Layout.columnSpan:  2
-                            Layout.maximumWidth:_labelWidth + _editFieldWidth
-                            Layout.fillWidth:   true
+                            QGCLabel {
+                                text:               qsTr("Low Voltage Threshold:")
+                                Layout.minimumWidth:_labelWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                fact:               _generatorLowVoltage
+                                enabled:            controller.vehicle &&
+                                                    !controller.vehicle.armed &&
+                                                    !controller.vehicle.flying
+                                Layout.minimumWidth:_editFieldWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Fly View displays a warning when the generator bus voltage falls below this value.")
+                                wrapMode:           Text.WordWrap
+                                Layout.columnSpan:  2
+                                Layout.maximumWidth:_labelWidth + _editFieldWidth
+                                Layout.fillWidth:   true
+                            }
                         }
                     }
                 }
