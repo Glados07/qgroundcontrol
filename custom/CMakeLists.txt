@@ -77,6 +77,17 @@ if(ANDROID)
             message(FATAL_ERROR "QGC: Generated Android package does not contain the custom USB serial manager")
         endif()
 
+        set(_qgc_media_library_overlay
+            "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCCustomMediaLibrary.java"
+        )
+        if(NOT EXISTS "${_qgc_media_library_overlay}")
+            message(FATAL_ERROR "QGC: Custom Android media library overlay was not generated")
+        endif()
+        file(READ "${_qgc_media_library_overlay}" _qgc_media_library_overlay_header LIMIT 4096)
+        if(NOT _qgc_media_library_overlay_header MATCHES "QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V1")
+            message(FATAL_ERROR "QGC: Generated Android package does not contain the custom media library")
+        endif()
+
         set(QGC_ANDROID_PACKAGE_SOURCE_DIR "${_qgc_final_android_dir}"
             CACHE PATH "Path to the merged custom Android package template" FORCE
         )
@@ -197,6 +208,11 @@ file(GLOB_RECURSE SETTINGS_CUSTOM_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Settings/*.h
 )
 
+file(GLOB_RECURSE ANDROID_CUSTOM_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Android/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Android/*.h
+)
+
 set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.h
@@ -212,6 +228,7 @@ set(CUSTOM_SOURCES
     ${COMMS_SOURCES}
     ${VIDEO_MANAGER_CUSTOM_SOURCES}
     ${SETTINGS_CUSTOM_SOURCES}
+    ${ANDROID_CUSTOM_SOURCES}
     CACHE INTERNAL "" FORCE
 )
 
@@ -232,6 +249,7 @@ set(CUSTOM_INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VideoManager
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Settings
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
     ${CMAKE_SOURCE_DIR}/src/Viewer3D
     CACHE INTERNAL "" FORCE
 )

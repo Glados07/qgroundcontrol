@@ -13,7 +13,7 @@
             "shortDesc": "Save camera photos and videos locally",
             "longDesc": "When enabled, camera photo and recording actions also save media to this device independently of gimbal SD card storage.",
             "type": "bool",
-            "default": false
+            "default": true
         },
         {
             "name": "sdkHost",

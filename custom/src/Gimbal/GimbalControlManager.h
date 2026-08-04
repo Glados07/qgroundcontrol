@@ -376,6 +376,7 @@ private:
     bool _localRecordingRetryAfterGenerationResolved = false;
     int _localRecordingStopRetryCount = 0;
     QString _localRecordingFileBase;
+    QString _localRecordingOutputFile;
     // Successful receiver callbacks include the requested basename. Retain
     // unresolved generations across the UI timeout so a late success can
     // still be recognized as ours and stopped safely.
