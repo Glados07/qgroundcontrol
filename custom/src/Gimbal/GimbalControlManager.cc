@@ -9,8 +9,9 @@
 #include "A8MiniZoomPolicy.h"
 #include "Android/AndroidMediaLibrary.h"
 #include "AppSettings.h"
-#include "GimbalMediaSessionPolicy.h"
 #include "GimbalControlSettings.h"
+#include "GimbalMediaSessionPolicy.h"
+#include "GimbalPhotoCapturePolicy.h"
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
 #include "SiyiSdk.h"
@@ -25,11 +26,16 @@
 #include <QtCore/QEventLoop>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QMetaObject>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QSaveFile>
 #include <QtCore/QSharedPointer>
 #include <QtCore/QtMath>
+#include <QtGui/QImage>
+#include <QtGui/QImageWriter>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickItemGrabResult>
+#include <QtQuick/QQuickWindow>
 
 #include <limits>
 #include <utility>
@@ -42,6 +48,8 @@ static constexpr double kZoomComparisonTolerance = 0.051;
 static constexpr int kLocalRecordingStartTimeoutMs = 3000;
 static constexpr int kLocalRecordingStopTimeoutMs = 5000;
 static constexpr int kApplicationShutdownRecordingWaitMs = 3000;
+static constexpr int kLocalPhotoGrabTimeoutMs = 5000;
+static constexpr int kLocalPhotoJpegQuality = 100;
 static constexpr const char* kLocalRecordingFileExtensions[
     VideoReceiver::FILE_FORMAT_MAX + 1] = {
     "mkv",
@@ -72,6 +80,79 @@ enum class LocalMediaKind {
     Photo,
     Video,
 };
+
+struct LocalPhotoSaveOutcome {
+    bool success = false;
+    QString error;
+    QSize outputPixelSize;
+    qint64 fileSize = -1;
+};
+
+// QQuickItemGrabResult::setup()/render() run through direct scene-graph
+// connections and can therefore still be executing on the render thread
+// while the GUI thread handles a timeout. Keep the last strong reference in
+// an object parented to the QQuickWindow. A business cancellation merely
+// retires the holder; ready() or final window destruction releases it at a
+// render-safe lifecycle boundary.
+class LocalPhotoGrabLifetime final : public QObject
+{
+public:
+    LocalPhotoGrabLifetime(
+        const QSharedPointer<QQuickItemGrabResult>& result,
+        QQuickWindow* window)
+        : QObject(window)
+        , grabResult(result)
+    {
+    }
+
+    QSharedPointer<QQuickItemGrabResult> grabResult;
+};
+
+LocalPhotoSaveOutcome saveLocalPhotoImage(
+    QImage grabbedImage,
+    const GimbalPhotoCapturePolicy::CaptureGeometry& captureGeometry,
+    const QString& filename)
+{
+    LocalPhotoSaveOutcome outcome;
+    const QImage image =
+        GimbalPhotoCapturePolicy::prepareImageForSaving(
+            grabbedImage,
+            captureGeometry);
+    grabbedImage = QImage();
+    if (image.isNull()) {
+        outcome.error = QStringLiteral("Image preparation failed.");
+        return outcome;
+    }
+
+    outcome.outputPixelSize = image.size();
+    QSaveFile outputFile(filename);
+    if (!outputFile.open(QIODevice::WriteOnly)) {
+        outcome.error = outputFile.errorString();
+        return outcome;
+    }
+
+    bool encoded = false;
+    {
+        QImageWriter writer(&outputFile, "jpg");
+        writer.setQuality(kLocalPhotoJpegQuality);
+        encoded = writer.write(image);
+        if (!encoded) {
+            outcome.error = writer.errorString();
+        }
+    }
+    if (!encoded) {
+        outputFile.cancelWriting();
+        return outcome;
+    }
+    if (!outputFile.commit()) {
+        outcome.error = outputFile.errorString();
+        return outcome;
+    }
+
+    outcome.success = true;
+    outcome.fileSize = QFileInfo(filename).size();
+    return outcome;
+}
 
 QString localMediaSaveDirectory(AppSettings* appSettings,
                                 LocalMediaKind mediaKind)
@@ -339,6 +420,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _recordingStatusDelayTimer.setInterval(400);
     _recordingCommandTimeoutTimer.setSingleShot(true);
     _recordingCommandTimeoutTimer.setInterval(2500);
+    _localPhotoCaptureTimer.setSingleShot(true);
+    _localPhotoCaptureTimer.setInterval(kLocalPhotoGrabTimeoutMs);
+    _localPhotoSaveThreadPool.setMaxThreadCount(1);
+    _localPhotoSaveThreadPool.setExpiryTimeout(10000);
     _localRecordingStartTimer.setSingleShot(true);
     _localRecordingStartTimer.setInterval(kLocalRecordingStartTimeoutMs);
     _localRecordingStopTimer.setSingleShot(true);
@@ -405,6 +490,22 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     connect(&_photoFeedbackTimer, &QTimer::timeout, this, [this]() { _photoCommandPending = false; });
     connect(&_recordingStatusDelayTimer, &QTimer::timeout, this, &GimbalControlManager::_requestRecordingStatusAfterDelay);
     connect(&_recordingCommandTimeoutTimer, &QTimer::timeout, this, &GimbalControlManager::_handleRecordingCommandTimeout);
+    connect(&_localPhotoCaptureTimer,
+            &QTimer::timeout,
+            this,
+            [this]() {
+                if (!_localPhotoCapturePending) {
+                    return;
+                }
+
+                ++_localPhotoRequestSequence;
+                _localPhotoGrabLifetime.clear();
+                _localPhotoCapturePending = false;
+                _setLocalMediaError(
+                    tr("Failed to capture the local video frame."));
+                qCWarning(GimbalControlLog)
+                    << "Timed out waiting for the local camera-frame grab";
+            });
     connect(&_localRecordingStartTimer,
             &QTimer::timeout,
             this,
@@ -464,6 +565,14 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
 
 GimbalControlManager::~GimbalControlManager()
 {
+    _localPhotoCaptureTimer.stop();
+    ++_localPhotoRequestSequence;
+    // Do not destroy a QQuickItemGrabResult here: its render-thread callback
+    // may still be running. The QQuickWindow-owned lifetime holder retires it.
+    _localPhotoGrabLifetime.clear();
+    _localPhotoCapturePending = false;
+    _localPhotoSaveThreadPool.waitForDone();
+
     shutdownLocalMedia();
     if (_continuousZoomActive && _sdk) {
         _stopContinuousZoom(false);
@@ -1609,6 +1718,19 @@ void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& video
 
 void GimbalControlManager::setMainVideoItem(QQuickItem* videoItem)
 {
+    if (_mainVideoItem == videoItem) {
+        return;
+    }
+    if (_localPhotoCaptureTimer.isActive()) {
+        ++_localPhotoRequestSequence;
+        _localPhotoCaptureTimer.stop();
+        _localPhotoGrabLifetime.clear();
+        _localPhotoCapturePending = false;
+        _setLocalMediaError(
+            tr("Failed to capture the local video frame."));
+        qCWarning(GimbalControlLog)
+            << "Cancelled local camera-frame grab because the video item changed";
+    }
     _mainVideoItem = videoItem;
 }
 
@@ -3755,9 +3877,17 @@ void GimbalControlManager::_reconcileCameraRecordingIntent()
 
 bool GimbalControlManager::_captureLocalVideoFrame()
 {
-    // Advance the generation before validating the request. An older
-    // asynchronous grab must not clear an error produced by a newer click,
-    // even when that newer click fails before grabToImage() is reached.
+    if (_localPhotoCapturePending
+        || _localPhotoGrabLifetimeCount > 0) {
+        _setLocalMediaError(
+            tr("A local photo is still being processed."));
+        qCWarning(GimbalControlLog)
+            << "Ignoring local photo request while the previous frame is still in flight";
+        return false;
+    }
+
+    // Advance the generation before validating the request. It also makes a
+    // timed-out or explicitly cancelled grab/save completion harmless.
     const quint64 requestSequence = ++_localPhotoRequestSequence;
 
     if (!_videoManager
@@ -3793,38 +3923,224 @@ bool GimbalControlManager::_captureLocalVideoFrame()
                  10,
                  QLatin1Char('0')));
 
+    QQuickWindow* videoWindow = _mainVideoItem->window();
+    const qreal reportedDevicePixelRatio = videoWindow
+        ? videoWindow->effectiveDevicePixelRatio()
+        : 1.0;
+    const qreal effectiveDevicePixelRatio =
+        qIsFinite(reportedDevicePixelRatio)
+            && reportedDevicePixelRatio > 0.0
+        ? reportedDevicePixelRatio
+        : 1.0;
+    const QSize itemPixelSize(
+        qMax(1,
+             qRound(_mainVideoItem->width()
+                    * effectiveDevicePixelRatio)),
+        qMax(1,
+             qRound(_mainVideoItem->height()
+                    * effectiveDevicePixelRatio)));
+    const QSize implicitVideoSize(
+        qRound(_mainVideoItem->implicitWidth()),
+        qRound(_mainVideoItem->implicitHeight()));
+    const QSize videoManagerSize = _videoManager->videoSize();
+
+    QSize sourcePixelSize = _negotiatedPulledVideoSize;
+    const char* sourceSizeDescription = "negotiated main stream";
+    if (!sourcePixelSize.isValid() || sourcePixelSize.isEmpty()) {
+        sourcePixelSize = videoManagerSize;
+        sourceSizeDescription = "VideoManager fallback";
+    }
+    if (!sourcePixelSize.isValid() || sourcePixelSize.isEmpty()) {
+        sourcePixelSize = implicitVideoSize;
+        sourceSizeDescription = "video item implicit-size fallback";
+    }
+    if (!sourcePixelSize.isValid() || sourcePixelSize.isEmpty()) {
+        sourcePixelSize = itemPixelSize;
+        sourceSizeDescription = "video item physical-size fallback";
+    }
+
+    const bool usingRecordingResolution =
+        _recordingResolutionConfirmed
+        && _recordingVideoSize.isValid()
+        && !_recordingVideoSize.isEmpty();
+    const QSize outputPixelSize = usingRecordingResolution
+        ? _recordingVideoSize
+        : sourcePixelSize;
+    const auto captureGeometry =
+        GimbalPhotoCapturePolicy::captureGeometry(
+            outputPixelSize,
+            sourcePixelSize,
+            effectiveDevicePixelRatio);
+    if (!captureGeometry.isValid()) {
+        _setLocalMediaError(
+            tr("Failed to capture the local video frame."));
+        qCWarning(GimbalControlLog)
+            << "Rejected invalid local photo geometry"
+            << "recording" << _recordingVideoSize
+            << "recording confirmed" << _recordingResolutionConfirmed
+            << "source" << sourcePixelSize
+            << "DPR" << effectiveDevicePixelRatio;
+        return false;
+    }
+
+    qCInfo(GimbalControlLog)
+        << "Starting local camera-frame capture"
+        << "output" << captureGeometry.outputPixelSize
+        << "output source"
+        << (usingRecordingResolution
+                ? "SIYI recording stream 0x20"
+                : sourceSizeDescription)
+        << "decoded source" << sourcePixelSize
+        << "negotiated" << _negotiatedPulledVideoSize
+        << "VideoManager" << videoManagerSize
+        << "item DIP"
+        << QSize(qRound(_mainVideoItem->width()),
+                 qRound(_mainVideoItem->height()))
+        << "item implicit" << implicitVideoSize
+        << "DPR" << effectiveDevicePixelRatio
+        << "content" << captureGeometry.contentPixelSize
+        << "grab logical target" << captureGeometry.grabLogicalSize
+        << "JPEG quality" << kLocalPhotoJpegQuality;
+
     const QSharedPointer<QQuickItemGrabResult> result =
-        _mainVideoItem->grabToImage();
-    if (!result) {
+        _mainVideoItem->grabToImage(captureGeometry.grabLogicalSize);
+    if (!result || !videoWindow) {
         _setLocalMediaError(tr("Failed to capture the local video frame."));
         return false;
     }
 
+    auto* const grabLifetime =
+        new LocalPhotoGrabLifetime(result, videoWindow);
+    ++_localPhotoGrabLifetimeCount;
+    connect(grabLifetime,
+            &QObject::destroyed,
+            this,
+            [this]() {
+                Q_ASSERT(_localPhotoGrabLifetimeCount > 0);
+                --_localPhotoGrabLifetimeCount;
+                if (!_localPhotoCapturePending
+                    && _localPhotoGrabLifetimeCount == 0
+                    && _localMediaError
+                        == tr("A local photo is still being processed.")) {
+                    _setLocalMediaError(QString());
+                }
+            });
+    _localPhotoCapturePending = true;
+    _localPhotoGrabLifetime = grabLifetime;
+    const QPointer<QObject> guardedGrabLifetime(grabLifetime);
+    const QWeakPointer<QQuickItemGrabResult> weakResult =
+        result.toWeakRef();
     _setLocalMediaError(QString());
     connect(result.data(),
             &QQuickItemGrabResult::ready,
             this,
-            [this, result, filename, requestSequence]() {
-                if (!result->saveToFile(filename)) {
-                    if (requestSequence == _localPhotoRequestSequence) {
-                        _setLocalMediaError(
-                            tr("Failed to save the local video frame."));
-                    }
-                    qCWarning(GimbalControlLog)
-                        << "Failed to save local camera frame" << filename;
+            [this,
+             guardedGrabLifetime,
+             weakResult,
+             filename,
+             requestSequence,
+             captureGeometry]() {
+                const QSharedPointer<QQuickItemGrabResult> result =
+                    weakResult.toStrongRef();
+                if (!result
+                    || !guardedGrabLifetime
+                    || guardedGrabLifetime != _localPhotoGrabLifetime) {
                     return;
                 }
 
-                ++_localPhotoCount;
-                emit localPhotoCountChanged();
-                if (requestSequence == _localPhotoRequestSequence) {
-                    _setLocalMediaError(QString());
+                _localPhotoCaptureTimer.stop();
+                _localPhotoGrabLifetime.clear();
+                QImage grabbedImage = result->image();
+                const QSize grabbedPixelSize = grabbedImage.size();
+                if (grabbedImage.isNull()) {
+                    _localPhotoCapturePending = false;
+                    if (requestSequence == _localPhotoRequestSequence) {
+                        _setLocalMediaError(
+                            tr("Failed to capture the local video frame."));
+                    }
+                    qCWarning(GimbalControlLog)
+                        << "Local camera-frame grab produced no usable image"
+                        << "raw" << grabbedPixelSize
+                        << "expected content"
+                        << captureGeometry.contentPixelSize
+                        << "expected output"
+                        << captureGeometry.outputPixelSize;
+                    return;
                 }
-                qCInfo(GimbalControlLog)
-                    << "Saved local camera frame" << filename;
-                registerLocalMediaFile(filename);
+
+                _localPhotoSaveThreadPool.start(
+                    [this,
+                     grabbedImage = std::move(grabbedImage),
+                     filename,
+                     requestSequence,
+                     grabbedPixelSize,
+                     captureGeometry]() mutable {
+                        const LocalPhotoSaveOutcome outcome =
+                            saveLocalPhotoImage(
+                                std::move(grabbedImage),
+                                captureGeometry,
+                                filename);
+                        const bool completionQueued =
+                            QMetaObject::invokeMethod(
+                                this,
+                                [this,
+                                 outcome,
+                                 filename,
+                                 requestSequence,
+                                 grabbedPixelSize,
+                                 captureGeometry]() {
+                                    if (requestSequence
+                                        == _localPhotoRequestSequence) {
+                                        _localPhotoCapturePending = false;
+                                    }
+
+                                    if (!outcome.success) {
+                                        if (requestSequence
+                                            == _localPhotoRequestSequence) {
+                                            _setLocalMediaError(
+                                                tr("Failed to save the local video frame."));
+                                        }
+                                        qCWarning(GimbalControlLog)
+                                            << "Failed to save local camera frame"
+                                            << filename << outcome.error
+                                            << "raw" << grabbedPixelSize
+                                            << "expected output"
+                                            << captureGeometry.outputPixelSize;
+                                        return;
+                                    }
+
+                                    ++_localPhotoCount;
+                                    emit localPhotoCountChanged();
+                                    if (_localMediaError
+                                        == tr("A local photo is still being processed.")) {
+                                        _setLocalMediaError(QString());
+                                    }
+                                    qCInfo(GimbalControlLog)
+                                        << "Saved local camera frame" << filename
+                                        << "raw grab" << grabbedPixelSize
+                                        << "output" << outcome.outputPixelSize
+                                        << "bytes" << outcome.fileSize;
+                                    registerLocalMediaFile(filename);
+                                },
+                                Qt::QueuedConnection);
+                        if (!completionQueued) {
+                            qCWarning(GimbalControlLog)
+                                << "Failed to queue local photo completion"
+                                << filename;
+                        }
+                    });
             },
             Qt::SingleShotConnection);
+    connect(result.data(),
+            &QQuickItemGrabResult::ready,
+            grabLifetime,
+            [grabLifetime]() {
+                // Deferred deletion keeps the result alive until ready()
+                // returns, including every manager-side image consumer.
+                grabLifetime->deleteLater();
+            },
+            Qt::SingleShotConnection);
+    _localPhotoCaptureTimer.start();
     return true;
 }
 

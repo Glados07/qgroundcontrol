@@ -200,6 +200,11 @@
         <translation>截取本地视频帧失败。</translation>
     </message>
     <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3883"/>
+        <source>A local photo is still being processed.</source>
+        <translation>本地照片仍在处理中。</translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/GimbalControlManager.cc" line="3278"/>
         <source>Failed to save the local video frame.</source>
         <translation>保存本地视频帧失败。</translation>

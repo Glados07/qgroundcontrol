@@ -49,7 +49,7 @@
 - `GimbalControlManager` 把视频会话门控、卡录能力、0x16设备安全上限、当前目标倍率、最近实际反馈和在途命令拆成独立状态。tap从当前目标立即取同一合法表的相邻一档并发送；快速tap从上一成功目标继续规划。hold锁存手势起点和方向，420 ms成立后通常仅发送一次0x05方向命令，随后按总按压时长每600 ms重新计算并显示目标档数，不再周期性发送0x0f；目标首次到达有效端点便立即停止原生运动。若hold成立时第一目标已经是端点，则只发送一次同方向端点0x0f而不启动0x05。普通release在最后一次时间计算后停止0x05；取消、移出、隐藏、后台和销毁不推进目标但同样可靠停止0x05。停止后不发送0x0f归整，断流、重连和设置变化也不会复活旧手势。
 - 飞行界面右侧使用单个始终可见的纵向半透明控制栏：只要Gimbal功能已启用，无论是否连接飞控或云台都会显示；从上到下依次为放大、当前目标倍率、缩小、横向分隔线、拍照、录像以及SD/LOCAL状态徽标。受支持拉流会话或卡录能力尚未确认时缩放按钮锁定；两者确认后按钮启用状态只由当前目标在同一合法表中的方向边界决定。到上限仅禁用加号，到1.0x仅禁用减号；真实断流重新锁定两键并显示 `--`，同分辨率重连后会用已确认或重新查询的卡录能力解锁。本地录像按钮可用性另由本地开关与流状态决定，不要求云台SD能力。
 - 拍照成功只在存在本次思翼拍照请求时由0x0b功能反馈累计机内照片数；录像按钮通过0x0a确认SD卡录像状态，0x0c切换没有ACK，约400 ms后主动查询并以2.5秒超时保护。与此同时，Application Settings -> Video -> Local Video Storage 新增 `localMediaStorageEnabled`，默认 `true`、即时生效；开启后，同一次拍照/录像按钮操作并行驱动“思翼SD卡”和“本机”两条互不回滚的支路。无云台SD卡、SDK离线或SDK命令失败均不阻断本地支路；反过来本地路径、码流或写盘失败也不改写相机支路状态。
-- 本地照片是当前主视频渲染项的解码帧截图，经 `QQuickItem::grabToImage()` 保存为JPG；不是从相机SD卡下载原始照片。桌面端仍使用 `AppSettings::photoSavePath()`，Android则按原生应用数据路径所在的 `StorageVolume` 选择 `Context.getExternalMediaDirs()/Custom-QGroundControl/Photo` 共享媒体目录，避免文件留在图库不可见的 `Android/data`。截图必须存在可用主渲染帧和可写目录，异步保存成功后才累计LOCAL照片反馈并注册Android媒体库。
+- 本地照片是当前主视频渲染项的解码帧截图，不是从相机SD卡下载原始照片。Manager优先把新鲜且合法的0x20卡录宽高作为JPG物理像素尺寸，并用 `effectiveDevicePixelRatio()` 换算 `QQuickItem::grabToImage(targetSize)` 所需的逻辑尺寸，因此Android PIP与视频主画面不再决定输出分辨率；云台0x0a报告无卡不会单独清除此配置，也不会阻断本地支路，只有0x20从未确认、超时失效或尺寸不支持时才回退实际拉流、VideoManager、视频Item隐式源尺寸和最终物理显示尺寸。4K卡录而实时拉流仅1080P时，文件按4K尺寸输出但新增像素来自实时帧上采样，细节不会超过拉流；4096×2160与16:9拉流不等比时居中保留完整画面并补黑边。等待Qt Quick `ready`由5秒Timer保护，超时只让业务generation失效；抓图强引用由 `QQuickWindow`托管到安全完成/销毁边界，不能在GUI线程直接删除仍可能运行于渲染线程的对象，退休holder安全释放前也不再创建第二份本地grab。拿到QImage后，尺寸修正、黑边、质量95 JPEG编码和 `QSaveFile`原子提交转入最大并发1的专用线程池；整个grab/worker期间只允许一张本地照片在途。原子提交成功即累计LOCAL反馈并异步注册Android媒体库，图库失败不回滚计数。桌面端仍使用 `AppSettings::photoSavePath()`，Android使用同一存储卷的 `Context.getExternalMediaDirs()/Custom-QGroundControl/Photo`共享媒体目录。
 - 本地录像不调用会同时遍历主/thermal接收器的 `VideoManager::startRecording()/stopRecording()`；`CustomPlugin`只把主（非thermal）`VideoReceiver`交给Manager，Manager直接调用该receiver的 `startRecording(outputFile, format)`/`stopRecording()`记录当前主压缩码流。桌面目录仍为 `AppSettings::videoSavePath()`；Android直接写同一存储卷的 `Context.getExternalMediaDirs()/Custom-QGroundControl/Video`，容器确认结束后才注册媒体库。文件格式仍读取 `VideoSettings::recordingFormat`。启用存储限制时，总容量仍统计实际目录内全部mkv/mov/mp4，但允许删除的候选严格限制为本功能命名的 `*_local_NNN` 旧分段；Android删除时优先经MediaStore URI同步移除图库记录。从最旧候选开始删除，候选耗尽后即使总量仍高于 `maxVideoSize` 也不触碰thermal或其他入口文件。VideoManager仍通过主receiver既有信号更新全局录像状态和字幕，thermal接收器不会因本功能开始或停止。
 - Android新增custom媒体库桥。应用启动后会扫描共享媒体目录，并把旧构建留在原 `AppSettings` Photo/Video目录的本功能文件放入单线程后台迁移队列：复制到 `.migration.partial`、同步并核对长度、同目录最终改名、获得非空MediaStore URI后才删除旧源文件；同名冲突只有逐字节一致才允许清理旧源，失败始终保留源文件。照片在JPG写盘成功后扫描，录像只在confirmed-owned主receiver报告 `recording=false`、容器已封装后扫描；external、thermal、未确认或启动失败的录像不会被本功能发布。MKV/MOV虽会按MIME注册，但厂商图库可能过滤不支持的容器，Android验收优先使用MP4。
 - 右侧控制栏以一个按钮协调双支路，并分别显示 `SD` 与 `LOCAL` 徽标：绿色为实际录制，黄色/省略号为pending，红色为失败，灰色表示未录制或不可用。总计时只在至少一条支路已实际捕获时运行，不把思翼toggle的乐观状态当成已落盘；因此无卡但本地录像正常时，LOCAL仍独立显示录制状态。两条支路均未开始且已无pending时，主按钮显示 `FAILED`，但仍保留停止/清理当前会话的操作入口。
@@ -128,13 +128,13 @@
 
 ### 1.12 custom 架构、设置和翻译（已集成）
 
-- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 118 个文件。
+- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 121 个文件。
 - 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、QML URL 拦截和 Android overlay 接入。
 - General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
 - Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
 - 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
 - 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
-- custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；当前 `custom.ts` 与 `custom_zh_CN.ts` 均为9个context、48条message，英文模板48条均标记unfinished，简体中文48条均已提供译文。目录已覆盖本地媒体、Proximity Radar、母线告警、航向罗盘条、Fuel和Video Integration；新增可见文本后仍必须重新运行 `lupdate` 并人工复核。
+- custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；当前 `custom.ts` 与 `custom_zh_CN.ts` 均为9个context、49条message，英文模板49条均标记unfinished，简体中文49条均已提供译文。目录已覆盖本地媒体、Proximity Radar、母线告警、航向罗盘条、Fuel和Video Integration；新增可见文本后仍必须重新运行Qt 6 `lupdate` 并人工复核。
 
 ## 2. 开发边界
 
@@ -149,7 +149,7 @@
 
 ## 3. custom 完整目录结构
 
-当前共 118 个文件：
+当前共 121 个文件：
 
 ```text
 custom/
@@ -196,6 +196,8 @@ custom/
       GimbalControlManager.cc
       GimbalMediaSessionPolicy.h
       GimbalMediaSessionPolicy.cc
+      GimbalPhotoCapturePolicy.h
+      GimbalPhotoCapturePolicy.cc
       GimbalControlSettings.h
       GimbalControlSettings.cc
       GimbalVideoStreamSupport.h
@@ -269,6 +271,7 @@ custom/
   test/
     Gimbal/
       GimbalMediaSessionPolicyTest.cc
+      GimbalPhotoCapturePolicyTest.cc
       SiyiProtocolTest.cc
   translations/
     README.md
@@ -285,7 +288,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest` 和 `GimbalMediaSessionPolicyTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest`、`GimbalMediaSessionPolicyTest` 和 `GimbalPhotoCapturePolicyTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
 | `custom/custom.qrc` | custom RCC运行时资源清单，共64个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、14个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。`GimbalIndicator.qml` 与 `ProximityRadarIndicator.qml` 以 `QGroundControl/Toolbar/...` alias注册，使既有URL拦截器替换原生工具栏资源；`GimbalCameraControl.qml` 和 `GimbalZoomControl.qml` 继续显式注册。Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel与Proximity Radar详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
@@ -347,10 +350,12 @@ custom/
 | `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义7个Fact及约束：`enabled=true`、`localMediaStorageEnabled=true`、`sdkHost=192.168.144.25`、`sdkPort=37260`、`zoomStep=1.0x`、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`。本地媒体开关默认开启，控制同一按钮是否额外保存照片和录像到本机，与云台SD卡独立且无需重启；`zoomStep`说明tap/hold目标规则。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`。 |
 | `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用7个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证 `localMediaStorageEnabled` 等属性名称稳定；不创建UDP socket、不发送云台命令，也不直接写媒体文件。 |
 | `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现7个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
-| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。除缩放/SD拍照录像状态外，暴露 `localMediaStorageEnabled`、本地录像active/pending、组合会话active/capturing/available、本地照片计数和本地媒体错误。保存主视频渲染项的弱引用、已签发录像基名及对应完整输出路径，并声明本地截图、owned/external录像协调、启动/停止超时和退出清理接口；本地与SD状态不共用一个布尔值。完整路径用于容器最终结束后发布Android媒体，不能只靠基名反推目录。 |
-| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`、主视频渲染项和主（非thermal）`VideoReceiver`弱引用，没有修改 `src/VideoManager`。拍照以 `grabToImage()`保存主渲染帧后独立发送思翼命令；JPG写盘成功才调用Android媒体库。录像读取 `VideoSettings::recordingFormat`，桌面使用 `AppSettings::videoSavePath()`，Android使用与AppSettings同卷的共享媒体Video目录，然后仅调用主receiver start/stop；thermal既不启动也不停止。只有confirmed-owned录像在实际 `recording=false` 后才用保留的完整输出路径入库。容量统计沿用实际目录内全部mkv/mov/mp4和 `maxVideoSize`，但删除集合安全收窄为文件名符合本功能 `*_local_NNN` 的旧分段；Android优先经MediaStore删除，删除失败立即停止本轮清理，无法只靠这些分段降到上限时保留其他入口/thermal文件。主receiver既有信号仍让VideoManager更新 `recording`和字幕。只有启动完成成功且输出completeBaseName命中已签发唯一基名时才确认ownership；失败/无效格式、不匹配、pending超时、断流分段和退出收尾均按独立状态处理。启动后还会扫描共享目录，并把旧AppSettings目录的本功能文件交给Java后台安全迁移。 |
+| `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。除缩放/SD拍照录像状态外，暴露 `localMediaStorageEnabled`、本地录像active/pending、组合会话active/capturing/available、本地照片计数和本地媒体错误。保存主视频渲染项的弱引用、已签发录像基名及对应完整输出路径，并声明本地截图、owned/external录像协调、启动/停止超时和退出清理接口；本地与SD状态不共用一个布尔值。截图保留覆盖grab与后台保存全过程的单次在途标记、未释放窗口holder计数、5秒grab Timer、专用单线程池以及指向当前holder的QPointer，避免Android连续点击或超时重试同时分配多份高分辨率FBO/QImage，也避免GUI取消路径提前销毁渲染线程对象。完整路径用于容器最终结束后发布Android媒体，不能只靠基名反推目录。 |
+| `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`、主视频渲染项和主（非thermal）`VideoReceiver`弱引用，没有修改 `src/VideoManager`。本地拍照在点击时快照新鲜合法0x20卡录尺寸、实际拉流尺寸、视频Item尺寸和窗口DPR，优先按卡录物理像素尺寸计算逻辑离屏target；0x0a无卡不改变尺寸选择，只有卡录参数不可用时才逐级回退拉流/Item信息。`QQuickItemGrabResult`的最后强引用由窗口子对象持有；5秒超时、等待 `ready` 阶段的视频Item替换以及Manager析构只退休业务generation，不跨线程直接析构抓图对象；已经进入worker后再替换Item，仍会保存已经抓到的帧。`ready`后把QImage移交最大并发1的专用线程池，照片策略在worker中修正分数DPR误差或不等宽高比留边，再用 `QSaveFile + QImageWriter` 以JPEG质量95原子提交；queued completion回到Manager线程后才累计计数并调用Android媒体库。录像读取 `VideoSettings::recordingFormat`，桌面使用 `AppSettings::videoSavePath()`，Android使用与AppSettings同卷的共享媒体Video目录，然后仅调用主receiver start/stop；thermal既不启动也不停止。只有confirmed-owned录像在实际 `recording=false` 后才用保留的完整输出路径入库。容量统计沿用实际目录内全部mkv/mov/mp4和 `maxVideoSize`，但删除集合安全收窄为文件名符合本功能 `*_local_NNN` 的旧分段；Android优先经MediaStore删除，删除失败立即停止本轮清理，无法只靠这些分段降到上限时保留其他入口/thermal文件。主receiver既有信号仍让VideoManager更新 `recording`和字幕。只有启动完成成功且输出completeBaseName命中已签发唯一基名时才确认ownership；失败/无效格式、不匹配、pending超时、断流分段和退出收尾均按独立状态处理。启动后还会扫描共享目录，并把旧AppSettings目录的本功能文件交给Java后台安全迁移。 |
 | `custom/src/Gimbal/GimbalMediaSessionPolicy.h` | 声明无QObject依赖的本地媒体纯状态转换策略。输入意图、设置、码流、实际录像、ownership、external、pending和blocked状态，输出StartOwned、StopOwned、AdoptExternal、ConfirmOwned或ReleaseExternal动作；另统一计算组合会话是否实际捕获及按钮可用性。 |
 | `custom/src/Gimbal/GimbalMediaSessionPolicy.cc` | 实现上述确定性决策：本地启动条件不含SD或SDK状态；外部录像只能采用/释放，不能停止；owned/pending由Manager负责收尾；无流或本次启动已阻断时不重复启动。组合capturing排除尚未被0x0a确认的相机乐观状态，本地流可用时允许无SDK独立开始。 |
+| `custom/src/Gimbal/GimbalPhotoCapturePolicy.h` | 声明本地照片纯尺寸/图像策略及 `CaptureGeometry`：卡录输出物理尺寸、完整画面内容尺寸和经DPR换算的Qt Quick逻辑抓取尺寸。该层不读取SDK、设置或文件路径。 |
+| `custom/src/Gimbal/GimbalPhotoCapturePolicy.cc` | 根据卡录输出尺寸、实际解码源宽高和 `effectiveDevicePixelRatio()` 计算离屏抓取尺寸；结果回调时把分数DPR造成的少量像素误差平滑修正到精确输出。源流与卡录宽高比不同时使用保持比例完整显示和居中黑边，不裁剪、不拉伸；普通16:9精确命中时直接复用QImage，避免无意义的4K深拷贝。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.h` | 声明两个无对象状态的启动期适配接口：安装A8 Mini视频缺省设置，以及判断一条MAVLink消息是否应被过滤。它不创建 VideoReceiver、不连接RTSP，也不参与H.265解码。 |
 | `custom/src/Gimbal/GimbalVideoStreamSupport.cc` | `CustomPlugin::init()` 每次启动调用的幂等迁移和消息策略实现。版本键 `[GimbalControl]/a8MiniVideoDefaultsVersion=4` 控制迁移：只在URL为空或旧拼写时设置A8 RTSP地址，只在A8 URL且timeout过小时提升到20秒，只在视频源为空/Disabled/No Video时选RTSP；Android仅在用户从未保存 `[Video]/lowLatencyMode` 且URL匹配时写true，已有选择不覆盖。过滤逻辑仅针对 `VIDEO_STREAM_INFORMATION`：Gimbal开启且 `mavlinkAutoVideoStream=false` 时阻止它进入原生自动视频配置，其余消息放行。 |
 | `custom/src/Gimbal/SiyiProtocol.h` | 思翼私有协议的纯静态编解码接口，覆盖0x05/0x0a/0x0b/0x0c/0x0f/0x16/0x18/0x20及ACK帧判定；不继承QObject，不访问网络、QSettings或UI。 |
@@ -359,6 +364,7 @@ custom/
 | `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；接收侧按逻辑IP、逐帧长度、CRC和control 0x02过滤，并且只在对应业务payload解析成功后发出 `packetReceived`。一个UDP报文中的0x16、0x18、0x20或状态帧分别分发，不因相机合包而整体丢弃。`gcs.custom.gimbal.sdk`记录每个命令、原始payload、倍率编码和卡录参数；空包、短写或无效endpoint通过 `communicationError`交给Manager。 |
 | `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖0x0f封包量化、ACK control、坏CRC、严格单帧长度、多帧UDP拆分、0x16/0x18双格式倍率payload、0x20录像流请求与9字节ACK、拉流会话白名单、4K/2K/1080P/720P卡录能力映射、唯一min锚目标表、精确上限追加、正反同表序列，以及420 ms长按成立后按 `qRound(total/600)` 计算档数和端点钳制。Manager级测试还需覆盖能力交叉校验、tap成功即显示、快速替换、hold只启动一次0x05、普通release与cancel分流及不产生释放后反向0x0f。 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc` | 独立QtTest状态策略回归。覆盖无SD/SDK依赖的本地启动、external录像只释放不停止、confirmed owned关闭、未确认provisional取消等待、迟到确认后的补偿停止、expected stop不重启、pending幂等、码流与blocked门控、采用/确认已有实际录像、排除相机乐观状态的capturing，以及无SDK时只凭本地码流即可启用录像按钮。它不替代真实文件系统、GStreamer和Android设备测试。 |
+| `custom/test/Gimbal/GimbalPhotoCapturePolicyTest.cc` | 独立QtTest照片尺寸策略回归。覆盖720P/1080P/2K/4K与DPR 1/1.5/2/2.625换算、4096×2160输出对16:9实时帧的四色角完整性和左右各128像素黑边、分数DPR实际grab偏差修正为精确输出、普通16:9路径不触发QImage深拷贝，以及无效尺寸/DPR拒绝。它不替代Qt Quick真实离屏渲染、5秒Timer/generation/窗口生命周期、线程池、JPEG/QSaveFile失败、Android GPU内存和MediaStore真机测试。 |
 
 云台相机完整调用链为：`VideoReceiver`解码当前视频 -> 真实首帧CAPS或最终 `GstVideoInfo` 隐式尺寸 -> 无直接结果时使用稳定1秒的 `VideoManager::videoSize` -> 受支持拉流只建立视频会话门控 -> 0x20查询 `stream_type=0`卡录分辨率并映射基础上限 -> 合法0x16只以较小值安全收紧 -> `A8MiniZoomPolicy`生成1.0x起始的唯一min锚网格并追加有效精确上限 -> tap立即发送同表相邻一档0x0f并在成功后显示目标 -> hold在420 ms成立后通常只发送一次0x05方向命令，按总按压时长每600 ms更新同方向合法显示目标并在端点立即停止 -> 普通release调用 `stopZoom()`，取消、移出、隐藏、后台和销毁调用 `cancelZoom()`；活动0x05路径都会发送0停止，且hold结束不发送0x0f反向归整。若hold起步目标已是端点，则只发一次同方向端点0x0f而不进入0x05。0x18实际反馈独立保存，不覆盖当前目标倍率。
 
@@ -483,8 +489,8 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | 文件 | 详细作用 |
 |---|---|
 | `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
-| `custom/translations/custom.ts` | `lupdate` 生成的英文源字符串模板，供各语言目录对齐 context/source，CMake 不把它编译为运行时 `.qm`。当前实际为9个context、48条message，48条translation均为unfinished模板状态，覆盖本地媒体、Proximity Radar、母线低电压告警、航向罗盘条、Fuel和Video Integration；新增文本后仍需刷新。 |
-| `custom/translations/custom_zh_CN.ts` | 简体中文 locale 目录；CMake 将其编译成 `custom_zh_CN.qm` 放入 `:/i18n`，`CustomPlugin` 在匹配中文 locale 时安装对应translator。当前与模板相同的9个context、48条message均已有中文译文，包含 `FAILED`、“启动本地视频录像失败”、“配置的本地视频格式无效”及其他LOCAL/SD状态和本地媒体错误提示。 |
+| `custom/translations/custom.ts` | `lupdate` 生成的英文源字符串模板，供各语言目录对齐 context/source，CMake 不把它编译为运行时 `.qm`。当前实际为9个context、49条message，49条translation均为unfinished模板状态，覆盖本地媒体、Proximity Radar、母线低电压告警、航向罗盘条、Fuel和Video Integration；新增文本后仍需刷新。 |
+| `custom/translations/custom_zh_CN.ts` | 简体中文 locale 目录；CMake 将其编译成 `custom_zh_CN.qm` 放入 `:/i18n`，`CustomPlugin` 在匹配中文 locale 时安装对应translator。当前与模板相同的9个context、49条message均已有中文译文，包含 `FAILED`、“本地照片仍在处理中”、“启动本地视频录像失败”、“配置的本地视频格式无效”及其他LOCAL/SD状态和本地媒体错误提示。 |
 | `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 
 ## 5. 复用的 QGC 原生 Viewer3D 文件
@@ -628,7 +634,7 @@ Gimbal启用后，Manager即使不在Fly View也会持续运行，并每2秒向 
 本地媒体的运行语义如下：
 
 1. 开关关闭时保持原有思翼SD行为；开关开启后，控制栏每次拍照或开始/停止录像都会同时发起SD与本地动作。两条支路并行、状态独立、失败互不回滚。SDK离线、相机状态未知、无云台SD卡或0x0a返回状态2/3时，只影响 `SD` 徽标；只要主视频条件满足，本地照片/录像仍可工作。
-2. 本地照片是当前主视频渲染项的截图，不是SD卡原片。Manager要求正在解码、主 `QQuickItem` 有有效尺寸且 `Photo` 目录可写，调用 `grabToImage()`，以 `yyyy-MM-dd_hh.mm.ss.zzz_local_NNN.jpg` 命名；只有异步 `saveToFile()`成功后才更新LOCAL照片成功反馈。Android随后异步扫描该完成文件，只有Java回调给出非空MediaStore URI才表示系统图库已收录；“JPG已落盘”和“图库已入库”是两个阶段。
+2. 本地照片是当前主视频渲染项的解码帧截图，不是SD卡原片。Manager要求正在解码、主 `QQuickItem` 有有效尺寸且 `Photo` 目录可写；点击时快照0x20卡录尺寸、实际解码源尺寸、Item尺寸和窗口 `effectiveDevicePixelRatio()`。输出物理像素优先等于新鲜合法的0x20卡录尺寸，DPR只用于反算 `grabToImage(targetSize)` 的逻辑target，不能把卡录像素尺寸直接当逻辑尺寸再次放大；0x0a无卡不清除此配置，也不作为本地门槛，只有0x20从未确认、超时失效或尺寸不支持时才依次回退协商拉流、VideoManager、Item隐式源尺寸和Item物理显示尺寸。源与卡录宽高比不同时完整居中并补黑边，分数DPR误差在保存前修正为精确输出；卡录4K而拉流1080P只能得到1080P细节的4K上采样文件。等待 `ready`阶段有5秒超时，业务取消只退休generation，窗口托管的holder继续保护可能正在渲染线程执行的grab并在安全边界释放；退休holder释放前新的本地grab仍被拒绝，避免超时重试叠加4K FBO。拿到QImage后，尺寸修正、质量95 JPEG编码和QSaveFile提交都在最大并发1的专用worker执行，保存阶段没有5秒超时。一次只允许一个grab/worker在途，重复点击仍独立尝试思翼SD拍照，但本地支路提示上一张仍在处理。文件以 `yyyy-MM-dd_hh.mm.ss.zzz_local_NNN.jpg` 命名，`NNN`来自请求generation，校验失败/超时可造成跳号；原子提交成功即递增 `_localPhotoCount`，再异步请求Android MediaStore，URI为空或图库失败不回滚计数。因此“JPG已落盘”“LOCAL成功计数”和“图库已入库”是不同口径。
 3. 本地录像仍用 `VideoManager::streaming()/recording()`观察全局主视频会话，但不调用VideoManager的start/stop。`CustomPlugin::createVideoSink()`只把主（非thermal）receiver保存到Manager；开始时读取并校验 `VideoSettings::recordingFormat`，用实际平台目录、`yyyy-MM-dd_hh.mm.ss.zzz_local_NNN`和对应mkv/mov/mp4扩展组成完整路径，然后直接调用主receiver `startRecording(outputFile, fileFormat)`。停止同样只调用该receiver。这样复用主压缩码流，不重新编码显示帧，也不会启动/停止thermal录像。Manager保存完整输出路径，仅当主receiver启动结果确认ownership且实际状态最终变为false后才请求Android扫描；录制中、external、thermal、provisional或失败启动都不发布半成品。
 4. 因为绕过了VideoManager入口，custom在开始前实现受限清理：只有 `enableStorageLimit=true` 才统计实际Video目录下可读写、非符号链接的全部mkv/mov/mp4，用该总量与 `maxVideoSize` 比较；删除候选则只包含文件名以 `_local_`加至少3位数字结尾的 `*_local_NNN.mkv/.mov/.mp4` 旧分段，并从最旧候选开始删除。Android优先让ContentResolver按具体MediaStore URI删除文件与索引，找不到URI才回退原始路径删除并请求索引刷新；任一删除失败就停止本轮，避免总量未减少时继续多删。若候选删完后总量仍超限，停止清理并保留其他入口、thermal或用户文件，不为强行达标扩大删除范围。格式和限额仍来自原生VideoSettings；`recordingFormat`越界时不调用receiver并显示格式无效。
 5. Manager只停止自己发起的owned录像。`VideoManager::recordingChanged`来自主receiver既有连接，继续更新全局状态和字幕，但只能证明“有录像”；主receiver的 `onStartRecordingComplete`还必须报告成功，且 `recordingOutput()`完整基名命中本次签发列表，Manager才确认ownership。失败结束pending；仍有本地意图时显示启动失败，用户已取消或关闭开关时不残留红色错误。输出不匹配视为其他入口录像，不能认领或停止。start pending为3秒；stop pending为5秒，超时只再调用一次主receiver stop。若断流重连或重新开启本地开关时仍有旧generation未决，重试意图会保留到该generation成功/失败后再消费，不能提前丢失，也不能并发发出第二次start。
@@ -811,8 +817,10 @@ QGCApplication
          -> tap立即发送/替换同表相邻一档0x0f；不维护方向队列，也不延迟重放
          -> hold在420 ms成立，通常只发送一次0x05方向命令；按qRound(totalMs/600.0)更新单调显示目标
          -> release/cancel/端点发送0x05停止和有界安全重复；起步即端点时只发一次同方向0x0f
-         -> 拍照并行：主渲染帧grabToImage保存Photo/JPG + 思翼0x0c拍照，各自反馈
-            -> Android JPG写盘成功后由QGCCustomMediaLibrary注册MediaStore
+         -> 拍照并行：0x20卡录像素尺寸 + 解码源宽高 + 窗口DPR计算逻辑target
+            -> 主渲染纹理grabToImage(target)，窗口holder保护渲染线程生命周期；等待ready最多5秒
+            -> QImage交给单线程worker完成精确尺寸/完整比例修正、质量95编码和原子提交
+            -> 同时独立发送思翼0x0c拍照；JPG提交成功后回主线程计数并注册Android MediaStore
          -> 录像并行：主非thermal VideoReceiver压缩码流写Video + 思翼0x0c toggle
             -> Android只在confirmed-owned且recording=false完成容器收尾后注册MediaStore
          -> Android按AppSettings所在StorageVolume选择getExternalMediaDirs共享Photo/Video目录
@@ -967,7 +975,7 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V1' \
    - `-`/`+`每次tap只调用一次方向接口并立即发送同表相邻一档0x0f目标，本地发送成功后中心数字必须立即显示target。默认步长1.0x时，2K卡录严格覆盖1→2→3→3.5并反向返回，1080P卡录覆盖1→2→3→4→5→5.5，720P卡录覆盖1→2→3→4→5→6；4K两方向均不可用。快速 `+++`应依次发送并显示合法目标，后一个目标现场替换前一个目标，不存在等待、FIFO或停止点击后再派发。
    - 按住420 ms后进入hold，普通路径只允许发送一次0x05 `+1/-1`开始命令。以手势按下起点为时间零点，显示目标档数必须等于 `qRound(totalMs / 600.0)`；只在计算档数增加时更新显示，并始终从hold起始目标沿同一方向表计算，不能因定时器抖动、反馈raw或快速回调倒退。覆盖420/600/900/1200 ms附近边界、正反方向、端点钳制和释放竞争；显示目标到1.0或卡录有效上限时必须主动停止0x05。普通release调用一次 `stopZoom()`并完成最后一次时间计算；取消、移出、控件隐藏/销毁、应用后台或断流调用 `cancelZoom()`且不推进目标。活动0x05路径必须发送0x05 `0`停止及有界安全重复，结束后、断流重连或设置变化后都不得出现0x0f归整。仅当hold成立时第一目标已是端点，才允许以一次同方向端点0x0f替代0x05。
    - 验证目标显示与实际反馈解耦：0x0f本地发送成功即显示target；运动中0x18只更新内部实际值，不能把中心数字从target改回旧档。发送失败必须保持原目标；新tap或hold目标成功后立即替换显示。合法0x16若收紧上限、0x20卡录模式变化、SDK能力失效或真实 `decoding=false`可以触发安全重同步和锁定；普通中间0x18不得如此。取消/隐藏/后台后不得在稍后重放旧hold目标或发送反向0x0f。
-   - 拍照测试矩阵：开关关闭只验证0x0c/0x0b；开关开启时验证“SDK+有卡”“SDK无卡/拍照失败”“SDK离线”“无主渲染帧”“Photo目录不可写”。前3类只要有主帧和可写路径就必须生成JPG；后2类只报LOCAL错误且仍尝试SDK。文件必须来自当前显示帧、以 `_local_NNN.jpg` 命名，不能误称相机原片；只有异步写盘成功才递增本地计数。Android分别用内置卷和遥控器可移动SD验证文件位于对应 `Android/media/org.mavlink.qgroundcontrol/Custom-QGroundControl/Photo`，日志出现非空 `content://media/...` URI且图库显示；文件存在但URI为空不算图库验收通过。
+   - 拍照测试矩阵：开关关闭只验证0x0c/0x0b；开关开启时验证“SDK+有卡”“SDK无卡/拍照失败”“SDK离线”“无主渲染帧”“Photo目录不可写”。前3类只要有主帧和可写路径就必须生成JPG；无卡且0x20仍新鲜时继续按该卡录尺寸输出，无卡且0x20从未确认/已失效时回退拉流尺寸，二者都不能破坏本地独立语义；后2类只报LOCAL错误且仍尝试SDK。分别组合720P/1080P拉流与720P/1080P/2K/3840×2160/4096×2160卡录，JPG物理尺寸必须精确等于已确认卡录尺寸；4K文件的细节仍以实时拉流为上限。4096×2160配16:9流必须保留四角并在左右各补128像素黑边，不能裁剪或拉伸。Android地图主画面+视频PIP、视频主画面，以及Ubuntu两种状态输出尺寸必须一致；覆盖DPR 1、1.5、2、2.625、Android 86%/100%界面缩放和横竖屏，日志中的逻辑target乘DPR应接近期望content，最终output必须完全命中卡录尺寸。Manager级另覆盖5秒内ready、永不ready、超时后迟到ready、grab期间替换Item、空QImage、worker期间快速点击、编码/open/commit失败和MediaStore失败：业务超时/替换不得提前销毁渲染线程grab，失败不得计数/入库，提交成功但图库失败仍只计一次。文件必须来自当前解码帧、以 `_local_NNN.jpg` 命名且JPEG质量95，不能误称相机原片。Android分别用内置卷和遥控器本机可移动SD验证文件位于对应 `Android/media/org.mavlink.qgroundcontrol/Custom-QGroundControl/Photo`，MediaStore的width/height/_size与实际JPG一致、日志出现非空 `content://media/...` URI且图库显示；文件存在但URI为空不算图库验收通过。
    - 录像测试矩阵：分别覆盖“有卡+本地”“无卡+本地”“SDK离线+本地”“本地路径不可写但SD可用”“RTSP无流但SD可用”“开始时断流/恢复”“录像中断流/恢复”“开关中途关闭/再开启”。SD与LOCAL必须独立显示，任何一边失败不得停止另一边；无卡时0x0a状态2结束SD pending但LOCAL继续绿色录制；本地恢复后必须产生新分段。验证开关关闭只停止owned本地录像且SD保持原目标，退出也只停止owned会话。
    - receiver边界矩阵：同时配置主流和thermal流，按思翼栏开始/停止时只允许主（`isThermal()==false`）receiver各收到一次start/stop，thermal不得收到调用或生成/关闭文件。确认VideoManager仍从主receiver既有信号更新 `recording`、录像开始/停止状态和字幕；custom不得调用会遍历所有receiver的VideoManager start/stop接口。主流断开重建receiver后，Manager弱引用必须更新，不能调用已销毁对象。
    - ownership/pending矩阵：先由其他入口启动主receiver录像，再点击/停止思翼栏，Manager只能adopt/release而不能调用stop；分别注入主receiver启动完成的“成功+匹配输出完整基名”“成功+不匹配基名”“失败”“3秒无回调”，只有第一种允许confirmed owned；仍有本地意图的失败应显示 `FAILED`/“启动本地视频录像失败”，已取消的迟到失败/超时不得残留红色错误。自有停止5秒无完成时只重试一次主receiver stop。快速连点、`recordingChanged`与启动完成回调先后顺序、迟到回调不能造成双start、双stop或把external误标owned。另覆盖旧generation未决期间断流重连和开关OFF→ON：不得并发start，旧generation失败后必须消费一次延迟重试，旧generation成功则直接接管且不得再start。
@@ -1044,10 +1052,10 @@ Android本地照片/录像与图库调试使用：
 
 ```bash
 adb logcat -v threadtime | grep -Ei \
-  "QGCCustomMedia-Custom|gcs.custom.android.medialibrary|Saved local camera frame|local video"
+  "QGCCustomMedia-Custom|gcs.custom.android.medialibrary|Starting local camera-frame capture|Saved local camera frame|local video"
 adb shell find /storage -type f -path '*Android/media/org.mavlink.qgroundcontrol/Custom-QGroundControl/*' -name '*_local_*'
-adb shell content query --uri content://media/external/images/media --projection _id:_display_name:mime_type | grep '_local_'
-adb shell content query --uri content://media/external/video/media --projection _id:_display_name:mime_type | grep '_local_'
+adb shell content query --uri content://media/external/images/media --projection _id:_display_name:width:height:_size:mime_type | grep '_local_'
+adb shell content query --uri content://media/external/video/media --projection _id:_display_name:width:height:_size:mime_type | grep '_local_'
 ```
 
 `Using shared-media directory`先证明APK选中的真实卷和目录；`Media indexed: ... -> content://...`才证明MediaStore接收了文件。文件存在但日志为 `without a MediaStore URI` 时，图库阶段仍失败；MediaStore已有记录而厂商图库不显示MKV/MOV时，先改用MP4复测。覆盖安装新版本后，旧AppSettings目录的 `*_local_NNN` 会显示 `Queued legacy media migration`；只有新副本完成扫描后才清理旧源，空间不足、复制/同步失败、同名内容冲突或URI为空都会保留旧源供下次重试。验证旧文件迁移必须覆盖安装而不是先卸载旧APK，因为Android可能随卸载清理应用专属的 `Android/data` 与 `Android/media` 目录。
@@ -1070,7 +1078,7 @@ Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `a
 
 hold应在按下420 ms后成立，普通路径只发送一次0x05方向命令，随后保持相机原生连续运动。显示目标档数按从最初按下开始的总时长 `qRound(totalMs / 600.0)` 计算；例如默认1.0x从1.0正向长按时，档数增加才依次显示2.0、3.0、4.0，任何回调或actual raw都不能让目标倒退，到卡录能力的有效端点必须立即停止。普通release调用 `stopZoom()`并完成最后一次时间计算；取消、移出、控件隐藏/销毁、应用后台、SDK能力失效或断流调用 `cancelZoom()`且不推进目标。活动0x05路径发送停止及一份有界安全重复，不补tap、不发送0x0f归整；断流重连和设置变化也不能复活归整。若成立时第一目标已经是端点，则只发送一次同方向端点0x0f，不启动0x05。
 
-按下拍照后SD有反馈但找不到本地JPG时，先确认 `localMediaStorageEnabled=true`，再区分“无解码帧”“主视频渲染项未安装/尺寸为0”“共享Photo目录不存在或不可写”“异步 `saveToFile()`失败”和“文件已写入但MediaStore扫描无URI”；本地照片不会从相机SD下载，所以不能在思翼卡目录中寻找。LOCAL成功而SD失败或无卡属于设计允许状态。Android实际新文件不再以 `GenericDataLocation/Android/data` 作为图库目录，而在AppSettings所在卷的 `Android/media/org.mavlink.qgroundcontrol/Custom-QGroundControl/Photo`；选择遥控器可移动SD但该卡缺失/只读时，AppSettings与媒体目录都会回退可用卷。这与云台SD状态2没有关系。
+按下拍照后SD有反馈但找不到本地JPG时，先确认 `localMediaStorageEnabled=true`，再区分“无解码帧”“主视频渲染项未安装/尺寸为0”“共享Photo目录不存在或不可写”“离屏grab返回空图”“JPEG编码/原子提交失败”和“文件已写入但MediaStore扫描无URI”；本地照片不会从相机SD下载，所以不能在思翼卡目录中寻找。日志 `Starting local camera-frame capture` 应同时给出output及来源、decoded/negotiated/VideoManager/Item尺寸、DPR、content和逻辑target；`Timed out waiting for the local camera-frame grab`表示仅等待ready阶段超过5秒，SD命令仍独立；有Starting、没有该超时但界面提示仍在处理，通常表示已进入没有独立超时的worker编码/写盘阶段；`Failed to save local camera frame`表示worker失败，`Saved local camera frame`给出raw grab、最终output和文件字节。1920宽实体屏若仍得到约384×216，说明运行的仍是按20% PIP无参截图旧构建；若日志output已是卡录1920×1080但图库观感模糊，先核对MediaStore width/height、拉取原JPG查看而不要用缩略图判断。卡录4K配1080P拉流时4K像素尺寸正确但不可能产生超过1080P源纹理的新细节。LOCAL成功而SD失败或无卡属于设计允许状态；无卡本身不会清除仍新鲜的0x20尺寸。Android实际新文件位于AppSettings所在卷的 `Android/media/org.mavlink.qgroundcontrol/Custom-QGroundControl/Photo`；选择遥控器本机可移动SD但该卡缺失/只读时，AppSettings与媒体目录都会回退可用卷。这与云台SD状态2没有关系。
 
 按下录像后LOCAL一直黄色时，检查 `VideoManager::streaming()`、主非thermal receiver、启动完成回调、输出基名和3秒超时；格式无效应检查 `recordingFormat`枚举。若thermal也产生或被停止，说明运行版本仍调用全局VideoManager start/stop。空间清理后仍超过上限不一定是故障：先区分目录总量与可删除集合；其他入口/thermal文件会计入总量但永不由本功能删除，只有 `*_local_NNN` 旧分段可被清理。退出后文件损坏时，检查aboutToQuit是否只停止主owned receiver并在3秒内收到recording=false；强杀进程不经过该保证。
 
@@ -1084,7 +1092,7 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 ```powershell
 rg --files custom
-rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord" custom
+rg -n "adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
@@ -1094,7 +1102,8 @@ git diff --check
 ```powershell
 cmake --build <desktop-build> --target check_siyi_protocol
 cmake --build <desktop-build> --target check_gimbal_media_session_policy
-ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|GimbalMediaSessionPolicyTest)$' --output-on-failure
+cmake --build <desktop-build> --target check_gimbal_photo_capture_policy
+ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest)$' --output-on-failure
 ```
 
-截至2026-08-04，当前开发环境未提供可用于本工程的完整Qt 6构建链，因此尚未完成桌面/Android全量编译，也未在正式Qt 6目标中运行上述两组QtTest。已使用现有Qt 5.14.2工具链单独编译并运行 `GimbalMediaSessionPolicyTest`，16项结果全部通过，同时通过MSVC `/W4 /WX`；另已完成JSON/TS XML解析、QML语法校验、QRC与文件清单统计、关键符号/资源接线、头文件moc以及 `git diff --check`。这些轻量验证不能替代Qt 6工程编译、GStreamer实际封装和真机写盘。SD+本地并行、无卡本地独立录像、SDK离线、Android内部/本机可移动SD路径、断流新分段、空间清理、退出收尾和Proximity Radar遥测仍须按本章矩阵在目标遥控器与桌面真机验收。
+截至2026-08-04，当前开发环境未提供可用于本工程的完整Qt 6构建链，因此尚未完成桌面/Android全量编译，也未在正式Qt 6目标中运行上述三组QtTest。已使用现有Qt 5.14.2工具链单独编译并运行 `GimbalMediaSessionPolicyTest`，16项结果全部通过；本轮新增 `GimbalPhotoCapturePolicyTest`，QtTest报告10 passed，其中8个业务实例覆盖尺寸、DPR、DCI 4K四色角完整画面/精确补边、精确输出和零深拷贝，另2项为框架初始化/清理。照片策略使用的QSize/QImage/QPainter接口与Qt 6兼容，但该轻量结果不能替代Qt 6.8 `QQuickItem::grabToImage(targetSize)`、5秒Timer/generation/窗口holder、后台保存状态机、Android GPU readback、JPEG插件和MediaStore真机链路。另已完成JSON/TS XML解析、QRC与文件清单统计及关键符号/资源接线；最终静态检查结果见当前工作树验证。SD+本地并行、无卡本地独立录像/拍照、卡录分辨率截图、SDK离线、Android内部/本机可移动SD路径、断流新分段、空间清理、退出收尾和Proximity Radar遥测仍须按本章矩阵在目标遥控器与桌面真机验收。

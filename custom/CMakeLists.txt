@@ -294,6 +294,27 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
+
+    qt_add_executable(GimbalPhotoCapturePolicyTest
+        test/Gimbal/GimbalPhotoCapturePolicyTest.cc
+        src/Gimbal/GimbalPhotoCapturePolicy.cc
+        src/Gimbal/GimbalPhotoCapturePolicy.h
+    )
+    target_include_directories(GimbalPhotoCapturePolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(GimbalPhotoCapturePolicyTest PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+    )
+    add_test(NAME GimbalPhotoCapturePolicyTest COMMAND $<TARGET_FILE:GimbalPhotoCapturePolicyTest>)
+    add_custom_target(check_gimbal_photo_capture_policy
+        COMMAND $<TARGET_FILE:GimbalPhotoCapturePolicyTest>
+        DEPENDS GimbalPhotoCapturePolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
 endif()
 
 # custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。

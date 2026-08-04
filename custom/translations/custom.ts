@@ -200,6 +200,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3883"/>
+        <source>A local photo is still being processed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/GimbalControlManager.cc" line="3278"/>
         <source>Failed to save the local video frame.</source>
         <translation type="unfinished"></translation>

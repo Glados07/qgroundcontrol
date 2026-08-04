@@ -15,6 +15,7 @@
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtCore/QThreadPool>
 #include <QtCore/QTimer>
 
 class Fact;
@@ -290,8 +291,10 @@ private:
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
+    QTimer _localPhotoCaptureTimer;
     QTimer _localRecordingStartTimer;
     QTimer _localRecordingStopTimer;
+    QThreadPool _localPhotoSaveThreadPool;
     QElapsedTimer _manualZoomFinalizeElapsed;
     QElapsedTimer _heldZoomElapsed;
     double _currentZoom = kMinZoom;
@@ -384,9 +387,17 @@ private:
     quint64 _localRecordingSegmentCounter = 0;
     QPointer<QQuickItem> _mainVideoItem;
     QPointer<VideoReceiver> _mainVideoReceiver;
+    // The window owns the actual QQuickItemGrabResult lifetime holder. This
+    // QPointer only identifies the grab which still belongs to this request.
+    QPointer<QObject> _localPhotoGrabLifetime;
     int _photoCount = 0;
     int _localPhotoCount = 0;
+    // Includes logically retired grabs which have not reached a render-safe
+    // release point yet. Keep this gate non-zero so repeated timeouts cannot
+    // stack multiple full-resolution scene-graph FBOs.
+    int _localPhotoGrabLifetimeCount = 0;
     quint64 _localPhotoRequestSequence = 0;
+    bool _localPhotoCapturePending = false;
     bool _photoCommandPending = false;
     QString _lastError;
     QString _localMediaError;
