@@ -259,6 +259,23 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
+
+    qt_add_executable(GimbalMediaSessionPolicyTest
+        test/Gimbal/GimbalMediaSessionPolicyTest.cc
+        src/Gimbal/GimbalMediaSessionPolicy.cc
+        src/Gimbal/GimbalMediaSessionPolicy.h
+    )
+    target_include_directories(GimbalMediaSessionPolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(GimbalMediaSessionPolicyTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalMediaSessionPolicyTest COMMAND $<TARGET_FILE:GimbalMediaSessionPolicyTest>)
+    add_custom_target(check_gimbal_media_session_policy
+        COMMAND $<TARGET_FILE:GimbalMediaSessionPolicyTest>
+        DEPENDS GimbalMediaSessionPolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
 endif()
 
 # custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。

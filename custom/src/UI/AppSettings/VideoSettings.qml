@@ -158,6 +158,20 @@ SettingsPage {
         Layout.fillWidth: true
         heading:            qsTr("Local Video Storage")
 
+        FactCheckBoxSlider {
+            Layout.fillWidth: true
+            text:             qsTr("Save photos and videos locally")
+            fact:             _gimbalControlSettings.localMediaStorageEnabled
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text:             qsTr("Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.")
+            wrapMode:         Text.WordWrap
+            font.pointSize:   ScreenTools.smallFontPointSize
+            opacity:          0.72
+        }
+
         LabelledFactComboBox {
             Layout.fillWidth:   true
             label:              qsTr("Record File Format")

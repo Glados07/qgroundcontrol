@@ -19,6 +19,7 @@ public:
     DEFINE_SETTING_NAME_GROUP()
 
     DEFINE_SETTINGFACT(enabled)
+    DEFINE_SETTINGFACT(localMediaStorageEnabled)
     DEFINE_SETTINGFACT(sdkHost)
     DEFINE_SETTINGFACT(sdkPort)
     DEFINE_SETTINGFACT(zoomStep)

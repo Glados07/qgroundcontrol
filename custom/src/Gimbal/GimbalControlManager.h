@@ -11,14 +11,18 @@
 
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtCore/QSize>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
 
 class Fact;
 class GimbalControlSettings;
+class QQuickItem;
 class SiyiSdk;
 class VideoManager;
+class VideoReceiver;
 
 class GimbalControlManager : public QObject
 {
@@ -39,8 +43,17 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(bool cameraStatusKnown READ cameraStatusKnown NOTIFY cameraStatusKnownChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
     Q_PROPERTY(bool recordingCommandPending READ recordingCommandPending NOTIFY recordingCommandPendingChanged)
+    Q_PROPERTY(bool cameraRecordingPending READ cameraRecordingPending NOTIFY recordingSessionStateChanged)
+    Q_PROPERTY(bool localMediaStorageEnabled READ localMediaStorageEnabled NOTIFY localMediaStorageEnabledChanged)
+    Q_PROPERTY(bool localRecording READ localRecording NOTIFY localRecordingStateChanged)
+    Q_PROPERTY(bool localRecordingPending READ localRecordingPending NOTIFY localRecordingStateChanged)
+    Q_PROPERTY(bool recordingSessionActive READ recordingSessionActive NOTIFY recordingSessionStateChanged)
+    Q_PROPERTY(bool recordingSessionCapturing READ recordingSessionCapturing NOTIFY recordingSessionStateChanged)
+    Q_PROPERTY(bool videoRecordingAvailable READ videoRecordingAvailable NOTIFY recordingSessionStateChanged)
     Q_PROPERTY(int photoCount READ photoCount NOTIFY photoCountChanged)
+    Q_PROPERTY(int localPhotoCount READ localPhotoCount NOTIFY localPhotoCountChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString localMediaError READ localMediaError NOTIFY localMediaErrorChanged)
 
 public:
     explicit GimbalControlManager(GimbalControlSettings* settings, QObject* parent = nullptr);
@@ -68,8 +81,19 @@ public:
     bool cameraStatusKnown() const { return _cameraStatusKnown; }
     bool recording() const { return _recording; }
     bool recordingCommandPending() const { return _recordingCommandPending; }
+    bool cameraRecordingPending() const;
+    bool localMediaStorageEnabled() const;
+    bool localRecording() const { return _localRecordingActive; }
+    bool localRecordingPending() const {
+        return _localRecordingStartPending || _localRecordingStopPending;
+    }
+    bool recordingSessionActive() const;
+    bool recordingSessionCapturing() const;
+    bool videoRecordingAvailable() const;
     int photoCount() const { return _photoCount; }
+    int localPhotoCount() const { return _localPhotoCount; }
     QString lastError() const { return _lastError; }
+    QString localMediaError() const { return _localMediaError; }
 
     Q_INVOKABLE bool zoomIn();
     Q_INVOKABLE bool zoomOut();
@@ -87,6 +111,18 @@ public:
     /// Accepts the decoded main-stream size reported by the negotiated video
     /// sink. The caller must invoke this method on the manager's Qt thread.
     void setNegotiatedPulledVideoResolution(const QSize& videoSize);
+    /// Retains the main rendered video item for local frame snapshots. The
+    /// QPointer is cleared automatically when the QML item is destroyed.
+    void setMainVideoItem(QQuickItem* videoItem);
+    /// Retains the non-thermal receiver so local recording affects only the
+    /// current main video instead of VideoManager's full receiver list.
+    void setMainVideoReceiver(VideoReceiver* receiver);
+    /// Stops only a local recording session started by this manager.
+    void shutdownLocalMedia(bool waitForStop = false);
+    /// Correlates the main receiver's asynchronous recorder result with the
+    /// filename requested by this manager before ownership is confirmed.
+    void handleMainVideoRecordingStartResult(bool success,
+                                             const QString& outputFile);
 
 signals:
     void enabledChanged();
@@ -100,8 +136,13 @@ signals:
     void cameraStatusKnownChanged();
     void recordingChanged();
     void recordingCommandPendingChanged();
+    void localMediaStorageEnabledChanged();
+    void localRecordingStateChanged();
+    void recordingSessionStateChanged();
     void photoCountChanged();
+    void localPhotoCountChanged();
     void lastErrorChanged();
+    void localMediaErrorChanged();
 
 private slots:
     void _settingsChanged();
@@ -118,6 +159,11 @@ private slots:
     void _expireRecordingResolutionCapability();
     void _handlePulledVideoSize();
     void _handleVideoDecodingChanged();
+    void _handleVideoStreamingChanged();
+    void _handleVideoRecordingChanged();
+    void _handleLocalMediaStorageEnabledChanged();
+    void _handleLocalRecordingStartTimeout();
+    void _handleLocalRecordingStopTimeout();
     void _handleCameraSystemStatus(quint8 hdrStatus,
                                    quint8 recordingStatus,
                                    quint8 gimbalMotionMode,
@@ -195,6 +241,17 @@ private:
     void _setRecording(bool recording);
     void _setRecordingCommandPending(bool pending);
     void _finishRecordingCommand();
+    bool _startRecordingSession();
+    bool _stopRecordingSession();
+    bool _sendCameraRecordingToggle(bool targetRecording);
+    void _reconcileCameraRecordingIntent();
+    bool _captureLocalVideoFrame();
+    void _reconcileLocalRecording();
+    void _startLocalRecording();
+    void _stopLocalRecording();
+    bool _setLocalRecordingActive(bool active);
+    void _setLocalMediaError(const QString& message);
+    void _notifyRecordingSessionStateChanged();
     void _syncCameraStatus();
     void _setLastError(const QString& message);
     bool _cameraCommandAvailable();
@@ -233,6 +290,8 @@ private:
     QTimer _photoFeedbackTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimeoutTimer;
+    QTimer _localRecordingStartTimer;
+    QTimer _localRecordingStopTimer;
     QElapsedTimer _manualZoomFinalizeElapsed;
     QElapsedTimer _heldZoomElapsed;
     double _currentZoom = kMinZoom;
@@ -300,7 +359,34 @@ private:
     bool _recordingCommandPending = false;
     bool _recordingCommandTarget = false;
     bool _recordingStatusResponseAllowed = false;
+    bool _recordingSessionRequested = false;
+    bool _cameraRecordingIntentValid = false;
+    bool _cameraRecordingIntentTarget = false;
+    bool _cameraRecordingStartBlocked = false;
+    bool _cameraRecordingStopBlocked = false;
+    bool _localRecordingIntent = false;
+    bool _localRecordingActive = false;
+    bool _localRecordingOwned = false;
+    bool _localRecordingOwnershipConfirmed = false;
+    bool _localRecordingUsingExternalSession = false;
+    bool _localRecordingStartPending = false;
+    bool _localRecordingStopPending = false;
+    bool _localRecordingStartBlocked = false;
+    bool _localRecordingResumeOnStream = false;
+    bool _localRecordingRetryAfterGenerationResolved = false;
+    int _localRecordingStopRetryCount = 0;
+    QString _localRecordingFileBase;
+    // Successful receiver callbacks include the requested basename. Retain
+    // unresolved generations across the UI timeout so a late success can
+    // still be recognized as ours and stopped safely.
+    QStringList _localRecordingIssuedFileBases;
+    quint64 _localRecordingSegmentCounter = 0;
+    QPointer<QQuickItem> _mainVideoItem;
+    QPointer<VideoReceiver> _mainVideoReceiver;
     int _photoCount = 0;
+    int _localPhotoCount = 0;
+    quint64 _localPhotoRequestSequence = 0;
     bool _photoCommandPending = false;
     QString _lastError;
+    QString _localMediaError;
 };

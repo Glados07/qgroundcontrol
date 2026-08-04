@@ -24,6 +24,20 @@ Rectangle {
                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.48
     readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.45
+    readonly property bool recordingSessionActive: Boolean(manager && manager.recordingSessionActive)
+    readonly property bool recordingSessionCapturing: Boolean(manager && manager.recordingSessionCapturing)
+    readonly property bool recordingSessionPending: Boolean(manager
+                                                              && (manager.cameraRecordingPending
+                                                                  || manager.localRecordingPending))
+    readonly property bool recordingSessionFailed: recordingSessionActive
+                                                   && !recordingSessionCapturing
+                                                   && !recordingSessionPending
+    readonly property bool recordingSessionVisualActive: recordingSessionActive || recordingSessionCapturing
+    readonly property bool mediaErrorVisible: Boolean(manager
+                                                       && (recordingSessionFailed
+                                                           || manager.localMediaError.length > 0
+                                                           || (manager.lastError.length > 0
+                                                               && !recordingSessionCapturing)))
 
     property int recordingSeconds: 0
 
@@ -33,9 +47,9 @@ Rectangle {
     height: implicitHeight
     radius: Math.min(10, ScreenTools.defaultFontPixelHeight * 0.55)
     color: online ? "#b0101822" : "#a018202a"
-    border.color: online
-                  ? (manager && manager.lastError.length > 0 ? qgcPal.colorRed : "#78ffffff")
-                  : "#708493a3"
+    border.color: mediaErrorVisible
+                  ? qgcPal.colorRed
+                  : (online ? "#78ffffff" : "#708493a3")
     border.width: 1
     visible: available
 
@@ -82,21 +96,24 @@ Rectangle {
     Timer {
         interval: 1000
         repeat: true
-        running: Boolean(root.manager
-                         && root.manager.cameraStatusKnown
-                         && !root.manager.recordingCommandPending
-                         && root.manager.recording)
+        running: root.recordingSessionCapturing
         onTriggered: ++root.recordingSeconds
     }
 
     Connections {
         target: root.manager
 
-        function onRecordingChanged() {
-            root.recordingSeconds = 0
+        function onRecordingSessionStateChanged() {
+            if (!root.manager || !root.manager.recordingSessionActive) {
+                root.recordingSeconds = 0
+            }
         }
 
         function onPhotoCountChanged() {
+            photoSuccessFlash.restart()
+        }
+
+        function onLocalPhotoCountChanged() {
             photoSuccessFlash.restart()
         }
     }
@@ -192,18 +209,19 @@ Rectangle {
             Layout.preferredHeight: root.actionSize
             Layout.alignment: Qt.AlignHCenter
             radius: height / 2
-            color: root.manager && root.manager.recording
-                   ? (videoMouseArea.pressed ? "#e0a31f34" : "#c8a31f34")
-                   : (videoMouseArea.pressed ? "#f0ffffff" : (videoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff"))
-            border.color: root.manager && root.manager.recording
-                          ? "#ffff6b78"
-                          : (videoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff")
+            color: root.recordingSessionFailed
+                   ? (videoMouseArea.pressed ? "#e06d3514" : "#c85b2d12")
+                   : (root.recordingSessionVisualActive
+                      ? (videoMouseArea.pressed ? "#e0a31f34" : "#c8a31f34")
+                      : (videoMouseArea.pressed ? "#f0ffffff" : (videoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")))
+            border.color: root.recordingSessionFailed
+                          ? "#ffffc857"
+                          : (root.recordingSessionVisualActive
+                             ? "#ffff6b78"
+                             : (videoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"))
             border.width: 2
-            // 录像是 toggle 命令，仍需先同步当前录像状态以避免反向操作。
-            enabled: Boolean(root.available
-                             && root.manager
-                             && root.manager.cameraStatusKnown
-                             && !root.manager.recordingCommandPending)
+            // The manager coordinates the independent SD and local recording branches.
+            enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)
             opacity: enabled ? 1.0 : 0.45
             scale: videoMouseArea.pressed ? 0.96 : 1.0
 
@@ -223,16 +241,17 @@ Rectangle {
                     source: "/qmlimages/camera_video.svg"
                     sourceSize.height: height
                     fillMode: Image.PreserveAspectFit
-                    color: videoMouseArea.pressed && !(root.manager && root.manager.recording) ? "#101820" : "white"
+                    color: videoMouseArea.pressed && !root.recordingSessionVisualActive ? "#101820" : "white"
                 }
 
                 QGCLabel {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.manager
-                          && (!root.manager.cameraStatusKnown || root.manager.recordingCommandPending)
+                    text: root.recordingSessionPending && !root.recordingSessionCapturing
                           ? "..."
-                          : (root.manager && root.manager.recording ? root.recordingTimeText() : qsTr("REC"))
-                    color: videoMouseArea.pressed && !(root.manager && root.manager.recording) ? "#101820" : "white"
+                          : (root.recordingSessionFailed
+                             ? qsTr("FAILED")
+                             : (root.recordingSessionVisualActive ? root.recordingTimeText() : qsTr("REC")))
+                    color: videoMouseArea.pressed && !root.recordingSessionVisualActive ? "#101820" : "white"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize
                 }
@@ -245,8 +264,10 @@ Rectangle {
                 anchors.bottomMargin: parent.height * 0.12
                 width: Math.max(5, parent.height * 0.14)
                 height: width
-                radius: root.manager && root.manager.recording ? 1 : width / 2
-                color: root.manager && root.manager.recording ? "white" : qgcPal.colorRed
+                radius: root.recordingSessionVisualActive && !root.recordingSessionFailed ? 1 : width / 2
+                color: root.recordingSessionFailed
+                       ? "#ffc857"
+                       : (root.recordingSessionVisualActive ? "white" : qgcPal.colorRed)
             }
 
             MouseArea {
@@ -258,6 +279,128 @@ Rectangle {
                 preventStealing: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.manager.toggleVideoRecording()
+            }
+        }
+
+        RowLayout {
+            id: recordingStatusRow
+
+            Layout.alignment: Qt.AlignHCenter
+            spacing: root.itemSpacing * 0.6
+
+            Rectangle {
+                id: sdRecordingBadge
+
+                readonly property bool known: Boolean(root.manager && root.manager.cameraStatusKnown)
+                readonly property bool pending: Boolean(root.manager && root.manager.cameraRecordingPending)
+                readonly property bool capturing: Boolean(root.manager
+                                                           && known
+                                                           && !pending
+                                                           && root.manager.recording)
+                readonly property bool failed: Boolean(root.manager
+                                                        && root.recordingSessionActive
+                                                        && known
+                                                        && !pending
+                                                        && !root.manager.recording)
+                readonly property color statusColor: capturing
+                                                     ? qgcPal.colorGreen
+                                                     : (pending
+                                                        ? "#ffc857"
+                                                        : (failed
+                                                           ? qgcPal.colorRed
+                                                           : (known ? "#87929d" : "#66727e")))
+
+                Layout.preferredWidth: Math.max(root.actionSize * 0.58,
+                                                sdBadgeContent.implicitWidth + root.itemSpacing * 1.2)
+                Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.05,
+                                                 root.actionSize * 0.3)
+                radius: height / 2
+                color: capturing
+                       ? "#3430a060"
+                       : (pending ? "#344b3c12" : (failed ? "#344f1721" : "#2818202a"))
+                border.color: statusColor
+                border.width: 1
+                opacity: known || pending ? 1.0 : 0.62
+
+                Row {
+                    id: sdBadgeContent
+
+                    anchors.centerIn: parent
+                    spacing: root.itemSpacing * 0.35
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.max(4, root.actionSize * 0.09)
+                        height: width
+                        radius: width / 2
+                        color: sdRecordingBadge.statusColor
+                    }
+
+                    QGCLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("SD")
+                        color: "white"
+                        font.bold: true
+                        font.pointSize: ScreenTools.smallFontPointSize
+                    }
+                }
+            }
+
+            Rectangle {
+                id: localRecordingBadge
+
+                readonly property bool storageEnabled: Boolean(root.manager && root.manager.localMediaStorageEnabled)
+                readonly property bool pending: Boolean(root.manager && root.manager.localRecordingPending)
+                readonly property bool capturing: Boolean(root.manager && root.manager.localRecording)
+                readonly property bool failed: Boolean(storageEnabled
+                                                       && root.manager
+                                                       && root.manager.localMediaError.length > 0
+                                                       && !capturing
+                                                       && !pending)
+                readonly property color statusColor: capturing
+                                                     ? qgcPal.colorGreen
+                                                     : (pending
+                                                        ? "#ffc857"
+                                                        : (!storageEnabled
+                                                           ? "#66727e"
+                                                           : (failed ? qgcPal.colorRed : "#87929d")))
+
+                Layout.preferredWidth: Math.max(root.actionSize * 0.86,
+                                                localBadgeContent.implicitWidth + root.itemSpacing * 1.2)
+                Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.05,
+                                                 root.actionSize * 0.3)
+                radius: height / 2
+                color: capturing
+                       ? "#3430a060"
+                       : (pending
+                          ? "#344b3c12"
+                          : (!storageEnabled ? "#2018202a" : (failed ? "#344f1721" : "#2818202a")))
+                border.color: statusColor
+                border.width: 1
+                opacity: storageEnabled || capturing || pending ? 1.0 : 0.62
+
+                Row {
+                    id: localBadgeContent
+
+                    anchors.centerIn: parent
+                    spacing: root.itemSpacing * 0.35
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.max(4, root.actionSize * 0.09)
+                        height: width
+                        radius: width / 2
+                        color: localRecordingBadge.statusColor
+                    }
+
+                    QGCLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("LOCAL")
+                        color: "white"
+                        font.bold: true
+                        font.pointSize: ScreenTools.smallFontPointSize
+                    }
+                }
             }
         }
     }

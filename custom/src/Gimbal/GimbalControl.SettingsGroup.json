@@ -9,6 +9,13 @@
             "default": true
         },
         {
+            "name": "localMediaStorageEnabled",
+            "shortDesc": "Save camera photos and videos locally",
+            "longDesc": "When enabled, camera photo and recording actions also save media to this device independently of gimbal SD card storage.",
+            "type": "bool",
+            "default": false
+        },
+        {
             "name": "sdkHost",
             "shortDesc": "SIYI SDK UDP host",
             "type": "string",

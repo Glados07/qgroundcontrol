@@ -14,6 +14,7 @@
 #include "Gimbal/GimbalVideoStreamSupport.h"
 #include "QGCLoggingCategory.h"
 #include "Settings/FlyViewCustomSettings.h"
+#include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
 #include "Viewer3D/External3DMapManager.h"
@@ -31,12 +32,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
-
-#ifdef QGC_GST_STREAMING
-#include "VideoManager/VideoReceiver/VideoReceiver.h"
-
 #include <QtQuick/QQuickItem>
-#endif
 
 QGC_LOGGING_CATEGORY(CustomLog, "gcs.custom.customplugin")
 
@@ -83,6 +79,13 @@ void CustomPlugin::init()
 
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
+    connect(QCoreApplication::instance(),
+            &QCoreApplication::aboutToQuit,
+            _gimbalControlManager,
+            [manager = _gimbalControlManager]() {
+                manager->shutdownLocalMedia(true);
+            },
+            Qt::DirectConnection);
     AndroidVideoDecoderPolicy::apply(
         _gimbalControlSettings->forceAndroidH265HardwareDecoder()->rawValue().toBool());
     GimbalVideoStreamSupport::installA8MiniDefaults();
@@ -90,6 +93,10 @@ void CustomPlugin::init()
 
 void CustomPlugin::cleanup()
 {
+    if (_gimbalControlManager) {
+        _gimbalControlManager->shutdownLocalMedia();
+    }
+
     if (_qmlEngine && _selector) {
         _qmlEngine->removeUrlInterceptor(_selector);
     }
@@ -240,12 +247,38 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
 {
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 
-#ifdef QGC_GST_STREAMING
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
     const bool isMainVideoReceiver = receiver && !receiver->isThermal();
     GimbalControlManager *manager =
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
 
+    if (widget && manager) {
+        manager->setMainVideoItem(widget);
+    }
+    if (receiver && manager) {
+        manager->setMainVideoReceiver(receiver);
+    }
+
+    static constexpr const char* kLocalMediaSignalsConnected =
+        "customLocalMediaSignalsConnected";
+    if (receiver
+        && manager
+        && !receiver->property(kLocalMediaSignalsConnected).toBool()) {
+        receiver->setProperty(kLocalMediaSignalsConnected, true);
+        QPointer<VideoReceiver> guardedReceiver(receiver);
+        connect(receiver,
+                &VideoReceiver::onStartRecordingComplete,
+                manager,
+                [manager, guardedReceiver](VideoReceiver::STATUS status) {
+                    manager->handleMainVideoRecordingStartResult(
+                        status == VideoReceiver::STATUS_OK,
+                        guardedReceiver
+                            ? guardedReceiver->recordingOutput()
+                            : QString());
+                });
+    }
+
+#ifdef QGC_GST_STREAMING
     QPointer<GimbalControlManager> guardedManager(manager);
     const auto queueNegotiatedResolution =
         [guardedManager](const QSize& videoSize) {

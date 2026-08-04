@@ -140,6 +140,93 @@
     </message>
 </context>
 <context>
+    <name>GimbalCameraControl</name>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="243"/>
+        <source>REC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="324"/>
+        <source>SD</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
+        <source>LOCAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
+        <source>FAILED</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControlManager</name>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1160"/>
+        <source>Local video recording stopped unexpectedly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1198"/>
+        <source>Timed out starting local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1292"/>
+        <source>Failed to start local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1223"/>
+        <source>Timed out stopping local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3237"/>
+        <source>No decoded video frame is available for a local photo.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3251"/>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3267"/>
+        <source>Failed to capture the local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3278"/>
+        <source>Failed to save the local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3299"/>
+        <source>Local video recording is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3323"/>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3353"/>
+        <source>Local video recording requires an active video stream.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3368"/>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3667"/>
+        <source>The configured local video format is invalid.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>VideoSettings</name>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
@@ -174,6 +261,16 @@
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
         <source>Restart QGC after changing this option.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <source>Save photos and videos locally</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="169"/>
+        <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

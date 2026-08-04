@@ -14,6 +14,7 @@ DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")
 }
 
 DECLARE_SETTINGSFACT(GimbalControlSettings, enabled)
+DECLARE_SETTINGSFACT(GimbalControlSettings, localMediaStorageEnabled)
 DECLARE_SETTINGSFACT(GimbalControlSettings, sdkHost)
 DECLARE_SETTINGSFACT(GimbalControlSettings, sdkPort)
 DECLARE_SETTINGSFACT(GimbalControlSettings, zoomStep)

@@ -7,21 +7,105 @@
 #include "GimbalControlManager.h"
 
 #include "A8MiniZoomPolicy.h"
+#include "AppSettings.h"
+#include "GimbalMediaSessionPolicy.h"
 #include "GimbalControlSettings.h"
 #include "QGCLoggingCategory.h"
+#include "SettingsManager.h"
 #include "SiyiSdk.h"
 #include "Fact.h"
 #include "VideoManager.h"
+#include "VideoManager/VideoReceiver/VideoReceiver.h"
+#include "VideoSettings.h"
 
+#include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QEventLoop>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QSharedPointer>
 #include <QtCore/QtMath>
+#include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickItemGrabResult>
 
 #include <limits>
+#include <utility>
 
 namespace {
 
 QGC_LOGGING_CATEGORY(GimbalControlLog, "gcs.custom.gimbal.control")
 
 static constexpr double kZoomComparisonTolerance = 0.051;
+static constexpr int kLocalRecordingStartTimeoutMs = 3000;
+static constexpr int kLocalRecordingStopTimeoutMs = 5000;
+static constexpr int kApplicationShutdownRecordingWaitMs = 3000;
+static constexpr const char* kLocalRecordingFileExtensions[
+    VideoReceiver::FILE_FORMAT_MAX + 1] = {
+    "mkv",
+    "mov",
+    "mp4",
+};
+
+void cleanupOldLocalVideos(VideoSettings* videoSettings,
+                           const QString& savePath)
+{
+    if (!videoSettings
+        || !videoSettings->enableStorageLimit()->rawValue().toBool()) {
+        return;
+    }
+
+    QDir videoDirectory(savePath);
+    videoDirectory.setFilter(QDir::Files
+                             | QDir::Readable
+                             | QDir::NoSymLinks
+                             | QDir::Writable);
+    videoDirectory.setSorting(QDir::Time);
+    videoDirectory.setNameFilters({
+        QStringLiteral("*.mkv"),
+        QStringLiteral("*.mov"),
+        QStringLiteral("*.mp4"),
+    });
+
+    const QFileInfoList videos = videoDirectory.entryInfoList();
+    QFileInfoList removableVideos;
+    static const QRegularExpression localSegmentPattern(
+        QStringLiteral(R"(_local_\d{3,}\.(?:mkv|mov|mp4)$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    quint64 totalBytes = 0;
+    for (const QFileInfo& video : std::as_const(videos)) {
+        totalBytes += static_cast<quint64>(video.size());
+        if (localSegmentPattern.match(video.fileName()).hasMatch()) {
+            removableVideos.append(video);
+        }
+    }
+
+    const quint64 maximumBytes =
+        videoSettings->maxVideoSize()->rawValue().toULongLong()
+        * 1024ULL
+        * 1024ULL;
+    while (totalBytes >= maximumBytes && !removableVideos.isEmpty()) {
+        const QFileInfo oldestVideo = removableVideos.takeLast();
+        qCInfo(GimbalControlLog)
+            << "Removing old local video" << oldestVideo.filePath();
+        if (QFile::remove(oldestVideo.filePath())) {
+            totalBytes -= static_cast<quint64>(oldestVideo.size());
+        } else {
+            qCWarning(GimbalControlLog)
+                << "Failed to remove old local video"
+                << oldestVideo.filePath();
+        }
+    }
+
+    if (totalBytes >= maximumBytes) {
+        // Other QGC entry points (including thermal recording) can share the
+        // directory. Never unlink their files merely to satisfy this custom
+        // branch's storage limit; an active file may still be in use.
+        qCWarning(GimbalControlLog)
+            << "Local video storage remains above its configured limit;"
+            << "no more custom local segments are safe to remove";
+    }
+}
 
 } // namespace
 
@@ -68,6 +152,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _recordingStatusDelayTimer.setInterval(400);
     _recordingCommandTimeoutTimer.setSingleShot(true);
     _recordingCommandTimeoutTimer.setInterval(2500);
+    _localRecordingStartTimer.setSingleShot(true);
+    _localRecordingStartTimer.setInterval(kLocalRecordingStartTimeoutMs);
+    _localRecordingStopTimer.setSingleShot(true);
+    _localRecordingStopTimer.setInterval(kLocalRecordingStopTimeoutMs);
 
     connect(_sdk,
             &SiyiSdk::absoluteZoomFeedbackReceived,
@@ -130,6 +218,14 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     connect(&_photoFeedbackTimer, &QTimer::timeout, this, [this]() { _photoCommandPending = false; });
     connect(&_recordingStatusDelayTimer, &QTimer::timeout, this, &GimbalControlManager::_requestRecordingStatusAfterDelay);
     connect(&_recordingCommandTimeoutTimer, &QTimer::timeout, this, &GimbalControlManager::_handleRecordingCommandTimeout);
+    connect(&_localRecordingStartTimer,
+            &QTimer::timeout,
+            this,
+            &GimbalControlManager::_handleLocalRecordingStartTimeout);
+    connect(&_localRecordingStopTimer,
+            &QTimer::timeout,
+            this,
+            &GimbalControlManager::_handleLocalRecordingStopTimeout);
 
     if (_videoManager) {
         connect(_videoManager,
@@ -140,6 +236,14 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
                 &VideoManager::decodingChanged,
                 this,
                 &GimbalControlManager::_handleVideoDecodingChanged);
+        connect(_videoManager,
+                &VideoManager::streamingChanged,
+                this,
+                &GimbalControlManager::_handleVideoStreamingChanged);
+        connect(_videoManager,
+                &VideoManager::recordingChanged,
+                this,
+                &GimbalControlManager::_handleVideoRecordingChanged);
         _tryConfirmPulledVideoResolution();
         _schedulePulledVideoResolutionFallback();
     }
@@ -151,6 +255,10 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
             &Fact::rawValueChanged,
             this,
             &GimbalControlManager::_handleZoomStepChanged);
+    connect(_settings->localMediaStorageEnabled(),
+            &Fact::rawValueChanged,
+            this,
+            &GimbalControlManager::_handleLocalMediaStorageEnabledChanged);
 
     _lastEnabled = enabled();
     _configureSdkEndpoint();
@@ -162,6 +270,7 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
 
 GimbalControlManager::~GimbalControlManager()
 {
+    shutdownLocalMedia();
     if (_continuousZoomActive && _sdk) {
         _stopContinuousZoom(false);
     }
@@ -179,6 +288,60 @@ GimbalControlManager::~GimbalControlManager()
 bool GimbalControlManager::enabled() const
 {
     return _settings && _settings->enabled()->rawValue().toBool();
+}
+
+bool GimbalControlManager::localMediaStorageEnabled() const
+{
+    return _settings
+        && _settings->localMediaStorageEnabled()->rawValue().toBool();
+}
+
+bool GimbalControlManager::cameraRecordingPending() const
+{
+    if (_recordingCommandPending) {
+        return true;
+    }
+    if (!_cameraRecordingIntentValid || _cameraStatusKnown) {
+        return false;
+    }
+
+    return _cameraRecordingIntentTarget
+        ? !_cameraRecordingStartBlocked
+        : !_cameraRecordingStopBlocked;
+}
+
+bool GimbalControlManager::recordingSessionActive() const
+{
+    return _recordingSessionRequested
+        || _recording
+        || (_cameraRecordingIntentValid
+            && !_cameraRecordingIntentTarget)
+        || _localRecordingActive
+        || _localRecordingStartPending
+        || _localRecordingStopPending;
+}
+
+bool GimbalControlManager::recordingSessionCapturing() const
+{
+    // SIYI 0x0c is a toggle without an ACK. _recording is updated
+    // optimistically while its command is pending, so only expose that branch
+    // as actually capturing after 0x0a confirms it.
+    return GimbalMediaSessionPolicy::recordingSessionCapturing(
+        _recording,
+        _recordingCommandPending,
+        _localRecordingActive);
+}
+
+bool GimbalControlManager::videoRecordingAvailable() const
+{
+    return GimbalMediaSessionPolicy::recordingAvailable(
+        recordingSessionActive(),
+        _recordingCommandPending,
+        _localRecordingStartPending || _localRecordingStopPending,
+        localMediaStorageEnabled(),
+        _videoManager && _videoManager->streaming(),
+        enabled(),
+        _cameraStatusKnown);
 }
 
 double GimbalControlManager::zoomStep() const
@@ -630,53 +793,37 @@ bool GimbalControlManager::cancelZoom()
 
 bool GimbalControlManager::takePhoto()
 {
-    if (!_cameraCommandAvailable()) {
-        return false;
-    }
-    if (_photoCommandPending) {
-        return false;
+    // The two destinations are deliberately independent: a missing gimbal SD
+    // card or an SDK send failure must never suppress the local frame capture.
+    const bool localCaptureStarted = localMediaStorageEnabled()
+        ? _captureLocalVideoFrame()
+        : false;
+
+    bool cameraCommandSent = false;
+    if (_cameraCommandAvailable() && !_photoCommandPending) {
+        _configureSdkEndpoint();
+        cameraCommandSent = _sdk->takePhoto();
+        if (cameraCommandSent) {
+            _photoCommandPending = true;
+            _photoFeedbackTimer.start();
+            _setLastError(QString());
+        }
     }
 
-    _configureSdkEndpoint();
-    const bool sent = _sdk->takePhoto();
-    if (sent) {
-        _photoCommandPending = true;
-        _photoFeedbackTimer.start();
-        _setLastError(QString());
-    }
-    return sent;
+    return localCaptureStarted || cameraCommandSent;
 }
 
 bool GimbalControlManager::toggleVideoRecording()
 {
-    if (!_cameraCommandAvailable()) {
-        return false;
-    }
-    if (!_cameraStatusKnown) {
-        _setLastError(tr("Waiting for the SIYI camera recording status."));
-        return false;
-    }
-    if (_recordingCommandPending) {
-        _setLastError(tr("A SIYI camera recording command is already pending."));
+    if (_recordingCommandPending
+        || _localRecordingStartPending
+        || _localRecordingStopPending) {
         return false;
     }
 
-    _configureSdkEndpoint();
-    if (!_sdk->toggleVideoRecording()) {
-        return false;
-    }
-
-    // 0x0c 没有直接 ACK。先乐观更新界面，忽略命令前在途的 0x0a，
-    // 400ms 后主动查询一次状态；只有与本次目标一致的 0x0a 才确认成功。
-    _recordingCommandTarget = !_recording;
-    _recordingStatusResponseAllowed = false;
-    _recordingStatusDelayTimer.start();
-    _recordingCommandTimeoutTimer.start();
-    // 必须先建立 C++ 门控，再发出 recordingChanged，避免直接信号处理器重入后重复切换。
-    _setRecordingCommandPending(true);
-    _setRecording(_recordingCommandTarget);
-    _setLastError(QString());
-    return true;
+    return recordingSessionActive()
+        ? _stopRecordingSession()
+        : _startRecordingSession();
 }
 
 bool GimbalControlManager::requestCurrentZoom()
@@ -707,6 +854,8 @@ bool GimbalControlManager::requestCameraStatus()
 
 void GimbalControlManager::_settingsChanged()
 {
+    const bool nowEnabled = enabled();
+
     // Stop native held motion at its latched endpoint before applying endpoint
     // or enabled-state changes.
     if (_continuousZoomActive) {
@@ -740,17 +889,34 @@ void GimbalControlManager::_settingsChanged()
     _setLastError(QString());
     _configureSdkEndpoint();
 
-    const bool nowEnabled = enabled();
     if (_lastEnabled != nowEnabled) {
         _lastEnabled = nowEnabled;
         emit enabledChanged();
         emit zoomAvailabilityChanged();
     }
 
+    if (!nowEnabled) {
+        _recordingSessionRequested = false;
+        _cameraRecordingIntentValid = false;
+        _cameraRecordingStartBlocked = false;
+        _cameraRecordingStopBlocked = false;
+        _localRecordingIntent = false;
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+        _reconcileLocalRecording();
+    } else if (_recordingSessionRequested) {
+        _cameraRecordingIntentValid = true;
+        _cameraRecordingIntentTarget = true;
+        _cameraRecordingStartBlocked = false;
+        _cameraRecordingStopBlocked = false;
+    }
+
     if (nowEnabled) {
         _sdkPollTimer.start();
         _pollSdk();
+        _reconcileCameraRecordingIntent();
     }
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_handleZoomStepChanged()
@@ -993,6 +1159,224 @@ void GimbalControlManager::_handleVideoDecodingChanged()
     _schedulePulledVideoResolutionFallback();
 }
 
+void GimbalControlManager::_handleVideoStreamingChanged()
+{
+    if (!_videoManager) {
+        return;
+    }
+
+    if (_videoManager->streaming()) {
+        // A new receiver session is the automatic retry boundary after a
+        // local start failure. GStreamer stops its recorder on source loss and
+        // later reports recordingChanged(false); whichever signal arrives last
+        // reconciles one new, uniquely named segment.
+        if (_localRecordingIntent
+            && _localRecordingResumeOnStream
+            && !_videoManager->recording()) {
+            if (!_localRecordingIssuedFileBases.isEmpty()
+                || _localRecordingStartPending
+                || _localRecordingStopPending) {
+                _localRecordingRetryAfterGenerationResolved = true;
+            } else {
+                _localRecordingResumeOnStream = false;
+                _localRecordingRetryAfterGenerationResolved = false;
+                _localRecordingStartBlocked = false;
+                _reconcileLocalRecording();
+            }
+        }
+    } else if (_localRecordingIntent) {
+        _localRecordingResumeOnStream = true;
+    }
+
+    _notifyRecordingSessionStateChanged();
+}
+
+void GimbalControlManager::_handleVideoRecordingChanged()
+{
+    if (!_videoManager) {
+        return;
+    }
+
+    const bool actualRecording = _videoManager->recording();
+    bool activeStateSignalEmitted = false;
+    if (actualRecording) {
+        const bool confirmedOwned = _localRecordingOwned
+            && _localRecordingOwnershipConfirmed;
+        _localRecordingStartTimer.stop();
+        _localRecordingStartPending = false;
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+
+        if (_localRecordingStopPending) {
+            // A confirmed recorder may briefly publish active after a timeout
+            // or cancellation already queued its compensating stop. Preserve
+            // ownership and the diagnostic until the matching false state.
+            if (confirmedOwned) {
+                activeStateSignalEmitted =
+                    _setLocalRecordingActive(true);
+            }
+        } else if (_localRecordingIntent && localMediaStorageEnabled()) {
+            // recordingChanged alone is global and cannot prove ownership.
+            // Only the matching main-receiver start result may confirm it.
+            _localRecordingOwned = confirmedOwned;
+            _localRecordingOwnershipConfirmed = confirmedOwned;
+            _localRecordingUsingExternalSession = !confirmedOwned;
+            activeStateSignalEmitted = _setLocalRecordingActive(true);
+            _setLocalMediaError(QString());
+        } else if (confirmedOwned && !_localRecordingStopPending) {
+            // A start confirmation may race with a user stop, a settings
+            // change, or shutdown. Never leave a recording we own orphaned.
+            activeStateSignalEmitted = _setLocalRecordingActive(true);
+            _stopLocalRecording();
+        } else if (!confirmedOwned && !_localRecordingStopPending) {
+            // The global VideoManager may also be controlled elsewhere. With
+            // no bar-session intent, observe but never adopt or stop it.
+            _localRecordingOwned = false;
+            _localRecordingOwnershipConfirmed = false;
+            _localRecordingUsingExternalSession = false;
+            activeStateSignalEmitted = _setLocalRecordingActive(false);
+        }
+    } else {
+        const bool wasExternalSession =
+            _localRecordingUsingExternalSession && !_localRecordingOwned;
+        const bool wasExpectedStop = _localRecordingStopPending;
+        const bool mayRestartAfterActualEnd =
+            _localRecordingResumeOnStream
+            || wasExternalSession;
+
+        _localRecordingStartTimer.stop();
+        _localRecordingStopTimer.stop();
+        _localRecordingStartPending = false;
+        _localRecordingStopPending = false;
+        _localRecordingOwned = false;
+        _localRecordingOwnershipConfirmed = false;
+        _localRecordingUsingExternalSession = false;
+        _localRecordingStopRetryCount = 0;
+        activeStateSignalEmitted = _setLocalRecordingActive(false);
+
+        if (mayRestartAfterActualEnd
+            && _localRecordingIntent
+            && localMediaStorageEnabled()
+            && _videoManager->streaming()) {
+            _localRecordingResumeOnStream = false;
+            _localRecordingStartBlocked = false;
+            _reconcileLocalRecording();
+        } else if (_localRecordingIntent
+                   && localMediaStorageEnabled()
+                   && _videoManager->streaming()
+                   && !mayRestartAfterActualEnd
+                   && !wasExpectedStop) {
+            // A recorder failure while the source remains healthy is not a
+            // reconnect boundary. Block automatic loops (for example on a
+            // full disk) until the user or stream starts a new attempt.
+            _localRecordingStartBlocked = true;
+            _setLocalMediaError(
+                tr("Local video recording stopped unexpectedly."));
+        }
+    }
+
+    if (!activeStateSignalEmitted) {
+        emit localRecordingStateChanged();
+        _notifyRecordingSessionStateChanged();
+    }
+}
+
+void GimbalControlManager::_handleLocalMediaStorageEnabledChanged()
+{
+    emit localMediaStorageEnabledChanged();
+
+    if (localMediaStorageEnabled()) {
+        // Only a session started from this control bar gains a local branch.
+        // An SD recording started externally must not be silently adopted just
+        // because the setting is switched on.
+        _localRecordingIntent = _recordingSessionRequested;
+        _localRecordingStartBlocked = false;
+        if (_localRecordingIntent
+            && !_localRecordingIssuedFileBases.isEmpty()) {
+            _localRecordingRetryAfterGenerationResolved = true;
+        }
+    } else {
+        _localRecordingIntent = false;
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+        _setLocalMediaError(QString());
+    }
+
+    _reconcileLocalRecording();
+    _notifyRecordingSessionStateChanged();
+}
+
+void GimbalControlManager::_handleLocalRecordingStartTimeout()
+{
+    if (!_localRecordingStartPending || !_videoManager) {
+        return;
+    }
+
+    if (_videoManager->recording()) {
+        _handleVideoRecordingChanged();
+        return;
+    }
+
+    if (_localRecordingOwned && _localRecordingOwnershipConfirmed) {
+        // The receiver accepted this exact output, but its public active state
+        // did not arrive in time. Keep ownership and issue a compensating stop
+        // so a delayed transition can never become an orphaned recording.
+        _localRecordingStartBlocked = true;
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+        _setLocalMediaError(
+            tr("Timed out starting local video recording."));
+        _stopLocalRecording();
+        return;
+    }
+
+    _localRecordingStartPending = false;
+    _localRecordingOwned = false;
+    _localRecordingOwnershipConfirmed = false;
+    _localRecordingUsingExternalSession = false;
+    _localRecordingStartBlocked = true;
+    const bool activeStateSignalEmitted =
+        _setLocalRecordingActive(false);
+    _setLocalMediaError(
+        _localRecordingIntent && localMediaStorageEnabled()
+            ? tr("Timed out starting local video recording.")
+            : QString());
+    if (!activeStateSignalEmitted) {
+        emit localRecordingStateChanged();
+        _notifyRecordingSessionStateChanged();
+    }
+}
+
+void GimbalControlManager::_handleLocalRecordingStopTimeout()
+{
+    if (!_localRecordingStopPending || !_videoManager) {
+        return;
+    }
+
+    if (!_videoManager->recording()) {
+        _handleVideoRecordingChanged();
+        return;
+    }
+
+    if (_localRecordingStopRetryCount == 0) {
+        ++_localRecordingStopRetryCount;
+        if (_mainVideoReceiver) {
+            _mainVideoReceiver->stopRecording();
+        }
+        _localRecordingStopTimer.start();
+        return;
+    }
+
+    _localRecordingStopPending = false;
+    const bool activeStateSignalEmitted =
+        _setLocalRecordingActive(true);
+    _setLocalMediaError(tr("Timed out stopping local video recording."));
+    if (!activeStateSignalEmitted) {
+        emit localRecordingStateChanged();
+        _notifyRecordingSessionStateChanged();
+    }
+}
+
 void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& videoSize)
 {
     if (!videoSize.isValid()
@@ -1018,6 +1402,204 @@ void GimbalControlManager::setNegotiatedPulledVideoResolution(const QSize& video
             _negotiatedPulledVideoSize,
             "unsupported negotiated main video sink");
     }
+}
+
+void GimbalControlManager::setMainVideoItem(QQuickItem* videoItem)
+{
+    _mainVideoItem = videoItem;
+}
+
+void GimbalControlManager::setMainVideoReceiver(VideoReceiver* receiver)
+{
+    if (receiver && receiver->isThermal()) {
+        return;
+    }
+    _mainVideoReceiver = receiver;
+}
+
+void GimbalControlManager::handleMainVideoRecordingStartResult(
+    bool success,
+    const QString& outputFile)
+{
+    if (success) {
+        const QString resultFileBase = outputFile.isEmpty()
+            ? QString()
+            : QFileInfo(outputFile).completeBaseName();
+        if (!_localRecordingIssuedFileBases.removeOne(resultFileBase)) {
+            // Another component won a concurrent global start. Its recording
+            // may be adopted for display, but this manager must never claim
+            // ownership merely because the global recording flag changed.
+            return;
+        }
+
+        // The unique basename is also the request generation. It remains in
+        // the issued list after the UI timeout, so a late matching success is
+        // still ours rather than an external recorder session.
+        _localRecordingFileBase = resultFileBase;
+        _localRecordingOwned = true;
+        _localRecordingOwnershipConfirmed = true;
+        _localRecordingUsingExternalSession = false;
+        _localRecordingStartBlocked = false;
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+
+        if (_videoManager && _videoManager->recording()) {
+            _handleVideoRecordingChanged();
+        } else if (!_localRecordingIntent
+                   || !localMediaStorageEnabled()) {
+            // The user, setting, or application shutdown may have cancelled
+            // while the receiver was starting. Queue the compensating stop;
+            // do not clear ownership until the receiver actually finalizes.
+            _localRecordingStartPending = true;
+            _stopLocalRecording();
+        } else {
+            const bool pendingChanged = !_localRecordingStartPending;
+            _localRecordingStartPending = true;
+            _localRecordingStartTimer.start();
+            if (pendingChanged) {
+                emit localRecordingStateChanged();
+                _notifyRecordingSessionStateChanged();
+            }
+        }
+        return;
+    }
+
+    // Only one receiver start generation may be unresolved at a time. The
+    // failure signal carries no filename, so FIFO uniqueness is the only
+    // reliable correlation available without changing the native receiver.
+    if (_localRecordingIssuedFileBases.isEmpty()) {
+        return;
+    }
+
+    const QString failedFileBase =
+        _localRecordingIssuedFileBases.takeFirst();
+    if (failedFileBase != _localRecordingFileBase) {
+        qCWarning(GimbalControlLog)
+            << "Unexpected local recording generation order"
+            << failedFileBase << _localRecordingFileBase;
+    }
+
+    if (_localRecordingStopPending) {
+        if (!_videoManager || !_videoManager->recording()) {
+            _handleVideoRecordingChanged();
+        }
+        return;
+    }
+
+    _localRecordingStartTimer.stop();
+    _localRecordingStartPending = false;
+    if (!_localRecordingOwnershipConfirmed) {
+        _localRecordingOwned = false;
+    }
+    const bool retryResolvedGeneration =
+        (_localRecordingRetryAfterGenerationResolved
+         || _localRecordingResumeOnStream)
+        && _localRecordingIntent
+        && localMediaStorageEnabled()
+        && _videoManager
+        && _videoManager->streaming();
+    _localRecordingStartBlocked = !retryResolvedGeneration;
+    if (retryResolvedGeneration) {
+        _localRecordingResumeOnStream = false;
+        _localRecordingRetryAfterGenerationResolved = false;
+    }
+    if (!_localRecordingUsingExternalSession) {
+        _localRecordingOwnershipConfirmed = false;
+        _setLocalRecordingActive(false);
+        _setLocalMediaError(
+            _localRecordingIntent
+                    && localMediaStorageEnabled()
+                    && !retryResolvedGeneration
+                ? tr("Failed to start local video recording.")
+                : QString());
+    }
+    emit localRecordingStateChanged();
+    _notifyRecordingSessionStateChanged();
+    _reconcileLocalRecording();
+}
+
+void GimbalControlManager::shutdownLocalMedia(bool waitForStop)
+{
+    _recordingSessionRequested = false;
+    _localRecordingIntent = false;
+    _localRecordingResumeOnStream = false;
+    _localRecordingRetryAfterGenerationResolved = false;
+    const bool ownedOrPending = _localRecordingOwned
+        || _localRecordingStartPending
+        || _localRecordingStopPending;
+    const bool unresolvedStart =
+        !_localRecordingIssuedFileBases.isEmpty();
+
+    if (_localRecordingOwned) {
+        _stopLocalRecording();
+    } else if (_localRecordingUsingExternalSession) {
+        _localRecordingUsingExternalSession = false;
+        _setLocalRecordingActive(false);
+    }
+
+    const auto localMediaFinalized = [this]() {
+        return !_localRecordingOwned
+            && !_localRecordingStartPending
+            && !_localRecordingStopPending
+            && _localRecordingIssuedFileBases.isEmpty();
+    };
+
+    bool waitTimedOut = false;
+    if (waitForStop
+        && (ownedOrPending || unresolvedStart)
+        && !localMediaFinalized()) {
+        QEventLoop waitLoop;
+        QTimer waitTimer;
+        waitTimer.setSingleShot(true);
+        connect(this,
+                &GimbalControlManager::localRecordingStateChanged,
+                &waitLoop,
+                [&waitLoop, localMediaFinalized]() {
+                    if (localMediaFinalized()) {
+                        waitLoop.quit();
+                    }
+                });
+        if (_videoManager) {
+            connect(_videoManager,
+                    &VideoManager::recordingChanged,
+                    &waitLoop,
+                    [&waitLoop, localMediaFinalized]() {
+                        if (localMediaFinalized()) {
+                            waitLoop.quit();
+                        }
+                    });
+        }
+        connect(&waitTimer, &QTimer::timeout, &waitLoop, &QEventLoop::quit);
+        waitTimer.start(kApplicationShutdownRecordingWaitMs);
+        waitLoop.exec(QEventLoop::ExcludeUserInputEvents);
+        waitTimedOut = !localMediaFinalized();
+        waitTimer.stop();
+    }
+
+    const bool stopped = !_videoManager || !_videoManager->recording();
+    if (stopped || waitForStop) {
+        if (waitTimedOut) {
+            qCWarning(GimbalControlLog)
+                << "Timed out resolving or finalizing the owned local recording during shutdown";
+        }
+        _localRecordingStartTimer.stop();
+        _localRecordingStopTimer.stop();
+        _localRecordingOwned = false;
+        _localRecordingOwnershipConfirmed = false;
+        _localRecordingUsingExternalSession = false;
+        _localRecordingStartPending = false;
+        _localRecordingStopPending = false;
+        _localRecordingStopRetryCount = 0;
+        _localRecordingIssuedFileBases.clear();
+        const bool wasActive = _localRecordingActive;
+        _setLocalRecordingActive(false);
+        if (!wasActive) {
+            emit localRecordingStateChanged();
+        }
+    }
+
+    _mainVideoItem.clear();
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_tryConfirmPulledVideoResolution()
@@ -1647,17 +2229,27 @@ void GimbalControlManager::_handleCameraSystemStatus(quint8 hdrStatus,
         _setLastError(QString());
         break;
     case 1:
+        _cameraRecordingStartBlocked = false;
         _setCameraStatusKnown(true);
         _setRecording(true);
         _setLastError(QString());
         break;
     case 2:
+        if (_cameraRecordingIntentValid
+            && _cameraRecordingIntentTarget) {
+            _cameraRecordingStartBlocked = true;
+        }
         _setCameraStatusKnown(true);
         _setRecording(false);
         _setLastError(tr("The SIYI camera has no storage card."));
         break;
     case 3:
+        if (_cameraRecordingIntentValid
+            && _cameraRecordingIntentTarget) {
+            _cameraRecordingStartBlocked = true;
+        }
         _setCameraStatusKnown(false);
+        _setRecording(false);
         _setLastError(tr("The SIYI camera reported video data loss."));
         break;
     default:
@@ -1667,6 +2259,10 @@ void GimbalControlManager::_handleCameraSystemStatus(quint8 hdrStatus,
 
     if (statusHandled && _recordingCommandPending) {
         _finishRecordingCommand();
+    }
+    if (statusHandled) {
+        _reconcileCameraRecordingIntent();
+        _notifyRecordingSessionStateChanged();
     }
 }
 
@@ -1692,10 +2288,22 @@ void GimbalControlManager::_handleFunctionFeedback(quint8 infoType)
         _setLastError(tr("Photo capture failed or the storage card is unavailable."));
         break;
     case 4:
+        if ((_recordingCommandPending && _recordingCommandTarget)
+            || (_cameraRecordingIntentValid
+                && _cameraRecordingIntentTarget)) {
+            _cameraRecordingStartBlocked = true;
+            _setRecording(false);
+        } else if ((_recordingCommandPending
+                    && !_recordingCommandTarget)
+                   || (_cameraRecordingIntentValid
+                       && !_cameraRecordingIntentTarget)) {
+            _cameraRecordingStopBlocked = true;
+        }
         _finishRecordingCommand();
         _setCameraStatusKnown(false);
         _setLastError(tr("Video recording failed or the storage card is unavailable."));
         _syncCameraStatus();
+        _notifyRecordingSessionStateChanged();
         break;
     default:
         break;
@@ -1732,6 +2340,13 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
     _resetMaximumZoomCapability();
     _photoFeedbackTimer.stop();
     _photoCommandPending = false;
+    if (_cameraRecordingIntentValid) {
+        if (_cameraRecordingIntentTarget) {
+            _cameraRecordingStartBlocked = true;
+        } else {
+            _cameraRecordingStopBlocked = true;
+        }
+    }
     _finishRecordingCommand();
     _setSdkResponding(false);
     if (enabled()
@@ -1754,6 +2369,7 @@ void GimbalControlManager::_handleCommunicationError(const QString& message)
     _setCameraStatusKnown(false);
     _setRecording(false);
     _setLastError(message);
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_markSdkNotResponding()
@@ -1785,6 +2401,13 @@ void GimbalControlManager::_markSdkNotResponding()
     _resetMaximumZoomCapability();
     _photoFeedbackTimer.stop();
     _photoCommandPending = false;
+    if (_cameraRecordingIntentValid) {
+        if (_cameraRecordingIntentTarget) {
+            _cameraRecordingStartBlocked = true;
+        } else {
+            _cameraRecordingStopBlocked = true;
+        }
+    }
     _finishRecordingCommand();
     _setSdkResponding(false);
     if (enabled()
@@ -1804,6 +2427,7 @@ void GimbalControlManager::_markSdkNotResponding()
     _setCameraStatusKnown(false);
     _setRecording(false);
     _setLastError(tr("No response from the SIYI SDK endpoint."));
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_pollSdk()
@@ -2089,10 +2713,18 @@ void GimbalControlManager::_handleRecordingCommandTimeout()
         return;
     }
 
+    const bool timedOutStarting = _recordingCommandTarget;
+    if (timedOutStarting) {
+        _cameraRecordingStartBlocked = true;
+        _setRecording(false);
+    } else {
+        _cameraRecordingStopBlocked = true;
+    }
     _finishRecordingCommand();
     _setCameraStatusKnown(false);
     _setLastError(tr("Timed out waiting for the SIYI camera recording status."));
     _syncCameraStatus();
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_configureSdkEndpoint()
@@ -2729,6 +3361,7 @@ void GimbalControlManager::_setVideoStreamAvailable(bool available)
 
     _videoStreamAvailable = available;
     emit zoomAvailabilityChanged();
+    _notifyRecordingSessionStateChanged();
 }
 
 void GimbalControlManager::_setSdkResponding(bool responding)
@@ -2755,6 +3388,7 @@ void GimbalControlManager::_setCameraStatusKnown(bool known)
     if (_cameraStatusKnown != known) {
         _cameraStatusKnown = known;
         emit cameraStatusKnownChanged();
+        _notifyRecordingSessionStateChanged();
     }
 }
 
@@ -2763,6 +3397,7 @@ void GimbalControlManager::_setRecording(bool recording)
     if (_recording != recording) {
         _recording = recording;
         emit recordingChanged();
+        _notifyRecordingSessionStateChanged();
     }
 }
 
@@ -2771,6 +3406,7 @@ void GimbalControlManager::_setRecordingCommandPending(bool pending)
     if (_recordingCommandPending != pending) {
         _recordingCommandPending = pending;
         emit recordingCommandPendingChanged();
+        _notifyRecordingSessionStateChanged();
     }
 }
 
@@ -2781,6 +3417,461 @@ void GimbalControlManager::_finishRecordingCommand()
     _recordingCommandTarget = false;
     _recordingStatusResponseAllowed = false;
     _setRecordingCommandPending(false);
+}
+
+bool GimbalControlManager::_startRecordingSession()
+{
+    if (recordingSessionActive()) {
+        return false;
+    }
+
+    const bool requestLocal = localMediaStorageEnabled();
+    const bool requestCamera = enabled();
+    if (!requestLocal && !requestCamera) {
+        return false;
+    }
+
+    _recordingSessionRequested = true;
+    _localRecordingIntent = requestLocal;
+    _localRecordingStartBlocked = false;
+    _localRecordingResumeOnStream = false;
+    _localRecordingRetryAfterGenerationResolved =
+        requestLocal && !_localRecordingIssuedFileBases.isEmpty();
+
+    _cameraRecordingIntentValid = requestCamera;
+    _cameraRecordingIntentTarget = true;
+    _cameraRecordingStartBlocked = false;
+    _cameraRecordingStopBlocked = false;
+
+    if (_localRecordingIssuedFileBases.isEmpty()) {
+        _setLocalMediaError(QString());
+    }
+    _notifyRecordingSessionStateChanged();
+
+    _reconcileLocalRecording();
+    _reconcileCameraRecordingIntent();
+    return true;
+}
+
+bool GimbalControlManager::_stopRecordingSession()
+{
+    const bool hadActiveSession = recordingSessionActive();
+    if (!hadActiveSession) {
+        return false;
+    }
+
+    _recordingSessionRequested = false;
+    _localRecordingIntent = false;
+    _localRecordingResumeOnStream = false;
+    _localRecordingRetryAfterGenerationResolved = false;
+
+    const bool cameraMayNeedStop = enabled()
+        && (_recording
+            || _recordingCommandPending
+            || _cameraRecordingIntentValid);
+    _cameraRecordingIntentValid = cameraMayNeedStop;
+    _cameraRecordingIntentTarget = false;
+    _cameraRecordingStartBlocked = false;
+    _cameraRecordingStopBlocked = false;
+
+    _notifyRecordingSessionStateChanged();
+    _reconcileLocalRecording();
+    _reconcileCameraRecordingIntent();
+    return true;
+}
+
+bool GimbalControlManager::_sendCameraRecordingToggle(bool targetRecording)
+{
+    if (!_sdk
+        || !enabled()
+        || !_cameraStatusKnown
+        || _recordingCommandPending
+        || _recording == targetRecording) {
+        return false;
+    }
+
+    _configureSdkEndpoint();
+    if (!_sdk->toggleVideoRecording()) {
+        if (targetRecording) {
+            _cameraRecordingStartBlocked = true;
+        } else {
+            _cameraRecordingStopBlocked = true;
+        }
+        return false;
+    }
+
+    // 0x0c has no direct ACK. Publish a pending optimistic state, ignore old
+    // in-flight 0x0a replies, then query for a matching confirmed state.
+    _recordingCommandTarget = targetRecording;
+    _recordingStatusResponseAllowed = false;
+    _recordingStatusDelayTimer.start();
+    _recordingCommandTimeoutTimer.start();
+    _setRecordingCommandPending(true);
+    _setRecording(targetRecording);
+    _setLastError(QString());
+    return true;
+}
+
+void GimbalControlManager::_reconcileCameraRecordingIntent()
+{
+    if (!_cameraRecordingIntentValid || _recordingCommandPending) {
+        return;
+    }
+
+    if (!enabled() || !_sdk) {
+        _cameraRecordingIntentValid = false;
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    if (_cameraRecordingIntentTarget && _cameraRecordingStartBlocked) {
+        return;
+    }
+
+    if (!_cameraStatusKnown) {
+        _syncCameraStatus();
+        return;
+    }
+
+    if (_recording == _cameraRecordingIntentTarget) {
+        if (!_cameraRecordingIntentTarget) {
+            _cameraRecordingIntentValid = false;
+            _cameraRecordingStopBlocked = false;
+        }
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    if (!_cameraRecordingIntentTarget && _cameraRecordingStopBlocked) {
+        return;
+    }
+
+    (void) _sendCameraRecordingToggle(_cameraRecordingIntentTarget);
+}
+
+bool GimbalControlManager::_captureLocalVideoFrame()
+{
+    // Advance the generation before validating the request. An older
+    // asynchronous grab must not clear an error produced by a newer click,
+    // even when that newer click fails before grabToImage() is reached.
+    const quint64 requestSequence = ++_localPhotoRequestSequence;
+
+    if (!_videoManager
+        || !_videoManager->decoding()
+        || !_mainVideoItem
+        || _mainVideoItem->width() <= 0.0
+        || _mainVideoItem->height() <= 0.0) {
+        _setLocalMediaError(
+            tr("No decoded video frame is available for a local photo."));
+        return false;
+    }
+
+    AppSettings* appSettings =
+        SettingsManager::instance()->appSettings();
+    const QString photoDirectory = appSettings
+        ? appSettings->photoSavePath()
+        : QString();
+    if (photoDirectory.isEmpty()
+        || (!QDir(photoDirectory).exists()
+            && !QDir().mkpath(photoDirectory))
+        || !QFileInfo(photoDirectory).isWritable()) {
+        _setLocalMediaError(
+            tr("The local photo save path is unavailable or not writable."));
+        return false;
+    }
+
+    const QString filename = QDir(photoDirectory).filePath(
+        QStringLiteral("%1_local_%2.jpg")
+            .arg(QDateTime::currentDateTime().toString(
+                     QStringLiteral("yyyy-MM-dd_hh.mm.ss.zzz")))
+            .arg(requestSequence,
+                 3,
+                 10,
+                 QLatin1Char('0')));
+
+    const QSharedPointer<QQuickItemGrabResult> result =
+        _mainVideoItem->grabToImage();
+    if (!result) {
+        _setLocalMediaError(tr("Failed to capture the local video frame."));
+        return false;
+    }
+
+    _setLocalMediaError(QString());
+    connect(result.data(),
+            &QQuickItemGrabResult::ready,
+            this,
+            [this, result, filename, requestSequence]() {
+                if (!result->saveToFile(filename)) {
+                    if (requestSequence == _localPhotoRequestSequence) {
+                        _setLocalMediaError(
+                            tr("Failed to save the local video frame."));
+                    }
+                    qCWarning(GimbalControlLog)
+                        << "Failed to save local camera frame" << filename;
+                    return;
+                }
+
+                ++_localPhotoCount;
+                emit localPhotoCountChanged();
+                if (requestSequence == _localPhotoRequestSequence) {
+                    _setLocalMediaError(QString());
+                }
+                qCInfo(GimbalControlLog)
+                    << "Saved local camera frame" << filename;
+            },
+            Qt::SingleShotConnection);
+    return true;
+}
+
+void GimbalControlManager::_reconcileLocalRecording()
+{
+    if (!_videoManager) {
+        if (_localRecordingIntent) {
+            _setLocalMediaError(
+                tr("Local video recording is unavailable."));
+        }
+        return;
+    }
+
+    GimbalMediaSessionPolicy::LocalState state;
+    state.intent = _localRecordingIntent;
+    state.settingEnabled = localMediaStorageEnabled();
+    state.streaming = _videoManager->streaming();
+    state.actualRecording = _videoManager->recording();
+    state.active = _localRecordingActive;
+    // A start call is only provisional. The matching main-receiver result is
+    // the authority which promotes it to an owned global recorder session.
+    state.owned = _localRecordingOwned
+        && _localRecordingOwnershipConfirmed;
+    state.usingExternal = _localRecordingUsingExternalSession;
+    state.startPending = _localRecordingStartPending;
+    state.stopPending = _localRecordingStopPending;
+    state.startBlocked = _localRecordingStartBlocked;
+
+    switch (GimbalMediaSessionPolicy::localAction(state)) {
+    case GimbalMediaSessionPolicy::StartOwned:
+        _startLocalRecording();
+        return;
+    case GimbalMediaSessionPolicy::StopOwned:
+    case GimbalMediaSessionPolicy::ReleaseExternal:
+        _stopLocalRecording();
+        return;
+    case GimbalMediaSessionPolicy::AdoptExternal:
+        _localRecordingOwned = false;
+        _localRecordingOwnershipConfirmed = false;
+        _localRecordingUsingExternalSession = true;
+        _setLocalRecordingActive(true);
+        _setLocalMediaError(QString());
+        return;
+    case GimbalMediaSessionPolicy::ConfirmOwned:
+        _localRecordingUsingExternalSession = false;
+        _setLocalRecordingActive(true);
+        _setLocalMediaError(QString());
+        return;
+    case GimbalMediaSessionPolicy::None:
+        break;
+    }
+
+    if (_localRecordingIntent
+        && localMediaStorageEnabled()
+        && !_videoManager->streaming()
+        && !_videoManager->recording()
+        && !_localRecordingStartPending
+        && !_localRecordingStopPending) {
+        _setLocalRecordingActive(false);
+        _localRecordingResumeOnStream = true;
+        _setLocalMediaError(
+            tr("Local video recording requires an active video stream."));
+    }
+}
+
+void GimbalControlManager::_startLocalRecording()
+{
+    if (!_videoManager
+        || !_localRecordingIntent
+        || !localMediaStorageEnabled()
+        || _localRecordingStartPending
+        || _localRecordingStopPending
+        || _localRecordingStartBlocked) {
+        return;
+    }
+
+    if (!_localRecordingIssuedFileBases.isEmpty()) {
+        _localRecordingRetryAfterGenerationResolved = true;
+        return;
+    }
+
+    if (_videoManager->recording()) {
+        _localRecordingOwned = false;
+        _localRecordingOwnershipConfirmed = false;
+        _localRecordingUsingExternalSession = true;
+        _setLocalRecordingActive(true);
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    if (!_videoManager->streaming()) {
+        _setLocalMediaError(
+            tr("Local video recording requires an active video stream."));
+        return;
+    }
+
+    if (!_mainVideoReceiver || !_mainVideoReceiver->started()) {
+        _localRecordingStartBlocked = true;
+        _setLocalMediaError(
+            tr("Local video recording is unavailable."));
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    AppSettings* appSettings =
+        SettingsManager::instance()->appSettings();
+    VideoSettings* videoSettings =
+        SettingsManager::instance()->videoSettings();
+    const QString videoDirectory = appSettings
+        ? appSettings->videoSavePath()
+        : QString();
+    if (videoDirectory.isEmpty()
+        || (!QDir(videoDirectory).exists()
+            && !QDir().mkpath(videoDirectory))
+        || !QFileInfo(videoDirectory).isWritable()) {
+        _localRecordingStartBlocked = true;
+        _setLocalMediaError(
+            tr("The local video save path is unavailable or not writable."));
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    const VideoReceiver::FILE_FORMAT fileFormat =
+        videoSettings
+        ? static_cast<VideoReceiver::FILE_FORMAT>(
+              videoSettings->recordingFormat()->rawValue().toInt())
+        : VideoReceiver::FILE_FORMAT_MAX;
+    if (!VideoReceiver::isValidFileFormat(fileFormat)) {
+        _localRecordingStartBlocked = true;
+        _setLocalMediaError(
+            tr("The configured local video format is invalid."));
+        _notifyRecordingSessionStateChanged();
+        return;
+    }
+
+    cleanupOldLocalVideos(videoSettings, videoDirectory);
+
+    _localRecordingFileBase =
+        QStringLiteral("%1_local_%2")
+            .arg(QDateTime::currentDateTime().toString(
+                     QStringLiteral("yyyy-MM-dd_hh.mm.ss.zzz")))
+            .arg(++_localRecordingSegmentCounter,
+                 3,
+                 10,
+                 QLatin1Char('0'));
+    _localRecordingIssuedFileBases.append(_localRecordingFileBase);
+    _localRecordingResumeOnStream = false;
+    _localRecordingRetryAfterGenerationResolved = false;
+    _localRecordingOwned = true;
+    _localRecordingOwnershipConfirmed = false;
+    _localRecordingUsingExternalSession = false;
+    _localRecordingStartPending = true;
+    _localRecordingStopRetryCount = 0;
+    _localRecordingStartTimer.start();
+    _setLocalMediaError(QString());
+    emit localRecordingStateChanged();
+    _notifyRecordingSessionStateChanged();
+
+    qCInfo(GimbalControlLog)
+        << "Starting owned local video segment"
+        << _localRecordingFileBase;
+    const QString outputFile = QDir(videoDirectory).filePath(
+        _localRecordingFileBase
+        + QLatin1Char('.')
+        + QLatin1String(kLocalRecordingFileExtensions[fileFormat]));
+    _mainVideoReceiver->startRecording(outputFile, fileFormat);
+    if (_videoManager->recording()) {
+        _handleVideoRecordingChanged();
+    }
+}
+
+void GimbalControlManager::_stopLocalRecording()
+{
+    if (!_localRecordingActive
+        && !_localRecordingStartPending
+        && !_localRecordingOwned
+        && !_localRecordingUsingExternalSession) {
+        return;
+    }
+
+    if (_localRecordingUsingExternalSession && !_localRecordingOwned) {
+        _localRecordingUsingExternalSession = false;
+        _localRecordingOwnershipConfirmed = false;
+        _setLocalRecordingActive(false);
+        return;
+    }
+
+    if (_localRecordingOwned && !_localRecordingOwnershipConfirmed) {
+        // A start request is not ours until its success callback matches the
+        // requested basename. Defer cancellation instead of risking a stop of
+        // a concurrent recorder which won the main receiver first.
+        return;
+    }
+
+    if (!_localRecordingOwned || !_mainVideoReceiver) {
+        _localRecordingStartTimer.stop();
+        _localRecordingStartPending = false;
+        _localRecordingOwned = false;
+        _localRecordingOwnershipConfirmed = false;
+        _localRecordingUsingExternalSession = false;
+        const bool wasActive = _localRecordingActive;
+        _setLocalRecordingActive(false);
+        if (!wasActive) {
+            emit localRecordingStateChanged();
+            _notifyRecordingSessionStateChanged();
+        }
+        return;
+    }
+
+    if (_localRecordingStopPending) {
+        return;
+    }
+
+    _localRecordingStartTimer.stop();
+    _localRecordingStartPending = false;
+    _localRecordingStopPending = true;
+    _localRecordingStopRetryCount = 0;
+    _localRecordingStopTimer.start();
+    emit localRecordingStateChanged();
+    _notifyRecordingSessionStateChanged();
+
+    qCInfo(GimbalControlLog)
+        << "Stopping owned local video segment"
+        << _localRecordingFileBase;
+    _mainVideoReceiver->stopRecording();
+}
+
+bool GimbalControlManager::_setLocalRecordingActive(bool active)
+{
+    if (_localRecordingActive == active) {
+        return false;
+    }
+
+    _localRecordingActive = active;
+    emit localRecordingStateChanged();
+    _notifyRecordingSessionStateChanged();
+    return true;
+}
+
+void GimbalControlManager::_setLocalMediaError(const QString& message)
+{
+    if (_localMediaError == message) {
+        return;
+    }
+
+    _localMediaError = message;
+    emit localMediaErrorChanged();
+}
+
+void GimbalControlManager::_notifyRecordingSessionStateChanged()
+{
+    emit recordingSessionStateChanged();
 }
 
 void GimbalControlManager::_syncCameraStatus()

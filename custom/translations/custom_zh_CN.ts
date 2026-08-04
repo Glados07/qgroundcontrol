@@ -140,6 +140,93 @@
     </message>
 </context>
 <context>
+    <name>GimbalCameraControl</name>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="243"/>
+        <source>REC</source>
+        <translation>录像</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="324"/>
+        <source>SD</source>
+        <translation>SD卡</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
+        <source>LOCAL</source>
+        <translation>本地</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
+        <source>FAILED</source>
+        <translation>失败</translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControlManager</name>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1160"/>
+        <source>Local video recording stopped unexpectedly.</source>
+        <translation>本地视频录像意外停止。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1198"/>
+        <source>Timed out starting local video recording.</source>
+        <translation>启动本地视频录像超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1292"/>
+        <source>Failed to start local video recording.</source>
+        <translation>启动本地视频录像失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1223"/>
+        <source>Timed out stopping local video recording.</source>
+        <translation>停止本地视频录像超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3237"/>
+        <source>No decoded video frame is available for a local photo.</source>
+        <translation>当前没有可用于本地拍照的已解码视频帧。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3251"/>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation>本地照片保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3267"/>
+        <source>Failed to capture the local video frame.</source>
+        <translation>截取本地视频帧失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3278"/>
+        <source>Failed to save the local video frame.</source>
+        <translation>保存本地视频帧失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3299"/>
+        <source>Local video recording is unavailable.</source>
+        <translation>本地视频录像不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3323"/>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3353"/>
+        <source>Local video recording requires an active video stream.</source>
+        <translation>本地视频录像需要可用的视频流。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3368"/>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation>本地视频保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="3667"/>
+        <source>The configured local video format is invalid.</source>
+        <translation>配置的本地视频格式无效。</translation>
+    </message>
+</context>
+<context>
     <name>VideoSettings</name>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
@@ -175,6 +262,16 @@
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
         <source>Restart QGC after changing this option.</source>
         <translation>更改此选项后请重启 QGC。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <source>Save photos and videos locally</source>
+        <translation>在本机保存照片和视频</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="169"/>
+        <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
+        <translation>相机拍照和录像时也会在本机保存媒体，并且不受云台 SD 卡存储状态影响。</translation>
     </message>
 </context>
 </TS>
