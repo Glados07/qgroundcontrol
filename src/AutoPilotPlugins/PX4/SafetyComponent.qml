@@ -55,10 +55,12 @@ SetupPage {
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
             property bool _hitlAvailable:       controller.parameterExists(-1, hitlParam)
             property Fact _hitlEnabled:         controller.getParameterFact(-1, hitlParam, false)
-            property bool _generatorLowVoltageAvailable:  controller.parameterExists(-1, "COM_GEN_V_LOW")
-            property Fact _generatorLowVoltage:           _generatorLowVoltageAvailable
-                                                          ? controller.getParameterFact(-1, "COM_GEN_V_LOW", false)
-                                                          : null
+            property Fact _generatorLowVoltage:           controller.getParameterFact(-1, "COM_GEN_V_LOW")
+            property Fact _generatorLowVoltageAction:     controller.getParameterFact(-1, "COM_GEN_LOW_ACT")
+            property Fact _generatorLowVoltageDelay:      controller.getParameterFact(-1, "COM_GEN_LOW_T")
+            property bool _generatorSettingsEnabled:      controller.vehicle &&
+                                                          !controller.vehicle.armed &&
+                                                          !controller.vehicle.flying
 
             ColumnLayout {
                 id:         outerColumn
@@ -136,15 +138,13 @@ SetupPage {
                 }
 
                 QGCLabel {
-                    text:                   qsTr("Generator Bus Voltage Alert")
-                    visible:                _generatorLowVoltageAvailable
+                    text:                   qsTr("Generator Low Voltage Failsafe")
                 }
 
                 Rectangle {
                     width:                  generatorLowVoltageRow.width + (_margins * 2)
                     height:                 generatorLowVoltageRow.height + (_margins * 2)
                     color:                  qgcPal.windowShade
-                    visible:                _generatorLowVoltageAvailable
 
                     Row {
                         id:                 generatorLowVoltageRow
@@ -170,22 +170,43 @@ SetupPage {
                             anchors.verticalCenter: parent.verticalCenter
 
                             QGCLabel {
-                                text:               qsTr("Low Voltage Threshold:")
+                                text:               qsTr("Failsafe Action:")
                                 Layout.minimumWidth:_labelWidth
                                 Layout.fillWidth:   true
                             }
 
-                            FactTextField {
-                                fact:               _generatorLowVoltage
-                                enabled:            controller.vehicle &&
-                                                    !controller.vehicle.armed &&
-                                                    !controller.vehicle.flying
+                            FactComboBox {
+                                fact:               _generatorLowVoltageAction
+                                indexModel:         false
+                                enabled:            _generatorSettingsEnabled
                                 Layout.minimumWidth:_editFieldWidth
                                 Layout.fillWidth:   true
                             }
 
                             QGCLabel {
-                                text:               qsTr("Fly View displays a warning when the generator bus voltage falls below this value.")
+                                text:               qsTr("Low Voltage Threshold:")
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                fact:               _generatorLowVoltage
+                                enabled:            _generatorSettingsEnabled
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Confirmation Time:")
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                fact:               _generatorLowVoltageDelay
+                                enabled:            _generatorSettingsEnabled
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("The warning triggers after voltage remains below the threshold for the confirmation time, and clears after voltage remains above it for the same time.")
                                 wrapMode:           Text.WordWrap
                                 Layout.columnSpan:  2
                                 Layout.maximumWidth:_labelWidth + _editFieldWidth
