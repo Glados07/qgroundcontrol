@@ -84,7 +84,7 @@ if(ANDROID)
             message(FATAL_ERROR "QGC: Custom Android media library overlay was not generated")
         endif()
         file(READ "${_qgc_media_library_overlay}" _qgc_media_library_overlay_header LIMIT 4096)
-        if(NOT _qgc_media_library_overlay_header MATCHES "QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V1")
+        if(NOT _qgc_media_library_overlay_header MATCHES "QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2")
             message(FATAL_ERROR "QGC: Generated Android package does not contain the custom media library")
         endif()
 

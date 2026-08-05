@@ -29,6 +29,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSaveFile>
+#include <QtCore/QSet>
 #include <QtCore/QSharedPointer>
 #include <QtCore/QtMath>
 #include <QtGui/QImage>
@@ -48,6 +49,7 @@ static constexpr double kZoomComparisonTolerance = 0.051;
 static constexpr int kLocalRecordingStartTimeoutMs = 3000;
 static constexpr int kLocalRecordingStopTimeoutMs = 5000;
 static constexpr int kApplicationShutdownRecordingWaitMs = 3000;
+static constexpr int kApplicationShutdownPublicationWaitMs = 120000;
 static constexpr int kLocalPhotoGrabTimeoutMs = 5000;
 static constexpr int kLocalPhotoJpegQuality = 100;
 static constexpr const char* kLocalRecordingFileExtensions[
@@ -80,6 +82,13 @@ enum class LocalMediaKind {
     Photo,
     Video,
 };
+
+QString localMediaDirectoryName(LocalMediaKind mediaKind)
+{
+    return mediaKind == LocalMediaKind::Photo
+        ? QStringLiteral("Photo")
+        : QStringLiteral("Video");
+}
 
 struct LocalPhotoSaveOutcome {
     bool success = false;
@@ -162,21 +171,18 @@ QString localMediaSaveDirectory(AppSettings* appSettings,
     }
 
 #ifdef Q_OS_ANDROID
-    const QString mediaDirectoryName =
-        mediaKind == LocalMediaKind::Photo
-            ? QStringLiteral("Photo")
-            : QStringLiteral("Video");
-    const QString sharedMediaDirectory =
-        AndroidMediaLibrary::mediaDirectory(
+    const QString mediaDirectoryName = localMediaDirectoryName(mediaKind);
+    const QString stagingDirectory =
+        AndroidMediaLibrary::mediaStagingDirectory(
             appSettings->savePath()->rawValue().toString(),
             QCoreApplication::applicationName(),
             mediaDirectoryName);
-    if (!sharedMediaDirectory.isEmpty()) {
-        return sharedMediaDirectory;
+    if (!stagingDirectory.isEmpty()) {
+        return stagingDirectory;
     }
 
     qCWarning(GimbalControlLog)
-        << "Android shared-media directory is unavailable; using the"
+        << "Android media staging directory is unavailable; using the"
         << "application data fallback for" << mediaDirectoryName;
 #endif
 
@@ -185,7 +191,8 @@ QString localMediaSaveDirectory(AppSettings* appSettings,
         : appSettings->videoSavePath();
 }
 
-void registerLocalMediaFile(const QString& filePath)
+void registerLocalMediaFile(const QString& filePath,
+                            LocalMediaKind mediaKind)
 {
 #ifdef Q_OS_ANDROID
     const QFileInfo mediaFile(filePath);
@@ -194,20 +201,24 @@ void registerLocalMediaFile(const QString& filePath)
         || mediaFile.size() <= 0
         || mimeType.isEmpty()) {
         qCWarning(GimbalControlLog)
-            << "Skipping Android media scan for invalid local media"
+            << "Skipping Android public-media publication for invalid local media"
             << filePath;
         return;
     }
 
-    (void) AndroidMediaLibrary::registerMediaFile(
+    (void) AndroidMediaLibrary::publishMediaFile(
         mediaFile.absoluteFilePath(),
-        mimeType);
+        mimeType,
+        QCoreApplication::applicationName(),
+        localMediaDirectoryName(mediaKind));
 #else
     Q_UNUSED(filePath);
+    Q_UNUSED(mediaKind);
 #endif
 }
 
-void registerExistingLocalMediaFiles()
+void registerExistingLocalMediaFiles(
+    const QSet<QString>& excludedFilePaths = {})
 {
 #ifdef Q_OS_ANDROID
     AppSettings* appSettings = SettingsManager::instance()->appSettings();
@@ -216,15 +227,24 @@ void registerExistingLocalMediaFiles()
     }
 
     struct MediaDirectory {
-        QString targetPath;
-        QString legacyPath;
+        LocalMediaKind mediaKind;
+        QString stagingPath;
+        QStringList mountedAndroidSourcePaths;
+        QString appSettingsLegacyPath;
         QStringList nameFilters;
         QRegularExpression customFilePattern;
     };
 
+    const QString applicationDirectory =
+        QCoreApplication::applicationName();
+
     const QList<MediaDirectory> mediaDirectories = {
         {
+            LocalMediaKind::Photo,
             localMediaSaveDirectory(appSettings, LocalMediaKind::Photo),
+            AndroidMediaLibrary::existingMediaSourceDirectories(
+                applicationDirectory,
+                localMediaDirectoryName(LocalMediaKind::Photo)),
             appSettings->photoSavePath(),
             {QStringLiteral("*.jpg"), QStringLiteral("*.jpeg")},
             QRegularExpression(
@@ -232,7 +252,11 @@ void registerExistingLocalMediaFiles()
                 QRegularExpression::CaseInsensitiveOption),
         },
         {
+            LocalMediaKind::Video,
             localMediaSaveDirectory(appSettings, LocalMediaKind::Video),
+            AndroidMediaLibrary::existingMediaSourceDirectories(
+                applicationDirectory,
+                localMediaDirectoryName(LocalMediaKind::Video)),
             appSettings->videoSavePath(),
             {
                 QStringLiteral("*.mkv"),
@@ -246,10 +270,6 @@ void registerExistingLocalMediaFiles()
     };
 
     for (const MediaDirectory& mediaDirectory : mediaDirectories) {
-        if (mediaDirectory.targetPath.isEmpty()) {
-            continue;
-        }
-
         const auto matchingMediaFiles = [&mediaDirectory](
                                             const QString& path) {
             QDir directory(path);
@@ -273,31 +293,38 @@ void registerExistingLocalMediaFiles()
             return matchingFiles;
         };
 
-        const QFileInfoList targetFiles =
-            matchingMediaFiles(mediaDirectory.targetPath);
-        for (const QFileInfo& targetFile : targetFiles) {
-            registerLocalMediaFile(targetFile.absoluteFilePath());
-        }
+        QStringList sourceDirectories = {
+            mediaDirectory.stagingPath,
+            mediaDirectory.appSettingsLegacyPath,
+        };
+        sourceDirectories.append(mediaDirectory.mountedAndroidSourcePaths);
+        QSet<QString> visitedDirectories;
+        for (const QString& sourceDirectory : sourceDirectories) {
+            if (sourceDirectory.isEmpty()) {
+                continue;
+            }
+            const QString cleanSourceDirectory =
+                QDir::cleanPath(sourceDirectory);
+            if (visitedDirectories.contains(cleanSourceDirectory)) {
+                continue;
+            }
+            visitedDirectories.insert(cleanSourceDirectory);
 
-        if (mediaDirectory.legacyPath.isEmpty()) {
-            continue;
-        }
-
-        const QString cleanTargetPath =
-            QDir::cleanPath(mediaDirectory.targetPath);
-        const QString cleanLegacyPath =
-            QDir::cleanPath(mediaDirectory.legacyPath);
-        if (cleanLegacyPath == cleanTargetPath) {
-            continue;
-        }
-
-        const QFileInfoList legacyFiles =
-            matchingMediaFiles(mediaDirectory.legacyPath);
-        for (const QFileInfo& legacyFile : legacyFiles) {
-            (void) AndroidMediaLibrary::migrateMediaFile(
-                legacyFile.absoluteFilePath(),
-                mediaDirectory.targetPath,
-                localMediaMimeType(legacyFile.absoluteFilePath()));
+            const QFileInfoList sourceFiles =
+                matchingMediaFiles(cleanSourceDirectory);
+            for (const QFileInfo& sourceFile : sourceFiles) {
+                const QString absoluteFilePath =
+                    QDir::cleanPath(sourceFile.absoluteFilePath());
+                if (excludedFilePaths.contains(absoluteFilePath)) {
+                    qCInfo(GimbalControlLog)
+                        << "Deferring Android publication of media which may still be active"
+                        << absoluteFilePath;
+                    continue;
+                }
+                registerLocalMediaFile(
+                    absoluteFilePath,
+                    mediaDirectory.mediaKind);
+            }
         }
     }
 #endif
@@ -319,6 +346,24 @@ void cleanupOldLocalVideos(VideoSettings* videoSettings,
         || !videoSettings->enableStorageLimit()->rawValue().toBool()) {
         return;
     }
+
+    const quint64 maximumBytes =
+        videoSettings->maxVideoSize()->rawValue().toULongLong()
+        * 1024ULL
+        * 1024ULL;
+
+#ifdef Q_OS_ANDROID
+    if (!AndroidMediaLibrary::cleanupPublishedVideos(
+            maximumBytes,
+            QCoreApplication::applicationName())) {
+        qCWarning(GimbalControlLog)
+            << "Failed to queue Android public-video storage cleanup";
+    }
+    // Never enforce the user-visible video quota by deleting an unpublished
+    // staging source. Publication failures must remain recoverable on the
+    // next launch; successful publications remove their own staging files.
+    return;
+#endif
 
     QDir videoDirectory(savePath);
     videoDirectory.setFilter(QDir::Files
@@ -345,10 +390,6 @@ void cleanupOldLocalVideos(VideoSettings* videoSettings,
         }
     }
 
-    const quint64 maximumBytes =
-        videoSettings->maxVideoSize()->rawValue().toULongLong()
-        * 1024ULL
-        * 1024ULL;
     while (totalBytes >= maximumBytes && !removableVideos.isEmpty()) {
         const QFileInfo oldestVideo = removableVideos.takeLast();
         qCInfo(GimbalControlLog)
@@ -1563,7 +1604,9 @@ void GimbalControlManager::_handleVideoRecordingChanged()
         activeStateSignalEmitted = _setLocalRecordingActive(false);
 
         if (finalizedOwnedRecording) {
-            registerLocalMediaFile(finalizedOutputFile);
+            registerLocalMediaFile(
+                finalizedOutputFile,
+                LocalMediaKind::Video);
         }
 
         if (mayRestartAfterActualEnd
@@ -1903,6 +1946,14 @@ void GimbalControlManager::shutdownLocalMedia(bool waitForStop)
     }
 
     const bool stopped = !_videoManager || !_videoManager->recording();
+    const bool localMediaWasFinalized = localMediaFinalized();
+    QSet<QString> activeLocalMediaFiles;
+    if (!localMediaWasFinalized
+        && !_localRecordingOutputFile.isEmpty()) {
+        activeLocalMediaFiles.insert(
+            QDir::cleanPath(
+                QFileInfo(_localRecordingOutputFile).absoluteFilePath()));
+    }
     if (stopped || waitForStop) {
         if (waitTimedOut) {
             qCWarning(GimbalControlLog)
@@ -1923,6 +1974,22 @@ void GimbalControlManager::shutdownLocalMedia(bool waitForStop)
             emit localRecordingStateChanged();
         }
     }
+
+#ifdef Q_OS_ANDROID
+    if (waitForStop) {
+        _localPhotoSaveThreadPool.waitForDone();
+        // Queue every completed file whose GUI-thread completion callback has
+        // not run yet, plus retry/migration sources on mounted volumes. If the
+        // recorder missed its shutdown deadline, exclude only its exact active
+        // output instead of stranding unrelated photos and historical files.
+        registerExistingLocalMediaFiles(activeLocalMediaFiles);
+        if (!AndroidMediaLibrary::waitForPendingPublications(
+                kApplicationShutdownPublicationWaitMs)) {
+            qCWarning(GimbalControlLog)
+                << "Timed out publishing local media to durable Android public storage during shutdown";
+        }
+    }
+#endif
 
     _mainVideoItem.clear();
     _notifyRecordingSessionStateChanged();
@@ -4120,7 +4187,9 @@ bool GimbalControlManager::_captureLocalVideoFrame()
                                         << "raw grab" << grabbedPixelSize
                                         << "output" << outcome.outputPixelSize
                                         << "bytes" << outcome.fileSize;
-                                    registerLocalMediaFile(filename);
+                                    registerLocalMediaFile(
+                                        filename,
+                                        LocalMediaKind::Photo);
                                 },
                                 Qt::QueuedConnection);
                         if (!completionQueued) {
