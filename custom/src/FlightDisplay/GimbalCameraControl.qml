@@ -204,8 +204,18 @@ Rectangle {
         Rectangle {
             id: videoButton
 
-            Layout.preferredWidth: Math.max(root.actionSize * 1.5,
-                                            videoContent.implicitWidth + root.itemSpacing * 2)
+            readonly property string statusText: root.recordingSessionPending && !root.recordingSessionCapturing
+                                                     ? "..."
+                                                     : (root.recordingSessionFailed
+                                                        ? qsTr("FAILED")
+                                                        : (root.recordingSessionVisualActive
+                                                           ? root.recordingTimeText()
+                                                           : ""))
+
+            Layout.preferredWidth: statusText.length > 0
+                                   ? Math.max(root.actionSize * 1.5,
+                                              videoContent.implicitWidth + root.itemSpacing * 2)
+                                   : root.actionSize
             Layout.preferredHeight: root.actionSize
             Layout.alignment: Qt.AlignHCenter
             radius: height / 2
@@ -223,7 +233,7 @@ Rectangle {
             // The manager coordinates the independent SD and local recording branches.
             enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)
             opacity: enabled ? 1.0 : 0.45
-            scale: videoMouseArea.pressed ? 0.96 : 1.0
+            scale: videoMouseArea.pressed ? 0.94 : 1.0
 
             Behavior on color { ColorAnimation { duration: 120 } }
             Behavior on scale { NumberAnimation { duration: 90 } }
@@ -232,11 +242,13 @@ Rectangle {
                 id: videoContent
 
                 anchors.centerIn: parent
-                spacing: ScreenTools.defaultFontPixelWidth * 0.35
+                spacing: videoButton.statusText.length > 0
+                         ? ScreenTools.defaultFontPixelWidth * 0.35
+                         : 0
 
                 QGCColoredImage {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: root.actionSize * 0.4
+                    width: root.actionSize * 0.48
                     height: width
                     source: "/qmlimages/camera_video.svg"
                     sourceSize.height: height
@@ -246,11 +258,8 @@ Rectangle {
 
                 QGCLabel {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.recordingSessionPending && !root.recordingSessionCapturing
-                          ? "..."
-                          : (root.recordingSessionFailed
-                             ? qsTr("FAILED")
-                             : (root.recordingSessionVisualActive ? root.recordingTimeText() : qsTr("REC")))
+                    visible: videoButton.statusText.length > 0
+                    text: videoButton.statusText
                     color: videoMouseArea.pressed && !root.recordingSessionVisualActive ? "#101820" : "white"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize

@@ -142,24 +142,19 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="243"/>
-        <source>REC</source>
-        <translation>录像</translation>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="210"/>
+        <source>FAILED</source>
+        <translation>失败</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="324"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="350"/>
         <source>SD</source>
         <translation>SD卡</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="407"/>
         <source>LOCAL</source>
         <translation>本地</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="386"/>
-        <source>FAILED</source>
-        <translation>失败</translation>
     </message>
 </context>
 <context>
