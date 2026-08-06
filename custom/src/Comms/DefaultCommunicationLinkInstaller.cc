@@ -20,10 +20,16 @@ Q_LOGGING_CATEGORY(DefaultCommunicationLinkLog, "gcs.custom.communicationlink")
 
 namespace {
 
+// Per-link build switches. Set either value to false to omit that default
+// configuration. Disabling a link never removes an existing saved link.
+constexpr bool kInstallLocalDefaultLink = true;
+constexpr bool kInstallTestLocalDefaultLink = true;
+
 struct DefaultUdpLink {
     QString name;
     QString host;
     quint16 remotePort;
+    bool installationEnabled;
 };
 
 const DefaultUdpLink kDefaultLinks[] = {
@@ -31,11 +37,13 @@ const DefaultUdpLink kDefaultLinks[] = {
         QStringLiteral("local"),
         QStringLiteral("192.168.144.125"),
         14550,
+        kInstallLocalDefaultLink,
     },
     {
         QStringLiteral("testlocal"),
         QStringLiteral("192.168.144.20"),
         19856,
+        kInstallTestLocalDefaultLink,
     },
 };
 const QString kPreviousLocalHost = QStringLiteral("192.168.144.20");
@@ -132,8 +140,17 @@ void DefaultCommunicationLinkInstaller::ensureInstalled()
         settings.value(kDefaultLinksVersionKey, 0).toInt();
     QStringList installedLinks;
     bool localEndpointMigrated = false;
+    bool hasEnabledDefaultLink = false;
 
     for (const DefaultUdpLink& defaultLink : kDefaultLinks) {
+        if (!defaultLink.installationEnabled) {
+            qCDebug(DefaultCommunicationLinkLog)
+                << "Default UDP communication-link installation disabled"
+                << defaultLink.name;
+            continue;
+        }
+
+        hasEnabledDefaultLink = true;
         QString linkRoot = findLinkRoot(
             settings,
             settingsRoot,
@@ -163,6 +180,12 @@ void DefaultCommunicationLinkInstaller::ensureInstalled()
         }
     }
 
+    if (!hasEnabledDefaultLink) {
+        qCDebug(DefaultCommunicationLinkLog)
+            << "All default communication-link installations are disabled";
+        return;
+    }
+
     settings.setValue(countKey, linkCount);
     settings.sync();
 
@@ -172,14 +195,17 @@ void DefaultCommunicationLinkInstaller::ensureInstalled()
         return;
     }
 
-    // Commit the migration marker only after the link data itself is durable.
-    // If the first sync fails, a later startup must be allowed to retry.
-    settings.setValue(kDefaultLinksVersionKey, kDefaultLinksVersion);
-    settings.sync();
-    if (settings.status() != QSettings::NoError) {
-        qCWarning(DefaultCommunicationLinkLog)
-            << "Failed to persist the default communication-link version";
-        return;
+    if (kInstallLocalDefaultLink) {
+        // Commit the migration marker only after the link data itself is
+        // durable. Keeping the marker unchanged while local is disabled lets
+        // a later build which re-enables local perform the pending migration.
+        settings.setValue(kDefaultLinksVersionKey, kDefaultLinksVersion);
+        settings.sync();
+        if (settings.status() != QSettings::NoError) {
+            qCWarning(DefaultCommunicationLinkLog)
+                << "Failed to persist the default communication-link version";
+            return;
+        }
     }
 
     if (localEndpointMigrated) {
@@ -199,6 +225,6 @@ void DefaultCommunicationLinkInstaller::ensureInstalled()
     }
     if (!localEndpointMigrated && installedLinks.isEmpty()) {
         qCDebug(DefaultCommunicationLinkLog)
-            << "Default communication links already exist";
+            << "Enabled default communication links already exist";
     }
 }

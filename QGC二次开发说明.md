@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/camera`
 
-最后更新：2026-08-05
+最后更新：2026-08-06
 
 ## 1. 当前开发进度
 
@@ -109,9 +109,10 @@
 
 ### 1.9 默认通信链路（已集成）
 
-- 每次启动均在 LinkManager 读取设置前分别检查 `local` 和 `testlocal`，名称比较忽略大小写；某一项已存在不会阻止补建另一项。
+- `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` 集中提供两个编译期开关：`kInstallLocalDefaultLink` 和 `kInstallTestLocalDefaultLink`。当前源码默认均为 `true`；修改为 `false` 并重新构建后，对应默认项不参与自动安装或旧默认迁移。
+- 每次启动均在 LinkManager 读取设置前分别检查开关为 `true` 的 `local` 和 `testlocal`，名称比较忽略大小写；某一启用项已存在不会阻止补建另一启用项。`false` 只跳过本次自动管理，绝不删除设置中已经保存的同名链路，因此切换构建组合时若要观察全新结果，应使用空设置或先在通信链路页面手工删除旧项。
 - `local` 的单一远端为 `192.168.144.125:14550`；`testlocal` 的单一远端为 `192.168.144.20:19856`。两者均为 UDP、本地端口 0、不自动连接且不标记为高延迟链路。
-- 安装逻辑保持幂等。覆盖升级时，只有名称严格为小写 `local` 且完整匹配旧版默认签名的 UDP配置会一次性从 `192.168.144.20:19856` 迁移到新端点；大小写变体视为用户配置。用户改过类型、本地端口、自动连接、高延迟、主机列表或端点的同名配置也不被覆盖。`CustomCommunicationLinks/defaultsVersion=2` 使该迁移只执行一次。
+- 安装逻辑保持幂等。覆盖升级时，只有 `local` 开关为 `true`、名称严格为小写 `local` 且完整匹配旧版默认签名的 UDP配置会一次性从 `192.168.144.20:19856` 迁移到新端点；大小写变体视为用户配置。用户改过类型、本地端口、自动连接、高延迟、主机列表或端点的同名配置也不被覆盖。`CustomCommunicationLinks/defaultsVersion=2` 使该迁移只执行一次；`local=false` 时不提交该版本键，确保后续重新启用仍可执行尚未完成的迁移。两个开关均为 `false` 时安装器不修改 QSettings。
 
 ### 1.10 PX4 飞控定制（已集成）
 
@@ -300,7 +301,7 @@ custom/
 | `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤、QML engine创建和视频sink创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
 | `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()`安装默认链路、custom翻译和各设置/Manager，并在正确窗口应用Android H.265策略。`createVideoSink()`完整复用原生sink创建，只对主拉流安装尺寸观察器；同时把主渲染项和主（`isThermal()==false`）`VideoReceiver`交给Gimbal Manager，本地截图使用前者，本地录像直接调用后者，不保存也不控制thermal receiver。它只在该主receiver连接 `onStartRecordingComplete`，把结果与 `recordingOutput()`交给Manager确认ownership；receiver到VideoManager的原生信号连接保持不变，仍负责全局状态和字幕。`init()`以DirectConnection监听 `aboutToQuit`并调用 `shutdownLocalMedia(true)`：先最多等待3秒让自有录像停止并完成容器封装，Android再补扫遗漏源并以JNI单线程队列barrier最多等待120秒完成此前排队的公共发布；普通 `cleanup()`提供非阻塞兜底。其他职责包括Android字号metadata、MAVLink视频消息过滤和QML URL拦截。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明无状态的 `DefaultCommunicationLinkInstaller::ensureInstalled()` 静态接口。调用者只有 `CustomPlugin::init()`；头文件不创建或连接链路，目的是把“写入项目缺省通信配置”与 CustomPlugin生命周期代码分离。 |
-| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的幂等实现。在原生 LinkManager读取 `LinkConfigurations` 前以不区分大小写方式分别查找 `local` 和 `testlocal`，逐项补建缺失配置，不会因为其中一项已存在而提前返回。两者都按原生 QSettings结构写入 UDP、本地端口0、单一远端、不自动连接和非高延迟；`local` 使用 `192.168.144.125:14550`，`testlocal` 使用 `192.168.144.20:19856`。首次运行V2时只迁移完整匹配旧安装器默认签名的 `local`，用户改过其他任何参数的同名链路与已有 `testlocal` 都保留。最后先同步链路与count，只有成功后才写入并再次同步版本键，确保写盘失败时下次启动仍可重试。它只安装可编辑的配置，不直接打开socket；后续加载、连接、修改和删除仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
+| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的幂等实现。文件顶部通过 `kInstallLocalDefaultLink`、`kInstallTestLocalDefaultLink` 两个独立 `constexpr bool` 控制各默认项是否参与安装，默认均为 `true`。在原生 LinkManager读取 `LinkConfigurations` 前，仅以不区分大小写方式查找和补建开关为 `true` 的项；`false` 不创建、不迁移也不删除已有设置，两个开关都关闭时直接返回且不写QSettings。两者都按原生 QSettings结构写入 UDP、本地端口0、单一远端、不自动连接和非高延迟；`local` 使用 `192.168.144.125:14550`，`testlocal` 使用 `192.168.144.20:19856`。首次运行V2时只在 `local=true` 时迁移完整匹配旧安装器默认签名的 `local`，用户改过其他任何参数的同名链路与已有 `testlocal` 都保留。最后先同步链路与count；只有 `local=true` 且第一阶段成功后才写入并再次同步版本键，避免 `local=false` 提前消费迁移机会，也确保写盘失败时下次启动仍可重试。它只安装可编辑的配置，不直接打开socket；后续加载、连接、修改和删除仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
 
 #### 4.2.1 Android USB 串口管理器
 
@@ -757,14 +758,14 @@ FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FU
 - `20.0-20.4 V`：保持当前状态，形成回差。
 - `> 20.4 V`：关闭告警。
 
-默认链路按名称（大小写不敏感）分别检查和补建：
+默认链路按名称（大小写不敏感）分别检查和补建；下表开关值是当前源码默认值，修改后需要重新构建：
 
-| 名称 | 类型 | 本地端口 | 单一服务器 | 开始时自动连接 | 高延迟 |
-|---|---|---:|---|---|---|
-| `local` | UDP | `0` | `192.168.144.125:14550` | 关闭 | 关闭 |
-| `testlocal` | UDP | `0` | `192.168.144.20:19856` | 关闭 | 关闭 |
+| 名称 | 独立安装开关 | 类型 | 本地端口 | 单一服务器 | 开始时自动连接 | 高延迟 |
+|---|---|---|---:|---|---|---|
+| `local` | `kInstallLocalDefaultLink = true` | UDP | `0` | `192.168.144.125:14550` | 关闭 | 关闭 |
+| `testlocal` | `kInstallTestLocalDefaultLink = true` | UDP | `0` | `192.168.144.20:19856` | 关闭 | 关闭 |
 
-旧安装器生成的 `local` 只有在名称仍精确为小写 `local`，且类型、自动连接、高延迟、本地端口、主机数量和旧端点全部仍为旧默认值时才迁移；名称大小写变体或任意一项已由用户修改都保留整条配置。
+开关为 `false` 不会清理此前已经生成的配置。旧安装器生成的 `local` 只有在其开关为 `true`、名称仍精确为小写 `local`，且类型、自动连接、高延迟、本地端口、主机数量和旧端点全部仍为旧默认值时才迁移；名称大小写变体或任意一项已由用户修改都保留整条配置。
 
 ## 11. 关键运行链路
 
@@ -803,6 +804,8 @@ QGCApplication
      -> GStreamer::initialize() 注册解码插件
   -> CustomPlugin::init()
      -> DefaultCommunicationLinkInstaller
+        -> 分别读取local/testlocal编译期开关；false跳过且不删除已有项
+        -> true按名称幂等补建；仅local启用时提交V2迁移版本
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
      -> FlyViewCustomSettings（FlyView/showHeadingCompassBar）
       -> GimbalControlSettings / GimbalControlManager
@@ -1013,7 +1016,7 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
 13. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
 14. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
 15. Fuel遥测存在时顶部显示Fuel、无数据时隐藏；Proximity Radar在十方向任一距离Fact有效时显示，逐方向检查详情值/单位，4.99 m时图标变红闪烁、5.0 m及以上不告警，全部Fact为NaN时隐藏；它不得发送任何飞控命令。
-16. 默认通信链路验收：全空设置应一次生成 `local=192.168.144.125:14550` 和 `testlocal=192.168.144.20:19856`，两者均为UDP、本地端口0、不自动连接、非高延迟。只删除其中一项后重启，必须只补缺失项；已有同名或大小写变体时不重复。覆盖升级时，名称精确为小写且完整匹配旧默认签名的 `local=192.168.144.20:19856` 应仅迁移一次；`Local`/`LOCAL` 即使其他字段与旧默认相同也必须保留。分别修改类型、本地端口、自动连接、高延迟、主机列表或端点后，同名配置必须保留。连续重启不得使 `LinkConfigurations/count` 持续增长。
+16. 默认通信链路验收：分别构建四种开关组合。`true/true` 在全空设置中一次生成 `local=192.168.144.125:14550` 和 `testlocal=192.168.144.20:19856` 并提交版本2；`true/false` 只生成或迁移 `local` 并提交版本2；`false/true` 只生成 `testlocal`，不得创建、迁移或改写 `local`，且原版本键保持不变；`false/false` 不得修改 `LinkConfigurations/count`、链路项或版本键。两者均为UDP、本地端口0、不自动连接、非高延迟。将某项从 `true` 改为 `false` 后重启不得删除其已有配置；从 `false` 改回 `true` 后只补建缺失项。另以版本小于2且存在精确旧默认 `local=192.168.144.20:19856` 的设置先运行 `false/true`、再运行 `true/false`，第二次必须仍迁移到新端点。已有同名或大小写变体时不重复；`Local`/`LOCAL` 即使其他字段与旧默认相同也必须保留。分别修改类型、本地端口、自动连接、高延迟、主机列表或端点后，同名配置必须保留。连续重启不得使 `LinkConfigurations/count` 持续增长。
 17. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
 18. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
 19. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
@@ -1106,7 +1109,7 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 ```powershell
 rg --files custom
-rg -n "DefaultCommunicationLinkInstaller|testlocal|192\.168\.144\.125|14550|192\.168\.144\.20|19856|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
+rg -n "DefaultCommunicationLinkInstaller|kInstallLocalDefaultLink|kInstallTestLocalDefaultLink|testlocal|192\.168\.144\.125|14550|192\.168\.144\.20|19856|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
