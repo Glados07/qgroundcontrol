@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * Custom default communication-link installer.
- * Adds enabled default UDP configurations before QGC's LinkManager loads them.
+ * Reconciles the single default UDP configuration before LinkManager loads it.
  *
  ****************************************************************************/
 

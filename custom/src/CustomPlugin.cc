@@ -57,7 +57,7 @@ CustomPlugin *CustomPlugin::customInstance()
 
 void CustomPlugin::init()
 {
-    // 在 LinkManager 读取 QSettings 前补充缺失的项目默认 UDP 链路。
+    // 在 LinkManager 读取 QSettings 前协调唯一项目默认 UDP 链路。
     DefaultCommunicationLinkInstaller::ensureInstalled();
 
     const QLocale locale;
