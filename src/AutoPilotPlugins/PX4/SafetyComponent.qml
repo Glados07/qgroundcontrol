@@ -55,6 +55,12 @@ SetupPage {
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
             property bool _hitlAvailable:       controller.parameterExists(-1, hitlParam)
             property Fact _hitlEnabled:         controller.getParameterFact(-1, hitlParam, false)
+            property Fact _generatorLowVoltage:           controller.getParameterFact(-1, "COM_GEN_V_LOW")
+            property Fact _generatorLowVoltageAction:     controller.getParameterFact(-1, "COM_GEN_LOW_ACT")
+            property Fact _generatorLowVoltageDelay:      controller.getParameterFact(-1, "COM_GEN_LOW_T")
+            property bool _generatorSettingsEnabled:      controller.vehicle &&
+                                                          !controller.vehicle.armed &&
+                                                          !controller.vehicle.flying
 
             ColumnLayout {
                 id:         outerColumn
@@ -125,6 +131,85 @@ SetupPage {
                             }
                             FactTextField {
                                 fact:               controller.getParameterFact(-1, "BAT_EMERGEN_THR")
+                                Layout.fillWidth:   true
+                            }
+                        }
+                    }
+                }
+
+                QGCLabel {
+                    text:                   qsTr("Generator Low Voltage Failsafe")
+                }
+
+                Rectangle {
+                    width:                  generatorLowVoltageRow.width + (_margins * 2)
+                    height:                 generatorLowVoltageRow.height + (_margins * 2)
+                    color:                  qgcPal.windowShade
+
+                    Row {
+                        id:                 generatorLowVoltageRow
+                        spacing:            _margins
+                        anchors.centerIn:   parent
+
+                        Item {
+                            width:                  _imageWidth
+                            height:                 _imageHeight
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            QGCColoredImage {
+                                color:              qgcPal.text
+                                source:             "/InstrumentValueIcons/bolt.svg"
+                                height:             _imageHeight
+                                width:              _imageHeight
+                                anchors.centerIn:   parent
+                            }
+                        }
+
+                        GridLayout {
+                            columns:                2
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            QGCLabel {
+                                text:               qsTr("Failsafe Action:")
+                                Layout.minimumWidth:_labelWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            FactComboBox {
+                                fact:               _generatorLowVoltageAction
+                                indexModel:         false
+                                enabled:            _generatorSettingsEnabled
+                                Layout.minimumWidth:_editFieldWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Low Voltage Threshold:")
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                fact:               _generatorLowVoltage
+                                enabled:            _generatorSettingsEnabled
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Confirmation Time:")
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                fact:               _generatorLowVoltageDelay
+                                enabled:            _generatorSettingsEnabled
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("The warning triggers after voltage remains below the threshold for the confirmation time, and clears after voltage remains above it for the same time.")
+                                wrapMode:           Text.WordWrap
+                                Layout.columnSpan:  2
+                                Layout.maximumWidth:_labelWidth + _editFieldWidth
                                 Layout.fillWidth:   true
                             }
                         }

@@ -69,10 +69,33 @@ Item {
         }
     }
 
-    GeneratorBusVoltageAlert {
+    Loader {
+        id: generatorBusVoltageAlertLoader
+
+        property bool _reloadEnabled: true
+        readonly property bool _parametersReady: Boolean(root._activeVehicle &&
+                                                          root._activeVehicle.parameterManager &&
+                                                          root._activeVehicle.parameterManager.parametersReady)
+
+        function reloadForActiveVehicle() {
+            _reloadEnabled = false
+            Qt.callLater(() => _reloadEnabled = true)
+        }
+
+        active:                   _reloadEnabled && _parametersReady
         anchors.top:              parent.top
         anchors.topMargin:        parentToolInsets.topEdgeCenterInset + ScreenTools.defaultFontPixelHeight * 5
         anchors.horizontalCenter: parent.horizontalCenter
-        vehicle:                  root._activeVehicle
+        sourceComponent:          generatorBusVoltageAlertComponent
     }
+
+    Component {
+        id: generatorBusVoltageAlertComponent
+
+        GeneratorBusVoltageAlert {
+            vehicle: root._activeVehicle
+        }
+    }
+
+    on_ActiveVehicleChanged: generatorBusVoltageAlertLoader.reloadForActiveVehicle()
 }
