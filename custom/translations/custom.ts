@@ -2,6 +2,86 @@
 <!DOCTYPE TS>
 <TS version="2.1">
 <context>
+    <name>BatteryIndicator</name>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="45"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="50"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="60"/>
+        <source>n/a</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <source>Battery %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="205"/>
+        <source>Charge State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="210"/>
+        <source>Measured Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="215"/>
+        <source>Power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="220"/>
+        <source>Current</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="225"/>
+        <source>Consumed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="242"/>
+        <source>Battery Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="246"/>
+        <source>Coloring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="261"/>
+        <source>100%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="319"/>
+        <source>Low</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="332"/>
+        <source>Critical</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="348"/>
+        <source>Vehicle Power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="349"/>
+        <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>GeneratorBusVoltageAlert</name>
     <message>
         <location filename="../src/FlightDisplay/GeneratorBusVoltageAlert.qml" line="59"/>

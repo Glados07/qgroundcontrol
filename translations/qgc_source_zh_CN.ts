@@ -15325,6 +15325,26 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
       <translation>电量紧急水平：</translation>
     </message>
     <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="141"/>
+      <source>Generator Low Voltage Failsafe</source>
+      <translation>燃料电池低电压故障保护</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="187"/>
+      <source>Low Voltage Threshold:</source>
+      <translation>低电压阈值：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="198"/>
+      <source>Confirmation Time:</source>
+      <translation>确认时间：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="209"/>
+      <source>The warning triggers after voltage remains below the threshold for the confirmation time, and clears after voltage remains above it for the same time.</source>
+      <translation>电压持续低于阈值达到确认时间后触发警告，持续高于阈值达到相同时间后清除警告。</translation>
+    </message>
+    <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="135"/>
       <source>Object Detection</source>
       <translation>物体探测</translation>

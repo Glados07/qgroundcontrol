@@ -10,6 +10,7 @@
 
     <qresource prefix="/Custom/qml">
         <!-- 只注册有二次开发差异的 QML；其余类型继续使用 QGC 原生模块。 -->
+        <file alias="QGroundControl/Controls/BatteryIndicator.qml">src/QmlControls/BatteryIndicator.qml</file>
         <file alias="QGroundControl/Toolbar/FuelStatusIndicator.qml">src/UI/toolbar/FuelStatusIndicator.qml</file>
         <file alias="QGroundControl/Toolbar/ProximityRadarIndicator.qml">src/UI/toolbar/ProximityRadarIndicator.qml</file>
         <file alias="QGroundControl/Toolbar/GimbalIndicator.qml">src/UI/toolbar/GimbalIndicator.qml</file>
