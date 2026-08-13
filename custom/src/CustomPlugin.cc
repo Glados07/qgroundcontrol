@@ -13,18 +13,18 @@
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
+#include "Gimbal/Mt11ControlManager.h"
 #include "QGCLoggingCategory.h"
 #include "Settings/FlyViewCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
+#include "VideoManager/DualVideoManager.h"
 #include "Viewer3D/External3DMapManager.h"
 #include "Viewer3D/CustomViewer3DManager.h"
 #include "Viewer3D/Viewer3DSettings.h"
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-#include <QtCore/QApplicationStatic>
-#endif
+#include <QtCore/qapplicationstatic.h>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QLocale>
@@ -80,13 +80,21 @@ void CustomPlugin::init()
 
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
-    connect(QCoreApplication::instance(),
-            &QCoreApplication::aboutToQuit,
-            _gimbalControlManager,
-            [manager = _gimbalControlManager]() {
-                manager->shutdownLocalMedia(true);
-            },
-            Qt::DirectConnection);
+    _ensureMt11ControlManager();
+    _ensureDualVideoManager();
+    if (!_aboutToQuitConnection) {
+        _aboutToQuitConnection =
+            connect(QCoreApplication::instance(),
+                    &QCoreApplication::aboutToQuit,
+                    this,
+                    [this]() {
+                        _shutdownMt11Video();
+                        if (_gimbalControlManager) {
+                            _gimbalControlManager->shutdownLocalMedia(true);
+                        }
+                    },
+                    Qt::DirectConnection);
+    }
     AndroidVideoDecoderPolicy::apply(
         _gimbalControlSettings->forceAndroidH265HardwareDecoder()->rawValue().toBool());
     GimbalVideoStreamSupport::installA8MiniDefaults();
@@ -94,8 +102,9 @@ void CustomPlugin::init()
 
 void CustomPlugin::cleanup()
 {
+    _shutdownMt11Video();
     if (_gimbalControlManager) {
-        _gimbalControlManager->shutdownLocalMedia();
+        _gimbalControlManager->shutdownLocalMedia(true);
     }
 
     if (_qmlEngine && _selector) {
@@ -171,6 +180,28 @@ GimbalControlManager *CustomPlugin::gimbalControlManagerObject()
     return _gimbalControlManager;
 }
 
+QObject *CustomPlugin::mt11ControlManager()
+{
+    return mt11ControlManagerObject();
+}
+
+Mt11ControlManager *CustomPlugin::mt11ControlManagerObject()
+{
+    _ensureMt11ControlManager();
+    return _mt11ControlManager;
+}
+
+QObject *CustomPlugin::dualVideoManager()
+{
+    return dualVideoManagerObject();
+}
+
+DualVideoManager *CustomPlugin::dualVideoManagerObject()
+{
+    _ensureDualVideoManager();
+    return _dualVideoManager;
+}
+
 bool CustomPlugin::mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message)
 {
     Q_UNUSED(vehicle);
@@ -238,6 +269,78 @@ void CustomPlugin::_ensureGimbalControlManager()
     }
 }
 
+void CustomPlugin::_ensureMt11ControlManager()
+{
+    _ensureGimbalControlSettings();
+    if (!_mt11ControlManager) {
+        _mt11ControlManager = new Mt11ControlManager(_gimbalControlSettings, this);
+    }
+}
+
+void CustomPlugin::_ensureDualVideoManager()
+{
+    _ensureGimbalControlSettings();
+    _ensureMt11ControlManager();
+    if (_dualVideoManager) {
+        return;
+    }
+
+    _dualVideoManager = new DualVideoManager(_gimbalControlSettings, this);
+    connect(_dualVideoManager,
+            &DualVideoManager::videoObjectsAboutToBeReleased,
+            _mt11ControlManager,
+            [manager = QPointer<Mt11ControlManager>(_mt11ControlManager)]() {
+                if (!manager) {
+                    return;
+                }
+                manager->shutdownLocalMedia(true);
+                manager->setVideoReceiver(nullptr);
+                manager->setVideoItem(nullptr);
+            },
+            Qt::DirectConnection);
+    connect(_dualVideoManager,
+            &DualVideoManager::videoObjectsReleased,
+            _mt11ControlManager,
+            [manager = QPointer<Mt11ControlManager>(_mt11ControlManager)]() {
+                if (manager) {
+                    manager->finalizeDetachedLocalMedia();
+                }
+            },
+            Qt::DirectConnection);
+    const auto syncVideoObjects =
+        [manager = QPointer<Mt11ControlManager>(_mt11ControlManager),
+         dual = QPointer<DualVideoManager>(_dualVideoManager)]() {
+            if (!manager || !dual) {
+                return;
+            }
+            manager->setVideoItem(dual->videoItem());
+            manager->setVideoReceiver(dual->videoReceiver());
+        };
+    connect(_dualVideoManager,
+            &DualVideoManager::videoReceiverChanged,
+            _mt11ControlManager,
+            syncVideoObjects);
+    connect(_dualVideoManager,
+            &DualVideoManager::videoItemChanged,
+            _mt11ControlManager,
+            syncVideoObjects);
+}
+
+void CustomPlugin::_shutdownMt11Video()
+{
+    // Receiver release has the authoritative stop/detach/finalize sequence.
+    // If no receiver exists, run the manager fallback exactly once so a local
+    // photo worker or Android publication is still drained on application exit.
+    const bool hasReceiver = _dualVideoManager
+        && _dualVideoManager->videoReceiver();
+    if (_dualVideoManager) {
+        _dualVideoManager->cleanup();
+    }
+    if (!hasReceiver && _mt11ControlManager) {
+        _mt11ControlManager->shutdownLocalMedia(true);
+    }
+}
+
 QQmlApplicationEngine *CustomPlugin::createQmlApplicationEngine(QObject *parent)
 {
     _qmlEngine = QGCCorePlugin::createQmlApplicationEngine(parent);
@@ -256,15 +359,28 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
-    const bool isMainVideoReceiver = receiver && !receiver->isThermal();
+    const bool isMt11VideoReceiver = receiver
+        && _dualVideoManager
+        && receiver->parent() == _dualVideoManager;
+    const bool isMainVideoReceiver = receiver
+        && !receiver->isThermal()
+        && !isMt11VideoReceiver;
     GimbalControlManager *manager =
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
+    Mt11ControlManager *mt11Manager =
+        isMt11VideoReceiver ? mt11ControlManagerObject() : nullptr;
 
     if (widget && manager) {
         manager->setMainVideoItem(widget);
     }
     if (receiver && manager) {
         manager->setMainVideoReceiver(receiver);
+    }
+    if (widget && mt11Manager) {
+        mt11Manager->setVideoItem(widget);
+    }
+    if (receiver && mt11Manager) {
+        mt11Manager->setVideoReceiver(receiver);
     }
 
     static constexpr const char* kLocalMediaSignalsConnected =
@@ -286,61 +402,83 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                 });
     }
 
-#ifdef QGC_GST_STREAMING
-    QPointer<GimbalControlManager> guardedManager(manager);
-    const auto queueNegotiatedResolution =
-        [guardedManager](const QSize& videoSize) {
-            if (!guardedManager) {
-                return;
-            }
-            QMetaObject::invokeMethod(
-                guardedManager.data(),
-                [guardedManager, videoSize]() {
-                    if (guardedManager) {
-                        guardedManager->setNegotiatedPulledVideoResolution(
-                            videoSize);
+    static constexpr const char* kMt11LocalMediaSignalsConnected =
+        "customMt11LocalMediaSignalsConnected";
+    if (receiver
+        && mt11Manager
+        && !receiver->property(kMt11LocalMediaSignalsConnected).toBool()) {
+        receiver->setProperty(kMt11LocalMediaSignalsConnected, true);
+        QPointer<VideoReceiver> guardedReceiver(receiver);
+        QPointer<Mt11ControlManager> guardedManager(mt11Manager);
+        connect(receiver,
+                &VideoReceiver::onStartRecordingComplete,
+                mt11Manager,
+                [guardedManager, guardedReceiver](VideoReceiver::STATUS status) {
+                    if (!guardedManager) {
+                        return;
                     }
-                },
-                Qt::QueuedConnection);
-        };
-
-    const bool padProbeInstalled =
-        PulledVideoResolutionProbe::install(
-            sink,
-            parent,
-            queueNegotiatedResolution);
-
-    bool videoItemObserverInstalled = false;
-    if (widget && isMainVideoReceiver && manager) {
-        QPointer<QQuickItem> guardedWidget(widget);
-        const auto reportVideoItemResolution =
-            [guardedWidget, guardedManager]() {
-                if (!guardedWidget || !guardedManager) {
-                    return;
-                }
-
-                const QSize videoSize(
-                    qRound(guardedWidget->implicitWidth()),
-                    qRound(guardedWidget->implicitHeight()));
-                guardedManager->setNegotiatedPulledVideoResolution(videoSize);
-            };
-
-        connect(widget,
-                &QQuickItem::implicitWidthChanged,
-                manager,
-                reportVideoItemResolution);
-        connect(widget,
-                &QQuickItem::implicitHeightChanged,
-                manager,
-                reportVideoItemResolution);
-        QMetaObject::invokeMethod(
-            manager,
-            reportVideoItemResolution,
-            Qt::QueuedConnection);
-        videoItemObserverInstalled = true;
+                    guardedManager->handleVideoRecordingStartResult(
+                        status == VideoReceiver::STATUS_OK,
+                        guardedReceiver
+                            ? guardedReceiver->recordingOutput()
+                            : QString());
+                });
     }
 
-    if (isMainVideoReceiver) {
+#ifdef QGC_GST_STREAMING
+    if (isMainVideoReceiver && manager) {
+        QPointer<GimbalControlManager> guardedManager(manager);
+        const auto queueNegotiatedResolution =
+            [guardedManager](const QSize& videoSize) {
+                if (!guardedManager) {
+                    return;
+                }
+                QMetaObject::invokeMethod(
+                    guardedManager.data(),
+                    [guardedManager, videoSize]() {
+                        if (guardedManager) {
+                            guardedManager->setNegotiatedPulledVideoResolution(
+                                videoSize);
+                        }
+                    },
+                    Qt::QueuedConnection);
+            };
+        const bool padProbeInstalled =
+            PulledVideoResolutionProbe::install(
+                sink,
+                parent,
+                queueNegotiatedResolution);
+
+        bool videoItemObserverInstalled = false;
+        if (widget) {
+            QPointer<QQuickItem> guardedWidget(widget);
+            const auto reportVideoItemResolution =
+                [guardedWidget, guardedManager]() {
+                    if (!guardedWidget || !guardedManager) {
+                        return;
+                    }
+
+                    const QSize videoSize(
+                        qRound(guardedWidget->implicitWidth()),
+                        qRound(guardedWidget->implicitHeight()));
+                    guardedManager->setNegotiatedPulledVideoResolution(videoSize);
+                };
+
+            connect(widget,
+                    &QQuickItem::implicitWidthChanged,
+                    manager,
+                    reportVideoItemResolution);
+            connect(widget,
+                    &QQuickItem::implicitHeightChanged,
+                    manager,
+                    reportVideoItemResolution);
+            QMetaObject::invokeMethod(
+                manager,
+                reportVideoItemResolution,
+                Qt::QueuedConnection);
+            videoItemObserverInstalled = true;
+        }
+
         const QSize initialImplicitSize(
             widget ? qRound(widget->implicitWidth()) : 0,
             widget ? qRound(widget->implicitHeight()) : 0);

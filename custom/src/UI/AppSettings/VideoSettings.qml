@@ -82,6 +82,30 @@ SettingsPage {
         }
     }
 
+    // Independent from QGC's primary video source: this remains visible when
+    // MAVLink auto-stream configuration disables the native groups above.
+    SettingsGroupLayout {
+        Layout.fillWidth: true
+        heading: qsTr("MT11 Second Video")
+        headingDescription: qsTr("Feeds the dedicated UniPod MT11 video window.")
+
+        LabelledFactTextField {
+            Layout.fillWidth: true
+            textFieldPreferredWidth: _urlFieldWidth
+            label: qsTr("MT11 RTSP URL")
+            fact: _gimbalControlSettings.mt11RtspUrl
+            enabled: _gimbalControlSettings.mt11Enabled.rawValue
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("This video URL is independent of the MT11 SDK Host and Port used for zoom, photo, recording and thermal commands.")
+            wrapMode: Text.WordWrap
+            font.pointSize: ScreenTools.smallFontPointSize
+            opacity: 0.72
+        }
+    }
+
     // 独立设置组不受 MAVLink 自动流对原生 Video Source/Connection 设置组的禁用状态影响。
     SettingsGroupLayout {
         Layout.fillWidth: true

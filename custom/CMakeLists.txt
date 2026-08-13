@@ -278,6 +278,26 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    qt_add_executable(Mt11ProtocolTest
+        test/Gimbal/Mt11ProtocolTest.cc
+        src/Gimbal/Mt11Protocol.cc
+        src/Gimbal/Mt11Protocol.h
+    )
+    target_include_directories(Mt11ProtocolTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(Mt11ProtocolTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME Mt11ProtocolTest COMMAND $<TARGET_FILE:Mt11ProtocolTest>)
+    add_custom_target(check_mt11_protocol
+        COMMAND $<TARGET_FILE:Mt11ProtocolTest>
+        DEPENDS Mt11ProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
     qt_add_executable(GimbalMediaSessionPolicyTest
         test/Gimbal/GimbalMediaSessionPolicyTest.cc
         src/Gimbal/GimbalMediaSessionPolicy.cc

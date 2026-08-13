@@ -222,19 +222,39 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="210"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="277"/>
         <source>FAILED</source>
         <translation>失败</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="350"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="417"/>
         <source>SD</source>
-        <translation>SD卡</translation>
+        <translation>SD</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="407"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="474"/>
         <source>LOCAL</source>
         <translation>本地</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="161"/>
+        <source>...</source>
+        <translation>...</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="163"/>
+        <source>?</source>
+        <translation>?</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="165"/>
+        <source>IR</source>
+        <translation>红外</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="166"/>
+        <source>RGB</source>
+        <translation>RGB</translation>
     </message>
 </context>
 <context>
@@ -309,49 +329,445 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
         <source>Video Stream Integration</source>
         <translation>视频流集成</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="113"/>
         <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
-        <translation>控制 MAVLink 视频源选择和 Android H.265 硬件解码。</translation>
+        <translation>控制MAVLink视频源选择和Android H.265硬件解码。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="117"/>
         <source>Use MAVLink automatic video stream</source>
-        <translation>使用 MAVLink 自动视频流</translation>
+        <translation>使用MAVLink自动视频流</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="124"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
-        <translation>若要手动编辑视频源，请关闭此选项。更改后请重启 QGC。</translation>
+        <translation>如需手动编辑视频源，请关闭此选项。更改后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="108"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="132"/>
         <source>Force hardware decoding for Android H.265</source>
-        <translation>强制 Android H.265 硬件解码</translation>
+        <translation>强制使用Android H.265硬件解码</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="114"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
         <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
-        <translation>如果设备提供兼容的厂商 MediaCodec，则用其解码 H.265；否则保留软件解码。</translation>
+        <translation>如有可用的厂商MediaCodec，则使用其解码H.265；否则继续使用软件解码。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="139"/>
         <source>Restart QGC after changing this option.</source>
-        <translation>更改此选项后请重启 QGC。</translation>
+        <translation>更改此选项后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="187"/>
         <source>Save photos and videos locally</source>
-        <translation>在本机保存照片和视频</translation>
+        <translation>在本地保存照片和视频</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="169"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="193"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
-        <translation>相机拍照和录像时也会在本机保存媒体，并且不受云台 SD 卡存储状态影响。</translation>
+        <translation>执行相机拍照和录像时，也会将媒体保存到本设备，且不依赖云台SD卡存储。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="42"/>
+        <source>Video Source</source>
+        <translation>视频来源</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="43"/>
+        <source>Mavlink camera stream is automatically configured</source>
+        <translation>MAVLink摄像头流已自动配置</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
+        <source>Source</source>
+        <translation>来源</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="57"/>
+        <source>Connection</source>
+        <translation>连接</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="63"/>
+        <source>RTSP URL</source>
+        <translation>RTSP地址</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="70"/>
+        <source>TCP URL</source>
+        <translation>TCP地址</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="79"/>
+        <source>UDP URL</source>
+        <translation>UDP地址</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <source>MT11 Second Video</source>
+        <translation>MT11第二路视频</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="90"/>
+        <source>Feeds the dedicated UniPod MT11 video window.</source>
+        <translation>向专用的UniPod MT11视频窗口提供视频流。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="95"/>
+        <source>MT11 RTSP URL</source>
+        <translation>MT11 RTSP地址</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
+        <source>This video URL is independent of the MT11 SDK Host and Port used for zoom, photo, recording and thermal commands.</source>
+        <translation>此视频地址独立于用于变焦、拍照、录像和热成像命令的MT11 SDK主机与端口。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="153"/>
+        <source>Aspect Ratio</source>
+        <translation>宽高比</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
+        <source>Stop recording when disarmed</source>
+        <translation>锁定时停止录像</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="167"/>
+        <source>Low Latency Mode</source>
+        <translation>低延迟模式</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="174"/>
+        <source>Video decode priority</source>
+        <translation>视频解码优先级</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="183"/>
+        <source>Local Video Storage</source>
+        <translation>本地视频存储</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="201"/>
+        <source>Record File Format</source>
+        <translation>录像文件格式</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="208"/>
+        <source>Auto-Delete Saved Recordings</source>
+        <translation>自动删除已保存录像</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="215"/>
+        <source>Max Storage Usage</source>
+        <translation>最大存储使用量</translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewTopRightColumnLayout</name>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="76"/>
+        <source>A8 Mini</source>
+        <translation>A8 Mini</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="86"/>
+        <source>MT11</source>
+        <translation>MT11</translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControlSettingsGroup</name>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
+        <source>SIYI A8 Mini Gimbal Camera</source>
+        <translation>SIYI A8 Mini云台相机</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="36"/>
+        <source>Private SDK camera controls.</source>
+        <translation>专有SDK相机控制。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="40"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="73"/>
+        <source>Enabled</source>
+        <translation>启用</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="46"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <source>SDK Host</source>
+        <translation>SDK主机地址</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="86"/>
+        <source>SDK Port</source>
+        <translation>SDK端口</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="60"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="93"/>
+        <source>Zoom Step</source>
+        <translation>变焦步长</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="68"/>
+        <source>UniPod MT11 Gimbal Camera</source>
+        <translation>UniPod MT11云台相机</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="69"/>
+        <source>Independent SDK camera controls.</source>
+        <translation>独立SDK相机控制。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="100"/>
+        <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its independent video address under Video &gt; MT11 Second Video.</source>
+        <translation>MT11 SDK主机地址和端口用于控制变焦、拍照、录像及热成像模式。请在“视频 &gt; MT11第二路视频”中配置其独立视频地址。</translation>
+    </message>
+</context>
+<context>
+    <name>MT11Video</name>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <source>WAITING FOR VIDEO</source>
+        <translation>等待视频中</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <source>VIDEO DISABLED</source>
+        <translation>视频已禁用</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="209"/>
+        <source>Double-click to exit full screen</source>
+        <translation>双击退出全屏</translation>
+    </message>
+</context>
+<context>
+    <name>Mt11ControlManager</name>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="674"/>
+        <source>Wait for the pending MT11 recording command before changing its SDK settings.</source>
+        <translation>请等待 MT11 录像命令确认完成后再修改 SDK 设置。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="215"/>
+        <source>MT11 continuous zoom stopped after the safety timeout.</source>
+        <translation>MT11 连续变焦已在安全超时后停止。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="334"/>
+        <source>The requested MT11 zoom is outside the supported range.</source>
+        <translation>请求的MT11变焦倍率超出支持范围。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="489"/>
+        <source>The MT11 video receiver was detached during local recording.</source>
+        <translation>本地录像期间MT11视频接收器已断开。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="542"/>
+        <source>Failed to start MT11 local video recording.</source>
+        <translation>启动MT11本地视频录像失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="669"/>
+        <source>No response from the MT11 SDK endpoint.</source>
+        <translation>MT11 SDK端点无响应。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="684"/>
+        <source>The MT11 camera rejected the zoom command.</source>
+        <translation>MT11相机拒绝执行变焦命令。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="733"/>
+        <source>The MT11 camera has no storage card.</source>
+        <translation>MT11相机未安装存储卡。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="738"/>
+        <source>The MT11 camera reported recording data loss.</source>
+        <translation>MT11相机报告录像数据丢失。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="756"/>
+        <source>MT11 photo capture failed or its storage card is unavailable.</source>
+        <translation>MT11拍照失败或其存储卡不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="762"/>
+        <source>MT11 video recording failed or its storage card is unavailable.</source>
+        <translation>MT11录像失败或其存储卡不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="807"/>
+        <source>MT11 local recording stopped because its video stream ended.</source>
+        <translation>MT11视频流已结束，本地录像随之停止。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="843"/>
+        <source>Timed out confirming the MT11 recording state.</source>
+        <translation>确认MT11录像状态超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="850"/>
+        <source>Timed out confirming the MT11 video mode.</source>
+        <translation>确认MT11视频模式超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="866"/>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1124"/>
+        <source>Failed to capture the MT11 local video frame.</source>
+        <translation>截取MT11本地视频帧失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="878"/>
+        <source>Timed out starting MT11 local video recording.</source>
+        <translation>启动MT11本地视频录像超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="892"/>
+        <source>Timed out stopping MT11 local video recording.</source>
+        <translation>停止MT11本地视频录像超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="907"/>
+        <source>MT11 camera control is disabled.</source>
+        <translation>MT11相机控制已禁用。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1059"/>
+        <source>An MT11 local photo is still being processed.</source>
+        <translation>MT11本地照片仍在处理中。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1064"/>
+        <source>No decoded MT11 video frame is available for a local photo.</source>
+        <translation>当前没有可供MT11本地拍照使用的已解码视频帧。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1073"/>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation>本地照片保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1137"/>
+        <source>Failed to save the MT11 local video frame.</source>
+        <translation>保存MT11本地视频帧失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1201"/>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation>本地视频保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1210"/>
+        <source>The configured local video format is invalid.</source>
+        <translation>配置的本地视频格式无效。</translation>
+    </message>
+</context>
+<context>
+    <name>Mt11Sdk</name>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="38"/>
+        <source>Invalid MT11 SDK endpoint: %1:%2</source>
+        <translation>MT11 SDK端点无效：%1:%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="52"/>
+        <source>Invalid MT11 zoom range: %1-%2.</source>
+        <translation>MT11变焦范围无效：%1-%2。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="65"/>
+        <source>Invalid MT11 manual zoom direction: %1</source>
+        <translation>MT11手动变焦方向无效：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="78"/>
+        <source>MT11 zoom value is outside the configured range: %1</source>
+        <translation>MT11变焦值超出配置范围：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="251"/>
+        <source>Cannot send an empty MT11 SDK packet.</source>
+        <translation>无法发送空的MT11 SDK数据包。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="255"/>
+        <source>MT11 SDK endpoint is not configured.</source>
+        <translation>尚未配置MT11 SDK端点。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="261"/>
+        <source>Failed to send MT11 SDK packet.</source>
+        <translation>发送MT11 SDK数据包失败。</translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControl.SettingsGroup.json</name>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11Enabled].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Enable UniPod MT11 camera control</source>
+        <translation>启用UniPod MT11相机控制</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkHost].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 SDK UDP host</source>
+        <translation>UniPod MT11 SDK UDP主机地址</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkHost].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Controls UniPod MT11 camera commands only. This address is independent of the MT11 RTSP video URL.</source>
+        <translation>此地址仅用于发送UniPod MT11相机控制命令，且独立于MT11 RTSP视频地址。</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkPort].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 SDK UDP port</source>
+        <translation>UniPod MT11 SDK UDP端口</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 zoom step</source>
+        <translation>UniPod MT11变焦步长</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.</source>
+        <translation>每次点击都会将变焦推进到1.0x至30.0x范围内的下一个合法绝对目标值。</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 second-video RTSP URL</source>
+        <translation>UniPod MT11第二路视频RTSP地址</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Feeds only the second MT11 video window. Camera commands use the independent MT11 SDK host and port.</source>
+        <translation>仅向MT11第二路视频窗口提供视频流。相机控制命令使用独立的MT11 SDK主机地址和端口。</translation>
     </message>
 </context>
 </TS>

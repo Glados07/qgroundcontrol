@@ -17,6 +17,9 @@ Rectangle {
     id: root
 
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
+    // Enabled by the MT11 wrapper. Keeping this off makes the A8 Mini control
+    // layout and manager contract unchanged.
+    property bool thermalControlsVisible: false
 
     readonly property bool available: Boolean(manager && manager.enabled)
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
@@ -38,6 +41,14 @@ Rectangle {
                                                            || manager.localMediaError.length > 0
                                                            || (manager.lastError.length > 0
                                                                && !recordingSessionCapturing)))
+    readonly property bool thermalModeKnown: Boolean(thermalControlsVisible
+                                                       && manager
+                                                       && manager.thermalModeKnown)
+    readonly property bool thermalModeEnabled: Boolean(thermalModeKnown
+                                                         && manager.thermalModeEnabled)
+    readonly property bool thermalCommandPending: Boolean(thermalControlsVisible
+                                                            && manager
+                                                            && manager.thermalCommandPending)
 
     property int recordingSeconds: 0
 
@@ -141,6 +152,62 @@ Rectangle {
             Layout.rightMargin: root.itemSpacing
             Layout.alignment: Qt.AlignHCenter
             color: "#56ffffff"
+        }
+
+        Rectangle {
+            id: thermalButton
+
+            readonly property string statusText: root.thermalCommandPending
+                                                     ? qsTr("...")
+                                                     : (!root.thermalModeKnown
+                                                        ? qsTr("?")
+                                                        : (root.thermalModeEnabled
+                                                           ? qsTr("IR")
+                                                           : qsTr("RGB")))
+
+            visible: root.thermalControlsVisible
+            Layout.preferredWidth: root.actionSize
+            Layout.preferredHeight: root.actionSize
+            Layout.alignment: Qt.AlignHCenter
+            radius: width / 2
+            color: root.thermalModeEnabled
+                   ? (thermalMouseArea.pressed ? "#e0a34d1f" : "#c8783014")
+                   : (thermalMouseArea.pressed
+                      ? "#f0ffffff"
+                      : (thermalMouseArea.containsMouse ? "#32ffffff" : "#1cffffff"))
+            border.color: root.thermalCommandPending
+                          ? "#ffffc857"
+                          : (root.thermalModeEnabled
+                             ? "#ffffa45b"
+                             : (thermalMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"))
+            border.width: 2
+            // The displayed mode changes only when the manager receives and
+            // publishes the matching SDK acknowledgement.
+            enabled: root.available && root.thermalModeKnown && !root.thermalCommandPending
+            opacity: enabled ? 1.0 : 0.55
+            scale: thermalMouseArea.pressed ? 0.94 : 1.0
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 90 } }
+
+            QGCLabel {
+                anchors.centerIn: parent
+                text: thermalButton.statusText
+                color: thermalMouseArea.pressed && !root.thermalModeEnabled ? "#101820" : "white"
+                font.bold: true
+                font.pointSize: ScreenTools.smallFontPointSize
+            }
+
+            MouseArea {
+                id: thermalMouseArea
+
+                anchors.fill: parent
+                enabled: parent.enabled
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.manager.toggleThermalMode()
+            }
         }
 
         Rectangle {

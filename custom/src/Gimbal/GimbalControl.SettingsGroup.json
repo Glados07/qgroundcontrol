@@ -41,6 +41,45 @@
             "default": 1.0
         },
         {
+            "name": "mt11Enabled",
+            "shortDesc": "Enable UniPod MT11 camera control",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "mt11SdkHost",
+            "shortDesc": "UniPod MT11 SDK UDP host",
+            "longDesc": "Controls UniPod MT11 camera commands only. This address is independent of the MT11 RTSP video URL.",
+            "type": "string",
+            "default": "192.168.144.24"
+        },
+        {
+            "name": "mt11SdkPort",
+            "shortDesc": "UniPod MT11 SDK UDP port",
+            "type": "uint32",
+            "min": 1,
+            "max": 65535,
+            "default": 37260
+        },
+        {
+            "name": "mt11ZoomStep",
+            "shortDesc": "UniPod MT11 zoom step",
+            "longDesc": "Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.",
+            "type": "double",
+            "units": "x",
+            "min": 0.1,
+            "max": 29.0,
+            "decimalPlaces": 1,
+            "default": 1.0
+        },
+        {
+            "name": "mt11RtspUrl",
+            "shortDesc": "UniPod MT11 second-video RTSP URL",
+            "longDesc": "Feeds only the second MT11 video window. Camera commands use the independent MT11 SDK host and port.",
+            "type": "string",
+            "default": "rtsp://192.168.144.24:8554/video1"
+        },
+        {
             "name": "mavlinkAutoVideoStream",
             "shortDesc": "Use MAVLink camera stream information",
             "longDesc": "When enabled, QGC uses the video URI reported by MAVLink and locks manual video source editing. Restart QGC after changing this option.",

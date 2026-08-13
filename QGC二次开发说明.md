@@ -2,7 +2,7 @@
 
 适用工程：`F:\qgroundcontrol_viewer3d`
 
-当前分支：`SecDev/feature`
+当前分支：`SecDev/ft/gimbal`
 
 最后更新：2026-08-13
 
@@ -10,7 +10,7 @@
 
 ### 1.1 总体进度
 
-当前开发分支为 `SecDev/feature`，二次开发已形成十个面向用户的功能模块和一套 `custom` 工程化集成架构：
+当前开发分支为 `SecDev/ft/gimbal`，二次开发已形成十一个面向用户的功能模块和一套 `custom` 工程化集成架构：
 
 1. Viewer3D 三维飞行视图。
 2. 思翼 A8 Mini 云台控制与独立本地照片/录像。
@@ -22,11 +22,12 @@
 8. 默认通信链路安装。
 9. PX4 FirmwarePlugin/AutoPilotPlugin 定制。
 10. Proximity Radar 距离传感器告警。
+11. A8 Mini + UniPod MT11 双云台、独立双视频和 Map/A8/MT11 三视图切换。
 
 各模块当前所处阶段如下：
 
 - **已集成**：Viewer3D、思翼云台、Fuel、Proximity Radar、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
-- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、底部航向罗盘条、Android 86% 界面缩放缺省值、Android H.265 低延迟硬解和 Android USB 串口管理器。代码已经进入当前工作树，但仍需按第 12 章完成目标遥控器上的抓包、净安装、存储、布局、性能、日志、延迟、反复拔插和重连测试，不能仅凭静态接入、代码注册或 decoder rank 判定验收通过。
+- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、UniPod MT11私有SDK、独立第二路RTSP、Map/A8/MT11三视图、双相机右栏、底部航向罗盘条、Android 86%界面缩放缺省值、Android H.265低延迟硬解和Android USB串口管理器已经进入当前工作树。仍需按第12章完成目标设备上的MT11抓包、双路解码、热成像、存储、布局、延迟、切换和重连测试，不能仅凭协议测试、静态接线或decoder rank判定整机验收通过。
 - **已有实测基础**：Ubuntu 24.04 下 A8 Mini 云台控制及 H.265 RTSP 播放正常；Android 下同一云台使用 H.264 编码播放正常。
 - **功能边界**：本次实现的是 QGC 根据活动飞行器 `Vehicle.heading` 绘制的航向罗盘条，不是思翼视频码流内的 OSD，也不表示航点方向、航线偏差或下一航段。
 
@@ -60,6 +61,17 @@
 - 真机对照进一步确认：RC之前最后一个MAVLink目标不是 `0°,0°` 时，RC移动后Center可用；最后目标恰为 `0°,0°` 时，RC虽然改变了物理姿态，再发Center仍无动作，而Tilt 90或Yaw模式命令先执行后Center立即恢复。这说明控制权切换和Center专属的旧目标去重是两个问题。上一版发送“当前实际姿态”的无位移预激活仍可能同时等于RC当前输出，继续被下游变化检测吞掉，因此已改为确定变化的预激活：先缓存当前pitch，把它钳制到本项目原生Center/Tilt 90已经验证合法的 `[-90°,0°]` 区间，再选取与该值相差1°、严格非0且仍在区间内的pitch；通过原生 `sendPitchBodyYaw(primerPitch, 0, false)` 使用与最终Center完全相同的body-yaw坐标系、yaw目标和flags，只让pitch不同。该接口还会停止500 ms速率发送Timer，避免另一条命令1000干扰ACK归属。严格等待预激活的 `COMMAND_ACK=ACCEPTED`，再延迟400 ms让飞控到厂商云台的输出桥锁存，复核同一对象和控制权后调用原生 `centerGimbal()`；最终Center自己的ACK也必须Accepted才清除该云台的预激活标记，Duplicate、Denied、无响应或断链都保留标记供下次重试。预激活命令目标相对钳制后的上报pitch严格相差1°；遥测新鲜时额外预动作通常也约1°，但遥测陈旧时不能承诺实际物理位移只有1°。该有意变化用于绕过下游旧目标去重，最终Center仍保持精确 `0°,0°` 语义。
 - 自动接管不是循环争抢。控制权、预激活ACK和400 ms稳定窗口的事务等待时限为10秒，用于覆盖最慢约5秒一次的状态兜底和普通链路3秒命令ACK窗口；最终Center发出后另有4秒结果监视，只决定是否清除预激活标记，不延迟已经发出的居中动作。切换活动Vehicle、GimbalController或活动云台、对象销毁、手动Acquire/Release、预激活ACK失败以及超时都会取消待执行动作，迟到状态或ACK不能跨对象重放。接管等待期间快速点击多个姿态按钮采用last-click-wins，只保留最后一个动作且不重复发送Configure；若RC持续输入重新取得控制，QGC不会在后台反复抢权。速率控制、屏幕拖动和摇杆连续输入不进入延迟重放。
 - `Point Home` 保持原生 `Vehicle.guidedModeROI(homePosition)` 直发并取消此前待执行姿态动作，因为它是飞控级ROI命令，不是Gimbal Manager的pitch/yaw控制权命令。显式Acquire/Release按钮也保持原生含义；本功能不调用思翼私有SDK。
+
+### 1.3.1 A8 Mini + UniPod MT11 双云台（代码已集成，待双机真机验收）
+
+- MT11 SDK V0.1.0已在 `custom/src/Gimbal` 转换为 `Mt11Protocol`、`Mt11Sdk` 和 `Mt11ControlManager` 三层：Protocol只做严格帧/payload编解码，Sdk持有独立UDP socket并校验来源IP、ACK和1.5秒命令窗口，Manager负责2秒轮询、缩放、拍照、录像、热成像以及MT11第二视频的本地媒体协调。它与现有A8 `SiyiProtocol/SiyiSdk/GimbalControlManager`并存，不把MT11行为塞入A8状态机。
+- MT11帧使用 `55 66`头、control、payload length LE、production请求固定sequence 0、command、payload和末尾CRC16 LE；CRC多项式为 `0x1021`、初值为0。当前接入命令为0x05手动变倍/停止、0x0A相机系统状态、0x0B异步功能反馈、0x0C拍照/录像切换、0x0F绝对倍率、0x10查询视频模式、0x11设置视频模式、0x16最大倍率和0x18当前倍率。0x10/0x11以主可见光+副热成像 `[0,2]` 和主热成像+副可见光 `[2,0]`实现RGB/热成像往返。
+- `DualVideoManager`为MT11单独创建 `VideoReceiver`、QML视频背景Item、原生视频sink和重启/停止状态，不复用原生/A8 receiver。设置变化、主动暂停、PIP弹窗切换、无有效URL和应用cleanup均走有界停止/释放；释放前发出 `videoObjectsAboutToBeReleased`，让MT11 Manager停止其owned本地录像并清空弱引用，随后先析构receiver、再释放sink，避免使用陈旧视频Item。
+- custom同路径覆盖 `FlyView.qml`并引入 `DualPipView.qml`和 `MT11Video.qml`。Map、A8、MT11各自保留原生 `PipState`语义，同一时刻一个居中全尺寸显示，其余可用项按 `item1=Map -> item2=A8 -> item3=MT11`顺序堆叠于左下；点击任一缩略框立即把它切到中心并把原中心放回PIP。选择保存到 `MainFlyWindowView`，首次升级仍读取旧 `MainFlyWindowIsMap`；任一路禁用/URL为空时从布局移除，若它此前居中则回退Map。
+- A8和MT11视频都支持从当前中心画面双击进入自身全屏；任一路全屏时统一隐藏toolbar、双PIP、WidgetLayer和custom overlay，退出或失联时清除相应fullScreen状态。MT11画面复用原生视频fit、网格、Proximity Radar和障碍距离叠加，PIP弹窗前后暂停两秒再启动，避免OpenGL视频Item重挂时沿用旧sink。
+- Fly View右侧栏在A8和MT11都启用时显示 `A8 Mini / MT11`切换按钮，只启用一路时自动归一到该后端。两栏共用 `GimbalCameraControl.qml`的缩放、拍照、录像、SD/LOCAL徽标和触控尺寸；`MT11CameraControl.qml`只负责注入MT11 Manager并在拍照上方开启热成像按钮。热成像按钮在0x10确认模式前不可用，点击后以0x11发送相反模式，匹配回包前保持pending，超时后重新查询而不以本地乐观值冒充切换成功。
+- MT11设备IP已由 `192.168.144.25`改为 `192.168.144.24`，因此程序默认把SDK控制endpoint同步为 `192.168.144.24:37260`，第二视频URL为 `rtsp://192.168.144.24:8554/video1`。SDK和RTSP仍使用独立Fact、socket和故障状态，只是默认主机指向同一台MT11；SDK在线不能证明RTSP可解码，RTSP有画面也不能证明相机命令可用。A8默认继续使用 `.25`，MT11默认使用 `.24`，两台设备在同一二层网络中已完成地址区分。升级迁移仅把精确旧默认的MT11 SDK Host `.25`和RTSP `.25/video1`改为新默认 `.24`；键缺失时由新JSON默认建立，任何用户自定义值原样保留，独立版本标记避免重复迁移。
+- 当前代码已完成 `Mt11ProtocolTest`独立编译运行，QtTest为9 passed、0 failed（7个业务槽加init/cleanup），覆盖SDK文档命令帧、热成像帧、严格CRC/长度/control解析、UDP多帧原子性、倍率payload、相机/功能反馈和视频模式payload。该结果只证明纯协议层；MT11真实固件ACK时序、双receiver长期播放、双机网络、热成像画面、本地媒体、Android性能和全工程Qt 6构建仍待目标设备验证。
 
 ### 1.4 RTSP 与 Android H.265 视频链路（代码已集成，待真机验收）
 
@@ -132,13 +144,13 @@
 
 ### 1.12 custom 架构、设置和翻译（已集成）
 
-- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 121 个文件。
+- 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 135 个文件。
 - 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、QML URL 拦截和 Android overlay 接入。
 - General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
 - Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
 - 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
 - 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
-- custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；当前 `custom.ts` 与 `custom_zh_CN.ts` 均为9个context、48条message，英文模板48条均标记unfinished，简体中文48条均已提供译文。目录已覆盖本地媒体、Proximity Radar、母线告警、航向罗盘条、Fuel和Video Integration；新增可见文本后仍必须重新运行Qt 6 `lupdate` 并人工复核。
+- custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；本轮新增双云台相机选择、MT11第二视频/SDK/热成像和相关错误文本。当前英文模板与简体中文目录均为16个context、140条message：英文 `custom.ts` 的140条均按模板约定保持unfinished，`custom_zh_CN.ts` 的140条均已完成且unfinished/空译文均为0；Qt 5 `lrelease` 已验证通过，中文目录生成140条finished译文。最终提交前仍建议使用项目Qt 6 `lupdate`刷新源码location，并在刷新后复核context/source和译文状态；该步骤是位置维护要求，不改变当前目录已经完整对齐和翻译完成的事实。
 
 ## 2. 开发边界
 
@@ -153,7 +165,7 @@
 
 ## 3. custom 完整目录结构
 
-当前共 121 个文件：
+当前共 135 个文件：
 
 ```text
 custom/
@@ -183,6 +195,8 @@ custom/
       CustomFirmwarePluginFactory.h
       CustomFirmwarePluginFactory.cc
     FlightDisplay/
+      DualPipView.qml
+      FlyView.qml
       FlyViewCompassBar.qml
       FlyViewCustomLayer.qml
       FlyViewToolStripActionList.qml
@@ -190,6 +204,8 @@ custom/
       GeneratorBusVoltageAlert.qml
       GimbalCameraControl.qml
       GimbalZoomControl.qml
+      MT11CameraControl.qml
+      MT11Video.qml
     FlightMap/
       Images/compassPointer.svg
     Gimbal/
@@ -210,6 +226,12 @@ custom/
       SiyiProtocol.cc
       SiyiSdk.h
       SiyiSdk.cc
+      Mt11Protocol.h
+      Mt11Protocol.cc
+      Mt11Sdk.h
+      Mt11Sdk.cc
+      Mt11ControlManager.h
+      Mt11ControlManager.cc
     QmlControls/
       FuelStatusIndicatorPage.qml
       ProximityRadarIndicatorPage.qml
@@ -231,6 +253,8 @@ custom/
         ProximityRadarIndicator.qml
         Images/FuelIcon.svg
     VideoManager/
+      DualVideoManager.h
+      DualVideoManager.cc
       VideoReceiver/
         GStreamer/
           AndroidH265HardwareDecoderAdapter.h
@@ -276,6 +300,7 @@ custom/
     Gimbal/
       GimbalMediaSessionPolicyTest.cc
       GimbalPhotoCapturePolicyTest.cc
+      Mt11ProtocolTest.cc
       SiyiProtocolTest.cc
   translations/
     README.md
@@ -292,16 +317,16 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest`、`GimbalMediaSessionPolicyTest` 和 `GimbalPhotoCapturePolicyTest`，移动端不生成额外测试应用。它要求 Quick3D/Quick3DAssetUtils，检测可选 WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
-| `custom/custom.qrc` | custom RCC运行时资源清单，共64个 `<file>`：2个 `/custom/img`图标、1个 `/Custom/qmlimages`图标、14个 `/Custom/qml`同路径覆盖/扩展QML、42个 `/qml/Viewer3D`模块资源、3个 `/json` Settings元数据和2个地形shader。`GimbalIndicator.qml` 与 `ProximityRadarIndicator.qml` 以 `QGroundControl/Toolbar/...` alias注册，使既有URL拦截器替换原生工具栏资源；`GimbalCameraControl.qml` 和 `GimbalZoomControl.qml` 继续显式注册。Viewer3D的42项由22个custom资源和20个直接引用的原生资源组成。URL拦截器只处理 `/Custom/qml`覆盖；本文件只决定资源URL，不编译C++、不保存设置值。Fuel与Proximity Radar详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、VideoManager、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest`、`Mt11ProtocolTest`、`GimbalMediaSessionPolicyTest` 和 `GimbalPhotoCapturePolicyTest`，移动端不生成额外测试应用；MT11目标只链接Qt Core/Test和纯Protocol文件。它要求Quick3D/Quick3DAssetUtils，检测可选WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
+| `custom/custom.qrc` | custom RCC运行时资源清单，共69个 `<file>`；本轮新增同路径 `FlyView.qml`覆盖及 `DualPipView.qml`、`MT11Video.qml`、`MT11CameraControl.qml`，并继续注册共享 `GimbalCameraControl.qml/GimbalZoomControl.qml`。这些资源实现三视图、第二视频和MT11右栏；`GimbalIndicator.qml` 与 `ProximityRadarIndicator.qml` 仍以 `QGroundControl/Toolbar/...` alias覆盖原生工具栏资源。URL拦截器只在 `/Custom/qml`候选实际存在时重定向；本文件只决定资源URL，不编译C++、不保存设置值。Fuel与Proximity Radar详情页由 `qt_add_qml_module`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
 ### 4.2 CustomPlugin 与通信链路
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤、QML engine创建和视频sink创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
-| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()`在LinkManager读取设置前仅在通信链路列表为空时安装默认 `local`、加载custom翻译和各设置/Manager，并在正确窗口应用Android H.265策略；metadata覆盖只把原生 `autoConnectUDP` 缺省值设为关闭，设置项仍可见、已有用户值和运行期选择均不强制改写。`createVideoSink()`完整复用原生sink创建，只对主拉流安装尺寸观察器；同时把主渲染项和主（`isThermal()==false`）`VideoReceiver`交给Gimbal Manager，本地截图使用前者，本地录像直接调用后者，不保存也不控制thermal receiver。它只在该主receiver连接 `onStartRecordingComplete`，把结果与 `recordingOutput()`交给Manager确认ownership；receiver到VideoManager的原生信号连接保持不变，仍负责全局状态和字幕。`init()`以DirectConnection监听 `aboutToQuit`并调用 `shutdownLocalMedia(true)`：先最多等待3秒让自有录像停止并完成容器封装，Android再补扫遗漏源并以JNI单线程队列barrier最多等待120秒完成此前排队的公共发布；普通 `cleanup()`提供非阻塞兜底。其他职责包括Android字号metadata、MAVLink视频消息过滤和QML URL拦截。 |
+| `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向QML暴露稳定的Viewer3D设置/管理器、FlyViewCustom设置、共享Gimbal设置、A8 Manager、`mt11ControlManager`和`dualVideoManager`；声明init/cleanup、Android字号metadata、MAVLink视频消息过滤、QML engine和视频sink覆盖。文件末尾的 `CustomOverrideInterceptor` 负责把原生QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权。 |
+| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()`安装默认链路、翻译和各设置/Manager；按共享Gimbal设置创建独立A8、MT11控制器与DualVideoManager。`createVideoSink()`根据receiver父对象区分MT11第二receiver与原生主非thermal receiver：A8继续取得主渲染Item/receiver及尺寸探针，MT11只交给Mt11ControlManager，两个本地录像状态机不会操作对方receiver。DualVideoManager释放前以DirectConnection通知MT11 Manager停止owned本地录像并清空Item/receiver，再销毁接收器和sink；应用退出同时收尾两套本地媒体并清理第二视频。其他职责包括Android字号metadata、MAVLink视频消息过滤和QML URL拦截。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明无状态的 `DefaultCommunicationLinkInstaller::ensureInstalled()` 静态接口。调用者只有 `CustomPlugin::init()`；头文件不创建或连接链路，目的是把“写入项目缺省通信配置”与 CustomPlugin生命周期代码分离。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的启动前默认值实现。它只读取 `LinkConfigurations/count`：有效值为0时清理非活动的残留 `Link0` 槽位，写入默认 `local`（本地`14550`、远端 `192.168.144.125:14550`、`auto=false`、非高延迟）并把count设为1；count非零或值无效时不读取、不修改任何配置。它不再按名称处理 `local/testlocal`，不压缩索引，也不清理旧版本标记；后续编辑、连接、UDP会话、MAVLink和持久化仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
 
@@ -336,16 +361,20 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 
 | 文件 | 详细作用 |
 |---|---|
+| `custom/src/FlightDisplay/FlyView.qml` | 原生同路径Fly View的custom覆盖入口，在保留任务控制器、地图、原生A8视频、WidgetLayer、引导控制和Viewer3D容器的基础上，增加MT11视频与三路PIP编排。Map、A8 Mini、MT11按 `item1/item2/item3` 接入 `DualPipView`；任一可用缩略图被点击后成为居中全尺寸项，原中心项回到左下缩略区。第二路禁用、URL为空或主视频不可用时对应项从候选中移除，若被移除项正在居中则回退Map；选择保存为 `MainFlyWindowView`，首次升级兼容旧 `MainFlyWindowIsMap`。A8或MT11进入视频全屏时统一隐藏工具栏、PIP、WidgetLayer和custom overlay，不让飞行叠加层盖住全屏画面。 |
+| `custom/src/FlightDisplay/DualPipView.qml` | 三视图PIP状态管理器，沿用原生 `PipState` 的full/pip/window状态和PIP展开、弹窗、缩放交互，同时为三个视图提供各自adapter。可用项按Map、A8、MT11的稳定顺序排列；Map居中且两路视频均可用时，A8位于左下底层缩略框、MT11位于其上方，满足第二视频放在原视频上面的布局。点击任一缩略框只切换中心项并持久化选择，不创建或解码视频。 |
+| `custom/src/FlightDisplay/MT11Video.qml` | MT11独立RTSP显示面，数据和状态只取自 `DualVideoManager`。外观与原生 `FlyViewVideo` 对齐：支持Video设置中的fit/grid、无视频占位、PIP/full/window三态、活动Vehicle在线时双击视频全屏、Proximity Radar和Obstacle Distance叠加；进入或退出独立PIP窗口时先停第二路视频，2秒后重启，避免渲染Item跨窗口切换。全屏时隐藏网格但保留视频专用遥测叠加，普通Fly View工具层由外层 `FlyView.qml` 统一隐藏。 |
+| `custom/src/FlightDisplay/MT11CameraControl.qml` | MT11右栏薄封装，复用 `GimbalCameraControl.qml` 的缩放、拍照、录像、本地媒体和状态布局，注入 `mt11ControlManager` 并打开热成像控件。它不复制A8面板逻辑；热成像按钮实际命令、pending和RGB/IR反馈仍由Manager及共享面板处理。 |
 | `custom/src/FlightDisplay/FlyViewCompassBar.qml` | 罗盘条本体和绘制算法。直接读取活动飞行器 `Vehicle.heading.rawValue`，验证并归一化到 `[0°, 360°)`，使用中心附近 11 个 45°相对标签计算 N/NE/E/SE/S/SW/W/NW 的横向位置，中央显示四舍五入的整数航向并用 `compassPointer.svg` 绘制固定指针。它不读取显示开关、不保存设置、不判断是否应被加载；外层 `FlyViewCustomLayer.qml` 负责生命周期和显示条件。组件没有鼠标拦截层，因此不会吞掉下方地图手势。 |
 | `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | Fly View custom overlay 的编排层，同时管理罗盘条与燃料电池母线告警。它从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 读取用户意愿，再结合 overlay 可见、活动飞行器存在和 heading 有效四个条件，通过明确 QRC URL加载 `FlyViewCompassBar.qml`；罗盘条采用组件的 `implicitWidth`（与示例相同为 `50 × defaultFontPixelWidth`）并保持屏幕水平居中，只按 Fly View 总宽度和基础 margin 做最终屏幕边界钳制，不再使用 PIP/摇杆/仪表的角落 inset 压缩宽度。它把“罗盘条高度+底边 margin”的完整占用深度合并进 `bottomEdgeCenterInset`，关闭时透传原生 inset。同一文件还监听 `vehicle.generator.busVoltage`，低于20.0 V置告警、超过20.4 V清除，形成回差；`mapControl` 当前只是兼容接口，未参与逻辑。 |
 | `custom/src/FlightDisplay/FlyViewToolStripActionList.qml` | Fly View 左侧工具条动作模型的同路径覆盖。保留检查单、起飞、降落、返航、暂停、附加动作和夹爪的原生顺序，在最前面新增仅当 `viewer3DSettings.enabled=true` 才可见的 2D/3D 切换动作；动作调用现有 `viewer3DWindow.open()/close()`，打开 3D 时用 PaperPlane 表示返回 Fly，关闭时用 custom 城市图标表示进入 3D。 |
-| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View右侧中部控件容器的同路径覆盖。始终保留 `TerrainProgress`；Gimbal启用时不检查 `globals.activeVehicle`，而是始终实例化并显示明确QRC地址的 `GimbalCameraControl.qml`。`sdkResponding`不决定Loader尺寸或整栏可见性；缩放还要求受支持拉流会话和0x20卡录能力已确认，录像需状态已知，拍照允许离线尝试。只有Gimbal关闭且存在活动飞行器时才加载原生 `PhotoVideoControl`。启用时ColumnLayout宽度取原生 `_rightPanelWidth` 与合并栏隐式宽度的较大值，Loader同时把最小尺寸固定为隐式尺寸并右对齐，86%字号或移动端最小触控尺寸不会把控制栏强制压缩。 |
+| `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View右侧中部控件容器的同路径覆盖，始终保留 `TerrainProgress`。A8或MT11任一启用时，无需活动Vehicle即可显示私有相机栏；两者同时启用时在栏顶增加 `A8 Mini/MT11`选择控件，选择哪个就向共享面板注入哪个Manager，某一路关闭后自动归一到仍可用的一路。`sdkResponding`只控制在线状态和相关按钮，不决定整栏可见性；只有两套私有相机都关闭且存在活动Vehicle时才回退原生 `PhotoVideoControl`。容器宽高跟随选择器与当前面板隐式尺寸，避免移动端缩放把控件压缩。 |
 | `custom/src/FlightDisplay/GeneratorBusVoltageAlert.qml` | Fly View燃料电池母线低压提示本体。读取传入Vehicle的 `generator.busVoltage`，低于20.0 V显示告警、严格高于20.4 V清除，NaN或无Fact时隐藏；双阈值回差避免临界电压反复闪烁。它只绘制告警，加载位置和活动飞行器生命周期由 `FlyViewCustomLayer.qml` 管理。 |
-| `custom/src/FlightDisplay/GimbalCameraControl.qml` | Gimbal启用后始终显示的合并相机控制栏，不依赖飞控、活动Vehicle或SDK在线状态决定可见性。单个半透明圆角面板使用ColumnLayout纵向排列 `GimbalZoomControl`、拍照和录像按钮；空闲时两个按钮均使用 `actionSize` 正方形圆形外框，录像图标固定为 `actionSize * 0.48`，与拍照图标等大且不显示“录像/REC”。计时、pending或失败文字出现时录像按钮按内容展开，图标尺寸保持不变。图标复用QGC资源，但命令调用 `GimbalControlManager::takePhoto()/toggleVideoRecording()`。拍照反馈分别观察机内 `photoCount` 和本地 `localPhotoCount`。录像按钮读取组合会话的available/active/capturing状态，同一次点击并行协调相机SD和本地支路；下方 `SD`、`LOCAL` 徽标分别显示实际录制、pending、错误/不可用状态，本地独立录制时不会被SD无卡状态覆盖。计时仅在至少一条支路实际捕获后推进。该栏不实例化原生 `PhotoVideoControl`，也不把SDK在线作为本地录像前置条件。 |
+| `custom/src/FlightDisplay/GimbalCameraControl.qml` | A8与MT11共用的相机面板，Manager可由外层注入，不依赖飞控、活动Vehicle或SDK在线状态决定可见性。单个半透明圆角面板纵向排列通用 `GimbalZoomControl`、可选热成像、拍照和录像；A8关闭热成像行，MT11通过wrapper打开并在拍照按钮上方显示RGB/IR切换，pending期间禁用重复点击，模式文案以SDK确认结果为准。空闲拍照/录像均使用同尺寸圆形图标，录像计时、pending或失败文字按内容展开。命令调用当前Manager的 `takePhoto()/toggleVideoRecording()`，拍照反馈观察机内和本地计数；录像读取组合会话available/active/capturing并分别显示 `SD`、`LOCAL` 状态，本地支路不被SD无卡覆盖。该栏不实例化原生 `PhotoVideoControl`。 |
 | `custom/src/FlightDisplay/GimbalZoomControl.qml` | 合并栏顶部的思翼缩放子控件，使用单列GridLayout从上到下显示加号、当前目标倍率和减号，并把完整列高传给外层布局。从Manager读取 `zoomControlsUnlocked/currentZoom/zoomStatusKnown/zoomInAvailable/zoomOutAvailable`；只要在线且倍率已知就显示 `currentZoom`，不再因 `zoomValueUncertain`或命令pending隐藏数字。按钮不依赖 `sdkResponding`，方向availability只反映当前目标在唯一合法表中是否还有下一档。两侧MouseArea使用Idle/Pressed/Holding/Consumed状态：短按释放调用一次 `zoomIn/zoomOut`；长按420 ms成立后，把从最初按下起计算的总时长传给 `startZoomWithPressDuration(direction, totalMs)`，Manager通常只启动一次0x05并按 `qRound(totalMs / 600.0)` 推进显示目标；普通release调用 `stopZoom()`，取消、移出、隐藏、后台和销毁调用 `cancelZoom()`，都不会补发短按，活动0x05也都会停止。 |
 | `custom/src/FlightMap/Images/compassPointer.svg` | 罗盘条中央固定三角指针的纯矢量资源，不含角度或交互逻辑。按原生 `src/FlightMap/Images` 资源分类保存，由 `custom.qrc` 注册为 `qrc:/custom/img/compassPointer.svg`，`FlyViewCompassBar.qml` 通过 `QGCColoredImage` 加载并按当前主题文本颜色着色。 |
 
-未在 custom 保存 `FlyView.qml`、`FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml`，因为当前 `src` 已经具备 Viewer3D 容器、地图交互禁用、比例尺隐藏和工具栏装载逻辑。
+本轮已在 custom 保存同路径 `FlyView.qml` 以接入三视图；无项目差异的 `FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml` 仍直接复用 `src`，工具条动作差异继续由上表 `FlyViewToolStripActionList.qml` 覆盖。
 
 ### 4.5 Gimbal 后端
 
@@ -353,9 +382,9 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 |---|---|
 | `custom/src/Gimbal/A8MiniZoomPolicy.h` | A8 Mini缩放策略的纯静态接口，将受支持拉流会话尺寸、卡录分辨率能力映射、唯一min锚合法目标表、相邻方向步进及按总按压时长计算单调hold目标从Manager状态机中分离，便于独立测试；不访问网络、QSettings或UI。 |
 | `custom/src/Gimbal/A8MiniZoomPolicy.cc` | 拉流尺寸只判断1280×720或1920×1080会话是否受支持，不再产生倍率；卡录分辨率单独映射3840×2160或4096×2160→1.0x、2560×1440→3.5x、1920×1080→5.5x、1280×720→6.0x。倍率计算使用十分之一整数；合法目标从1.0x按配置步长递增，并把有效精确上限作为唯一末端目标，正反方向都遍历同一有序表。默认1.0x时2K为1/2/3/3.5，卡录1080P为1/2/3/4/5/5.5，卡录720P为1/2/3/4/5/6；4K只有1.0。hold按 `qRound(totalMs / 600.0)` 从起始目标计算档数并在端点钳制。 |
-| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行任何云台或视频操作。定义7个Fact及约束：`enabled=true`、`localMediaStorageEnabled=true`、`sdkHost=192.168.144.25`、`sdkPort=37260`、`zoomStep=1.0x`、`mavlinkAutoVideoStream=false`、`forceAndroidH265HardwareDecoder=true`。本地媒体开关默认开启，控制同一按钮是否额外保存照片和录像到本机，与云台SD卡独立且无需重启；`zoomStep`说明tap/hold目标规则。`SettingsFact` 将用户值自动保存为 `[GimbalControl]/同名键`。 |
-| `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用7个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、Manager之间的设置入口，保证 `localMediaStorageEnabled` 等属性名称稳定；不创建UDP socket、不发送云台命令，也不直接写媒体文件。 |
-| `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")` 同时确定元数据资源 `:/json/GimbalControl.SettingsGroup.json` 和QSettings分组；实现7个Fact getter，首次访问时创建 `SettingsFact`并自动读取已有值或JSON缺省值；把类型以 reference-only 方式注册到 `QGroundControl.GimbalControl`，实际对象由 `CustomPlugin` 创建而不是由QML new。 |
+| `custom/src/Gimbal/GimbalControl.SettingsGroup.json` | `GimbalControl` 设置组的元数据源，不执行云台或视频操作。定义12个Fact：原有A8/本地媒体/视频集成7项，以及 `mt11Enabled=true`、`mt11SdkHost=192.168.144.24`、`mt11SdkPort=37260`、`mt11ZoomStep=1.0x`、`mt11RtspUrl=rtsp://192.168.144.24:8554/video1`。SDK host/port只用于相机命令，RTSP URL只用于第二视频；二者分开保存为 `[GimbalControl]/同名键`。 |
+| `custom/src/Gimbal/GimbalControlSettings.h` | 声明 `GimbalControlSettings : SettingsGroup`，用12个 `DEFINE_SETTINGFACT` 生成惰性创建的 `Fact*` Q_PROPERTY。它是JSON/QSettings与QML、A8 Manager、MT11 Manager和DualVideoManager之间的设置入口，保证MT11 SDK与RTSP属性名称稳定；不创建socket或receiver。 |
+| `custom/src/Gimbal/GimbalControlSettings.cc` | 通过 `DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")`确定元数据资源和QSettings分组，实现12个Fact getter并以reference-only类型注册。构造阶段执行两项受限MT11默认迁移：URL只在已有值精确等于旧默认 `rtsp://192.168.144.25:8554/video1` 时改为 `.24/video1`；SDK Host只在已有值精确等于旧默认 `192.168.144.25` 时改为 `.24`。键缺失时由JSON新默认建立，空字符串和任何其他用户自定义值均不改写，两项独立版本标记避免重复迁移。 |
 | `custom/src/Gimbal/GimbalControlManager.h` | 思翼云台相机业务的QML门面和运行态声明。除缩放/SD拍照录像状态外，暴露 `localMediaStorageEnabled`、本地录像active/pending、组合会话active/capturing/available、本地照片计数和本地媒体错误。保存主视频渲染项的弱引用、已签发录像基名及对应完整输出路径，并声明本地截图、owned/external录像协调、启动/停止超时和退出清理接口；本地与SD状态不共用一个布尔值。截图保留覆盖grab与后台保存全过程的单次在途标记、未释放窗口holder计数、5秒grab Timer、专用单线程池以及指向当前holder的QPointer，避免Android连续点击或超时重试同时分配多份高分辨率FBO/QImage，也避免GUI取消路径提前销毁渲染线程对象。完整路径用于容器最终结束后发布Android媒体，不能只靠基名反推目录。 |
 | `custom/src/Gimbal/GimbalControlManager.cc` | 由 `CustomPlugin`创建一次并持有 `SiyiSdk`、主视频渲染项和主（非thermal）`VideoReceiver`弱引用，没有修改 `src/VideoManager`。本地拍照在点击时快照新鲜合法0x20卡录尺寸、实际拉流尺寸、视频Item尺寸和窗口DPR，优先按卡录物理像素尺寸计算逻辑离屏target；0x0a无卡不改变尺寸选择，只有卡录参数不可用时才逐级回退拉流/Item信息。`QQuickItemGrabResult`的最后强引用由窗口子对象持有；5秒超时、等待 `ready` 阶段的视频Item替换以及Manager析构只退休业务generation，不跨线程直接析构抓图对象；已经进入worker后再替换Item，仍会保存已经抓到的帧。`ready`后把QImage移交最大并发1的专用线程池，照片策略在worker中修正分数DPR误差或不等宽高比留边，再用 `QSaveFile + QImageWriter` 以JPEG质量100原子提交；queued completion回到Manager线程后才累计计数并将Android暂存JPG交给公共媒体发布器。录像读取 `VideoSettings::recordingFormat`，桌面使用 `AppSettings::videoSavePath()`，Android使用与AppSettings同卷的 `getExternalFilesDirs(null)/Custom-QGroundControl/Staging/Video`，然后仅调用主receiver start/stop；thermal既不启动也不停止。只有confirmed-owned录像在实际 `recording=false` 后才用保留的完整暂存路径调用 `publishMediaFile()`，external、thermal、provisional和失败启动不发布。Android启用容量限制时另会调用 `cleanupPublishedVideos(maximumBytes)`，只统计当前安装 `SharedPreferences` URI注册表中可访问、命名匹配的公开录像，删除失败即停；Android路径会立即return，绝不以配额删除任何未公开Staging源，发布失败源保留重试且可能使实际占用高于上限。桌面仍按原生目录统计并只删除本功能旧分段。主receiver既有信号仍让VideoManager更新 `recording`和字幕。只有启动完成成功且输出completeBaseName命中已签发唯一基名时才确认ownership；失败/无效格式、不匹配、pending超时、断流分段和退出收尾均按独立状态处理。启动后会去重枚举所有已挂载卷上的V2 Staging与V1 `Android/media`，再加入当前AppSettings配置的旧Photo/Video目录，把本功能文件交给Java单线程发布器；Android正常 `aboutToQuit` 会等待照片worker并再次补扫，若录像3秒内仍未封装完成，只排除该精确活动输出路径，其他照片和历史失败源仍排队发布；最后用JNI barrier最多等待120秒完成已排队发布。 |
 | `custom/src/Gimbal/GimbalMediaSessionPolicy.h` | 声明无QObject依赖的本地媒体纯状态转换策略。输入意图、设置、码流、实际录像、ownership、external、pending和blocked状态，输出StartOwned、StopOwned、AdoptExternal、ConfirmOwned或ReleaseExternal动作；另统一计算组合会话是否实际捕获及按钮可用性。 |
@@ -368,7 +397,14 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | `custom/src/Gimbal/SiyiProtocol.cc` | 实现 `55 66`帧头、control 0x01、小端payload长度、固定0的seq、command、payload和小端CRC16（多项式0x1021、初值0）。单帧解析保持严格长度，UDP报文拆帧路径可依次处理多个完整合法帧。0x05 ACK按小端uint16/10解析；0x16/0x18优先按官方“整数字节+一位小数字节”解析并兼容真机小端uint16/10。0x20请求携带 `stream_type`，录像流使用0；9字节ACK按type、codec、宽LE、高LE、码率LE和fps解析，宽高用于卡录能力映射。 |
 | `custom/src/Gimbal/SiyiSdk.h` | `QUdpSocket`传输层接口声明，提供0x05原生连续变倍、0x0f绝对倍率、0x16当前支持范围、0x18当前倍率、0x20卡录编码参数、拍照、录像和状态查询；它不负责合法目标表、手势计时或设置持久化。当前tap由Manager调用0x0f，普通hold使用0x05开始/停止，起步即为端点的hold只使用单次0x0f。 |
 | `custom/src/Gimbal/SiyiSdk.cc` | 将Protocol帧通过 `QUdpSocket::writeDatagram()`发到配置endpoint；接收侧按逻辑IP、逐帧长度、CRC和control 0x02过滤，并且只在对应业务payload解析成功后发出 `packetReceived`。一个UDP报文中的0x16、0x18、0x20或状态帧分别分发，不因相机合包而整体丢弃。`gcs.custom.gimbal.sdk`记录每个命令、原始payload、倍率编码和卡录参数；空包、短写或无效endpoint通过 `communicationError`交给Manager。 |
+| `custom/src/Gimbal/Mt11Protocol.h` | 声明UniPod MT11 SDK V0.1.0纯协议接口、命令枚举、视频源枚举和payload结构，覆盖0x05手动变倍、0x0A相机状态、0x0B异步功能反馈、0x0C拍照/录像、0x0F绝对倍率、0x10查询视频模式、0x11设置视频模式、0x16最大倍率、0x18当前倍率。还声明单帧/UDP合包解析、ACK判定以及状态、倍率、功能反馈、RGB/热成像模式解析；不访问网络或UI。 |
+| `custom/src/Gimbal/Mt11Protocol.cc` | 按SDK构造并严格解析 `55 66 + control + payload length LE + sequence LE + command + payload + CRC16 LE`。生产请求sequence固定0；CRC覆盖CRC字段之前的完整帧，多项式 `0x1021`、初值0、逐位高位优先。解析拒绝错误头、非法control、长度尾随/截断和坏CRC；UDP合包采用原子语义，任一子帧非法则整批不输出。0x10/0x11把RGB主流/热成像副流编码为 `[0,2]`，热成像主流/RGB副流编码为 `[2,0]`。 |
+| `custom/src/Gimbal/Mt11Sdk.h` | 声明MT11独立 `QUdpSocket`传输对象，默认endpoint为 `192.168.144.24:37260`，提供协议九类命令的发送接口和状态信号。该endpoint只代表私有SDK控制链路，不决定第二路RTSP URL，也不创建视频receiver。 |
+| `custom/src/Gimbal/Mt11Sdk.cc` | 发送Protocol帧并同时按配置逻辑IP和配置端口过滤回包；IPv4与其IPv4-mapped IPv6表示可视为同一逻辑地址，但回包源端口必须精确等于 `mt11SdkPort`。0x0B允许作为文档规定的相机异步通知，其余普通响应必须为ACK control且匹配同command最近1.5秒请求窗口。由于生产sequence固定0，按command维护有界代次是线协议可提供的最强关联；无匹配或过期ACK忽略，payload非法时恢复剩余请求窗口等待可能到达的合法帧。Manager设置重置时显式清除旧请求窗口，即使仅Enabled变化且endpoint文本不变，迟到ACK也不能恢复已清状态。一个UDP datagram只有全部帧合法才分发。 |
+| `custom/src/Gimbal/Mt11ControlManager.h` | 声明MT11的QML业务门面和运行状态，暴露启用/在线、1.0–30.0x缩放、相机录像、拍照、本地媒体、RGB/热成像模式及错误反馈；保存独立MT11视频Item和receiver弱引用，并声明receiver替换、录像启动结果、退出收尾接口。接口形状与共享相机面板兼容，但状态不与A8 Manager共用。 |
+| `custom/src/Gimbal/Mt11ControlManager.cc` | 持有 `Mt11Sdk`，每2秒轮询0x16/0x18/0x0A/0x10并以6秒最后响应watchdog判断在线；按MT11步长和设备上限处理tap/hold缩放，0x05连续变焦启动后另启60秒single-shot安全watchdog，若用户侧停止事件未到达则超时主动发送0停止并报告安全超时。拍照、录像与热成像均使用SDK命令和2–2.5秒pending保护。热成像切换发送0x11，直到0x10/0x11模式payload确认后才更新RGB/IR。MT11本地拍照只有在第二receiver已进入decoding且视频Item尺寸有效时才抓取当前帧；拍照/录像同时可按共享本地媒体开关使用MT11自己的视频Item/receiver，绝不操作A8主receiver。录像命令是无ACK的toggle：命令pending期间修改MT11 Enabled/SDK Host/Port会把Fact原子恢复为已应用值并提示稍后重试，避免旧设备被重复toggle；非pending设置变化会在切换endpoint前停止旧端点已确认的相机录像并结束对应本地会话。receiver被替换、第二视频释放或应用退出时停止并收尾自身owned录像。 |
 | `custom/test/Gimbal/SiyiProtocolTest.cc` | custom独立QtTest协议与策略回归用例。覆盖0x0f封包量化、ACK control、坏CRC、严格单帧长度、多帧UDP拆分、0x16/0x18双格式倍率payload、0x20录像流请求与9字节ACK、拉流会话白名单、4K/2K/1080P/720P卡录能力映射、唯一min锚目标表、精确上限追加、正反同表序列，以及420 ms长按成立后按 `qRound(total/600)` 计算档数和端点钳制。Manager级测试还需覆盖能力交叉校验、tap成功即显示、快速替换、hold只启动一次0x05、普通release与cancel分流及不产生释放后反向0x0f。 |
+| `custom/test/Gimbal/Mt11ProtocolTest.cc` | MT11纯协议QtTest，共7个业务slot，覆盖SDK文档0x05/0x0A/0x0C/0x0F/0x16/0x18精确命令帧，0x10/0x11热成像帧，严格control/长度/CRC/sequence解析，UDP多帧原子性，以及倍率、相机状态、0x0B功能反馈和视频模式payload。当前运行结果为9 passed、0 failed（含init/cleanup）；它不覆盖QUdpSocket真实网络、Manager计时、VideoReceiver或真机固件。 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc` | 独立QtTest状态策略回归。覆盖无SD/SDK依赖的本地启动、external录像只释放不停止、confirmed owned关闭、未确认provisional取消等待、迟到确认后的补偿停止、expected stop不重启、pending幂等、码流与blocked门控、采用/确认已有实际录像、排除相机乐观状态的capturing，以及无SDK时只凭本地码流即可启用录像按钮。它不替代真实文件系统、GStreamer和Android设备测试。 |
 | `custom/test/Gimbal/GimbalPhotoCapturePolicyTest.cc` | 独立QtTest照片尺寸策略回归。覆盖720P/1080P/2K/4K与DPR 1/1.5/2/2.625换算、4096×2160输出对16:9实时帧的四色角完整性和左右各128像素黑边、分数DPR实际grab偏差修正为精确输出、普通16:9路径不触发QImage深拷贝，以及无效尺寸/DPR拒绝。它不替代Qt Quick真实离屏渲染、5秒Timer/generation/窗口生命周期、线程池、JPEG/QSaveFile失败、Android GPU内存和MediaStore真机测试。 |
 
@@ -378,6 +414,8 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 
 | 文件 | 详细作用 |
 |---|---|
+| `custom/src/VideoManager/DualVideoManager.h` | 声明MT11第二路视频的独立生命周期对象，向QML暴露enabled/hasVideo/streaming/decoding/fullScreen、尺寸、receiver和videoItem；提供init/start/stop/cleanup，并在释放对象前发出 `videoObjectsAboutToBeReleased`。它不复用或修改原生 `VideoManager` 的主receiver。 |
+| `custom/src/VideoManager/DualVideoManager.cc` | 监听 `mt11Enabled/mt11RtspUrl`，在 `MT11Video.qml` 的 `mt11VideoContent` Item就绪后由core plugin创建独立 `VideoReceiver`和sink，应用全局低延迟与RTSP timeout并维护启动、停止、1秒重试、设置变化和主动pause。无URL、关闭MT11或cleanup时先停再释放；释放前通知MT11 Manager停止自身owned本地录像，随后按receiver先销毁、sink后释放的顺序清理，避免跨receiver录像和悬空渲染Item。SDK控制是否在线不参与RTSP启动判定。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h` | 声明无QObject状态的主拉流协商尺寸探针安装接口及 `ResolutionHandler` 回调。由 `CustomPlugin::createVideoSink()` 调用；非GStreamer构建、空sink、非 `VideoReceiver` parent或thermal receiver返回false且不改变原生视频路径。回调由GStreamer流线程触发，调用方必须排队切回Manager线程。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.cc` | 只在 `QGC_GST_STREAMING` 下对主视频 `qgcvideosinkbin` 的 `sink` ghost pad安装downstream CAPS、BUFFER和BUFFER_LIST探针。只有真实帧到达才发布尺寸；宽高直接读取CAPS structure，不把成功条件绑死在完整format的 `gst_video_info_from_caps()`。若外层ghost pad没有current CAPS，则继续读取已连接解码器peer和ghost target的current CAPS，覆盖不同平台的caps存放差异。得到正宽高后既通过回调直达Manager，也经既有 `VideoReceiver::videoSizeChanged` 修正 `VideoManager`，从而覆盖原生 `GstVideoReceiver::_addVideoSink()` 在管线刚拼接时用 `gst_pad_query_caps()` 得到的暂态/无效值；该原生信号同时可触发Manager受控的1秒稳定兜底。不修改 `src`、不猜测卡录分辨率，也不影响thermal流。首个真实帧仍无法取得宽高时会明确告警。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明进程级 custom H.265 decoder factory接口：固定factory名、注册函数、已选内部厂商MediaCodec factory查询，以及policy与adapter共用的厂商名称过滤函数。它只是适配器注册API，不实现H.265算法，也不调用Android `MediaCodecInfo.isHardwareAccelerated()`做系统级硬件认证。 |
@@ -401,9 +439,9 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述 SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把用户值写入原生 `FlyView` QSettings 分组；注册 reference-only QML 类型并实现 `showHeadingCompassBar()` 的延迟 Fact 创建。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
 | `custom/src/UI/AppSettings/GeneralSettings.qml` | Application Settings -> General 的同路径 custom 覆盖页。完整保留原生 Language、Color Scheme、GCS位置流、音频、Android SD Card、清除设置、数据路径、Units和Brand Image。UI Scaling直接绑定原生整数 `appFontPointSize`，按 `appFontPointSize / ScreenTools.platformFontPointSize × 100` 四舍五入显示，`-`/`+` 每次修改1 pt并由原生 `SettingsFact` 保存；页面本身不写缺省值。`SettingsFact` 构造期间先调用 `CustomPlugin::adjustSettingMetaData()` 把 Android raw default改为12 pt，再读取已有QSettings或该缺省值，因此未打开本页面也会生效；非Android默认仍为100%。 |
 | `custom/src/UI/AppSettings/FlyViewSettings.qml` | Application Settings -> Fly View 的同路径覆盖页。保留全部原生 Fly View 设置，从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 取得 Fact，在 Instrument Panel 中用 `FactCheckBoxSlider` 提供“显示航向罗盘条”开关；切换会由 `SettingsFact` 自动持久化并被 `FlyViewCustomLayer.qml` 立即观察。页面底部还装载 Viewer3D 与思翼云台设置组，本文件不绘制罗盘条。三个处于原生 `SettingsPage/ColumnLayout` 中的Loader都把已加载项的 `implicitHeight` 显式提供给 `Layout.preferredHeight/minimumHeight`，避免零高槽位造成内容溢出、顶部裁切、分组拉伸及滚动范围不足；不再手工反复写 `item.width`。 |
-| `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生 Video Source、Connection、播放设置和Local Video Storage，在本地存储组新增 `Save photos and videos locally`，绑定 `localMediaStorageEnabled`、默认开启且即时生效；它只控制右侧思翼相机栏是否增加本地支路，不关闭云台SD动作。页面还保留 `Use MAVLink automatic video stream` 与 `Force Android H.265 hardware decoder` 及重启提示；实际录像、截图、消息过滤和解码选择分别由Manager、`GimbalVideoStreamSupport`和`AndroidVideoDecoderPolicy`执行。 |
+| `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生Video Source、Connection、播放设置和Local Video Storage；新增独立且常驻的 `MT11 Second Video`组，绑定 `mt11RtspUrl`，即使MAVLink自动流使原生Source/Connection禁用仍可编辑。Local Video Storage继续提供共享 `localMediaStorageEnabled`，只控制A8/MT11各自本地附加支路，不关闭相机SD动作；页面还保留MAVLink自动视频与Android H.265设置。实际双路receiver、相机命令、录像、截图和解码策略由对应Manager执行。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 由 `FlyViewSettings.qml` 显式加载的 Viewer3D 设置面板。根Loader将内容的 `implicitWidth/implicitHeight` 向外透传，供设置页正确计算分组高度和滚动范围；不再用 `onLoaded/onWidthChanged` 手工写子项宽度。只有设置对象及14个所需Fact可用时才创建内容；Google与外部模型两个开关相互排斥，两者都关闭时隐式进入本地OSM模式。页面编辑API Key、外部模型文件、WGS84原点、单位换算、比例、yaw、OSM路径、建筑层高和车辆高度偏移；外部文件选择交给 `External3DMapManager.importModelFile()` 检查/转换并返回状态，本文件不创建或渲染三维场景。页面的 Clear只修改保存的路径值，不删除磁盘文件。 |
-| `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | `SIYI Gimbal Camera`私有UDP设置面板。根Loader将内容隐式尺寸向外透传；标题说明保持简短，详细的卡录分辨率上限、拉流会话门控和完整步长网格规则集中写在本开发说明及Fact元数据中，避免长说明参与 `SettingsPage` 隐式宽度计算而把整页横向撑开。绑定 `enabled`、`sdkHost`、`sdkPort`和 `zoomStep`。 |
+| `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | Fly View设置页中的双相机私有UDP面板。A8组绑定 `enabled/sdkHost/sdkPort/zoomStep`；UniPod MT11组独立绑定 `mt11Enabled/mt11SdkHost/mt11SdkPort/mt11ZoomStep`，并提示第二视频地址应在Video -> MT11 Second Video配置。根Loader透传隐式尺寸；本文件只编辑Fact，不测试设备在线，也不把SDK地址同步成RTSP URL。 |
 | `custom/src/UI/toolbar/GimbalIndicator.qml` | 原生 `src/UI/toolbar/GimbalIndicator.qml` 的同路径custom覆盖，保留遥测、设置、多云台选择和显式Acquire/Release界面。`Yaw Lock/Follow`、`Center`、`Tilt 90`、`Retract` 在控制权不足时建立一个带Vehicle/Controller/Gimbal身份和代次token的待执行动作，只发送一次Configure；同一上下文后续点击只替换动作内容。任一控制权属性表明QGC失权时还会按 `Vehicle id + manager compid + device id` 记住该具体云台的Center需要重新激活，因此切换活动Vehicle/云台再返回，或点击前状态已经恢复成QGC持权，都不会误清其他云台的标记或绕过修复。待两个控制权属性经下一事件循环共同确认后，普通姿态动作在受保护窗口中重放一次；需要重新激活的Center先缓存当前pitch，在已验证合法的 `[-90°,0°]` 内计算一个与钳制值相差1°、严格非0的目标，再调用与最终Center相同坐标系和flags的 `sendPitchBodyYaw(primerPitch, 0, false)` 并停止原生速率Timer。它监听同一Vehicle的 `mavCommandResult`，同时核对代次、Vehicle id、manager component、命令1000和原生命令结果类型，只在预激活ACK Accepted后等待400 ms，再复核上下文/控制权并执行最新动作；最终Center的Accepted ACK才清除对应云台的重新激活标记，失败或4秒无结果则保留。10秒Timer、ACK失败、上下文变化、对象销毁、显式Acquire/Release和Point Home都会使旧待执行动作失效；pending或姿态执行窗口内由原生 `_tryGetGimbalControl()` 产生的确认信号只被静默抑制，不触发重试；自动流程不活跃时，其他调用来源仍保留原生确认框。Point Home继续直发Vehicle ROI；本文件不实现RC输入、不修改MAVLink协议、也不调用思翼UDP SDK。 |
 | `custom/src/UI/toolbar/FuelStatusIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入 Battery 后的顶部工具栏组件。监听活动飞行器 `fuelStatus.telemetryAvailable`，无 `FUEL_STATUS` 数据时隐藏且不占可见空间，有数据时显示 `FuelIcon.svg` 与剩余百分比；点击后通过主窗口弹出 `FuelStatusIndicatorPage.qml`。它不生成 Fuel 遥测，也不负责母线低电压告警。 |
 | `custom/src/UI/toolbar/ProximityRadarIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入GPS之后的工具栏组件。读取活动飞行器 `distanceSensors` 的前/前右/右/后右/后/后左/左/前左/上/下十个方向，任一Fact有效即显示；任一有效距离小于固定5.0 m阈值时图标变红并以400 ms淡入淡出闪烁。点击打开详情页；无遥测时隐藏。它只做告警呈现，不发送避障指令。 |
@@ -495,8 +533,8 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | 文件 | 详细作用 |
 |---|---|
 | `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
-| `custom/translations/custom.ts` | `lupdate` 生成的英文源字符串模板，供各语言目录对齐 context/source，CMake 不把它编译为运行时 `.qm`。当前实际为9个context、48条message，48条translation均为unfinished模板状态，覆盖本地媒体、Proximity Radar、母线低电压告警、航向罗盘条、Fuel和Video Integration；新增文本后仍需刷新。 |
-| `custom/translations/custom_zh_CN.ts` | 简体中文 locale 目录；CMake 将其编译成 `custom_zh_CN.qm` 放入 `:/i18n`，`CustomPlugin` 在匹配中文 locale 时安装对应translator。当前与模板相同的9个context、48条message均已有中文译文，包含 `FAILED`、“本地照片仍在处理中”、“启动本地视频录像失败”、“配置的本地视频格式无效”及其他LOCAL/SD状态和本地媒体错误提示；空闲录像按钮没有可翻译文字。 |
+| `custom/translations/custom.ts` | `lupdate` 生成的英文源字符串模板，供各语言目录对齐context/source，CMake不把它编译为运行时 `.qm`。本轮新增双云台选择、MT11设置、第二视频、SDK错误、RGB/热成像、本地媒体和连续变焦安全超时文本；当前为16个context、140条message，140条均按英文模板约定保持unfinished。Qt 5 `lrelease` 已通过并按预期忽略这些未翻译源文本；最终提交前仍建议用项目Qt 6 `lupdate`刷新location并复核context/source。 |
+| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录；CMake将其编译成 `custom_zh_CN.qm`放入 `:/i18n`，`CustomPlugin`匹配中文locale时安装translator。当前与英文模板保持相同的16个context、140条message，140条均已翻译，unfinished和空译文均为0；Qt 5 `lrelease` 已成功生成140条finished译文。最终提交前使用项目Qt 6 `lupdate`刷新location后，仍需确认本轮译文未被新增或重置。 |
 | `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 
 ## 5. 复用的 QGC 原生 Viewer3D 文件
@@ -554,7 +592,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 ## 6. 受控 src 修改
 
-当前分支 `SecDev/feature` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
+当前分支 `SecDev/ft/gimbal` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
 
 | 文件 | 修改原因 |
 |---|---|
@@ -619,7 +657,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 实现从 `custom-example/FlyViewCustomLayer.qml` 中选择性提取横向航向条。示例通过 720 个 `QGCLabel` 切换可见性模拟滚动，本实现使用以当前 45° 区间为基准的 11 个相对方位 Label，保持 359°/0° 连续过渡并降低 Android QML 更新开销；标签精简只改变绘制数量，不负责组件宽度。罗盘条通过 `FlyViewCustomLayer` 的 Loader 显式加载并贴近 Fly View 底边，首选宽度直接使用组件与示例一致的 `50 × defaultFontPixelWidth`。此前外层取 `max(leftEdgeBottomInset, rightEdgeBottomInset)` 后从左右各扣一次，PIP 或仪表任一侧变宽都会受到双倍扣减，极端时宽度变为 0；当前只用 Fly View 总宽度减去两侧基础 margin 作为屏幕边界，角落 inset 的变化不会再挤压罗盘条。这样在 86% 缩放和 PIP 从最小到最大拖动时仍保持示例宽度；极端放大的角落控件可能与罗盘条发生视觉层叠，这是优先保证航向可读性的明确取舍。显示时只扩展 `bottomEdgeCenterInset`，关闭时恢复原生 inset。组件不放置 `DeadMouseArea`，因此不会吞掉其覆盖区域的地图拖动、滚轮缩放、PIP 调整或 Android 触摸手势。
 
-QGC 原生 `FlyView.qml` 在全屏视频模式下会隐藏整个 custom overlay，所以该模式下罗盘条和母线告警均不显示；普通地图、普通视频主窗口和 Viewer3D 不受影响。
+custom同路径 `FlyView.qml` 延续原生全屏语义：A8或MT11视频全屏时都隐藏工具栏、三视图PIP、WidgetLayer和custom overlay，所以罗盘条与母线告警均不显示；退出全屏后恢复。普通Map/A8/MT11居中切换和Viewer3D不受影响。
 
 ### 8.3 Gimbal 与视频参数
 
@@ -680,7 +718,33 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 6. 使用纵向栏下部的相机图标拍照：开启本地开关时应同时得到SD反馈（若相机/卡可用）和 `Photo/*.jpg` 当前帧截图。点击录像后分别观察 `SD` 与 `LOCAL`；相机toggle约400 ms后查询0x0a并以2.5秒确认超时保护，本地支路按实际 `VideoManager::recording()`进入红色状态。组合计时只要任一支路实际捕获即显示，停止按钮在另一支路离线后仍可用。
 7. 分别在“有卡+SDK在线”“无卡”“SDK离线但RTSP正常”“RTSP断流但SDK在线”场景验证支路独立性；随后连接或断开飞控，控制栏不应消失或切换后端。只有关闭Gimbal设置时，有活动飞行器才恢复原生 `PhotoVideoControl`。
 
-#### 8.3.2 原生顶部云台姿态栏自动接管
+#### 8.3.2 UniPod MT11私有SDK、第二视频与双云台界面
+
+| Fact | 范围/默认值 | 说明 |
+|---|---|---|
+| `mt11Enabled` | bool / `true` | 启用MT11私有SDK控制、独立第二路视频和右栏MT11选项；关闭或把URL清空会移除MT11三视图候选并释放其receiver。 |
+| `mt11SdkHost` | `192.168.144.24` | MT11私有UDP SDK主机，只用于0x05/0x0A/0x0B/0x0C/0x0F/0x10/0x11/0x16/0x18相机命令和反馈。 |
+| `mt11SdkPort` | 1–65535 / `37260` | MT11私有UDP SDK端口；与第二视频RTSP端口、连接状态和故障状态相互独立。MT11回包除来源逻辑IP必须匹配 `mt11SdkHost` 外，源端口也必须精确等于本值。 |
+| `mt11ZoomStep` | 0.1–29.0 / `1.0x` | MT11绝对倍率tap步长；合法范围为1.0x到设备0x16确认且不超过30.0x的上限。hold使用0x05原生连续变倍并在停止时发送0；连续运动最多保持60秒，安全watchdog超时会主动停止并提示错误。 |
+| `mt11RtspUrl` | string / `rtsp://192.168.144.24:8554/video1` | 只供 `DualVideoManager` 创建MT11第二路receiver；位于Application Settings -> Video -> MT11 Second Video，在MAVLink自动视频开启时仍可单独编辑。 |
+
+SDK控制endpoint与RTSP视频URL在程序职责上保持分离，但现在默认都指向已改IP的同一台MT11：控制发往 `192.168.144.24:37260`，第二视频拉取 `rtsp://192.168.144.24:8554/video1`。SDK在线不证明第二视频能解码，第二视频有画面也不证明缩放、拍照、录像或热成像命令可用。A8 `sdkHost/sdkPort`默认仍为 `.25:37260`，MT11默认已为 `.24:37260`，因此两台实体设备的默认目的地址互不冲突。
+
+上一开发版本曾把MT11 RTSP缺省写成 `rtsp://192.168.144.25:8554/video1`，SDK Host缺省写成 `192.168.144.25`。覆盖升级时分别检查 `[GimbalControl]/mt11RtspDefaultMigrationVersion`和 `mt11SdkHostDefaultMigrationVersion`：只有对应键已经存在且字面值精确等于旧默认时才改为 `.24`；键缺失时使用JSON当前默认，空字符串和任何其他自定义值均原样保留。各迁移完成后写入版本1，后续启动不重复覆盖。
+
+界面和控制流程：
+
+1. Application Settings -> Fly View分别配置 `SIYI A8 Mini Gimbal Camera`与 `UniPod MT11 Gimbal Camera` 的Enabled、SDK Host、SDK Port和Zoom Step；Application Settings -> Video -> MT11 Second Video单独配置MT11 RTSP URL。修改URL或Enabled时 `DualVideoManager`有序停止并释放旧receiver，再按新值创建/启动；不需要修改QGC主Video Source。
+2. Fly View同时提供Map、A8、MT11三个可选视图，同一时刻仅一个居中全尺寸显示，其余可用项在左下垂直排列。Map居中时A8在下、MT11在上；点击任一缩略框后它立即居中，原中心项回到缩略区。选择保存为 `MainFlyWindowView`，首次升级兼容 `MainFlyWindowIsMap`。某路失效或禁用且正居中时回退Map。
+3. 第二路由 `DualVideoManager`拥有独立 `VideoReceiver`、sink、解码/重试状态和MT11视频Item。A8 Manager只保存主非thermal receiver，MT11 Manager只保存第二receiver；任一录像按钮只开始/停止本Manager确认owned的录像。第二receiver释放前发出 `videoObjectsAboutToBeReleased`，MT11 Manager先停止本地录像并清空Item/receiver，应用cleanup也执行同一路径。
+4. 右栏在A8与MT11同时启用时显示相机选择器；切换只更换当前控制Manager，不改变居中视频。两套面板保持相同缩放、拍照、录像、SD/LOCAL徽标和布局；选择MT11时在拍照控件上方额外显示RGB/IR圆形按钮。点击后发送0x11 `[2,0]`切到热成像主流，或 `[0,2]`切回RGB主流；pending期间禁止重复点击，只有0x10/0x11合法模式反馈才更新显示。
+5. A8或MT11居中视频均保留原生风格的双击全屏；全屏会统一隐藏Fly View工具栏、PIP、WidgetLayer及custom overlay，退出后恢复。MT11视频继续使用Video设置中的fit/grid与Proximity/Obstacle视频叠加；独立PIP弹窗开关前后暂停第二路并延迟2秒重启，必须在桌面窗口切换和Android前后台真机验证。
+
+MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | payload | CRC16 LE`；请求control为0x01、普通ACK为0x02，生产请求sequence固定0。CRC多项式 `0x1021`、初值0，覆盖CRC字段前的全部字节。当前命令职责为：0x05手动变倍/停止、0x0A相机系统/录像状态、0x0B异步功能反馈、0x0C拍照/录像切换、0x0F绝对倍率、0x10读取视频模式、0x11设置RGB/热成像模式、0x16最大倍率、0x18当前倍率。除文档规定可异步到达的0x0B外，接收侧要求来源逻辑IP等价于 `mt11SdkHost`且源端口精确等于 `mt11SdkPort`、整批UDP子帧长度与CRC全部合法、普通回包control为ACK且命中同command最近1.5秒请求窗口。
+
+当前 `Mt11ProtocolTest` 报告9 passed、0 failed，覆盖7个协议业务slot及QtTest init/cleanup；这只证明纯Protocol构帧和解析。MT11 SDK真实UDP往返、固件ACK时序、0x0B异步反馈、0x10/0x11热成像画面、双路长期解码/重连、三视图/全屏、双receiver录像隔离、本地媒体和双设备网络仍需实机验收，不能据此宣称整机或全工程Qt 6构建通过。
+
+#### 8.3.3 原生顶部云台姿态栏自动接管
 
 该功能处理的是QGC、RC与飞控Gimbal Manager之间的MAVLink控制权，不经过A8 Mini私有UDP SDK。PX4的 `MNT_MODE_IN=Auto (0)` 会按最近输入在RC和MAVLink之间切换；较大的RC摇杆动作可把输入切回RC。本分支在custom顶部栏中把自动接管和原始按钮动作合并为一次用户操作。
 
@@ -848,9 +912,20 @@ QGCApplication
         -> 枚举并预检 byte-stream/au 厂商 amcviddec-*
         -> 注册高 rank qgcandroidh265hwdec
      -> GimbalVideoStreamSupport 安装 A8 Mini 默认值
+     -> Mt11ControlManager
+        -> MT11 SDK独立endpoint 192.168.144.24:37260，不读取主视频URL
+        -> 每2秒轮询0x16/0x18/0x0A/0x10，6秒无合法响应判为离线
+        -> 0x05/0x0F缩放、0x0C拍照/录像、0x11 RGB/热成像切换
+        -> 只保存MT11第二视频Item/receiver；本地媒体不操作A8主receiver
+     -> DualVideoManager
+        -> 读取独立mt11RtspUrl，默认rtsp://192.168.144.24:8554/video1
+        -> 为MT11创建独立VideoReceiver、sink、启动/停止和1秒重试状态
+        -> 禁用、URL为空、设置变化和cleanup时有序停止并释放
+        -> videoObjectsAboutToBeReleased先通知MT11 Manager收尾owned本地录像
   -> VideoManager::init()
      -> 创建 VideoReceiver / decodebin3
         -> CustomPlugin::createVideoSink()复用原生qgcvideosinkbin
+           -> receiver父对象为DualVideoManager时，只接入MT11 Manager与第二视频，不进入A8探针/主receiver路径
            -> PulledVideoResolutionProbe在真实首帧读取sink/peer/ghost-target current CAPS
            -> 同时观察GstGLQt6VideoItem由最终GstVideoInfo写入的隐式尺寸
            -> 保存主非thermal receiver；本地录像只直调该receiver start/stop
@@ -893,6 +968,9 @@ Application Settings / Video
   -> 原生 AppSettings.qml 请求 VideoSettings.qml
   -> CustomOverrideInterceptor 映射到 custom VideoSettings.qml
   -> 保留原生 Video Source / Connection / Settings / Local Video Storage
+     -> MT11 Second Video
+        -> mt11RtspUrl（默认rtsp://192.168.144.24:8554/video1）
+        -> 独立于主Video Source、MAVLink自动流和mt11SdkHost/mt11SdkPort
      -> localMediaStorageEnabled（默认true，即时控制本地照片与录像附加支路）
      -> recordingFormat / maxVideoSize继续决定格式与总量门限
      -> 桌面使用AppSettings Photo/Video；Android使用同卷getExternalFilesDirs暂存后发布到公共Pictures/Movies
@@ -905,18 +983,28 @@ Application Settings / Video
 
 ```text
 Fly View
-  -> 原生 FlyView.qml / FlyViewWidgetLayer.qml / FlyViewToolStrip.qml
+  -> custom同路径 FlyView.qml；继续复用原生 FlyViewWidgetLayer.qml / FlyViewToolStrip.qml
+  -> DualPipView.qml
+     -> item1 Map / item2 A8 / item3 MT11
+     -> 点击任一左下缩略框即切为居中全尺寸，原中心项回到缩略区
+     -> Map居中时A8在下、MT11在上；选择持久化为MainFlyWindowView
+  -> MT11Video.qml
+     -> 独立receiver画面、原生fit/grid、Proximity/Obstacle视频叠加
+     -> PIP窗口切换前后停流并延迟2秒重启
+  -> A8或MT11视频全屏时统一隐藏工具栏、PIP、WidgetLayer和custom overlay
   -> custom FlyViewToolStripActionList.qml 增加 3D 入口
   -> custom FlyViewTopRightColumnLayout.qml
-     -> Gimbal enabled
-        -> 不检查activeVehicle，显式Loader常驻 GimbalCameraControl.qml
+     -> A8或MT11任一enabled
+        -> 不检查activeVehicle；两者同时启用时显示A8 Mini/MT11选择器
+        -> A8加载GimbalCameraControl，MT11经MT11CameraControl复用同一UI并注入MT11 Manager
         -> 合并栏始终显示，sdkResponding不决定可见性；SDK超时会失效卡录能力并锁缩放，待新0x20恢复
-         -> 顶部 GimbalZoomControl.qml（+ / 倍率 / -）
+         -> 顶部 GimbalZoomControl.qml（+ / 倍率 / -，调用当前选择的Manager）
             -> tap：唯一min锚表的相邻目标 -> 立即0x0f -> 成功即显示currentZoom
             -> hold 420 ms成立：一次0x05连续运动，按总按压时长每600 ms更新同方向显示目标
             -> 目标表取决于卡录：2K为1/2/3/3.5，1080P为1/2/3/4/5/5.5，720P为1/2/3/4/5/6
             -> 普通release调用stopZoom；取消/移出/离线/销毁调用cancelZoom，不补短按
         -> 下部双目标相机控制
+           -> MT11选择下在拍照上方增加RGB/IR按钮，0x11发送、0x10/0x11确认
            -> QGC拍照/录像图标，无原生缩放滑块
            -> SD：0x0c拍照/录像 + 0x0b功能反馈 + 0x0a录像状态校正
            -> LOCAL：当前主渲染帧JPG + 主非thermal VideoReceiver压缩码流录像
@@ -924,7 +1012,7 @@ Fly View
            -> SD/LOCAL独立徽标；任一实际捕获即可显示组合计时
            -> 无云台卡或SDK离线不阻断LOCAL；无流/本地写盘失败不回滚SD
         -> 不依赖Vehicle、飞控或MAVLink相机管理器
-     -> Gimbal disabled && activeVehicle存在
+     -> A8和MT11均disabled && activeVehicle存在
         -> 回退原生 PhotoVideoControl
   -> custom FlyViewCustomLayer.qml
      -> showHeadingCompassBar && Vehicle.heading 有效
@@ -971,14 +1059,14 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
 
 重点验证：
 
-1. Application Settings -> Fly View -> Instrument Panel 显示 `Show Heading Compass Bar`，页面同时保留Viewer3D和 `SIYI Gimbal Camera`，后者描述私有UDP缩放/拍照/录像与短按/长按行为，且该页不再显示两个视频流开关。
-2. Application Settings -> Video 保留全部原生设置组；Local Video Storage新增本地照片/录像开关，默认开启、切换即时生效；Video Stream Integration在所有平台显示两个开关，H.265强制硬解设置仅在Android生效。
+1. Application Settings -> Fly View -> Instrument Panel显示 `Show Heading Compass Bar`，页面同时保留Viewer3D、`SIYI A8 Mini Gimbal Camera`和 `UniPod MT11 Gimbal Camera`；两套SDK host/port/zoom step各自保存，MT11组提示第二视频URL位于Video页。
+2. Application Settings -> Video保留全部原生设置组；新增常驻 `MT11 Second Video`组，默认URL必须为 `rtsp://192.168.144.24:8554/video1`，且在MAVLink自动流启用后仍可编辑。Local Video Storage新增本地照片/录像开关；Video Stream Integration在所有平台显示两个开关，H.265强制硬解仅Android生效。
 3. Viewer3D Enabled 持久化，重启后图标状态正确。
 4. 3D 图标白色，2D/3D 可往返切换。
 5. 本地 OSM、外部 OBJ/glTF/GLB 和可选 Google 3D 正常加载。
 6. 验证云台在线发现与飞控解耦：
    - Gimbal Enabled但飞控和云台都未接入时，合并栏仍必须立即显示并占用完整布局尺寸；Manager继续在后台探测，状态点灰显、倍率显示 `--`，两个缩放按钮禁用，tap不得发送0x0f且hold不得发送0x05。开关关闭时保持原有SDK按钮门控；开关开启且RTSP主流可用时，即使SDK状态未知也必须允许本地录像，拍照必须尝试当前帧截图。错误来源逻辑IP、短包、错误帧头/长度/CRC、control不是0x02或业务payload非法都不能把 `sdkResponding`置true。
-   - 用测试socket分别回送原生IPv4来源和IPv4-mapped IPv6来源，二者表示同一配置IP时都必须通过来源检查；同IP但回包源端口不同且CRC合法时也必须接受。真正不同的来源IP仍须静默丢弃，具体来源应通过抓包工具验证，不再输出逐包SDK debug日志。
+   - A8 `SiyiSdk`用测试socket分别回送原生IPv4来源和IPv4-mapped IPv6来源，二者表示同一配置IP时都必须通过来源检查；同IP但回包源端口不同且CRC合法时也必须接受。真正不同的来源IP仍须静默丢弃，具体来源应通过抓包工具验证，不再输出逐包SDK debug日志。本项仅描述A8接收策略，不适用于MT11；MT11严格端点验收见下方双云台协议矩阵。
    - 只连接A8 Mini网络、正常拉流并接通私有SDK、完全不连接飞控时，合法回包必须把状态点切为绿色；受支持拉流只确认视频会话，合法0x20录像流ACK确认卡录能力，二者齐备后缩放才解锁，随后0x18建立起始目标倍率，0x0a恢复机内录像状态。单独0x16、单独拉流尺寸或SDK绿色状态都不能代替0x20卡录能力。连接或断开飞控不得影响控制栏可见性和后端选择。
    - 空闲探测时私有SDK超过1.5秒未响应但视频仍在正常解码，合并栏不得消失，状态点可变灰；为避免沿用旧卡录设置，已确认能力失效并锁定缩放，直到新的0x20录像流参数恢复能力。真实断流同样取消活动手势并锁定视频门控；同分辨率恢复解码且SDK恢复后无需进入设置页即可重新查询0x20/0x16并发起0x18倍率同步。
 7. 验证合并控制栏的输入、安全、相机状态和布局：
@@ -1001,6 +1089,11 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
    - SD支路继续覆盖0x0c功能2、约400 ms状态查询、2.5秒确认超时、旧状态忽略、0x0a状态2/3和0x0b功能4失败；0x0b大于4的未知值必须在Protocol层拒绝。组合capturing/计时不得把本次0x0c发送后的乐观SD状态当成已捕获，只有0x0a确认或LOCAL actual为true才开始。
    - 合并栏必须保持纵向单栏结构，按 `+ -> 当前倍率 -> - -> 分隔线 -> 拍照 -> 录像 -> SD/LOCAL徽标` 排列，使用QGC相机图标且不出现原生缩放滑块。空闲拍照和录像按钮必须同为 `actionSize` 圆形触控区，录像图标固定为 `actionSize * 0.48`并与拍照图标等大，空闲录像按钮不得显示“录像/REC”；计时、pending和 `FAILED` 仅在相应状态下出现。验证SD/LOCAL绿色实际录制、黄色pending、红色失败、灰色不可用/未录制及错误提示互不覆盖。Gimbal启用时右侧Column宽度和Loader高度必须始终随控制栏完整隐式尺寸扩展；在Android 86%/100%、桌面、横竖屏、地图/视频主窗口、PIP、Viewer3D和小屏触摸场景检查不裁切、不重叠、按钮达到移动端最小触控尺寸。
    - Gimbal Disabled且存在活动飞行器时恢复原生 `PhotoVideoControl`；关闭时没有活动飞行器则不加载原生控件。关闭后回送关闭前轮询产生的迟到0x18/0x20/0x0a/0x0b或任意0x16，不能重新把私有SDK标记在线、恢复能力、改变已清空的状态或发送0x0f。Gimbal Enabled但离线时仍显示私有合并栏，以灰色状态明确离线，不得用原生控件替换或把整栏隐藏。
+   - 双云台网络和设置迁移：确认A8既有配置保持 `.25`不变；MT11 SDK实际发包目的为 `192.168.144.24:37260`，第二receiver实际请求 `.24:8554/video1`，两条链路分别断开时只影响各自状态。对SDK Host和RTSP分别构造“无旧键”“旧键精确为旧 `.25`默认”“旧键为空”“旧键为其他用户值”“迁移版本已为1”，只有精确旧默认首次启动改为 `.24`，自定义值不得覆盖。
+   - 三视图矩阵：在Map、A8、MT11都可用时逐一点击三个左下缩略框，点击项必须居中、旧中心回到PIP，且Map居中时MT11缩略框位于A8上方；重启保持最后选择。分别关闭A8流、清空MT11 URL、关闭MT11 Enabled，候选应移除且正在居中的失效项回退Map。桌面PIP独立窗口打开/关闭后MT11应停流并约2秒后恢复，不得遗留旧receiver/sink。
+   - 双视频全屏和叠加层：A8、MT11居中时分别双击进入/退出全屏；全屏期间工具栏、三视图PIP、WidgetLayer、罗盘条和母线告警均隐藏，退出后恢复。MT11普通显示继续验证fit/grid、Proximity Radar和Obstacle Distance；全屏不应出现普通Fly View工具层覆盖，Vehicle断链或MT11失效应退出MT11全屏。
+   - 右栏与热成像：A8、MT11同时启用时选择器必须出现并可往返切换，切换控制栏不能隐式切换中心视频；两套缩放/拍照/录像保持同一UI。MT11选择下RGB/IR按钮位于拍照上方，抓包应看到0x11 `[02 00]`与 `[00 02]`往返；pending期间不重复发送，0x10/0x11合法反馈后才改变显示，2.5秒无确认时恢复可操作并报错。A8选择下不得显示热成像控件。
+   - MT11协议与receiver隔离：抓包核对0x05/0x0A/0x0B/0x0C/0x0F/0x10/0x11/0x16/0x18、production sequence 0和小端CRC；原生IPv4与等价IPv4-mapped IPv6来源在源端口精确等于 `mt11SdkPort` 时应接受，来源IP不同或同IP但源端口不同，以及control、长度、CRC、过期/无匹配ACK错误时均不得推进状态，0x0B异步反馈除外；其中拍照0/1反馈只有本应用拍照pending时才计数/报错，外部控制器反馈不得污染LOCAL UI。保持MT11 0x05连续变焦且不发送用户停止事件时，60秒安全watchdog必须主动发送0停止并显示安全超时。A8和MT11分别开始/停止本地录像，确认只调用对应receiver；录像toggle等待0x0A/0x0B确认时修改MT11 Enabled/SDK Host/Port必须恢复旧值并提示稍后重试，不得切换endpoint或补发第二次toggle；命令确认后再修改时，应在旧endpoint停止已确认相机录像并结束本地会话。禁用MT11、改URL、cleanup和应用退出必须先收尾MT11 owned录像再释放第二receiver，不能停止A8录像或留下悬空Item。
 8. 使用 `MNT_MODE_IN=Auto (0)` 验证顶部原生云台姿态栏自动接管：
    - 从未发生失权且QGC已拥有控制权时，Center/Tilt 90/Yaw Lock/Follow/Retract各点击一次只产生一次原生动作，不额外发送Configure；发生过失权但点击Center前状态已恢复为QGC持权时，不发送Configure，但仍必须出现预激活和最终Center两条命令。
    - 先用RC大幅移动云台使控制权切到RC，再分别点击Tilt 90、Yaw Lock/Follow和Retract；抓包应看到一次 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`，状态确认QGC成为primary后只出现最后一次目标命令，全程无接管确认框。
@@ -1011,7 +1104,7 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
    - 多Vehicle或多云台时，让云台A失权后切到B再切回A；A的预激活标记必须仍在，B的正常Center不能误清A的标记，只有A的最终Center收到Accepted ACK后才清除A对应身份键。
    - 阻断 `GIMBAL_MANAGER_STATUS` 超过10秒后恢复，迟到状态不得触发运动；持续推动RC时不得周期性出现Configure，松杆后由用户重新点击。
    - Point Home继续直发ROI且会取消旧pending；显式Acquire/Release保持原生按钮语义。私有UDP缩放/拍照/录像抓包不应因本测试出现额外数据。
-9. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将 `192.168.144.25` 加入忽略列表。
+9. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将A8的 `192.168.144.25`和MT11的 `192.168.144.24`同时加入忽略列表。
 10. Android 使用云台 H.264 编码回归测试，画面、延迟和断流重连均不退化。
 11. Android 使用云台 H.265 编码连续播放至少 10 分钟，分别记录开始、5 分钟和 10 分钟的端到端延迟，确认延迟不持续增长；同时测试应用前后台切换和断流重连。
 12. 真机日志中确认 `qgcandroidh265hwdec` 使用厂商 `amcviddec-*`，其输入 caps 为 `stream-format=byte-stream,alignment=au`，并出现首个 raw frame 的 `hardware confirmed` 日志；不能再用 rank 单独判断硬解是否成功。
@@ -1083,7 +1176,7 @@ adb shell content query --uri content://media/external/video/media --projection 
 
 RC控制后顶部Center仍在第一次点击弹确认框或无动作时，先确认APK/桌面程序已重新编译 `custom.qrc`，其中存在 `QGroundControl/Toolbar/GimbalIndicator.qml` alias；该URL由拦截器从原生 `qrc:/qml/QGroundControl/Toolbar/GimbalIndicator.qml` 重定向，旧资源缓存仍会运行原生逻辑。随后抓取 `MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE`、`GIMBAL_MANAGER_STATUS`、两条 `MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW` 及各自 `COMMAND_ACK`：Configure只有一次但10秒内始终没有状态确认，应检查MAVLink转发和Gimbal Manager状态上报；状态确认后立刻又回到RC或命令1000返回Denied，说明摇杆仍在持续产生输入，本实现按安全边界不循环争抢。需要预激活的Center应先出现一条body yaw为0、pitch为受限非零1°偏移的命令；若第一条仍等于钳制后的上报pitch或仍为 `0,0`，说明运行的还是上一版“当前姿态预激活”资源。第一条ACK Accepted约400 ms后才应出现 `0,0,NaN,NaN` 的真正Center；只有一条1000说明预激活ACK未匹配或超时。最终Center的ACK若不是Accepted，身份标记会保留供下次重试。两条均ACK Accepted但第二条仍无物理动作时，应检查 `MNT_MODE_OUT`、飞控到云台的下行MAVLink及厂商固件，不再归因于QGC按钮或控制权弹窗。
 
-Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。接收端接受逻辑等价的IPv4/IPv4-mapped IPv6来源，也不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。
+Gimbal Enabled但合并栏不显示时，不要检查飞控、云台回包或 `activeVehicle`：当前可见性已完全与连接状态解耦，只要Enabled为true就必须显示。优先检查设置值、custom QRC命中、Loader错误及资源是否重新构建。若A8控制栏显示但状态点持续灰色，再确认A8 Mini供电和网络、`sdkHost/sdkPort`、本机路由及2秒轮询；RTSP视频与私有UDP SDK是独立链路。A8 `SiyiSdk`接受逻辑等价的IPv4/IPv4-mapped IPv6来源且不强制回包源端口为37260，但要求来源逻辑IP、帧头、精确长度、CRC、control=0x02及业务payload全部合法。若MT11状态点持续灰色，则另检查 `mt11SdkHost/mt11SdkPort`及设备回包端点；MT11 `Mt11Sdk`同样接受等价IP表示，但回包源端口必须精确等于配置的 `mt11SdkPort`，同IP不同源端口的合法CRC帧也会被静默丢弃。
 
 视频有画面但缩放按钮仍灰色时，要分别检查视频门控和卡录能力。直接路径应出现 `Installed main pulled-video resolution observers`，随后出现 negotiated/observed主拉流尺寸；当前只有1920×1080和1280×720属于会话白名单。视频门控成立后还必须持续收到合法0x20录像流参数，能力首次确认或发生变化时日志应出现 `Updated SIYI recording-stream capability`；仅有 `sdkResponding`、0x16或拉流尺寸都不能替代0x20。若超过4.5秒没有有效0x20，会出现 `recording-stream parameters timed out`并主动锁定缩放。若两路视频直接观察器均未报告，则检查约1秒后的 `stable VideoManager fallback`。能力确认后以0x18建立起始目标；之后0x0f本地发送成功即更新显示，不等待实际回读。
 
@@ -1111,7 +1204,7 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 ```powershell
 rg --files custom
-rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
+rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|Mt11Protocol|Mt11Sdk|Mt11ControlManager|DualVideoManager|mt11RtspUrl|MT11Video|DualPipView|thermal|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
@@ -1120,9 +1213,10 @@ git diff --check
 
 ```powershell
 cmake --build <desktop-build> --target check_siyi_protocol
+cmake --build <desktop-build> --target check_mt11_protocol
 cmake --build <desktop-build> --target check_gimbal_media_session_policy
 cmake --build <desktop-build> --target check_gimbal_photo_capture_policy
-ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest)$' --output-on-failure
 ```
 
-截至2026-08-05，当前开发环境未提供可用于本工程的完整Qt 6构建链，因此尚未完成桌面/Android全量编译，也未在正式Qt 6目标中运行上述三组QtTest。已使用现有Qt 5.14.2工具链单独编译并运行 `GimbalMediaSessionPolicyTest`，16项结果全部通过；本轮新增 `GimbalPhotoCapturePolicyTest`，QtTest报告10 passed，其中8个业务实例覆盖尺寸、DPR、DCI 4K四色角完整画面/精确补边、精确输出和零深拷贝，另2项为框架初始化/清理。照片策略使用的QSize/QImage/QPainter接口与Qt 6兼容，但该轻量结果不能替代Qt 6.8 `QQuickItem::grabToImage(targetSize)`、5秒Timer/generation/窗口holder、后台保存状态机、Android GPU readback、JPEG插件和MediaStore V2真机链路。另已完成JSON/TS XML解析、QRC与文件清单统计及关键符号/资源接线；最终静态检查结果见当前工作树验证。SD+本地并行、无卡本地独立录像/拍照、卡录分辨率截图、SDK离线、Android内置卷/本机可移动SD的Staging到公共Pictures/Movies发布、发布前后强杀与卸载边界、卸载重装保留、`allowBackup`注册表恢复隔离、断流新分段、当前安装范围内的空间清理、退出收尾和Proximity Radar遥测仍须按本章矩阵在目标遥控器与桌面真机验收。
+截至2026-08-13，本轮已独立编译并运行 `Mt11ProtocolTest`，QtTest报告9 passed、0 failed：7个业务slot加框架init/cleanup，覆盖SDK文档命令帧、RGB/热成像模式帧、严格CRC/长度/control解析、UDP合包原子性和业务payload。该结果仅属于纯 `Mt11Protocol`，不覆盖 `Mt11Sdk`的真实UDP、Manager计时、QML、GStreamer、双receiver或真机固件。当前开发环境仍未完成本工作树的全工程Qt 6桌面/Android干净构建，因此不能宣称全工程编译通过；既有轻量测试结果也不能替代Qt 6.8 Quick/GStreamer/Android目标链路。已完成JSON解析、QRC/文件清单和关键符号/资源接线的静态复核；当前两份TS均为16个context、140条message，英文模板140条保持unfinished，简体中文140条全部finished且unfinished/空译文均为0，Qt 5 `lrelease`验证通过。最终提交前仍建议用项目Qt 6 `lupdate`刷新location并再次复核目录，但不能再把当前翻译描述为待完成。A8+MT11双机地址/路由、真实ACK时序、RGB/热成像往返、双路长期解码/重连、三视图/全屏与叠加层、两套本地媒体receiver隔离、Android性能及媒体发布、SDK/RTSP各自故障和退出收尾仍须按本章矩阵在目标设备验收。

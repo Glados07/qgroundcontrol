@@ -222,18 +222,38 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="210"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="277"/>
         <source>FAILED</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="350"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="417"/>
         <source>SD</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="407"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="474"/>
         <source>LOCAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="161"/>
+        <source>...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="163"/>
+        <source>?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="165"/>
+        <source>IR</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="166"/>
+        <source>RGB</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -309,48 +329,444 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="88"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
         <source>Video Stream Integration</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="113"/>
         <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="117"/>
         <source>Use MAVLink automatic video stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="124"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="108"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="132"/>
         <source>Force hardware decoding for Android H.265</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="114"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
         <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="115"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="139"/>
         <source>Restart QGC after changing this option.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="187"/>
         <source>Save photos and videos locally</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="169"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="193"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="42"/>
+        <source>Video Source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="43"/>
+        <source>Mavlink camera stream is automatically configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
+        <source>Source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="57"/>
+        <source>Connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="63"/>
+        <source>RTSP URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="70"/>
+        <source>TCP URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="79"/>
+        <source>UDP URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
+        <source>MT11 Second Video</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="90"/>
+        <source>Feeds the dedicated UniPod MT11 video window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="95"/>
+        <source>MT11 RTSP URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
+        <source>This video URL is independent of the MT11 SDK Host and Port used for zoom, photo, recording and thermal commands.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="153"/>
+        <source>Aspect Ratio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
+        <source>Stop recording when disarmed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="167"/>
+        <source>Low Latency Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="174"/>
+        <source>Video decode priority</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="183"/>
+        <source>Local Video Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="201"/>
+        <source>Record File Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="208"/>
+        <source>Auto-Delete Saved Recordings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="215"/>
+        <source>Max Storage Usage</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewTopRightColumnLayout</name>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="76"/>
+        <source>A8 Mini</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="86"/>
+        <source>MT11</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControlSettingsGroup</name>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
+        <source>SIYI A8 Mini Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="36"/>
+        <source>Private SDK camera controls.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="40"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="73"/>
+        <source>Enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="46"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <source>SDK Host</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="86"/>
+        <source>SDK Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="60"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="93"/>
+        <source>Zoom Step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="68"/>
+        <source>UniPod MT11 Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="69"/>
+        <source>Independent SDK camera controls.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="100"/>
+        <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its independent video address under Video &gt; MT11 Second Video.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MT11Video</name>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <source>WAITING FOR VIDEO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <source>VIDEO DISABLED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/MT11Video.qml" line="209"/>
+        <source>Double-click to exit full screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Mt11ControlManager</name>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="674"/>
+        <source>Wait for the pending MT11 recording command before changing its SDK settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="215"/>
+        <source>MT11 continuous zoom stopped after the safety timeout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="334"/>
+        <source>The requested MT11 zoom is outside the supported range.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="489"/>
+        <source>The MT11 video receiver was detached during local recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="542"/>
+        <source>Failed to start MT11 local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="669"/>
+        <source>No response from the MT11 SDK endpoint.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="684"/>
+        <source>The MT11 camera rejected the zoom command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="733"/>
+        <source>The MT11 camera has no storage card.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="738"/>
+        <source>The MT11 camera reported recording data loss.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="756"/>
+        <source>MT11 photo capture failed or its storage card is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="762"/>
+        <source>MT11 video recording failed or its storage card is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="807"/>
+        <source>MT11 local recording stopped because its video stream ended.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="843"/>
+        <source>Timed out confirming the MT11 recording state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="850"/>
+        <source>Timed out confirming the MT11 video mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="866"/>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1124"/>
+        <source>Failed to capture the MT11 local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="878"/>
+        <source>Timed out starting MT11 local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="892"/>
+        <source>Timed out stopping MT11 local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="907"/>
+        <source>MT11 camera control is disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1059"/>
+        <source>An MT11 local photo is still being processed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1064"/>
+        <source>No decoded MT11 video frame is available for a local photo.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1073"/>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1137"/>
+        <source>Failed to save the MT11 local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1201"/>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1210"/>
+        <source>The configured local video format is invalid.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Mt11Sdk</name>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="38"/>
+        <source>Invalid MT11 SDK endpoint: %1:%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="52"/>
+        <source>Invalid MT11 zoom range: %1-%2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="65"/>
+        <source>Invalid MT11 manual zoom direction: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="78"/>
+        <source>MT11 zoom value is outside the configured range: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="251"/>
+        <source>Cannot send an empty MT11 SDK packet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="255"/>
+        <source>MT11 SDK endpoint is not configured.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="261"/>
+        <source>Failed to send MT11 SDK packet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GimbalControl.SettingsGroup.json</name>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11Enabled].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Enable UniPod MT11 camera control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkHost].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 SDK UDP host</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkHost].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Controls UniPod MT11 camera commands only. This address is independent of the MT11 RTSP video URL.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11SdkPort].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 SDK UDP port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 zoom step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniPod MT11 second-video RTSP URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Feeds only the second MT11 video window. Camera commands use the independent MT11 SDK host and port.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

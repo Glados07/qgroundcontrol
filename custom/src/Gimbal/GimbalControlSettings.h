@@ -23,6 +23,11 @@ public:
     DEFINE_SETTINGFACT(sdkHost)
     DEFINE_SETTINGFACT(sdkPort)
     DEFINE_SETTINGFACT(zoomStep)
+    DEFINE_SETTINGFACT(mt11Enabled)
+    DEFINE_SETTINGFACT(mt11SdkHost)
+    DEFINE_SETTINGFACT(mt11SdkPort)
+    DEFINE_SETTINGFACT(mt11ZoomStep)
+    DEFINE_SETTINGFACT(mt11RtspUrl)
     DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
     DEFINE_SETTINGFACT(forceAndroidH265HardwareDecoder)
 };
