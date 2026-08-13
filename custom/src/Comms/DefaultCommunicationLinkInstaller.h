@@ -1,7 +1,8 @@
 /****************************************************************************
  *
  * Custom default communication-link installer.
- * Reconciles the single default UDP configuration before LinkManager loads it.
+ * Installs the project default UDP configuration only when the saved
+ * communication-link list is empty. Existing configurations are untouched.
  *
  ****************************************************************************/
 

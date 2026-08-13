@@ -2,15 +2,15 @@
 
 适用工程：`F:\qgroundcontrol_viewer3d`
 
-当前分支：`SecDev/ft/camera`
+当前分支：`SecDev/feature`
 
-最后更新：2026-08-07
+最后更新：2026-08-13
 
 ## 1. 当前开发进度
 
 ### 1.1 总体进度
 
-当前开发分支为 `SecDev/ft/camera`，二次开发已形成十个面向用户的功能模块和一套 `custom` 工程化集成架构：
+当前开发分支为 `SecDev/feature`，二次开发已形成十个面向用户的功能模块和一套 `custom` 工程化集成架构：
 
 1. Viewer3D 三维飞行视图。
 2. 思翼 A8 Mini 云台控制与独立本地照片/录像。
@@ -78,7 +78,7 @@
 - 从 `custom-example` 选择性移植底部横向航向条、中央航向数值框和固定指针，不移植右下圆形罗盘、姿态仪及其无关资源。
 - 罗盘条读取活动飞行器 `Vehicle.heading.rawValue`，显示 N、NE、E、SE、S、SW、W、NW 方位及中央当前航向角；不存在活动飞行器或航向无效时不显示。
 - 使用 11 个相对方位 Label 实现连续滚动和 359°/0° 跨界，替代示例的 720 个 Label，降低 Android 上每次航向更新的 QML 重算量。
-- 新增 `FlyView/showHeadingCompassBar` 持久化 Fact，默认开启、无需重启；开关位于 Application Settings -> Fly View -> Instrument Panel。
+- 新增 `FlyView/showHeadingCompassBar` 持久化 Fact，默认关闭、无需重启；开关位于 Application Settings -> Fly View -> Instrument Panel。缺少保存值时使用关闭默认值，用户已经保存的选择不被升级覆盖。
 - `FlyViewCustomLayer` 通过显式 custom QRC Loader 加载罗盘条；位置和首选宽度与 custom-example 一致，固定为 `50 × defaultFontPixelWidth` 并贴近飞行界面底边，仅在整个 Fly View 本身不足以容纳时按左右基础 margin 收窄。PIP、虚拟摇杆和右下仪表的角落 inset 不再参与罗盘条宽度计算，避免单侧最大 inset 被左右重复扣除后在 86% 缩放或 PIP 拉伸时把罗盘条压成一小块；显示时仍只增加 `bottomEdgeCenterInset`。罗盘条是纯显示层，不截获其下方地图的拖动、缩放或触摸事件；关闭开关时完整透传原生 insets。
 - 普通地图主视图、视频主视图和 Viewer3D 使用同一 custom overlay；QGC 原生全屏视频模式会隐藏整个 custom overlay，因此该模式下罗盘条随之隐藏。
 
@@ -109,10 +109,12 @@
 
 ### 1.9 默认通信链路（已集成）
 
-- 默认通信配置已收敛为唯一 `local`，不再提供 `local/testlocal` 编译开关或双配置表。`local` 是 UDP，本地端口 `0`，单一远端 `192.168.144.125:14550`，不自动连接且不标记为高延迟；这保留了 `fd196891c` 的单配置表和本地端口行为，仅将远端替换为当前地址。
-- 每次启动都在原生 LinkManager 读取 QSettings 之前协调链路列表。`local` 是本项目保留名：已有大小写变体、旧端点、手工修改项或重复项时，只保留一条并恢复为上述规范值；缺失时补建。因此不要将另一条用户链路命名为 `local`。
-- 为兼容从旧双配置版本覆盖升级，所有名称大小写匹配 `testlocal` 的有效 `LinkN` 都会在启动时删除，后续索引自动压缩；即使历史 `testlocal` 曾被勾选自动连接或修改端点，也不会被 LinkManager 加载。其他名称的用户链路按原顺序保留全部键值。
-- 旧双配置逻辑的 `CustomCommunicationLinks/defaultsVersion` 标记已无用并会清理。安装器只协调持久默认表，不直接打开 socket；手工连接、UDP会话和MAVLink仍由原生代码负责。
+- 默认通信配置不再提供 `local/testlocal` 编译开关或强制管理多个配置表。仅当保存的通信链路总数 `LinkConfigurations/count` 为 `0` 时，创建一条 UDP 默认项 `local`：本地端口 `14550`、单一远端 `192.168.144.125:14550`、不自动连接且不标记为高延迟。
+- 安装器在原生 LinkManager 读取 QSettings 之前运行，但 `count` 非零时立即返回，不读取、不删除、不改名、不去重也不补建任何配置。用户后续可将 `local` 改名为 `testlocal`，把本地端口改为 `14590`，或修改IP、远端端口、自动连接及高延迟属性，重启后都会原样保留；历史 `testlocal` 和重复名称也不再自动清理，由用户在通信链路界面自行管理。
+- 固定本地端口用于消除断开重建 socket 时随机源端口变化这一风险；若 `.125` 图传路径透明转发到会保留地面站 UDP partner 的飞控实例或代理，保持地面站 IP 和本地端口稳定可避免其继续向旧随机端口回传。缓存具体位于图传、代理还是飞控仍需目标设备双侧抓包确认，不能仅凭程序侧改动承诺已经根治。
+- QGC 原生动态 UDP AutoConnect 的默认监听端口也是本机 `14550`。`CustomPlugin` 只把 `AutoConnect/autoConnectUDP` 的缺省值设为 `false`；设置项保持可见，已有用户值不会被改写，用户可随时开启。若它与本地端口同为 `14550` 的 `local` 同时活动，两个 socket 可能共享端口并造成报文归属不确定，因此正常使用 `local` 时应保持该开关关闭，或先规划互不冲突并经过验证的端口。
+- 任意已有配置都不会自动迁移，包括本地端口仍为 `0` 的历史 `local`。覆盖升级后如需固定端口，应在通信链路界面手动修改。只有删除全部通信链路使 `count=0` 并重启，安装器才会按新默认值重新创建 `local`；旧双配置逻辑的 `CustomCommunicationLinks/defaultsVersion` 标记已无读取者，但安装器也不再主动改写或删除它。
+- 稳定UDP端点还要求遥控器/地面站 IP 与出接口在远端实例运行期间保持不变，并确认中间图传/NAT没有改写映射；否则需固定网络映射，或在远端实现链路超时后清除并重新学习 UDP partner。
 
 ### 1.10 PX4 飞控定制（已集成）
 
@@ -299,9 +301,9 @@ custom/
 | 文件 | 详细作用 |
 |---|---|
 | `custom/src/CustomPlugin.h` | custom 功能的中央组合入口声明。继承 `QGCCorePlugin`，向 QML 暴露稳定的 Viewer3D设置/外部模型管理器、FlyViewCustom设置、Gimbal设置/控制器属性；声明 `init/cleanup` 生命周期、Android字号 metadata覆盖、MAVLink相机流消息过滤、QML engine创建和视频sink创建覆盖。文件末尾的 `CustomOverrideInterceptor` 声明负责把原生 QRC URL重定向到实际存在的 `/Custom/qml` 文件；本头文件只定义接口与所有权，不实现各模块算法。 |
-| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()`安装默认链路、custom翻译和各设置/Manager，并在正确窗口应用Android H.265策略。`createVideoSink()`完整复用原生sink创建，只对主拉流安装尺寸观察器；同时把主渲染项和主（`isThermal()==false`）`VideoReceiver`交给Gimbal Manager，本地截图使用前者，本地录像直接调用后者，不保存也不控制thermal receiver。它只在该主receiver连接 `onStartRecordingComplete`，把结果与 `recordingOutput()`交给Manager确认ownership；receiver到VideoManager的原生信号连接保持不变，仍负责全局状态和字幕。`init()`以DirectConnection监听 `aboutToQuit`并调用 `shutdownLocalMedia(true)`：先最多等待3秒让自有录像停止并完成容器封装，Android再补扫遗漏源并以JNI单线程队列barrier最多等待120秒完成此前排队的公共发布；普通 `cleanup()`提供非阻塞兜底。其他职责包括Android字号metadata、MAVLink视频消息过滤和QML URL拦截。 |
+| `custom/src/CustomPlugin.cc` | 上述中央入口的实现。`init()`在LinkManager读取设置前仅在通信链路列表为空时安装默认 `local`、加载custom翻译和各设置/Manager，并在正确窗口应用Android H.265策略；metadata覆盖只把原生 `autoConnectUDP` 缺省值设为关闭，设置项仍可见、已有用户值和运行期选择均不强制改写。`createVideoSink()`完整复用原生sink创建，只对主拉流安装尺寸观察器；同时把主渲染项和主（`isThermal()==false`）`VideoReceiver`交给Gimbal Manager，本地截图使用前者，本地录像直接调用后者，不保存也不控制thermal receiver。它只在该主receiver连接 `onStartRecordingComplete`，把结果与 `recordingOutput()`交给Manager确认ownership；receiver到VideoManager的原生信号连接保持不变，仍负责全局状态和字幕。`init()`以DirectConnection监听 `aboutToQuit`并调用 `shutdownLocalMedia(true)`：先最多等待3秒让自有录像停止并完成容器封装，Android再补扫遗漏源并以JNI单线程队列barrier最多等待120秒完成此前排队的公共发布；普通 `cleanup()`提供非阻塞兜底。其他职责包括Android字号metadata、MAVLink视频消息过滤和QML URL拦截。 |
 | `custom/src/Comms/DefaultCommunicationLinkInstaller.h` | 声明无状态的 `DefaultCommunicationLinkInstaller::ensureInstalled()` 静态接口。调用者只有 `CustomPlugin::init()`；头文件不创建或连接链路，目的是把“写入项目缺省通信配置”与 CustomPlugin生命周期代码分离。 |
-| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的启动前协调实现。项目只托管一条 `local` UDP默认表：本地端口`0`，单一远端 `192.168.144.125:14550`，`auto=false`、非高延迟。启动时将缺失、旧端点、大小写变体、重复或手工修改过的保留名 `local` 收敛为唯一规范项，并删除旧版残留的所有 `testlocal` 有效项和 `defaultsVersion` 标记。其他名称的count范围链路逐键保留，移除或去重后按原相对顺序重写连续 `LinkN/count`。它不直接打开socket；后续手工连接、UDP会话、MAVLink和持久化仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
+| `custom/src/Comms/DefaultCommunicationLinkInstaller.cc` | `ensureInstalled()` 的启动前默认值实现。它只读取 `LinkConfigurations/count`：有效值为0时清理非活动的残留 `Link0` 槽位，写入默认 `local`（本地`14550`、远端 `192.168.144.125:14550`、`auto=false`、非高延迟）并把count设为1；count非零或值无效时不读取、不修改任何配置。它不再按名称处理 `local/testlocal`，不压缩索引，也不清理旧版本标记；后续编辑、连接、UDP会话、MAVLink和持久化仍由原生 LinkManager负责，日志类别为 `gcs.custom.communicationlink`。 |
 
 #### 4.2.1 Android USB 串口管理器
 
@@ -394,7 +396,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 顶部指示器点击后创建的详情页。输入为活动飞行器 `fuelStatus` Fact，按燃料类型选择 ml 或 MPa，显示剩余比例、剩余量、最大量、已消耗量、流量和温度；它只负责详情展示，不决定工具栏图标是否出现。该类型由精简的 `Custom.Widgets` QML 模块注册，创建入口在 `FuelStatusIndicator.qml`。 |
 | `custom/src/QmlControls/ProximityRadarIndicatorPage.qml` | Proximity Radar工具栏入口点击后的详情页。通过required `radarData`接收十方向Fact及5.0 m判断函数，只Repeater显示有效方向、原生值与单位，告警行文字变红；它不计算飞行器避障动作，也不保存阈值设置。 |
 | `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 声明 `Viewer3D.Models3D` QML 模块，并把 `CameraLightModel`、`Line3D`、`External3DMap`、`Viewer3DModel`、`Viewer3DVehicleItems`、`Waypoint3DModel` 六个类型映射到对应 QML。`CameraLightModel`、`Line3D`、`Waypoint3DModel` 继续由 QRC 引用原生源码，另外三个带项目差异的场景类型映射到 custom 文件。它只解决 `import Viewer3D.Models3D` 后的类型发现，不创建场景、不加载模型，也不保存设置；`QGroundControl.Viewer3D` 是 C++ 类型模块，不能与本模块名混用。 |
-| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 只定义航向罗盘条显示开关 `showHeadingCompassBar` 的 Fact 元数据：类型为 bool、缺省为 `true`、无需重启。它不绘制罗盘条，也不保存当前用户值；`FlyViewCustomSettings.cc` 根据资源名加载它，实际选择保存为 `FlyView/showHeadingCompassBar`。 |
+| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 只定义航向罗盘条显示开关 `showHeadingCompassBar` 的 Fact 元数据：类型为 bool、缺省为 `false`、无需重启。它不绘制罗盘条，也不保存当前用户值；`FlyViewCustomSettings.cc` 根据资源名加载它，实际选择保存为 `FlyView/showHeadingCompassBar`。 |
 | `custom/src/Settings/FlyViewCustomSettings.h` | 声明 `FlyViewCustomSettings : SettingsGroup`，并通过 `DEFINE_SETTINGFACT(showHeadingCompassBar)` 生成稳定的 `Fact*` Q_PROPERTY、延迟创建指针和访问器。该类是 C++/QML 之间的设置接口层，只表达“用户是否允许显示罗盘条”，不包含航向计算或绘制代码。 |
 | `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述 SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把用户值写入原生 `FlyView` QSettings 分组；注册 reference-only QML 类型并实现 `showHeadingCompassBar()` 的延迟 Fact 创建。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
 | `custom/src/UI/AppSettings/GeneralSettings.qml` | Application Settings -> General 的同路径 custom 覆盖页。完整保留原生 Language、Color Scheme、GCS位置流、音频、Android SD Card、清除设置、数据路径、Units和Brand Image。UI Scaling直接绑定原生整数 `appFontPointSize`，按 `appFontPointSize / ScreenTools.platformFontPointSize × 100` 四舍五入显示，`-`/`+` 每次修改1 pt并由原生 `SettingsFact` 保存；页面本身不写缺省值。`SettingsFact` 构造期间先调用 `CustomPlugin::adjustSettingMetaData()` 把 Android raw default改为12 pt，再读取已有QSettings或该缺省值，因此未打开本页面也会生效；非Android默认仍为100%。 |
@@ -552,7 +554,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 ## 6. 受控 src 修改
 
-当前分支 `SecDev/ft/camera` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
+当前分支 `SecDev/feature` 沿用的二次开发 `src` 差异只有以下两处；它们是 custom PX4 模块正常链接所需的受控例外：
 
 | 文件 | 修改原因 |
 |---|---|
@@ -606,12 +608,12 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 | Fact | 类型/默认值 | 说明 |
 |---|---|---|
-| `showHeadingCompassBar` | bool / `true` | 显示飞行界面底部中央的航向罗盘条；保存于 `FlyView` QSettings 分组，切换后立即生效，无需重启。 |
+| `showHeadingCompassBar` | bool / `false` | 显示飞行界面底部中央的航向罗盘条；保存于 `FlyView` QSettings 分组，切换后立即生效，无需重启。 |
 
 使用流程：
 
 1. 打开 Application Settings -> Fly View -> Instrument Panel。
-2. 使用 `Show Heading Compass Bar` 开关控制显示；简体中文界面对应“显示航向罗盘条”。
+2. 该开关首次默认关闭；测试时使用 `Show Heading Compass Bar` 手动开启，简体中文界面对应“显示航向罗盘条”。
 3. 返回 Fly View 并连接飞控。只有活动飞行器的 `heading` 有效时才显示罗盘条，未连接飞控不会以 0° 伪造航向。
 4. 中央数值和固定三角指针表示当前机头航向，N/NE/E/SE/S/SW/W/NW 方位随航向连续移动；该数据不包含航点方向和航线偏差。
 
@@ -758,13 +760,13 @@ FuelStatusIndicator 依赖飞行器 `fuelStatus.telemetryAvailable`。没有 `FU
 - `20.0-20.4 V`：保持当前状态，形成回差。
 - `> 20.4 V`：关闭告警。
 
-当前只有一条项目托管的默认链路：
+通信链路列表为空（`count=0`）时，项目创建以下默认链路：
 
 | 名称 | 类型 | 本地端口 | 单一服务器 | 开始时自动连接 | 高延迟 |
 |---|---|---:|---|---|---|
-| `local` | UDP | `0` | `192.168.144.125:14550` | 关闭 | 关闭 |
+| `local` | UDP | `14550` | `192.168.144.125:14550` | 关闭 | 关闭 |
 
-双默认表方案已取消；覆盖安装并启动新版后，历史 `testlocal` 会从活动链路列表中删除，历史 `local` 会重置为表中值。`local` 是保留名，不应用于另一条手工自定义配置。
+双默认表的自动安装方案已取消。只要已经保存至少一条通信链路，安装器就完全不干预：历史 `testlocal`、重复 `local`、其他名称及用户修改值都会保留，需要时由用户在界面删除或编辑。原生动态 UDP AutoConnect 默认关闭但设置项可见、可开启；它与本地端口同为 `14550` 的链路不应同时活动。
 
 ## 11. 关键运行链路
 
@@ -802,9 +804,10 @@ QGCApplication
   -> VideoManager 构造
      -> GStreamer::initialize() 注册解码插件
   -> CustomPlugin::init()
+     -> 将原生UDP AutoConnect缺省值设为false，保留可见设置和用户值
      -> DefaultCommunicationLinkInstaller
-        -> 删除历史testlocal和重复local，并压缩LinkN/count
-        -> 补建或重置唯一local为192.168.144.125:14550，清理旧版本标记
+        -> count非零或无效时完全不修改现有通信链路
+        -> 仅在count=0时创建默认local：本地14550 -> 192.168.144.125:14550
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
      -> FlyViewCustomSettings（FlyView/showHeadingCompassBar）
       -> GimbalControlSettings / GimbalControlManager
@@ -1015,7 +1018,7 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
 13. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
 14. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
 15. Fuel遥测存在时顶部显示Fuel、无数据时隐藏；Proximity Radar在十方向任一距离Fact有效时显示，逐方向检查详情值/单位，4.99 m时图标变红闪烁、5.0 m及以上不告警，全部Fact为NaN时隐藏；它不得发送任何飞控命令。
-16. 默认通信链路验收：全空设置首次启动只生成一条 `local`，必须为 UDP、本地端口`0`、单一远端 `192.168.144.125:14550`、不自动连接且非高延迟。构造旧版 `local=192.168.144.20:19856` 与 `testlocal`、大小写变体、重复项、`auto=true`、改过的本地端口/远端及额外键，覆盖升级后必须删除全部 `testlocal`、只保留一条并规范化 `local`，同时删除 `defaultsVersion`。在local/testlocal前后混入Serial、TCP等其他用户链路，确认其键值和相对顺序不变、`LinkN/count`连续；连续启动不得再改变持久内容或增长count。最后在目标设备上连接、完整退出QGC、重启并重新连接local至少20轮，不得再出现由历史testlocal导致的主/备链路切换。
+16. 默认通信链路验收：`count=0` 时启动只生成一条 `local`，默认必须为 UDP、本地端口`14550`、单一远端 `192.168.144.125:14550`、不自动连接且非高延迟，残留在非活动Link0中的附加键不得混入新默认项。`count>0` 时分别构造改名为 `testlocal` 的唯一配置、重复local、仅Serial/TCP且没有local、本地端口`0/14590`、旧端点、`auto=true`、高延迟、附加键和旧 `defaultsVersion` 标记，启动前后所有配置和count必须完全不变，不得清理、去重、补建或迁移；删除local但仍有其他链路时不得补建，删除全部链路使count=0后重启才重新生成默认local。清除 `AutoConnect/autoConnectUDP` 保存键后启动，UDP自动连接开关必须可见且缺省关闭；预置为true后重启仍应保持true，用户在界面切换后应正常持久化。进行local重连验收时须关闭UDP AutoConnect，或确保其监听端口与local不同且方案已经验证；两个socket同绑14550即使成功也不得当作支持场景。最后在地面站IP和图传映射稳定的条件下抓包确认QGC出包源端口与远端回包目标，并完成主动连接/断开/重连及完整退出/启动各至少20轮。
 17. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
 18. 普通模式只显示 Safety 设置页，高级模式显示完整定制 PX4 设置页。
 19. 飞行模式仅 Loiter、RTL、Mission 可由该列表设置，RC RSSI 不显示，Fuel 紧随 Battery。
@@ -1025,7 +1028,7 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
 23. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
 24. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
 25. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
-26. `Show Heading Compass Bar` 开关无需重启即可立即显示/隐藏，重启 QGC 后保持用户选择；没有活动飞行器或 `heading` 为 NaN 时不显示伪造的 0°/N。
+26. 清除 `FlyView/showHeadingCompassBar` 保存键后启动，`Show Heading Compass Bar` 必须默认关闭；手动开启后在航向有效时立即显示，关闭后立即隐藏，重启QGC保持用户选择；没有活动飞行器或 `heading` 为NaN时不显示伪造的0°/N。
 27. 使用模拟或真机航向覆盖 N、NE、E、SE、S、SW、W、NW，并重点检查 359° -> 0° -> 1° 连续过渡，中央数值、固定指针和移动方位必须一致。
 28. 在地图主窗口、视频主窗口、地图/视频 PIP 互换、虚拟摇杆、右下仪表盘、Viewer3D、横竖屏和小屏布局下检查罗盘条底边位置、宽度及 `bottomEdgeCenterInset`；重点在目标遥控器 86% 缩放下把左下 PIP 从 10% 连续拖到 75%，以及改变右下仪表宽度，罗盘条必须保持示例的首选宽度，不能缩成点、短条或消失。常规尺寸下检查无不必要遮挡；极端放大的角落控件允许与罗盘条视觉层叠，但 PIP 调整和罗盘条区域的地图拖动、缩放必须仍然有效；全屏视频模式按原生语义隐藏。
 29. Android H.265 连续播放测试期间同时保持罗盘条开启并改变航向，确认 11 个方位 Label 的更新不造成新增卡顿或持续帧率下降。
@@ -1108,7 +1111,7 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 ```powershell
 rg --files custom
-rg -n "DefaultCommunicationLinkInstaller|kRemovedTestLinkName|testlocal|192\.168\.144\.125|14550|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
+rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|A8MiniZoomPolicy|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```

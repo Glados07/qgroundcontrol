@@ -7,6 +7,7 @@
 #include "CustomPlugin.h"
 
 #include "AppSettings.h"
+#include "AutoConnectSettings.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
 #include "FactMetaData.h"
 #include "Gimbal/GimbalControlManager.h"
@@ -57,7 +58,7 @@ CustomPlugin *CustomPlugin::customInstance()
 
 void CustomPlugin::init()
 {
-    // 在 LinkManager 读取 QSettings 前协调唯一项目默认 UDP 链路。
+    // Install the missing project default before LinkManager reads settings.
     DefaultCommunicationLinkInstaller::ensureInstalled();
 
     const QLocale locale;
@@ -181,6 +182,13 @@ bool CustomPlugin::mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const m
 bool CustomPlugin::adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData)
 {
     const bool visible = QGCCorePlugin::adjustSettingMetaData(settingsGroup, metaData);
+
+    if (settingsGroup == AutoConnectSettings::settingsGroup
+        && metaData.name() == AutoConnectSettings::autoConnectUDPName) {
+        // Keep the native setting visible and user-controlled, but default it
+        // to off when no saved value exists.
+        metaData.setRawDefaultValue(false);
+    }
 
 #ifdef Q_OS_ANDROID
     if (settingsGroup == AppSettings::settingsGroup &&

@@ -7,7 +7,7 @@
             "shortDesc": "Show heading compass bar",
             "longDesc": "Show a horizontal heading compass bar at the bottom center of Fly View.",
             "type": "bool",
-            "default": true
+            "default": false
         }
     ]
 }
