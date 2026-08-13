@@ -2,11 +2,91 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
 <context>
+    <name>BatteryIndicator</name>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="45"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="50"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="60"/>
+        <source>n/a</source>
+        <translation>无数据</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <source>Battery %1</source>
+        <translation>电池%1</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <source>Status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="205"/>
+        <source>Charge State</source>
+        <translation>充电状态</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="210"/>
+        <source>Measured Voltage</source>
+        <translation>母线电压</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="215"/>
+        <source>Power</source>
+        <translation>功率</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="220"/>
+        <source>Current</source>
+        <translation>电流</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="225"/>
+        <source>Consumed</source>
+        <translation>已消耗</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="242"/>
+        <source>Battery Display</source>
+        <translation>电池显示</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="246"/>
+        <source>Coloring</source>
+        <translation>颜色设置</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="261"/>
+        <source>100%</source>
+        <translation>100%</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="319"/>
+        <source>Low</source>
+        <translation>低</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="332"/>
+        <source>Critical</source>
+        <translation>危急</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="348"/>
+        <source>Vehicle Power</source>
+        <translation>飞行器电源</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="349"/>
+        <source>Configure</source>
+        <translation>配置</translation>
+    </message>
+</context>
+<context>
     <name>GeneratorBusVoltageAlert</name>
     <message>
         <location filename="../src/FlightDisplay/GeneratorBusVoltageAlert.qml" line="59"/>
         <source>Generator Bus Voltage Low: %1 V</source>
-        <translation>燃料电池母线电压过低：%1 V</translation>
+        <translation>燃料电池电压过低：%1 V</translation>
     </message>
 </context>
 <context>
