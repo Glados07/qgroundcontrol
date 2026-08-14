@@ -82,6 +82,7 @@
         <file alias="Viewer3D.SettingsGroup.json">src/Viewer3D/Viewer3D.SettingsGroup.json</file>
         <file alias="GimbalControl.SettingsGroup.json">src/Gimbal/GimbalControl.SettingsGroup.json</file>
         <file alias="FlyViewCustom.SettingsGroup.json">src/Settings/FlyViewCustom.SettingsGroup.json</file>
+        <file alias="VideoCustom.SettingsGroup.json">src/Settings/VideoCustom.SettingsGroup.json</file>
     </qresource>
     <qresource prefix="/ShaderVertex">
         <file alias="earthMaterial.vert">../src/Viewer3D/Shaders/earthMaterial.vert</file>

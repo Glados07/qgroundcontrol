@@ -43,9 +43,9 @@ Item {
         Component.onCompleted: start()
     }
 
-    property var _dualVideoManager: QGroundControl.corePlugin
-                                    ? QGroundControl.corePlugin.dualVideoManager
-                                    : null
+    property var _secondaryVideoManager: QGroundControl.corePlugin
+                                         ? QGroundControl.corePlugin.dualVideoManager
+                                         : null
     property bool _mainWindowIsMap: mapControl.pipState.state
                                     === mapControl.pipState.fullState
     property bool _isFullWindowItemDark: !_mainWindowIsMap
@@ -63,8 +63,8 @@ Item {
     property real _rightPanelWidth: ScreenTools.defaultFontPixelWidth * 30
     property var _mapControl: mapControl
     property bool _anyVideoFullScreen: QGroundControl.videoManager.fullScreen
-                                       || (_dualVideoManager
-                                           && _dualVideoManager.fullScreen)
+                                       || (_secondaryVideoManager
+                                           && _secondaryVideoManager.fullScreen)
 
     property real _fullItemZorder: 0
     property real _pipItemZorder: QGroundControl.zOrderWidgets
@@ -79,14 +79,14 @@ Item {
     }
 
     Component.onCompleted: {
-        if (_dualVideoManager && _root.Window.window) {
-            _dualVideoManager.init(_root.Window.window)
+        if (_secondaryVideoManager && _root.Window.window) {
+            _secondaryVideoManager.init(_root.Window.window)
         }
     }
 
     on_ActiveVehicleChanged: {
-        if (!_activeVehicle && _dualVideoManager) {
-            _dualVideoManager.fullScreen = false
+        if (!_activeVehicle && _secondaryVideoManager) {
+            _secondaryVideoManager.fullScreen = false
         }
     }
 
@@ -96,10 +96,6 @@ Item {
         function onHasVideoChanged() {
             if (!QGroundControl.videoManager.hasVideo) {
                 QGroundControl.videoManager.fullScreen = false
-                if (videoControl.pipState.state
-                        === videoControl.pipState.fullState) {
-                    _pipView._setFullItem(mapControl, true)
-                }
             }
         }
     }
@@ -110,27 +106,25 @@ Item {
 
         function onCommunicationLostChanged() {
             if (_activeVehicle && _activeVehicle.communicationLost
-                    && _dualVideoManager) {
-                _dualVideoManager.fullScreen = false
+                    && _secondaryVideoManager) {
+                _secondaryVideoManager.fullScreen = false
             }
         }
     }
 
     Connections {
-        target: _dualVideoManager
+        target: _secondaryVideoManager
         ignoreUnknownSignals: true
 
         function onEnabledChanged() {
-            if (_dualVideoManager.enabled && _root.Window.window) {
-                _dualVideoManager.init(_root.Window.window)
+            if (_secondaryVideoManager.enabled && _root.Window.window) {
+                _secondaryVideoManager.init(_root.Window.window)
             }
         }
 
         function onHasVideoChanged() {
-            if (!_dualVideoManager.hasVideo
-                    && mt11VideoControl.pipState.state
-                    === mt11VideoControl.pipState.fullState) {
-                _pipView._setFullItem(mapControl, true)
+            if (!_secondaryVideoManager.hasVideo) {
+                _secondaryVideoManager.fullScreen = false
             }
         }
     }
@@ -167,14 +161,15 @@ Item {
         FlyViewVideo {
             id: videoControl
             pipView: _pipView.item2PipView
+            visible: QGroundControl.videoManager.hasVideo
         }
 
-        CustomFlightDisplay.MT11Video {
-            id: mt11VideoControl
+        CustomFlightDisplay.FlyViewSecondaryVideo {
+            id: secondaryVideoControl
             pipView: _pipView.item3PipView
-            visible: _dualVideoManager
-                     && (_dualVideoManager.hasVideo
-                         || _dualVideoManager.initialized)
+            visible: _secondaryVideoManager
+                     && (_secondaryVideoManager.hasVideo
+                         || _secondaryVideoManager.initialized)
         }
 
         CustomFlightDisplay.DualPipView {
@@ -185,8 +180,8 @@ Item {
             currentItemSettingsKey: "MainFlyWindowView"
             item1: mapControl
             item2: QGroundControl.videoManager.hasVideo ? videoControl : null
-            item3: _dualVideoManager && _dualVideoManager.hasVideo
-                   ? mt11VideoControl : null
+            item3: _secondaryVideoManager && _secondaryVideoManager.hasVideo
+                   ? secondaryVideoControl : null
             show: !_anyVideoFullScreen
             z: QGroundControl.zOrderWidgets
 

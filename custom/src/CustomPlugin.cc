@@ -16,6 +16,7 @@
 #include "Gimbal/Mt11ControlManager.h"
 #include "QGCLoggingCategory.h"
 #include "Settings/FlyViewCustomSettings.h"
+#include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
@@ -81,6 +82,7 @@ void CustomPlugin::init()
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureMt11ControlManager();
+    _ensureVideoCustomSettings();
     _ensureDualVideoManager();
     if (!_aboutToQuitConnection) {
         _aboutToQuitConnection =
@@ -191,6 +193,17 @@ Mt11ControlManager *CustomPlugin::mt11ControlManagerObject()
     return _mt11ControlManager;
 }
 
+QObject *CustomPlugin::videoCustomSettings()
+{
+    return videoCustomSettingsFactGroup();
+}
+
+VideoCustomSettings *CustomPlugin::videoCustomSettingsFactGroup()
+{
+    _ensureVideoCustomSettings();
+    return _videoCustomSettings;
+}
+
 QObject *CustomPlugin::dualVideoManager()
 {
     return dualVideoManagerObject();
@@ -277,15 +290,22 @@ void CustomPlugin::_ensureMt11ControlManager()
     }
 }
 
+void CustomPlugin::_ensureVideoCustomSettings()
+{
+    if (!_videoCustomSettings) {
+        _videoCustomSettings = new VideoCustomSettings(this);
+    }
+}
+
 void CustomPlugin::_ensureDualVideoManager()
 {
-    _ensureGimbalControlSettings();
+    _ensureVideoCustomSettings();
     _ensureMt11ControlManager();
     if (_dualVideoManager) {
         return;
     }
 
-    _dualVideoManager = new DualVideoManager(_gimbalControlSettings, this);
+    _dualVideoManager = new DualVideoManager(_videoCustomSettings, this);
     connect(_dualVideoManager,
             &DualVideoManager::videoObjectsAboutToBeReleased,
             _mt11ControlManager,
@@ -359,16 +379,19 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
-    const bool isMt11VideoReceiver = receiver
+    const bool isSecondaryVideoReceiver = receiver
         && _dualVideoManager
         && receiver->parent() == _dualVideoManager;
     const bool isMainVideoReceiver = receiver
         && !receiver->isThermal()
-        && !isMt11VideoReceiver;
+        && !isSecondaryVideoReceiver;
     GimbalControlManager *manager =
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
-    Mt11ControlManager *mt11Manager =
-        isMt11VideoReceiver ? mt11ControlManagerObject() : nullptr;
+    // Camera-control SDKs remain independent from the generic video layout.
+    // The current product profile associates Video 1 with A8 and Video 2 with
+    // MT11 for local photo/recording capture.
+    Mt11ControlManager *mt11Manager = isSecondaryVideoReceiver
+        ? mt11ControlManagerObject() : nullptr;
 
     if (widget && manager) {
         manager->setMainVideoItem(widget);

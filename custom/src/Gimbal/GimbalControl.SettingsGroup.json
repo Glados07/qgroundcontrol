@@ -49,7 +49,7 @@
         {
             "name": "mt11SdkHost",
             "shortDesc": "UniPod MT11 SDK UDP host",
-            "longDesc": "Controls UniPod MT11 camera commands only. This address is independent of the MT11 RTSP video URL.",
+            "longDesc": "Controls UniPod MT11 camera commands only. This address is independent of RTSP URL 2 under Video settings.",
             "type": "string",
             "default": "192.168.144.24"
         },
@@ -71,13 +71,6 @@
             "max": 29.0,
             "decimalPlaces": 1,
             "default": 1.0
-        },
-        {
-            "name": "mt11RtspUrl",
-            "shortDesc": "UniPod MT11 second-video RTSP URL",
-            "longDesc": "Feeds only the second MT11 video window. Camera commands use the independent MT11 SDK host and port.",
-            "type": "string",
-            "default": "rtsp://192.168.144.24:8554/video1"
         },
         {
             "name": "mavlinkAutoVideoStream",

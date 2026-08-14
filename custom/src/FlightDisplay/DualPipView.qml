@@ -1,24 +1,26 @@
 /****************************************************************************
  *
- * Three-way Fly View PIP manager used by the map, A8 Mini and MT11 views.
+ * Three-view PIP manager for Map, Video 1 and Video 2.
+ * The visual controls intentionally mirror src/QmlControls/PipView.qml.
  *
  ****************************************************************************/
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Window
 
 import QGroundControl
-import QGroundControl.ScreenTools
 import QGroundControl.Controls
+import QGroundControl.ScreenTools
 
 Item {
-    id: _root
+    id: root
 
     width: _pipSize
-    height: _isExpanded && _pipCount > 0
-            ? (_pipCount * _pipItemHeight) + ((_pipCount - 1) * _pipSpacing)
-            : _pipItemHeight
-    visible: show && _pipCount > 0
+    height: _isExpanded && _upperItem
+            ? (_pipItemHeight * 2) + _pipSpacing : _pipItemHeight
+    visible: show && (_lowerItem || _upperItem)
 
     property var item1: null
     property var item2: null
@@ -32,22 +34,22 @@ Item {
 
     readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
     property var _fullItem: null
+    property var _lowerItem: null
+    property var _upperItem: null
+    property var _windowItem: null
     property bool _isExpanded: true
     property real _pipSize: parent.width * 0.2
     property real _maxSize: 0.75
     property real _minSize: 0.10
     property real _pipSpacing: ScreenTools.defaultFontPixelHeight * 0.5
     readonly property real _pipItemHeight: _pipSize * (9 / 16)
-    readonly property int _pipCount: (_isPip(item1) ? 1 : 0)
-                                         + (_isPip(item2) ? 1 : 0)
-                                         + (_isPip(item3) ? 1 : 0)
     property bool _componentComplete: false
     property var _knownItems: []
 
     Component.onCompleted: {
         _componentComplete = true
         _knownItems = [item1, item2, item3]
-        _initForItems()
+        _initializeLayout()
         _setPipIsExpanded(QGroundControl.loadBoolGlobalSetting(
                               _pipExpandedSettingsKey, true))
     }
@@ -56,9 +58,22 @@ Item {
     onItem2Changed: _itemsChanged()
     onItem3Changed: _itemsChanged()
 
-    function _isPip(item) {
-        return item && item.pipState
-                && item.pipState.state === item.pipState.pipState
+    function _availableItems() {
+        var items = []
+        if (item1) {
+            items.push(item1)
+        }
+        if (item2) {
+            items.push(item2)
+        }
+        if (item3) {
+            items.push(item3)
+        }
+        return items
+    }
+
+    function _isAvailable(item) {
+        return item && _availableItems().indexOf(item) >= 0
     }
 
     function _itemKey(item) {
@@ -66,10 +81,10 @@ Item {
             return "map"
         }
         if (item === item2) {
-            return "a8mini"
+            return "video1"
         }
         if (item === item3) {
-            return "mt11"
+            return "video2"
         }
         return ""
     }
@@ -78,17 +93,30 @@ Item {
         if (key === "map") {
             return item1
         }
-        if (key === "a8mini") {
+        if (key === "video1" || key === "a8mini") {
             return item2
         }
-        if (key === "mt11") {
+        if (key === "video2" || key === "mt11") {
             return item3
         }
         return null
     }
 
-    function _firstAvailableItem() {
-        return item1 || item2 || item3
+    function _initialFullItem() {
+        var selected = _itemForKey(QGroundControl.loadGlobalSetting(
+                                       currentItemSettingsKey, ""))
+        if (_isAvailable(selected)) {
+            return selected
+        }
+
+        // Preserve the native two-view selection on first upgrade.
+        var mapWasFull = QGroundControl.loadBoolGlobalSetting(
+                    "MainFlyWindowIsMap", true)
+        return mapWasFull ? item1 : (item2 || item3 || item1)
+    }
+
+    function _initializeLayout() {
+        _reconcileLayout(_initialFullItem())
     }
 
     function _itemsChanged() {
@@ -99,89 +127,126 @@ Item {
         var currentItems = [item1, item2, item3]
         for (var i = 0; i < _knownItems.length; ++i) {
             var oldItem = _knownItems[i]
-            if (oldItem && currentItems.indexOf(oldItem) < 0
-                    && oldItem.pipState
-                    && oldItem.pipState.state
-                       === oldItem.pipState.windowState) {
-                // A disabled/removed stream must not remain parented to the
-                // shared popup window. Mirror PipView's close transition
-                // before hiding the now-empty window.
-                oldItem.pipState.windowAboutToClose()
-                oldItem.pipState.state = oldItem.pipState.pipState
-                pipWindow.hide()
-            }
-        }
-        _knownItems = currentItems
-        Qt.callLater(_initForItems)
-    }
-
-    function _initForItems() {
-        if (!_componentComplete) {
-            return
-        }
-
-        var selected = _itemForKey(QGroundControl.loadGlobalSetting(
-                                       currentItemSettingsKey, ""))
-        if (!selected) {
-            // Preserve the native two-view setting on first upgrade.
-            var mapWasFull = QGroundControl.loadBoolGlobalSetting(
-                        "MainFlyWindowIsMap", true)
-            selected = mapWasFull ? item1 : (item2 || item3 || item1)
-        }
-        if (!selected) {
-            selected = _firstAvailableItem()
-        }
-        _setFullItem(selected, false)
-    }
-
-    function _setFullItem(item, persist) {
-        if (!item || !item.pipState) {
-            return
-        }
-
-        var items = [item1, item2, item3]
-        if (_fullItem && _fullItem !== item
-                && items.indexOf(_fullItem) < 0 && _fullItem.pipState) {
-            _fullItem.pipState.state = _fullItem.pipState.pipState
-        }
-        for (var i = 0; i < items.length; ++i) {
-            var candidate = items[i]
-            if (!candidate || !candidate.pipState) {
+            if (!oldItem || currentItems.indexOf(oldItem) >= 0
+                    || !oldItem.pipState) {
                 continue
             }
-            if (candidate === item) {
+
+            if (oldItem === _windowItem) {
+                oldItem.pipState.windowAboutToClose()
+                _windowItem = null
+                pipWindow.hide()
+            }
+            oldItem.pipState.state = oldItem.pipState.initState
+        }
+
+        _knownItems = currentItems
+        Qt.callLater(function() {
+            root._reconcileLayout(root._fullItem)
+        })
+    }
+
+    function _reconcileLayout(preferredFull) {
+        var available = _availableItems()
+        if (available.length === 0) {
+            _fullItem = null
+            _lowerItem = null
+            _upperItem = null
+            return
+        }
+
+        var main = available.indexOf(preferredFull) >= 0
+                ? preferredFull : available[0]
+        var remaining = []
+        for (var i = 0; i < available.length; ++i) {
+            if (available[i] !== main) {
+                remaining.push(available[i])
+            }
+        }
+
+        var lower = remaining.indexOf(_lowerItem) >= 0 ? _lowerItem : null
+        var upper = remaining.indexOf(_upperItem) >= 0
+                && _upperItem !== lower ? _upperItem : null
+
+        for (var j = 0; j < remaining.length; ++j) {
+            var candidate = remaining[j]
+            if (candidate === lower || candidate === upper) {
+                continue
+            }
+            if (!lower) {
+                lower = candidate
+            } else if (!upper) {
+                upper = candidate
+            }
+        }
+
+        // A single remaining view always occupies the bottom slot. This keeps
+        // the PIP anchored at the native lower-left position when one source
+        // is disabled or removed.
+        if (!lower && upper) {
+            lower = upper
+            upper = null
+        }
+
+        _applyLayout(main, lower, upper, false)
+    }
+
+    function _applyLayout(main, lower, upper, persist) {
+        if (!_isAvailable(main)) {
+            return
+        }
+
+        _fullItem = main
+        _lowerItem = lower
+        _upperItem = upper
+
+        var items = _availableItems()
+        for (var i = 0; i < items.length; ++i) {
+            var candidate = items[i]
+            if (!candidate.pipState) {
+                continue
+            }
+            if (candidate === main) {
+                if (candidate === _windowItem) {
+                    candidate.pipState.windowAboutToClose()
+                    _windowItem = null
+                    pipWindow.hide()
+                }
                 candidate.pipState.state = candidate.pipState.fullState
-            } else if (candidate.pipState.state
-                       !== candidate.pipState.windowState) {
+            } else if (candidate !== _windowItem) {
                 candidate.pipState.state = candidate.pipState.pipState
             }
         }
 
-        _fullItem = item
         if (persist && currentItemSettingsKey.length > 0) {
             QGroundControl.saveGlobalSetting(currentItemSettingsKey,
-                                             _itemKey(item))
+                                             _itemKey(main))
         }
     }
 
-    function _pipIndex(item) {
-        var index = 0
-        var items = [item1, item2, item3]
-        for (var i = 0; i < items.length; ++i) {
-            var candidate = items[i]
-            if (candidate === item) {
-                return index
-            }
-            if (_isPip(candidate)) {
-                ++index
-            }
+    function _activateSlot(slotIndex) {
+        var clickedItem = slotIndex === 1 ? _lowerItem : _upperItem
+        var oldMain = _fullItem
+        if (!_isAvailable(clickedItem) || !_isAvailable(oldMain)
+                || clickedItem === oldMain) {
+            return
         }
-        return -1
-    }
 
-    function _pipBottomMargin(item) {
-        var index = _pipIndex(item)
-        return index < 0 ? 0 : index * (_pipItemHeight + _pipSpacing)
+        // Enter full state before changing the adapter's slot target. Then put
+        // the previous main view into exactly the slot which was clicked.
+        clickedItem.pipState.state = clickedItem.pipState.fullState
+        _fullItem = clickedItem
+        if (slotIndex === 1) {
+            _lowerItem = oldMain
+        } else {
+            _upperItem = oldMain
+        }
+        oldMain.pipState.state = oldMain.pipState.pipState
+
+        if (currentItemSettingsKey.length > 0) {
+            QGroundControl.saveGlobalSetting(currentItemSettingsKey,
+                                             _itemKey(clickedItem))
+        }
     }
 
     function _setPipIsExpanded(isExpanded) {
@@ -191,8 +256,12 @@ Item {
     }
 
     function _showWindow(item) {
-        pipWindow.width = _root.width
-        pipWindow.height = _pipItemHeight
+        if (!item || _windowItem) {
+            return
+        }
+        _windowItem = item
+        pipWindow.width = root.width
+        pipWindow.height = root._pipItemHeight
         pipWindow.title = _itemKey(item)
         pipWindow.show()
     }
@@ -202,7 +271,8 @@ Item {
         visible: false
 
         onClosing: {
-            var item = contentItem.children[0]
+            var item = root._windowItem
+            root._windowItem = null
             if (item && item.pipState) {
                 item.pipState.windowAboutToClose()
                 item.pipState.state = item.pipState.pipState
@@ -210,68 +280,85 @@ Item {
         }
     }
 
-    // PipState needs a view-specific content item but also expects pipView.parent
-    // to be the common full-size Fly View holder. These invisible adapters keep
-    // that native contract intact for all three views.
     Item {
         id: item1PipAdapter
-        parent: _root.parent
+        parent: root.parent
         visible: false
-        property Item _pipContentItem: item1Pane
+        property Item _pipContentItem: root._lowerItem === root.item1
+                                       ? lowerPane.contentItem
+                                       : upperPane.contentItem
         property Item _windowContentItem: pipWindow.contentItem
-        function showWindow() { _root._showWindow(_root.item1) }
+        function showWindow() { root._showWindow(root.item1) }
     }
 
     Item {
         id: item2PipAdapter
-        parent: _root.parent
+        parent: root.parent
         visible: false
-        property Item _pipContentItem: item2Pane
+        property Item _pipContentItem: root._lowerItem === root.item2
+                                       ? lowerPane.contentItem
+                                       : upperPane.contentItem
         property Item _windowContentItem: pipWindow.contentItem
-        function showWindow() { _root._showWindow(_root.item2) }
+        function showWindow() { root._showWindow(root.item2) }
     }
 
     Item {
         id: item3PipAdapter
-        parent: _root.parent
+        parent: root.parent
         visible: false
-        property Item _pipContentItem: item3Pane
+        property Item _pipContentItem: root._lowerItem === root.item3
+                                       ? lowerPane.contentItem
+                                       : upperPane.contentItem
         property Item _windowContentItem: pipWindow.contentItem
-        function showWindow() { _root._showWindow(_root.item3) }
+        function showWindow() { root._showWindow(root.item3) }
     }
 
     component PipPane: Item {
         id: pane
 
-        required property var viewItem
+        property int slotIndex: 1
+        readonly property var viewItem: slotIndex === 1
+                                        ? root._lowerItem : root._upperItem
+        readonly property Item contentItem: slotContent
 
-        width: _root.width
-        height: _root._pipItemHeight
+        width: root.width
+        height: root._pipItemHeight
         anchors.left: parent.left
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: _root._pipBottomMargin(viewItem)
-        visible: _root._isExpanded && _root._isPip(viewItem)
+        anchors.bottomMargin: slotIndex === 1
+                              ? 0 : root._pipItemHeight + root._pipSpacing
+        visible: root._isExpanded && viewItem && viewItem.pipState
+                 && viewItem.pipState.state === viewItem.pipState.pipState
         clip: true
 
+        Item {
+            id: slotContent
+            anchors.fill: parent
+            z: 0
+        }
+
+        // Keep the click layer above the reparented map/video item. This is the
+        // same ordering used by native PipView.qml.
         MouseArea {
             id: paneMouseArea
             anchors.fill: parent
+            z: 1
             enabled: pane.visible
             preventStealing: true
             hoverEnabled: true
-            onClicked: _root._setFullItem(pane.viewItem, true)
+            onClicked: root._activateSlot(pane.slotIndex)
         }
 
         Image {
             id: popupPip
+            z: 2
             source: "/qmlimages/PiP.svg"
             mipmap: true
             fillMode: Image.PreserveAspectFit
             anchors.left: parent.left
             anchors.top: parent.top
             visible: pane.visible && !ScreenTools.isMobile
-                     && paneMouseArea.containsMouse
-                     && pipWindow.contentItem.children.length === 0
+                     && paneMouseArea.containsMouse && !root._windowItem
             height: ScreenTools.defaultFontPixelHeight * 2.5
             width: height
             sourceSize.height: height
@@ -285,6 +372,7 @@ Item {
 
         Image {
             id: hidePip
+            z: 2
             source: "/qmlimages/pipHide.svg"
             mipmap: true
             fillMode: Image.PreserveAspectFit
@@ -298,12 +386,13 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: _root._setPipIsExpanded(false)
+                onClicked: root._setPipIsExpanded(false)
             }
         }
 
         Image {
             id: pipResizeIcon
+            z: 2
             source: "/qmlimages/pipResize.svg"
             fillMode: Image.PreserveAspectFit
             mipmap: true
@@ -327,7 +416,7 @@ Item {
                 onPressed: function(mouse) {
                     pipResize.anchors.fill = undefined
                     initialX = mouse.x
-                    initialWidth = _root.width
+                    initialWidth = root.width
                 }
 
                 onReleased: pipResize.anchors.fill = pipResizeIcon
@@ -336,11 +425,11 @@ Item {
                     if (!pressed) {
                         return
                     }
-                    var parentWidth = _root.parent.width
+                    var parentWidth = root.parent.width
                     var newWidth = initialWidth + mouse.x - initialX
-                    if (newWidth < parentWidth * _root._maxSize
-                            && newWidth > parentWidth * _root._minSize) {
-                        _root._pipSize = newWidth
+                    if (newWidth < parentWidth * root._maxSize
+                            && newWidth > parentWidth * root._minSize) {
+                        root._pipSize = newWidth
                     }
                 }
             }
@@ -348,18 +437,13 @@ Item {
     }
 
     PipPane {
-        id: item1Pane
-        viewItem: _root.item1
+        id: lowerPane
+        slotIndex: 1
     }
 
     PipPane {
-        id: item2Pane
-        viewItem: _root.item2
-    }
-
-    PipPane {
-        id: item3Pane
-        viewItem: _root.item3
+        id: upperPane
+        slotIndex: 2
     }
 
     Rectangle {
@@ -368,8 +452,8 @@ Item {
         height: ScreenTools.defaultFontPixelHeight * 2
         width: height
         radius: ScreenTools.defaultFontPixelHeight / 3
-        visible: !_root._isExpanded
-        color: _root._fullItem && _root._fullItem.pipState.isDark
+        visible: !root._isExpanded
+        color: root._fullItem && root._fullItem.pipState.isDark
                ? Qt.rgba(0, 0, 0, 0.75) : Qt.rgba(0, 0, 0, 0.5)
 
         Image {
@@ -384,22 +468,22 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: _root._setPipIsExpanded(true)
+            onClicked: root._setPipIsExpanded(true)
         }
     }
 
     Connections {
-        target: _root.parent
+        target: root.parent
 
         function onWidthChanged() {
-            if (!_root._componentComplete) {
+            if (!root._componentComplete) {
                 return
             }
-            var parentWidth = _root.parent.width
-            if (_root.width > parentWidth * _root._maxSize) {
-                _root._pipSize = parentWidth * _root._maxSize
-            } else if (_root.width < parentWidth * _root._minSize) {
-                _root._pipSize = parentWidth * _root._minSize
+            var parentWidth = root.parent.width
+            if (root.width > parentWidth * root._maxSize) {
+                root._pipSize = parentWidth * root._maxSize
+            } else if (root.width < parentWidth * root._minSize) {
+                root._pipSize = parentWidth * root._minSize
             }
         }
     }

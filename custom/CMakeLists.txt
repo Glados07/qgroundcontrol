@@ -170,8 +170,12 @@ set_source_files_properties(
     PROPERTIES QT_RESOURCE_ALIAS DualPipView.qml
 )
 set_source_files_properties(
-    src/FlightDisplay/MT11Video.qml
-    PROPERTIES QT_RESOURCE_ALIAS MT11Video.qml
+    src/FlightDisplay/FlyViewSecondaryVideo.qml
+    PROPERTIES QT_RESOURCE_ALIAS FlyViewSecondaryVideo.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
+    PROPERTIES QT_RESOURCE_ALIAS FlightDisplayViewSecondaryVideo.qml
 )
 qt_add_qml_module(CustomFlightDisplayModule
     URI Custom.FlightDisplay
@@ -179,7 +183,8 @@ qt_add_qml_module(CustomFlightDisplayModule
     RESOURCE_PREFIX /qml
     QML_FILES
         src/FlightDisplay/DualPipView.qml
-        src/FlightDisplay/MT11Video.qml
+        src/FlightDisplay/FlyViewSecondaryVideo.qml
+        src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
     NO_PLUGIN
 )
 

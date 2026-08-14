@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Independent video manager for the UniPod MT11 stream.
+ * Independent manager for the second configured RTSP stream.
  *
  ****************************************************************************/
 
@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-class GimbalControlSettings;
+class VideoCustomSettings;
 class VideoReceiver;
 
 class DualVideoManager : public QObject
@@ -25,6 +25,7 @@ class DualVideoManager : public QObject
 
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool hasVideo READ hasVideo NOTIFY hasVideoChanged)
+    Q_PROPERTY(bool duplicateSource READ duplicateSource NOTIFY duplicateSourceChanged)
     Q_PROPERTY(bool initialized READ initialized NOTIFY initializedChanged)
     Q_PROPERTY(bool streaming READ streaming NOTIFY streamingChanged)
     Q_PROPERTY(bool decoding READ decoding NOTIFY decodingChanged)
@@ -35,11 +36,12 @@ class DualVideoManager : public QObject
     Q_PROPERTY(QQuickItem *videoItem READ videoItem NOTIFY videoItemChanged)
 
 public:
-    explicit DualVideoManager(GimbalControlSettings *settings, QObject *parent = nullptr);
+    explicit DualVideoManager(VideoCustomSettings *settings, QObject *parent = nullptr);
     ~DualVideoManager() override;
 
     bool enabled() const { return _enabled; }
-    bool hasVideo() const { return _enabled && !_uri.isEmpty(); }
+    bool hasVideo() const { return _enabled && !_uri.isEmpty() && !_duplicateSource; }
+    bool duplicateSource() const { return _duplicateSource; }
     bool initialized() const { return !_receiver.isNull(); }
     bool streaming() const { return _streaming; }
     bool decoding() const { return _decoding; }
@@ -61,6 +63,7 @@ public:
 signals:
     void enabledChanged();
     void hasVideoChanged();
+    void duplicateSourceChanged();
     void initializedChanged();
     void videoObjectsAboutToBeReleased();
     void videoObjectsReleased();
@@ -72,6 +75,8 @@ signals:
     void videoItemChanged();
 
 private:
+    Q_SLOT void _finishRenderInitialization();
+
     void _refreshSettings();
     void _ensureReceiver();
     void _applyDesiredState();
@@ -80,7 +85,7 @@ private:
     void _releaseReceiver();
     uint32_t _rtspTimeout() const;
 
-    GimbalControlSettings *_settings = nullptr;
+    VideoCustomSettings *_settings = nullptr;
     QPointer<QQuickWindow> _window;
     QPointer<VideoReceiver> _receiver;
     QPointer<QQuickItem> _videoItem;
@@ -88,6 +93,8 @@ private:
     QString _uri;
     QSize _videoSize;
     bool _enabled = false;
+    bool _duplicateSource = false;
+    bool _renderReady = false;
     bool _streaming = false;
     bool _decoding = false;
     bool _fullScreen = false;

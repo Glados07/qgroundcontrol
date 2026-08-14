@@ -16,6 +16,7 @@ import QGroundControl
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
 import QGroundControl.Controls
+import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.AppSettings
 
@@ -36,6 +37,10 @@ SettingsPage {
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
     property var    _gimbalControlSettings:     QGroundControl.corePlugin.gimbalControlSettings
+    property var    _videoCustomSettings:       QGroundControl.corePlugin.videoCustomSettings
+    property var    _dualVideoManager:          QGroundControl.corePlugin.dualVideoManager
+
+    QGCPalette { id: qgcPal }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
@@ -55,14 +60,44 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Connection")
+        headingDescription: _isRTSP
+                            ? qsTr("Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.")
+                            : ""
         visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP | _requiresUDPUrl)
 
         LabelledFactTextField {
             Layout.fillWidth:           true
             textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("RTSP URL")
+            label:                      qsTr("RTSP URL 1")
             fact:                       _videoSettings.rtspUrl
             visible:                    _isRTSP && _videoSettings.rtspUrl.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("RTSP URL 2")
+            fact:                       _videoCustomSettings.secondaryRtspUrl
+            visible:                    _isRTSP
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.")
+            visible: _isRTSP
+            wrapMode: Text.WordWrap
+            font.pointSize: ScreenTools.smallFontPointSize
+            opacity: 0.72
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("RTSP URL 1 and RTSP URL 2 must be different.")
+            visible: _isRTSP && _dualVideoManager
+                     && _dualVideoManager.duplicateSource
+            wrapMode: Text.WordWrap
+            font.pointSize: ScreenTools.smallFontPointSize
+            color: qgcPal.warningText
         }
 
         LabelledFactTextField {
@@ -82,30 +117,6 @@ SettingsPage {
         }
     }
 
-    // Independent from QGC's primary video source: this remains visible when
-    // MAVLink auto-stream configuration disables the native groups above.
-    SettingsGroupLayout {
-        Layout.fillWidth: true
-        heading: qsTr("MT11 Second Video")
-        headingDescription: qsTr("Feeds the dedicated UniPod MT11 video window.")
-
-        LabelledFactTextField {
-            Layout.fillWidth: true
-            textFieldPreferredWidth: _urlFieldWidth
-            label: qsTr("MT11 RTSP URL")
-            fact: _gimbalControlSettings.mt11RtspUrl
-            enabled: _gimbalControlSettings.mt11Enabled.rawValue
-        }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("This video URL is independent of the MT11 SDK Host and Port used for zoom, photo, recording and thermal commands.")
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            opacity: 0.72
-        }
-    }
-
     // 独立设置组不受 MAVLink 自动流对原生 Video Source/Connection 设置组的禁用状态影响。
     SettingsGroupLayout {
         Layout.fillWidth: true
@@ -116,7 +127,6 @@ SettingsPage {
             Layout.fillWidth: true
             text: qsTr("Use MAVLink automatic video stream")
             fact: _gimbalControlSettings.mavlinkAutoVideoStream
-            enabled: _gimbalControlSettings.enabled.rawValue
         }
 
         QGCLabel {

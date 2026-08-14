@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts": [
+        {
+            "name": "secondaryRtspUrl",
+            "shortDesc": "Secondary RTSP video URL",
+            "longDesc": "Feeds the second independent video window. Leave empty to disable the second video stream.",
+            "type": "string",
+            "default": "rtsp://192.168.144.24:8554/video1"
+        }
+    ]
+}

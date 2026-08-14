@@ -97,7 +97,7 @@ Loader {
 
                 QGCLabel {
                     Layout.fillWidth: true
-                    text: qsTr("MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its independent video address under Video > MT11 Second Video.")
+                    text: qsTr("MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video > Connection > RTSP URL 2.")
                     wrapMode: Text.WordWrap
                     font.pointSize: ScreenTools.smallFontPointSize
                     opacity: 0.72

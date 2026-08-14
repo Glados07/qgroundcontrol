@@ -1,30 +1,53 @@
 /****************************************************************************
  *
- * Independent video manager for the UniPod MT11 stream.
+ * Independent manager for the second configured RTSP stream.
  *
  ****************************************************************************/
 
 #include "DualVideoManager.h"
 
 #include "Fact.h"
-#include "Gimbal/GimbalControlSettings.h"
 #include "QGCCorePlugin.h"
 #include "QGCLoggingCategory.h"
+#include "Settings/VideoCustomSettings.h"
 #include "SettingsManager.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoSettings.h"
 
 #include <QtCore/QVariant>
+#include <QtCore/QRunnable>
 
 QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 
 namespace {
-constexpr const char *kMt11VideoObjectName = "mt11VideoContent";
+constexpr const char *kSecondaryVideoObjectName = "secondaryVideoContent";
 constexpr int kRestartDelayMs = 1000;
 constexpr uint32_t kFallbackRtspTimeoutSeconds = 5;
+
+class FinishSecondaryVideoInitialization final : public QRunnable
+{
+public:
+    explicit FinishSecondaryVideoInitialization(DualVideoManager *manager)
+        : _manager(manager)
+    {
+    }
+
+    void run() final
+    {
+        if (_manager) {
+            QMetaObject::invokeMethod(
+                _manager.data(),
+                "_finishRenderInitialization",
+                Qt::QueuedConnection);
+        }
+    }
+
+private:
+    QPointer<DualVideoManager> _manager;
+};
 }
 
-DualVideoManager::DualVideoManager(GimbalControlSettings *settings, QObject *parent)
+DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *parent)
     : QObject(parent)
     , _settings(settings)
 {
@@ -33,11 +56,22 @@ DualVideoManager::DualVideoManager(GimbalControlSettings *settings, QObject *par
     connect(&_restartTimer, &QTimer::timeout, this, &DualVideoManager::_applyDesiredState);
 
     if (_settings) {
-        connect(_settings->mt11Enabled(),
+        connect(_settings->secondaryRtspUrl(),
                 &Fact::rawValueChanged,
                 this,
                 [this](const QVariant &) { _refreshSettings(); });
-        connect(_settings->mt11RtspUrl(),
+    }
+
+    if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
+        connect(videoSettings->videoSource(),
+                &Fact::rawValueChanged,
+                this,
+                [this](const QVariant &) { _refreshSettings(); });
+        connect(videoSettings->rtspUrl(),
+                &Fact::rawValueChanged,
+                this,
+                [this](const QVariant &) { _refreshSettings(); });
+        connect(videoSettings->streamEnabled(),
                 &Fact::rawValueChanged,
                 this,
                 [this](const QVariant &) { _refreshSettings(); });
@@ -74,7 +108,7 @@ double DualVideoManager::aspectRatio() const
 void DualVideoManager::init(QQuickWindow *window)
 {
     if (!window) {
-        qCWarning(DualVideoManagerLog) << "Cannot initialize MT11 video without a QQuickWindow";
+        qCWarning(DualVideoManagerLog) << "Cannot initialize the secondary video without a QQuickWindow";
         return;
     }
 
@@ -131,14 +165,32 @@ void DualVideoManager::setFullScreen(bool fullScreen)
 void DualVideoManager::_refreshSettings()
 {
     const bool oldHasVideo = hasVideo();
-    const bool enabled = _settings && _settings->mt11Enabled()->rawValue().toBool();
+    VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings();
+    const bool primaryUsesRtsp = videoSettings
+        && videoSettings->videoSource()->rawValue().toString()
+               == QString::fromLatin1(VideoSettings::videoSourceRTSP);
+    const bool enabled = _settings && videoSettings && primaryUsesRtsp
+        && videoSettings->streamEnabled()->rawValue().toBool();
     const QString uri = _settings
-        ? _settings->mt11RtspUrl()->rawValue().toString().trimmed()
+        ? _settings->secondaryRtspUrl()->rawValue().toString().trimmed()
         : QString();
+    const QString primaryUri = (videoSettings && primaryUsesRtsp)
+        ? videoSettings->rtspUrl()->rawValue().toString().trimmed()
+        : QString();
+    const bool duplicateSource = !uri.isEmpty() && !primaryUri.isEmpty()
+        && (uri == primaryUri);
 
     const bool enabledChanged = (_enabled != enabled);
+    const bool duplicateChanged = (_duplicateSource != duplicateSource);
     _enabled = enabled;
     _uri = uri;
+    _duplicateSource = duplicateSource;
+
+    if (duplicateChanged && _duplicateSource) {
+        qCWarning(DualVideoManagerLog)
+            << "Secondary RTSP URL matches the primary URL; the duplicate receiver is disabled"
+            << _uri;
+    }
 
     if (!hasVideo()) {
         setFullScreen(false);
@@ -146,6 +198,9 @@ void DualVideoManager::_refreshSettings()
 
     if (enabledChanged) {
         emit DualVideoManager::enabledChanged();
+    }
+    if (duplicateChanged) {
+        emit duplicateSourceChanged();
     }
     if (oldHasVideo != hasVideo()) {
         emit hasVideoChanged();
@@ -165,29 +220,29 @@ void DualVideoManager::_ensureReceiver()
     }
 
     QQuickItem *const videoItem = _window->findChild<QQuickItem *>(
-        QString::fromLatin1(kMt11VideoObjectName));
+        QString::fromLatin1(kSecondaryVideoObjectName));
     if (!videoItem) {
-        // MT11Video.qml deliberately does not instantiate an OpenGL video item
-        // while MT11 is disabled. Its Loader calls init again once the item is
+        // The secondary video surface does not instantiate an OpenGL video item
+        // while the URL is empty. Its Loader calls init again once the item is
         // available, so absence here is an expected ordering condition.
         return;
     }
 
     VideoReceiver *const receiver = QGCCorePlugin::instance()->createVideoReceiver(this);
     if (!receiver) {
-        qCCritical(DualVideoManagerLog) << "Failed to create the MT11 VideoReceiver";
+        qCCritical(DualVideoManagerLog) << "Failed to create the secondary VideoReceiver";
         return;
     }
 
     // The QtMultimedia factory currently ignores its parent argument, while
     // the GStreamer factory does not. Normalize ownership so CustomPlugin can
-    // classify this as the MT11 receiver on either backend and cleanup remains
+    // classify this as the secondary receiver on either backend and cleanup remains
     // deterministic.
     if (receiver->parent() != this) {
         receiver->setParent(this);
     }
 
-    receiver->setName(QString::fromLatin1(kMt11VideoObjectName));
+    receiver->setName(QString::fromLatin1(kSecondaryVideoObjectName));
     receiver->setWidget(videoItem);
     receiver->setUri(_uri);
 
@@ -197,7 +252,7 @@ void DualVideoManager::_ensureReceiver()
 
     void *const sink = QGCCorePlugin::instance()->createVideoSink(videoItem, receiver);
     if (!sink) {
-        qCCritical(DualVideoManagerLog) << "Failed to create the MT11 video sink";
+        qCCritical(DualVideoManagerLog) << "Failed to create the secondary video sink";
         delete receiver;
         return;
     }
@@ -205,6 +260,7 @@ void DualVideoManager::_ensureReceiver()
 
     _receiver = receiver;
     _videoItem = videoItem;
+    _renderReady = false;
 
     const QPointer<DualVideoManager> guardedThis(this);
     const QPointer<VideoReceiver> guardedReceiver(receiver);
@@ -218,6 +274,9 @@ void DualVideoManager::_ensureReceiver()
                 }
 
                 guardedThis->_starting = false;
+                qCInfo(DualVideoManagerLog)
+                    << "Secondary video start completed" << guardedReceiver->uri()
+                    << "status" << status;
                 if (status == VideoReceiver::STATUS_OK) {
                     guardedReceiver->setStarted(true);
                     if (guardedReceiver->sink()) {
@@ -287,17 +346,9 @@ void DualVideoManager::_ensureReceiver()
             this,
             [guardedThis]() {
                 if (guardedThis) {
-                    // A running receiver ignores another start request. Stop
-                    // the timed-out pipeline first; onStopComplete schedules
-                    // the bounded restart when the stream is still enabled.
-                    if (guardedThis->_receiver
-                        && (guardedThis->_receiver->started()
-                            || guardedThis->_starting)) {
-                        guardedThis->_restartRequested = true;
-                        guardedThis->_requestStop();
-                    } else {
-                        guardedThis->_scheduleRestart();
-                    }
+                    // GstVideoReceiver emits timeout before stopping its own
+                    // pipeline. onStopComplete serializes the restart.
+                    guardedThis->_restartRequested = true;
                 }
             });
 
@@ -309,6 +360,8 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_streaming = streaming;
+                qCInfo(DualVideoManagerLog)
+                    << "Secondary video streaming" << guardedThis->_uri << streaming;
                 emit guardedThis->streamingChanged();
             });
 
@@ -320,6 +373,8 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_decoding = decoding;
+                qCInfo(DualVideoManagerLog)
+                    << "Secondary video decoding" << guardedThis->_uri << decoding;
                 emit guardedThis->decodingChanged();
             });
 
@@ -331,17 +386,38 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_videoSize = videoSize;
+                qCInfo(DualVideoManagerLog)
+                    << "Secondary video size" << guardedThis->_uri << videoSize;
                 emit guardedThis->videoSizeChanged();
             });
 
     emit videoReceiverChanged();
     emit videoItemChanged();
     emit initializedChanged();
+
+    // Match native VideoManager: enter READY only after the scene graph has
+    // synchronized the dynamically loaded QGCVideoBackground item.
+    _window->scheduleRenderJob(
+        new FinishSecondaryVideoInitialization(this),
+        QQuickWindow::BeforeSynchronizingStage);
+}
+
+void DualVideoManager::_finishRenderInitialization()
+{
+    if (!_receiver || !_videoItem) {
+        return;
+    }
+
+    _renderReady = true;
+    qCInfo(DualVideoManagerLog)
+        << "Secondary video render item is ready"
+        << _videoItem->property("itemInitialized").toBool();
+    _applyDesiredState();
 }
 
 void DualVideoManager::_applyDesiredState()
 {
-    if (!_receiver) {
+    if (!_receiver || !_renderReady) {
         return;
     }
 
@@ -367,6 +443,7 @@ void DualVideoManager::_applyDesiredState()
 
     _restartTimer.stop();
     _starting = true;
+    qCInfo(DualVideoManagerLog) << "Starting secondary video" << _uri;
     _receiver->start(_rtspTimeout());
 }
 
@@ -409,6 +486,7 @@ void DualVideoManager::_releaseReceiver()
     receiver->disconnect(this);
     _receiver.clear();
     _videoItem.clear();
+    _renderReady = false;
     _restartRequested = false;
 
     // GstVideoReceiver's destructor drains its worker before the final sink

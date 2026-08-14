@@ -329,147 +329,147 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="121"/>
         <source>Video Stream Integration</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="113"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="122"/>
         <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="117"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="126"/>
         <source>Use MAVLink automatic video stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="124"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="132"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="132"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="140"/>
         <source>Force hardware decoding for Android H.265</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="146"/>
         <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="139"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="147"/>
         <source>Restart QGC after changing this option.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="187"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="195"/>
         <source>Save photos and videos locally</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="193"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="201"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="42"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="47"/>
         <source>Video Source</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="43"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
         <source>Mavlink camera stream is automatically configured</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="53"/>
         <source>Source</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="57"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="62"/>
         <source>Connection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="63"/>
-        <source>RTSP URL</source>
+        <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="70"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="69"/>
+        <source>RTSP URL 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="77"/>
+        <source>RTSP URL 2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="84"/>
+        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <source>RTSP URL 1 and RTSP URL 2 must be different.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="103"/>
         <source>TCP URL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="79"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
         <source>UDP URL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="89"/>
-        <source>MT11 Second Video</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="90"/>
-        <source>Feeds the dedicated UniPod MT11 video window.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="95"/>
-        <source>MT11 RTSP URL</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
-        <source>This video URL is independent of the MT11 SDK Host and Port used for zoom, photo, recording and thermal commands.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
         <source>Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="153"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="161"/>
         <source>Aspect Ratio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="168"/>
         <source>Stop recording when disarmed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="167"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="175"/>
         <source>Low Latency Mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="174"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="182"/>
         <source>Video decode priority</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="183"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="191"/>
         <source>Local Video Storage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="201"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="209"/>
         <source>Record File Format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="208"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="216"/>
         <source>Auto-Delete Saved Recordings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="215"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="223"/>
         <source>Max Storage Usage</source>
         <translation type="unfinished"></translation>
     </message>
@@ -535,24 +535,27 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="100"/>
-        <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its independent video address under Video &gt; MT11 Second Video.</source>
+        <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
-    <name>MT11Video</name>
+    <name>FlightDisplayViewSecondaryVideo</name>
     <message>
-        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <location filename="../src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml" line="61"/>
         <source>WAITING FOR VIDEO</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/MT11Video.qml" line="102"/>
+        <location filename="../src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml" line="61"/>
         <source>VIDEO DISABLED</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>FlyViewSecondaryVideo</name>
     <message>
-        <location filename="../src/FlightDisplay/MT11Video.qml" line="209"/>
+        <location filename="../src/FlightDisplay/FlyViewSecondaryVideo.qml" line="68"/>
         <source>Double-click to exit full screen</source>
         <translation type="unfinished"></translation>
     </message>
@@ -736,7 +739,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11SdkHost].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Controls UniPod MT11 camera commands only. This address is independent of the MT11 RTSP video URL.</source>
+        <source>Controls UniPod MT11 camera commands only. This address is independent of RTSP URL 2 under Video settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -757,16 +760,19 @@
         <source>Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.</source>
         <translation type="unfinished"></translation>
     </message>
+</context>
+<context>
+    <name>VideoCustom.SettingsGroup.json</name>
     <message>
-        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].shortDesc, </extracomment>
-        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>UniPod MT11 second-video RTSP URL</source>
+        <extracomment>.QGC.MetaData.Facts[secondaryRtspUrl].shortDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Secondary RTSP video URL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <extracomment>.QGC.MetaData.Facts[mt11RtspUrl].longDesc, </extracomment>
-        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Feeds only the second MT11 video window. Camera commands use the independent MT11 SDK host and port.</source>
+        <extracomment>.QGC.MetaData.Facts[secondaryRtspUrl].longDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Feeds the second independent video window. Leave empty to disable the second video stream.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
