@@ -27,6 +27,7 @@ import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
 
+import Custom.FlightDisplay as CustomFlightDisplay
 import Viewer3D
 
 Item {
@@ -168,7 +169,7 @@ Item {
             pipView: _pipView.item2PipView
         }
 
-        MT11Video {
+        CustomFlightDisplay.MT11Video {
             id: mt11VideoControl
             pipView: _pipView.item3PipView
             visible: _dualVideoManager
@@ -176,7 +177,7 @@ Item {
                          || _dualVideoManager.initialized)
         }
 
-        DualPipView {
+        CustomFlightDisplay.DualPipView {
             id: _pipView
             anchors.left: parent.left
             anchors.bottom: parent.bottom

@@ -162,6 +162,27 @@ qt_add_qml_module(CustomModule
     NO_PLUGIN
 )
 
+# QML types which extend the native FlightDisplay tree live in custom/src/FlightDisplay,
+# but use their own module so that upstream QGroundControl.FlightDisplay stays untouched.
+qt_add_library(CustomFlightDisplayModule STATIC)
+set_source_files_properties(
+    src/FlightDisplay/DualPipView.qml
+    PROPERTIES QT_RESOURCE_ALIAS DualPipView.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/MT11Video.qml
+    PROPERTIES QT_RESOURCE_ALIAS MT11Video.qml
+)
+qt_add_qml_module(CustomFlightDisplayModule
+    URI Custom.FlightDisplay
+    VERSION 1.0
+    RESOURCE_PREFIX /qml
+    QML_FILES
+        src/FlightDisplay/DualPipView.qml
+        src/FlightDisplay/MT11Video.qml
+    NO_PLUGIN
+)
+
 # 只收集 custom 真正修改或新增的 Viewer3D 实现。
 file(GLOB_RECURSE VIEWER3D_CUSTOM_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Viewer3D/*.cc
@@ -234,6 +255,7 @@ set(CUSTOM_SOURCES
 
 set(CUSTOM_LIBRARIES
     CustomModule
+    CustomFlightDisplayModule
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
     ${CUSTOM_VIEWER3D_GOOGLE_LIBRARIES}
