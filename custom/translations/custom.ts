@@ -355,7 +355,7 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="146"/>
-        <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
+        <source>Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

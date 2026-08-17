@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/gimbal`
 
-最后更新：2026-08-14
+最后更新：2026-08-17
 
 ## 1. 当前开发进度
 
@@ -27,7 +27,7 @@
 各模块当前所处阶段如下：
 
 - **已集成**：Viewer3D、思翼云台、Fuel、Proximity Radar、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
-- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、UniPod MT11私有SDK、通用独立第二路RTSP、Map/Video 1/Video 2三视图、双相机右栏、底部航向罗盘条、Android 86%界面缩放缺省值、Android H.265低延迟硬解和Android USB串口管理器已经进入当前工作树。仍需按第12章完成目标设备上的MT11抓包、双路解码、热成像、存储、布局、延迟、切换和重连测试，不能仅凭协议测试、静态接线或decoder rank判定整机验收通过。
+- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、UniPod MT11私有SDK、通用独立第二路RTSP、Map/Video 1/Video 2三视图、双相机右栏、底部航向罗盘条、Android 86%界面缩放缺省值、Android H.265低延迟硬解和Android USB串口管理器已经进入当前工作树。Android缺省优先厂商MediaCodec；每条H.265管线创建独立adapter、decoder和输出队列，不共享解码实例。仍需按第12章完成目标设备上的MT11抓包、双路硬解、热成像、存储、布局、延迟、切换和重连测试，不能仅凭协议测试、静态接线或decoder rank判定整机验收通过。
 - **已有实测基础**：Ubuntu 24.04 下 A8 Mini 云台控制及 H.265 RTSP 播放正常；Android 下同一云台使用 H.264 编码播放正常。
 - **功能边界**：本次实现的是 QGC 根据活动飞行器 `Vehicle.heading` 绘制的航向罗盘条，不是思翼视频码流内的 OSD，也不表示航点方向、航线偏差或下一航段。
 
@@ -67,7 +67,7 @@
 - MT11 SDK V0.1.0已在 `custom/src/Gimbal` 转换为 `Mt11Protocol`、`Mt11Sdk` 和 `Mt11ControlManager` 三层：Protocol只做严格帧/payload编解码，Sdk持有独立UDP socket并校验来源IP、ACK和1.5秒命令窗口，Manager负责2秒轮询、缩放、拍照、录像、热成像以及当前产品映射下 Video 2 的本地媒体协调。它与现有A8 `SiyiProtocol/SiyiSdk/GimbalControlManager`并存，不把MT11行为塞入A8状态机。
 - MT11帧使用 `55 66`头、control、payload length LE、production请求固定sequence 0、command、payload和末尾CRC16 LE；CRC多项式为 `0x1021`、初值为0。当前接入命令为0x05手动变倍/停止、0x0A相机系统状态、0x0B异步功能反馈、0x0C拍照/录像切换、0x0F绝对倍率、0x10查询视频模式、0x11设置视频模式、0x16最大倍率和0x18当前倍率。0x10/0x11以主可见光+副热成像 `[0,2]` 和主热成像+副可见光 `[2,0]`实现RGB/热成像往返。
 - `VideoCustomSettings` 把第二路地址作为通用 `[Video]/secondaryRtspUrl` Fact，与原生 `[Video]/rtspUrl` 在 Application Settings -> Video -> Connection 中分别标记为 `RTSP URL 1` 和 `RTSP URL 2`。产品新安装默认值分别为 URL 1 `rtsp://192.168.144.25:8554/main.264`、URL 2 `rtsp://192.168.144.24:8554/video1`；为兼容已发布版本，仅当新键不存在时读取旧 `[GimbalControl]/mt11RtspUrl`：旧值精确等于历史出厂默认 `rtsp://192.168.144.25:8554/video1` 时写入新 `.24/video1`，其他自定义值及空字符串原样复制，旧键不删除。
-- `DualVideoManager`为 Video 2 单独创建 `VideoReceiver`、QML视频背景Item、原生视频sink和重启/停止状态，不复用 Video 1 receiver，因此两路可同时拉流与解码。动态创建的 `QGCVideoBackground` 就绪后，Manager会等待 `QQuickWindow::BeforeSynchronizingStage` render-job边界并回到Manager线程标记render-ready，然后才启动receiver，避免sink在渲染Item就绪前启动。URL为空时禁用 Video 2；两个RTSP URL完全相同时设置页显示警告且第二receiver不启动，避免对同一endpoint重复拉流。
+- `DualVideoManager`为 Video 2 单独创建 `VideoReceiver`、QML视频背景Item、原生视频sink和重启/停止状态，不复用 Video 1 receiver，因此两路独立并行拉流与解码，不存在两路帧同步前置条件。动态创建的 `QGCVideoBackground` 会持续留在场景图中；Manager经过 `QQuickWindow::BeforeSynchronizingStage` 后还必须确认其真实 `itemInitialized=true`，再启动receiver，避免Android qml6glsink在OpenGL上下文建立前进入READY。Manager同时处理 `onStartDecodingComplete`，并在RTSP已streaming但规定时间内没有首个解码帧时完整停止/重启，避免永久停在WAITING。URL为空时禁用 Video 2；两个RTSP URL完全相同时设置页显示警告且第二receiver不启动，避免对同一endpoint重复拉流。
 - custom同路径覆盖 `FlyView.qml`并引入 `DualPipView.qml`、`FlyViewSecondaryVideo.qml` 和 `FlightDisplayViewSecondaryVideo.qml`。新增类型位于与原生一致的 `custom/src/FlightDisplay`，由独立静态模块 `Custom.FlightDisplay`注册；不修改原生 `QGroundControl.FlightDisplay`模块。Map、Video 1、Video 2各自保留原生 `PipState` 的 full/pip/window 语义；左下角是固定下槽和上槽，点击哪个槽，该视图进入主视图，原主视图精确回到被点击的同一槽位，未点击槽不移动。点击层位于重挂的视频/地图Item之上，切换后仍可继续点击。
 - 两个缩略框均复用原生 `PipView.qml` 的左下布局、默认宽度比例、显示/隐藏、独立窗口和右上拖拽缩放交互；Video 1 继续使用原生 `FlyViewVideo`，Video 2 的wrapper/surface按原生 `FlyViewVideo.qml` 和 `FlightDisplayViewVideo.qml` 拆分，并共享Video设置中的fit/grid、无视频占位、Proximity Radar和Obstacle Distance叠加。任一视频主视图双击可进入/退出全屏，全屏时统一隐藏toolbar、双PIP、WidgetLayer和custom overlay。
 - Fly View右侧栏在A8和MT11都启用时显示 `A8 Mini / MT11`切换按钮，只启用一路时自动归一到该后端。两栏共用 `GimbalCameraControl.qml`的缩放、拍照、录像、SD/LOCAL徽标和触控尺寸；`MT11CameraControl.qml`只负责注入MT11 Manager并在拍照上方开启热成像按钮。热成像按钮在0x10确认模式前不可用，点击后以0x11发送相反模式，匹配回包前保持pending，超时后重新查询而不以本地乐观值冒充切换成功。
@@ -369,7 +369,7 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | `custom/src/FlightDisplay/FlyView.qml` | 原生同路径Fly View的custom覆盖入口，保留任务控制器、地图、原生 Video 1 `FlyViewVideo`、WidgetLayer、引导控制和Viewer3D容器，增加通用 Video 2 与三路PIP编排。文件显式 `import Custom.FlightDisplay as CustomFlightDisplay`，并以限定名实例化 `FlyViewSecondaryVideo`和 `DualPipView`。Map/Video 1/Video 2按 `item1/item2/item3` 接入；任一缩略框被点击后成为居中全尺寸项，原中心项精确回到被点击槽位。URL为空、重复或主视频不可用时对应项从候选中移除，正在居中的失效项回退Map；选择保存为 `MainFlyWindowView`并兼容旧 `MainFlyWindowIsMap`。任一视频全屏时统一隐藏工具栏、PIP、WidgetLayer和custom overlay。 |
 | `custom/src/FlightDisplay/DualPipView.qml` | Map/Video 1/Video 2 三视图PIP状态管理器，沿用原生 `PipState` 的full/pip/window状态和原生 `PipView.qml` 的展开/隐藏、独立窗口、右上拖拽缩放交互。左下定义固定下槽与上槽；点击某槽只交换该槽和主视图，原主视图回到同一槽、另一槽保持不动。可点击层的 `z` 高于重挂内容，避免首次切换后视频/地图Item遮住点击区。本文件只管布局和状态，不创建或解码视频。 |
 | `custom/src/FlightDisplay/FlyViewSecondaryVideo.qml` | Video 2 的通用Fly View wrapper，结构对齐原生 `FlyViewVideo.qml`：持有 `PipState`，进入/退出独立PIP窗口时暂停receiver并延迟2秒重启，只在full状态接受双击全屏，并叠加Proximity Radar和Obstacle Distance。它不包含MT11 SDK或设备地址。 |
-| `custom/src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml` | Video 2 的通用解码显示surface，结构对齐原生 `FlightDisplayViewVideo.qml`。从 `DualVideoManager` 取得decoding/尺寸/全屏状态，复用Video设置的fit/grid和原生无视频背景；Loader创建objectName为 `secondaryVideoContent` 的 `QGCVideoBackground`，就绪后调用Manager初始化。它不调用任何相机SDK。 |
+| `custom/src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml` | Video 2 的通用解码显示surface，结构对齐原生 `FlightDisplayViewVideo.qml`。从 `DualVideoManager` 取得decoding/尺寸/全屏状态，复用Video设置的fit/grid和原生无视频背景；Loader创建objectName为 `secondaryVideoContent` 的 `QGCVideoBackground`，就绪后调用Manager初始化。启动等待期间GL Item仍保持在场景图中，由更高z值的原生无视频背景覆盖，首个解码帧到达后再显示画面，避免“因为尚未decoding而隐藏GL Item、又因为GL Item未初始化而无法decoding”的循环依赖。它不调用任何相机SDK。 |
 | `custom/src/FlightDisplay/MT11CameraControl.qml` | MT11右栏薄封装，复用 `GimbalCameraControl.qml` 的缩放、拍照、录像、本地媒体和状态布局，注入 `mt11ControlManager` 并打开热成像控件。它不复制A8面板逻辑；热成像按钮实际命令、pending和RGB/IR反馈仍由Manager及共享面板处理。 |
 | `custom/src/FlightDisplay/FlyViewCompassBar.qml` | 罗盘条本体和绘制算法。直接读取活动飞行器 `Vehicle.heading.rawValue`，验证并归一化到 `[0°, 360°)`，使用中心附近 11 个 45°相对标签计算 N/NE/E/SE/S/SW/W/NW 的横向位置，中央显示四舍五入的整数航向并用 `compassPointer.svg` 绘制固定指针。它不读取显示开关、不保存设置、不判断是否应被加载；外层 `FlyViewCustomLayer.qml` 负责生命周期和显示条件。组件没有鼠标拦截层，因此不会吞掉下方地图手势。 |
 | `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | Fly View custom overlay 的编排层，同时管理罗盘条与燃料电池母线告警。它从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 读取用户意愿，再结合 overlay 可见、活动飞行器存在和 heading 有效四个条件，通过明确 QRC URL加载 `FlyViewCompassBar.qml`；罗盘条采用组件的 `implicitWidth`（与示例相同为 `50 × defaultFontPixelWidth`）并保持屏幕水平居中，只按 Fly View 总宽度和基础 margin 做最终屏幕边界钳制，不再使用 PIP/摇杆/仪表的角落 inset 压缩宽度。它把“罗盘条高度+底边 margin”的完整占用深度合并进 `bottomEdgeCenterInset`，关闭时透传原生 inset。同一文件还监听 `vehicle.generator.busVoltage`，低于20.0 V置告警、超过20.4 V清除，形成回差；`mapControl` 当前只是兼容接口，未参与逻辑。 |
@@ -421,11 +421,11 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | 文件 | 详细作用 |
 |---|---|
 | `custom/src/VideoManager/DualVideoManager.h` | 声明通用 Video 2 的独立生命周期对象，向QML暴露enabled/hasVideo/duplicateSource/streaming/decoding/fullScreen、尺寸、receiver和videoItem；提供init/start/stop/cleanup，并在释放对象前发出 `videoObjectsAboutToBeReleased`。它不复用或修改原生 Video 1 `VideoManager` receiver，也不暴露任何设备型号。 |
-| `custom/src/VideoManager/DualVideoManager.cc` | 监听通用 `[Video]/secondaryRtspUrl`以及原生Video Source/`rtspUrl`/`streamEnabled`，在 `FlightDisplayViewSecondaryVideo.qml` 的 `secondaryVideoContent` Item就绪后由core plugin创建独立 `VideoReceiver`和sink。创建对象后不立即启流，而是向 `QQuickWindow::BeforeSynchronizingStage` 安排render job，回到Manager线程标记render-ready后才启动，与原生VideoManager的场景图初始化边界对齐。它独立维护启动、停止、1秒重试、设置变化和主动pause；URL为空或与Video 1 RTSP URL完全相同时不启动第二receiver。释放前仍通知当前映射的MT11 Manager收尾owned本地录像，随后按receiver先销毁、sink后释放的顺序清理。相机SDK是否在线不参与通用RTSP启动判定。 |
+| `custom/src/VideoManager/DualVideoManager.cc` | 监听通用 `[Video]/secondaryRtspUrl`以及原生Video Source/`rtspUrl`/`streamEnabled`，在 `FlightDisplayViewSecondaryVideo.qml` 的 `secondaryVideoContent` Item就绪后由core plugin创建独立 `VideoReceiver`和sink。创建对象后先经过 `QQuickWindow::BeforeSynchronizingStage`，再读取动态qgcvideosink Item的 `itemInitialized`；属性存在时只有其为true才启流，并监听 `itemInitializedChanged`和跨窗口变化，防止Android OpenGL上下文未完成时过早启动。它独立维护启动、停止、1–15秒有上限退避重试、设置变化和主动pause；处理 `onStartDecodingComplete`失败，并对“streaming=true但迟迟没有decoding首帧”设置10–30秒有界watchdog后重建管线。URL为空或与Video 1 RTSP URL完全相同时不启动第二receiver；停止/释放路径不受render-ready门闩限制。动态视频Item被销毁时先清除receiver中的裸widget指针并有序释放旧sink，后续新surface加载时重新创建receiver，避免沿用失效GL对象。释放前仍通知当前映射的MT11 Manager收尾owned本地录像，随后按receiver先销毁、sink后释放的顺序清理。相机SDK是否在线不参与通用RTSP启动判定。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h` | 声明无QObject状态的主拉流协商尺寸探针安装接口及 `ResolutionHandler` 回调。由 `CustomPlugin::createVideoSink()` 调用；非GStreamer构建、空sink、非 `VideoReceiver` parent或thermal receiver返回false且不改变原生视频路径。回调由GStreamer流线程触发，调用方必须排队切回Manager线程。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.cc` | 只在 `QGC_GST_STREAMING` 下对主视频 `qgcvideosinkbin` 的 `sink` ghost pad安装downstream CAPS、BUFFER和BUFFER_LIST探针。只有真实帧到达才发布尺寸；宽高直接读取CAPS structure，不把成功条件绑死在完整format的 `gst_video_info_from_caps()`。若外层ghost pad没有current CAPS，则继续读取已连接解码器peer和ghost target的current CAPS，覆盖不同平台的caps存放差异。得到正宽高后既通过回调直达Manager，也经既有 `VideoReceiver::videoSizeChanged` 修正 `VideoManager`，从而覆盖原生 `GstVideoReceiver::_addVideoSink()` 在管线刚拼接时用 `gst_pad_query_caps()` 得到的暂态/无效值；该原生信号同时可触发Manager受控的1秒稳定兜底。不修改 `src`、不猜测卡录分辨率，也不影响thermal流。首个真实帧仍无法取得宽高时会明确告警。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h` | 声明进程级 custom H.265 decoder factory接口：固定factory名、注册函数、已选内部厂商MediaCodec factory查询，以及policy与adapter共用的厂商名称过滤函数。它只是适配器注册API，不实现H.265算法，也不调用Android `MediaCodecInfo.isHardwareAccelerated()`做系统级硬件认证。 |
-| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 在启动阶段枚举能接受 `video/x-h265,stream-format=byte-stream,alignment=au` 的 `amcviddec-*`，排除secure、software/FFmpeg、`*.sw.dec`、Qualcomm `*swvdec`、OMX Google及C2 Android/Google/Goldfish，优先名称含low-latency变体的组件，再按原rank/名称排序；预检只证明元素可创建、静态链可链接且bin能进READY，不证明真实profile/level已解码。选中后缓存厂商factory并以rank `PRIMARY+100=356` 注册 `qgcandroidh265hwdec`。每个实例内部为：外部hvc1 ghost sink -> `h265parse(config-interval=-1)` -> Annex-B byte-stream/AU capsfilter -> 厂商MediaCodec -> downstream-leaky raw queue（最多2 buffer）-> `video/x-raw(ANY)` ghost src；probe记录真实输入caps和首个raw buffer的caps/PTS/bytes/GLMemory。首帧日志只证明经过名称筛选的factory已产出raw frame，不等同Android API硬件认证，也不保证画面已到QML sink。 |
+| `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.cc` | 在启动阶段枚举能接受 `video/x-h265,stream-format=byte-stream,alignment=au` 的 `amcviddec-*`，排除secure、software/FFmpeg、`*.sw.dec`、Qualcomm `*swvdec`、OMX Google及C2 Android/Google/Goldfish，优先名称含low-latency变体的组件，再按原rank/名称排序；预检只证明元素可创建、静态链可链接且bin能进READY，不证明真实profile/level已解码。选中后缓存厂商factory并以rank `PRIMARY+100=356` 注册 `qgcandroidh265hwdec`。每个播放管线都会创建独立adapter实例，实例各自拥有parser、capsfilter、厂商MediaCodec element和downstream-leaky raw queue（最多2 buffer）；共享项仅为启动时选定后只读的factory名称、类型注册和rank，不共享decoder element、buffer或逐流状态。单实例内部为：外部hvc1 ghost sink -> `h265parse(config-interval=-1)` -> Annex-B byte-stream/AU capsfilter -> 厂商MediaCodec -> raw queue -> `video/x-raw(ANY)` ghost src；probe记录真实输入caps和首个raw buffer的caps/PTS/bytes/GLMemory。首帧日志只证明经过名称筛选的factory已产出raw frame，不等同Android API硬件认证，也不保证画面已到QML sink。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h` | 声明一次性的Android H.265 factory rank/适配策略入口。正确调用窗口是 `VideoManager`构造已完成 `GStreamer::initialize()` 之后、`VideoManager::init()` 创建VideoReceiver和 `decodebin3`之前；过早无法枚举插件，过晚则已建管线不会重新选择decoder。 |
 | `custom/src/VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.cc` | `CustomPlugin::init()` 从 `forceAndroidH265HardwareDecoder` 读取一次并调用的策略实现，因此开关要求重启。仅Android+`QGC_GST_STREAMING`且GStreamer已初始化时生效：先尝试注册上述hvc1适配器，再枚举H.265 decoder并按静态sink caps判断hvc1/byte-stream兼容；适配器至少rank356，经过厂商名称筛选且直接接受hvc1的MediaCodec至少提升到 `PRIMARY+2=258`，高于原生Force Software将 `avdec_h265`设成的257。其他软件factory rank不删除也不置0，只保留回退资格，不能承诺所有真机运行期协商失败都一定无黑屏回退。逐候选日志记录分类、caps兼容和rank变化；H.264及非Android不受影响。 |
 
@@ -680,7 +680,7 @@ custom同路径 `FlyView.qml` 延续原生全屏语义：Video 1或Video 2全屏
 | `sdkPort` | 1-65535 / `37260` | A8 Mini 私有 UDP SDK 端口。 |
 | `zoomStep` | 0.1-4.5 / `1.0x` | tap的绝对步进和hold目标分档。合法目标从1.0x按步长递增并追加卡录能力的有效精确上限，正反方向共用同一表；默认1.0x时2K卡录为1.0/2.0/3.0/3.5，1080P卡录为1.0/2.0/3.0/4.0/5.0/5.5，720P卡录为1.0/2.0/3.0/4.0/5.0/6.0，4K只有1.0。 |
 | `mavlinkAutoVideoStream` | bool / `false` | 是否接受 MAVLink 相机流 URI 并允许其锁定视频源。修改后重启 QGC。 |
-| `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。注册 `hvc1 -> byte-stream/au` 适配器并优先真实厂商 MediaCodec H.265 硬解；无可用硬解时保留软件回退。修改后重启 QGC。 |
+| `forceAndroidH265HardwareDecoder` | bool / `true` | 仅 Android 生效。缺省开启，注册 `hvc1 -> byte-stream/au` 适配器并优先真实厂商MediaCodec H.265硬解，以满足遥控器双路实时视频的低延迟和CPU占用要求；每个receiver创建独立adapter/decoder实例。修改后必须重启QGC。若特定设备无法同时创建两个厂商MediaCodec实例，可临时关闭做软件/自动解码A/B排障；用户已明确保存的选择不会被metadata默认值覆盖。 |
 
 Gimbal启用后，Manager即使不在Fly View也会持续运行，并每2秒向 `sdkHost:sdkPort`探测：GStreamer构建优先采用主显示sink直接报告的最终协商尺寸，仅在没有任何有效直接结果时用 `VideoManager::videoSizeChanged/decodingChanged` 启动1秒稳定兜底；非GStreamer构建直接使用这两个原生状态。拉流结果只决定视频会话门控。每轮查询0x20录像流编码参数、0x16设备上限和0x0a状态；0x20卡录分辨率给出基础能力，合法0x16只以较小值安全收紧。新视频会话和能力变化后以0x18建立目标参考；此后任意合法0x0f在本地发送成功后立即更新并显示 `currentZoom`，实际0x18反馈独立核对且不覆盖当前目标。Fly View右侧纵向合并栏不等待探测结果，无论是否连接飞控或云台都立即显示；缩放按钮需要受支持视频会话及卡录能力均已确认，且不把 `sdkResponding`作为单独门控。
 
@@ -720,7 +720,7 @@ RTSP URL 的 `.264` 后缀只是 A8 Mini 的固定路径名，不代表当前一
 
 1. 电脑或遥控器网口连接A8 Mini，确认可访问 `192.168.144.25`；私有相机控制无需连接飞控，也无需等待QGC出现活动Vehicle。
 2. Application Settings -> Fly View -> SIYI Gimbal Camera 中确认IP、端口、缩放分度值和Enabled。页面标题说明保持简短，以免撑坏设置页布局；tap/hold、唯一min锚目标表、卡录分辨率有效端点和成功发送即显示目标等完整要求以本节和Fact元数据为准。
-3. Application Settings -> Video -> Local Video Storage 按需开启 `Save photos and videos locally`，并确认原生录像格式、最大本地视频存储和应用数据位置；该开关即时生效。Video Stream Integration 中选择是否使用 MAVLink 自动视频流；Android H.265硬解设置修改后重启QGC。
+3. Application Settings -> Video -> Local Video Storage 按需开启 `Save photos and videos locally`，并确认原生录像格式、最大本地视频存储和应用数据位置；该开关即时生效。Video Stream Integration 中选择是否使用 MAVLink 自动视频流；双路H.265验收时保持缺省强制硬解开启，Android H.265硬解设置修改后重启QGC。只有在硬解实例创建或协商失败的A/B排障中才临时关闭。
 4. 返回Fly View。只要Gimbal Enabled，右侧单个纵向合并栏就应立即显示，不要求飞控或云台已连接；从上到下依次为 `+`、当前目标倍率、`-`、拍照/录像图标按钮及 `SD`/`LOCAL` 状态徽标。空闲时两个相机按钮应同为圆形且图标等大，录像按钮不应出现“录像/REC”文字；计时、pending或失败文字只在对应状态下显示。尚未确认受支持视频流或卡录能力时倍率显示 `--`且缩放按钮禁用，但开启本地存储且视频正在流式传输时录像按钮仍允许开始本地独立录像。视频第一帧只建立拉流会话门控；随后应看到卡录分辨率、映射上限及最终有效上限的能力摘要。最终上限按卡录4K=1.0、2K=3.5、1080P=5.5、720P=6.0确定，0x16只允许收紧。
 5. 短按 `+`/`-` 每次立即发送同一合法目标表中的相邻一档，发送成功即显示target。默认步长1.0x时，2K卡录严格沿1→2→3→3.5往返，1080P卡录沿1→2→3→4→5→5.5往返，720P卡录沿1→2→3→4→5→6往返；拉流设为1080P但卡录为2K时仍必须使用3.5上限。快速点击 `+++`应立即依次发出并显示合法目标，后一次现场替换前一次目标。按住420 ms后进入hold，普通路径抓包应只出现一次0x05 `+1/-1`开始命令、release/cancel或目标到端点时的0x05 `0`停止及一份有界安全重复，不得周期性出现0x0f；若成立时第一目标就是端点，则只出现一次同方向端点0x0f而不出现0x05。显示目标档数必须等于 `qRound(totalMs / 600.0)`并沿按下方向单调；普通release完成最后一次时间计算，取消路径不推进显示目标。0x18运动中raw只更新独立实际值，不得覆盖当前目标显示或触发释放、断流重连后的0x0f纠偏。
    应用日志不再逐包打印SDK发送/接收、周期0x16/0x18/0x20回包、未变化能力确认或长按120 ms目标推进。正常测试只保留拉流会话与卡录能力就绪、单击目标发送/实际确认、长按开始/停止及停止后一次目标—实际倍率核对；超时、非法业务payload、分辨率不支持和安全上限冲突仍使用告警日志。来源IP不匹配、错误帧头/长度/CRC及非ACK帧会静默丢弃，协议级逐包检查应使用抓包工具，不依赖应用控制台。
@@ -746,7 +746,7 @@ SDK控制endpoint与RTSP视频URL在程序职责上保持分离。两个URL只�
 
 1. Application Settings -> Video先选择RTSP源，再在同一Connection组配置 `RTSP URL 1` 与 `RTSP URL 2`。产品默认分别为 `rtsp://192.168.144.25:8554/main.264` 与 `rtsp://192.168.144.24:8554/video1`；URL 1严格对应Video 1，URL 2严格对应Video 2，两者都不使用相机型号作为设置名。修改URL 2时 `DualVideoManager`有序停止/释放旧receiver后按新值创建；两URL相同时显示明确警告并禁用Video 2。Application Settings -> Fly View仍分别配置A8与MT11的Enabled/SDK Host/SDK Port/Zoom Step，但这些只控制右栏SDK。
 2. Fly View同时提供Map、Video 1、Video 2三个可选视图，同一时刻仅一个居中全尺寸显示，其余可用项位于左下的固定下槽/上槽。点击任一槽后，该视图立即居中，原主视图精确回到这个被点击槽位，另一槽不移动。选择保存为 `MainFlyWindowView`并兼容 `MainFlyWindowIsMap`；失效视图若正居中则回退Map。
-3. Video 1继续由原生 `VideoManager`拥有receiver，Video 2由 `DualVideoManager`拥有第二个独立 `VideoReceiver`、sink、解码/重试状态和通用videoItem，两路并行启动并可同时显示。第二receiver必须等待 `BeforeSynchronizingStage` 场景图同步边界后才启流。当前本地媒体映射下，A8 Manager只保存Video 1非thermal receiver，MT11 Manager只保存Video 2 receiver；任一录像按钮只开始/停止本Manager确认owned的录像。
+3. Video 1继续由原生 `VideoManager`拥有receiver，Video 2由 `DualVideoManager`拥有第二个独立 `VideoReceiver`、sink、解码/重试状态和通用videoItem，两路独立并行启动并可同时显示，不等待另一流时间戳或首帧。第二receiver必须经过 `BeforeSynchronizingStage` 并确认动态GL Item的 `itemInitialized=true` 后才启流；解码启动失败或RTSP已streaming但首帧超时时重建自身管线，不影响Video 1。当前本地媒体映射下，A8 Manager只保存Video 1非thermal receiver，MT11 Manager只保存Video 2 receiver；任一录像按钮只开始/停止本Manager确认owned的录像。
 4. 右栏在A8与MT11同时启用时显示相机选择器；切换只更换当前控制Manager，不改变居中视频。两套面板保持相同缩放、拍照、录像、SD/LOCAL徽标和布局；选择MT11时在拍照控件上方额外显示RGB/IR圆形按钮。点击后发送0x11 `[2,0]`切到热成像主流，或 `[0,2]`切回RGB主流；pending期间禁止重复点击，只有0x10/0x11合法模式反馈才更新显示。
 5. Video 1或Video 2居中时均保留原生风格的双击全屏；两个PIP均保留原生显示/隐藏、独立窗口和右上拖拽缩放。全屏会统一隐藏Fly View工具栏、PIP、WidgetLayer及custom overlay，退出后恢复。Video 2使用Video设置中的fit/grid与Proximity/Obstacle视频叠加；独立PIP弹窗开关前后暂停第二路并延迟2秒重启。
 
@@ -934,8 +934,9 @@ QGCApplication
         -> 新键缺失时读取旧 `[GimbalControl]/mt11RtspUrl`：精确历史 `.25/video1` 默认转为 `.24/video1`，其他值/空值原样复制，不删旧键
      -> DualVideoManager
         -> 读取通用secondaryRtspUrl，与原生rtspUrl相同时禁用重复源
-        -> 为Video 2创建独立VideoReceiver、sink、启动/停止和1秒重试状态
-        -> secondaryVideoContent就绪后等待BeforeSynchronizingStage，再与Video 1并行启流
+        -> 为Video 2创建独立VideoReceiver、sink、启动/停止和1–15秒有上限退避重试状态
+        -> secondaryVideoContent保持在场景图；等待BeforeSynchronizingStage及itemInitialized=true后与Video 1并行启流
+        -> startDecoding失败或streaming后10–30秒无首个解码帧时停止并重建自身管线
         -> URL为空/重复、设置变化和cleanup时有序停止并释放
         -> videoObjectsAboutToBeReleased先通知MT11 Manager收尾owned本地录像
   -> VideoManager::init()
@@ -995,7 +996,7 @@ Application Settings / Video
      -> 不以配额删除未公开Staging；失败源额外占用空间直至重试成功/用户处理
   -> Video Stream Integration
      -> mavlinkAutoVideoStream
-     -> forceAndroidH265HardwareDecoder（所有平台显示，仅 Android 生效）
+     -> forceAndroidH265HardwareDecoder（默认true；所有平台显示，仅 Android 生效且修改后重启）
 ```
 
 ```text
@@ -1079,7 +1080,7 @@ Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移�
 重点验证：
 
 1. Application Settings -> Fly View -> Instrument Panel显示 `Show Heading Compass Bar`，页面同时保留Viewer3D、`SIYI A8 Mini Gimbal Camera`和 `UniPod MT11 Gimbal Camera`；两套SDK host/port/zoom step各自保存，MT11组只提示两路视频URL统一位于Video -> Connection，不再显示MT11专用URL名称。
-2. Application Settings -> Video保留全部原生设置组；选择RTSP源后，Connection同组同时显示 `RTSP URL 1` 和 `RTSP URL 2`，分别对应Video 1与Video 2。新安装默认必须分别为 URL 1 `rtsp://192.168.144.25:8554/main.264`、URL 2 `rtsp://192.168.144.24:8554/video1`；清空URL 2后Video 2移除，URL 1/2相同时页面告警且第二receiver不启动。Local Video Storage保留本地照片/录像开关；Video Stream Integration在所有平台显示两个开关，H.265强制硬解仅Android生效。
+2. Application Settings -> Video保留全部原生设置组；选择RTSP源后，Connection同组同时显示 `RTSP URL 1` 和 `RTSP URL 2`，分别对应Video 1与Video 2。新安装默认必须分别为 URL 1 `rtsp://192.168.144.25:8554/main.264`、URL 2 `rtsp://192.168.144.24:8554/video1`；清空URL 2后Video 2移除，URL 1/2相同时页面告警且第二receiver不启动。Local Video Storage保留本地照片/录像开关；Video Stream Integration在所有平台显示两个开关，H.265强制硬解缺省为true且仅Android生效。
 3. Viewer3D Enabled 持久化，重启后图标状态正确。
 4. 3D 图标白色，2D/3D 可往返切换。
 5. 本地 OSM、外部 OBJ/glTF/GLB 和可选 Google 3D 正常加载。
@@ -1110,7 +1111,7 @@ Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移�
    - Gimbal Disabled且存在活动飞行器时恢复原生 `PhotoVideoControl`；关闭时没有活动飞行器则不加载原生控件。关闭后回送关闭前轮询产生的迟到0x18/0x20/0x0a/0x0b或任意0x16，不能重新把私有SDK标记在线、恢复能力、改变已清空的状态或发送0x0f。Gimbal Enabled但离线时仍显示私有合并栏，以灰色状态明确离线，不得用原生控件替换或把整栏隐藏。
    - 双相机网络和视频设置迁移：确认A8既有SDK配置保持 `.25`不变，MT11 SDK实际发包目的为 `192.168.144.24:37260`。通用URL则按用户配置分别由Video 1/Video 2 receiver请求，SDK断开不得使通用视频框消失。对Video 2迁移构造“新键缺失+旧键精确为历史 `.25/video1` 出厂默认”“新键缺失+旧键为其他用户值”“新键缺失+旧键为空”“新旧键都不存在”“新键已存在”：第一种必须写入 `.24/video1`，第二/三种必须原样复制，第四种使用新JSON缺省，第五种绝不覆盖，且所有路径都不删旧键。
    - 三视图与精确槽位交换矩阵：在Map、Video 1、Video 2都可用时，记录左下固定下槽/上槽内容。点击下槽后只能是下槽与主视图交换，上槽不动；再点击上槽后只能是上槽与主视图交换，下槽不动。连续往返至少20次，每次都必须仍可点击；重启保持最后主视图选择。清空URL 2或使其与URL 1重复时Video 2候选移除，正在居中则回退Map；关闭MT11 SDK Enabled不得移除Video 2。另验证两个PIP的隐藏/恢复、桌面独立窗口以及右上角拖拽resize与原生一致。
-   - 双路并行解码、全屏和叠加层：URL 1/2配置为两个不同且可用的RTSP endpoint，确认两个receiver同时streaming/decoding且两个缩略框同时有实时画面；日志中Video 2必须先出现render-ready后再启流。Video 1、Video 2居中时分别双击进入/退出全屏；全屏期间工具栏、三视图PIP、WidgetLayer、罗盘条和母线告警均隐藏。Video 2继续验证fit/grid、Proximity Radar和Obstacle Distance；断流后退出对应全屏，不得影响另一路receiver。
+   - 双路并行解码、全屏和叠加层：URL 1/2配置为两个不同且可用的RTSP endpoint，保持缺省 `forceAndroidH265HardwareDecoder=true` 并冷启动，确认两个receiver分别创建独立adapter/MediaCodec实例、同时streaming/decoding且两个缩略框同时有实时画面；两路日志都必须出现各自首个raw frame。日志中Video 2可先记录等待GL上下文，但必须在 `Secondary video render item is ready true` 后才出现Starting，随后依次得到start status OK、streaming true、decoding-start status OK和decoding true。WAITING期间Loader/GL Item必须仍为active/visible。若只有streaming true而没有decoding true，10–30秒watchdog必须停止并以1–15秒退避重建Video 2管线，正常首帧必须取消watchdog；不能永久停在WAITING或每秒无限重建。若反复重建，需保留GStreamer/codec错误，并临时关闭强制硬解完成A/B，不能直接判为RTSP地址错误。Video 1、Video 2居中时分别双击进入/退出全屏；全屏期间工具栏、三视图PIP、WidgetLayer、罗盘条和母线告警均隐藏。Video 2继续验证fit/grid、Proximity Radar和Obstacle Distance；断流后退出对应全屏，不得影响另一路receiver。桌面独立PIP窗口开关和Fly View surface销毁/重建后必须重新看到render-ready与decoding，不能沿用旧sink或永久黑屏。
    - 同步释放已知风险验收：正常操作基线必须先停止Video 2本地录像并等待Android媒体收尾，再清空URL 2、切换Video Source或制造URL 1/2重复。另做故障注入：在Video 2 owned录像/发布期间执行上述设置变更，记录DirectConnection调用 `shutdownLocalMedia(true)` 到UI恢复响应的最长时间、文件完整性和receiver释放结果。此项用于量化未解决风险，不得因为最终可恢复就判定为“已异步化”或“不阻塞UI”。
    - 右栏与热成像：A8、MT11同时启用时选择器必须出现并可往返切换，切换控制栏不能隐式切换中心视频；两套缩放/拍照/录像保持同一UI。MT11选择下RGB/IR按钮位于拍照上方，抓包应看到0x11 `[02 00]`与 `[00 02]`往返；pending期间不重复发送，0x10/0x11合法反馈后才改变显示，2.5秒无确认时恢复可操作并报错。A8选择下不得显示热成像控件。
    - MT11协议与receiver隔离：抓包核对0x05/0x0A/0x0B/0x0C/0x0F/0x10/0x11/0x16/0x18、production sequence 0和小端CRC；原生IPv4与等价IPv4-mapped IPv6来源在源端口精确等于 `mt11SdkPort` 时应接受，来源IP不同或同IP但源端口不同，以及control、长度、CRC、过期/无匹配ACK错误时均不得推进状态，0x0B异步反馈除外；其中拍照0/1反馈只有本应用拍照pending时才计数/报错，外部控制器反馈不得污染LOCAL UI。保持MT11 0x05连续变焦且不发送用户停止事件时，60秒安全watchdog必须主动发送0停止并显示安全超时。A8和MT11分别开始/停止本地录像，确认只调用对应receiver；录像toggle等待0x0A/0x0B确认时修改MT11 Enabled/SDK Host/Port必须恢复旧值并提示稍后重试，不得切换endpoint或补发第二次toggle；命令确认后再修改时，应在旧endpoint停止已确认相机录像并结束本地会话。关闭MT11 SDK不得释放通用Video 2 receiver；清空或修改URL 2、切换Video Source、触发重复URL保护、cleanup和应用退出需要释放第二receiver时，必须先收尾MT11 owned录像，不能停止A8录像或留下悬空Item。
@@ -1126,10 +1127,10 @@ Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移�
    - Point Home继续直发ROI且会取消旧pending；显式Acquire/Release保持原生按钮语义。私有UDP缩放/拍照/录像抓包不应因本测试出现额外数据。
 9. Ubuntu 24.04 播放同一路 H.265 RTSP 保持正常；Ubuntu/虚拟机代理需将A8的 `192.168.144.25`和MT11的 `192.168.144.24`同时加入忽略列表。
 10. Android 使用云台 H.264 编码回归测试，画面、延迟和断流重连均不退化。
-11. Android 使用云台 H.265 编码连续播放至少 10 分钟，分别记录开始、5 分钟和 10 分钟的端到端延迟，确认延迟不持续增长；同时测试应用前后台切换和断流重连。
-12. 真机日志中确认 `qgcandroidh265hwdec` 使用厂商 `amcviddec-*`，其输入 caps 为 `stream-format=byte-stream,alignment=au`，并出现首个 raw frame 的 `hardware confirmed` 日志；不能再用 rank 单独判断硬解是否成功。
-13. H.265 播放期间开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
-14. 在没有兼容 H.265 硬解的 Android 设备上，适配器不应注册，日志应告警未找到厂商 MediaCodec，原生软件 ranks 保持原值且不应直接黑屏。
+11. Android保持缺省 `forceAndroidH265HardwareDecoder=true`，让A8与MT11两路H.265同时连续播放至少10分钟；日志必须出现两个独立adapter实例及两路各自的首个raw frame。分别记录开始、5分钟和10分钟的端到端延迟、CPU占用和丢帧，确认两路都持续有画面且延迟不增长；同时测试应用前后台切换和断流重连。
+12. 真机日志中确认两个 `qgcandroidh265hwdec` 实例都使用厂商 `amcviddec-*`，输入caps均为 `stream-format=byte-stream,alignment=au`，并分别出现首个raw frame的 `hardware confirmed` 日志。若只有一路首帧或出现MediaCodec实例/资源错误，临时关闭 `forceAndroidH265HardwareDecoder`并重启完成软件/自动解码A/B；不能只用rank或READY预检判断双路硬解成功。
+13. 强制硬解开启时，在双路H.265播放期间分别开始和停止录像，确认录像文件仍可正常回放；这验证播放支路转换没有影响原生 `hvc1` 录像支路。
+14. 在没有兼容H.265硬解的Android设备上，适配器不应注册，日志应告警未找到厂商MediaCodec，原生软件ranks保持原值且不应直接黑屏；完成排障后恢复默认true并再次重启。
 15. Fuel遥测存在时顶部显示Fuel、无数据时隐藏；Proximity Radar在十方向任一距离Fact有效时显示，逐方向检查详情值/单位，4.99 m时图标变红闪烁、5.0 m及以上不告警，全部Fact为NaN时隐藏；它不得发送任何飞控命令。
 16. 默认通信链路验收：`count=0` 时启动只生成一条 `local`，默认必须为 UDP、本地端口`14550`、单一远端 `192.168.144.125:14550`、不自动连接且非高延迟，残留在非活动Link0中的附加键不得混入新默认项。`count>0` 时分别构造改名为 `testlocal` 的唯一配置、重复local、仅Serial/TCP且没有local、本地端口`0/14590`、旧端点、`auto=true`、高延迟、附加键和旧 `defaultsVersion` 标记，启动前后所有配置和count必须完全不变，不得清理、去重、补建或迁移；删除local但仍有其他链路时不得补建，删除全部链路使count=0后重启才重新生成默认local。清除 `AutoConnect/autoConnectUDP` 保存键后启动，UDP自动连接开关必须可见且缺省关闭；预置为true后重启仍应保持true，用户在界面切换后应正常持久化。进行local重连验收时须关闭UDP AutoConnect，或确保其监听端口与local不同且方案已经验证；两个socket同绑14550即使成功也不得当作支持场景。最后在地面站IP和图传映射稳定的条件下抓包确认QGC出包源端口与远端回包目标，并完成主动连接/断开/重连及完整退出/启动各至少20轮。
 17. Factory能力列表应声明PX4 + MultiRotor，APM不出现在支持列表中；同时用一个非多旋翼PX4 heartbeat确认当前边界：由于 `firmwarePluginForAutopilot()` 尚未检查 `vehicleType`，它仍会取得CustomFirmwarePlugin，不能把“支持列表只声明多旋翼”误当成运行时硬拒绝。
@@ -1243,6 +1244,6 @@ cmake --build <desktop-build> --target CustomFlightDisplayModule_qmllint
 ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest)$' --output-on-failure
 ```
 
-截至2026-08-14，本轮已独立编译并运行 `Mt11ProtocolTest`，QtTest报告9 passed、0 failed：7个业务slot加框架init/cleanup，覆盖SDK文档命令帧、RGB/热成像模式帧、严格CRC/长度/control解析、UDP合包原子性和业务payload。该结果仅属于纯 `Mt11Protocol`，不覆盖 `Mt11Sdk`真实UDP、Manager计时、QML、GStreamer、双receiver或真机固件。当前工作树已将视频层改为通用Video 1/Video 2：`[Video]/rtspUrl` 与 `[Video]/secondaryRtspUrl` 同属Connection组，第二receiver具有重复URL保护和 `BeforeSynchronizingStage` 启流边界；`DualPipView`使用固定上/下槽与主视图精确交换，并保留原生PIP显隐、独立窗口与拖拽resize；`FlyViewSecondaryVideo`/`FlightDisplayViewSecondaryVideo` 已取代型号化显示类。两份TS均为16个context、140条message且context/source一致，简体中文140条全部finished、unfinished/空译文均为0，`lrelease`验证通过。
+截至2026-08-17，本轮已独立编译并运行 `Mt11ProtocolTest`，QtTest报告9 passed、0 failed：7个业务slot加框架init/cleanup，覆盖SDK文档命令帧、RGB/热成像模式帧、严格CRC/长度/control解析、UDP合包原子性和业务payload。该结果仅属于纯 `Mt11Protocol`，不覆盖 `Mt11Sdk`真实UDP、Manager计时、QML、GStreamer、双receiver或真机固件。当前工作树已将视频层改为通用Video 1/Video 2：`[Video]/rtspUrl` 与 `[Video]/secondaryRtspUrl` 同属Connection组；第二receiver具有重复URL保护、真实GL Item初始化门控、解码启动结果处理和首帧watchdog，GL Item在WAITING背景下仍保留于场景图；Android强制H.265厂商硬解默认开启，每条播放管线创建独立adapter、MediaCodec element和输出队列。`DualPipView`使用固定上/下槽与主视图精确交换，并保留原生PIP显隐、独立窗口与拖拽resize；`FlyViewSecondaryVideo`/`FlightDisplayViewSecondaryVideo` 已取代型号化显示类。两份TS均为16个context、140条message且context/source一致，简体中文140条全部finished、unfinished/空译文均为0，`lrelease`验证通过。
 
 当前开发环境仍未完成这次通用双视频修正后的全工程Qt 6桌面/Android干净构建，因此不能宣称全工程编译、同时双路解码或目标遥控器验收已通过。必须以项目Qt 6的 `CustomFlightDisplayModule_qmllint`、生成qmldir、干净APK启动、两个不同RTSP endpoint同时decoding、连续PIP交换/拖拽和断流重连结果为准。当前本地媒体仍映射Video 1 -> A8、Video 2 -> MT11；录像/媒体发布期间修改URL 2、Video Source或触发重复URL保护时，同步DirectConnection释放路径可能短时阻塞UI，该风险未改为异步状态机。A8+MT11真实ACK时序、RGB/热成像往返、双路长期解码/重连、三视图/全屏与叠加层、两套本地媒体receiver隔离、Android性能及媒体发布、SDK/RTSP各自故障和退出收尾仍须按本章矩阵在目标设备验收。

@@ -42,6 +42,7 @@ Item {
 
     Image {
         id: noVideo
+        z: 1
         anchors.fill: parent
         source: "/res/NoVideoBackground.jpg"
         fillMode: Image.PreserveAspectCrop
@@ -71,9 +72,14 @@ Item {
 
     Rectangle {
         id: videoBackground
+        z: 0
         anchors.fill: parent
         color: "black"
-        visible: root.manager && root.manager.decoding
+        // Keep the dynamically loaded GL item in the scene graph while the
+        // receiver starts. The no-video image above it remains visible until
+        // the first decoded frame arrives.
+        visible: root.manager
+                 && (root.manager.hasVideo || root.manager.initialized)
 
         function getWidth() {
             if (root._aspectRatio > 0) {
@@ -143,7 +149,7 @@ Item {
             width: videoBackground.getWidth()
             height: videoBackground.getHeight()
             anchors.centerIn: parent
-            visible: root.manager && root.manager.decoding
+            visible: active
             active: root.manager
                     && (root.manager.hasVideo || root.manager.initialized)
             sourceComponent: videoBackgroundComponent

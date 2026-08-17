@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
 #include <QtCore/QSize>
 #include <QtCore/QString>
@@ -76,9 +77,12 @@ signals:
 
 private:
     Q_SLOT void _finishRenderInitialization();
+    Q_SLOT void _handleDecodeStartupTimeout();
 
     void _refreshSettings();
     void _ensureReceiver();
+    void _scheduleRenderInitialization(QQuickWindow *window);
+    void _armDecodeStartupWatchdog();
     void _applyDesiredState();
     void _requestStop();
     void _scheduleRestart();
@@ -89,7 +93,11 @@ private:
     QPointer<QQuickWindow> _window;
     QPointer<VideoReceiver> _receiver;
     QPointer<QQuickItem> _videoItem;
+    QMetaObject::Connection _videoItemInitializedConnection;
+    QMetaObject::Connection _videoItemWindowConnection;
+    QMetaObject::Connection _videoItemDestroyedConnection;
     QTimer _restartTimer;
+    QTimer _decodeStartupTimer;
     QString _uri;
     QSize _videoSize;
     bool _enabled = false;
@@ -103,4 +111,5 @@ private:
     bool _stopping = false;
     bool _restartRequested = false;
     bool _releaseAfterStop = false;
+    int _consecutiveDecodeFailures = 0;
 };

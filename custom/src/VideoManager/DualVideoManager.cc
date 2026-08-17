@@ -22,6 +22,9 @@ QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 namespace {
 constexpr const char *kSecondaryVideoObjectName = "secondaryVideoContent";
 constexpr int kRestartDelayMs = 1000;
+constexpr int kMaximumRestartDelayMs = 15000;
+constexpr int kMinimumDecodeStartupTimeoutMs = 10000;
+constexpr int kMaximumDecodeStartupTimeoutMs = 30000;
 constexpr uint32_t kFallbackRtspTimeoutSeconds = 5;
 
 class FinishSecondaryVideoInitialization final : public QRunnable
@@ -54,6 +57,12 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
     _restartTimer.setSingleShot(true);
     _restartTimer.setInterval(kRestartDelayMs);
     connect(&_restartTimer, &QTimer::timeout, this, &DualVideoManager::_applyDesiredState);
+
+    _decodeStartupTimer.setSingleShot(true);
+    connect(&_decodeStartupTimer,
+            &QTimer::timeout,
+            this,
+            &DualVideoManager::_handleDecodeStartupTimeout);
 
     if (_settings) {
         connect(_settings->secondaryRtspUrl(),
@@ -134,6 +143,7 @@ void DualVideoManager::stopVideo()
 void DualVideoManager::cleanup()
 {
     _restartTimer.stop();
+    _decodeStartupTimer.stop();
     _paused = true;
     _starting = false;
     _stopping = false;
@@ -181,10 +191,15 @@ void DualVideoManager::_refreshSettings()
         && (uri == primaryUri);
 
     const bool enabledChanged = (_enabled != enabled);
+    const bool uriChanged = (_uri != uri);
     const bool duplicateChanged = (_duplicateSource != duplicateSource);
     _enabled = enabled;
     _uri = uri;
     _duplicateSource = duplicateSource;
+
+    if (uriChanged || enabledChanged || duplicateChanged) {
+        _consecutiveDecodeFailures = 0;
+    }
 
     if (duplicateChanged && _duplicateSource) {
         qCWarning(DualVideoManagerLog)
@@ -262,6 +277,64 @@ void DualVideoManager::_ensureReceiver()
     _videoItem = videoItem;
     _renderReady = false;
 
+    // QGCVideoBackground is created by a Loader. On Android its qml6gl item
+    // initializes the OpenGL context asynchronously on the render thread. Do
+    // not start the receiver merely because our own render job ran: wait for
+    // the item's actual itemInitialized state so qml6glsink can enter READY.
+    if (videoItem->metaObject()->indexOfSignal("itemInitializedChanged()") >= 0) {
+        _videoItemInitializedConnection =
+            connect(videoItem,
+                    SIGNAL(itemInitializedChanged()),
+                    this,
+                    SLOT(_finishRenderInitialization()),
+                    Qt::QueuedConnection);
+    }
+
+    _videoItemWindowConnection =
+        connect(videoItem,
+                &QQuickItem::windowChanged,
+                this,
+                [guardedThis = QPointer<DualVideoManager>(this),
+                 guardedReceiver = QPointer<VideoReceiver>(receiver),
+                 guardedItem = QPointer<QQuickItem>(videoItem)](QQuickWindow *window) {
+                    if (!guardedThis || !guardedReceiver
+                        || guardedThis->_receiver != guardedReceiver
+                        || guardedThis->_videoItem != guardedItem) {
+                        return;
+                    }
+
+                    guardedThis->_renderReady = false;
+                    guardedThis->_decodeStartupTimer.stop();
+                    if (guardedReceiver->started() || guardedThis->_starting) {
+                        guardedThis->_restartRequested = true;
+                        guardedThis->_requestStop();
+                    }
+                    if (window) {
+                        guardedThis->_scheduleRenderInitialization(window);
+                    }
+                });
+
+    _videoItemDestroyedConnection =
+        connect(videoItem,
+                &QObject::destroyed,
+                this,
+                [guardedThis = QPointer<DualVideoManager>(this),
+                 guardedReceiver = QPointer<VideoReceiver>(receiver)]() {
+                    if (!guardedThis || !guardedReceiver
+                        || guardedThis->_receiver != guardedReceiver) {
+                        return;
+                    }
+
+                    qCInfo(DualVideoManagerLog)
+                        << "Secondary video render item was destroyed; rebuilding receiver";
+                    guardedThis->_restartTimer.stop();
+                    guardedThis->_renderReady = false;
+                    guardedThis->_decodeStartupTimer.stop();
+                    guardedReceiver->setWidget(nullptr);
+                    guardedThis->_releaseAfterStop = true;
+                    guardedThis->_requestStop();
+                });
+
     const QPointer<DualVideoManager> guardedThis(this);
     const QPointer<VideoReceiver> guardedReceiver(receiver);
 
@@ -279,12 +352,15 @@ void DualVideoManager::_ensureReceiver()
                     << "status" << status;
                 if (status == VideoReceiver::STATUS_OK) {
                     guardedReceiver->setStarted(true);
-                    if (guardedReceiver->sink()) {
-                        guardedReceiver->startDecoding(guardedReceiver->sink());
-                    }
-                    if (guardedThis->_restartRequested) {
+                    if (guardedThis->_restartRequested
+                        || !guardedThis->_renderReady
+                        || !guardedThis->hasVideo()
+                        || guardedThis->_paused) {
                         guardedThis->_requestStop();
                         return;
+                    }
+                    if (guardedReceiver->sink()) {
+                        guardedReceiver->startDecoding(guardedReceiver->sink());
                     }
                     guardedThis->_applyDesiredState();
                 } else if (guardedThis->_releaseAfterStop) {
@@ -296,13 +372,53 @@ void DualVideoManager::_ensureReceiver()
                         [guardedThis]() {
                             if (guardedThis) {
                                 guardedThis->_releaseReceiver();
+                                if (guardedThis->hasVideo()
+                                    && !guardedThis->_paused) {
+                                    guardedThis->_ensureReceiver();
+                                    guardedThis->_applyDesiredState();
+                                }
                             }
                         });
                 } else if (guardedThis->_restartRequested
                            || status != VideoReceiver::STATUS_INVALID_URL) {
+                    if (!guardedThis->_restartRequested
+                        && status != VideoReceiver::STATUS_INVALID_URL) {
+                        guardedThis->_consecutiveDecodeFailures = qMin(
+                            guardedThis->_consecutiveDecodeFailures + 1,
+                            4);
+                    }
                     guardedThis->_restartRequested = false;
                     guardedThis->_scheduleRestart();
                 }
+            });
+
+    connect(receiver,
+            &VideoReceiver::onStartDecodingComplete,
+            this,
+            [guardedThis, guardedReceiver](VideoReceiver::STATUS status) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver) {
+                    return;
+                }
+
+                qCInfo(DualVideoManagerLog)
+                    << "Secondary video decoding start completed"
+                    << guardedReceiver->uri() << "status" << status;
+                if (status == VideoReceiver::STATUS_OK
+                    || status == VideoReceiver::STATUS_INVALID_STATE) {
+                    guardedThis->_armDecodeStartupWatchdog();
+                    return;
+                }
+
+                // A failed sink/decoder start otherwise leaves the receiver in
+                // started=true, decoding=false forever. Serialize a complete
+                // stop/restart so the next attempt gets a fresh Gst pipeline.
+                guardedThis->_decodeStartupTimer.stop();
+                guardedThis->_consecutiveDecodeFailures = qMin(
+                    guardedThis->_consecutiveDecodeFailures + 1,
+                    4);
+                guardedThis->_restartRequested = true;
+                guardedThis->_requestStop();
             });
 
     connect(receiver,
@@ -314,6 +430,7 @@ void DualVideoManager::_ensureReceiver()
                 }
 
                 guardedReceiver->setStarted(false);
+                guardedThis->_decodeStartupTimer.stop();
                 guardedThis->_starting = false;
                 guardedThis->_stopping = false;
                 const bool restartRequested = guardedThis->_restartRequested;
@@ -335,6 +452,16 @@ void DualVideoManager::_ensureReceiver()
                         });
                     return;
                 }
+                if (!restartRequested && guardedThis->hasVideo()
+                    && !guardedThis->_paused
+                    && status != VideoReceiver::STATUS_INVALID_URL) {
+                    // Gst bus errors may stop the pipeline without first
+                    // reporting a decoding-start failure. Count those
+                    // unexpected stops so they use the same bounded backoff.
+                    guardedThis->_consecutiveDecodeFailures = qMin(
+                        guardedThis->_consecutiveDecodeFailures + 1,
+                        4);
+                }
                 if (restartRequested
                     || status != VideoReceiver::STATUS_INVALID_URL) {
                     guardedThis->_scheduleRestart();
@@ -348,6 +475,9 @@ void DualVideoManager::_ensureReceiver()
                 if (guardedThis) {
                     // GstVideoReceiver emits timeout before stopping its own
                     // pipeline. onStopComplete serializes the restart.
+                    guardedThis->_consecutiveDecodeFailures = qMin(
+                        guardedThis->_consecutiveDecodeFailures + 1,
+                        4);
                     guardedThis->_restartRequested = true;
                 }
             });
@@ -363,6 +493,11 @@ void DualVideoManager::_ensureReceiver()
                 qCInfo(DualVideoManagerLog)
                     << "Secondary video streaming" << guardedThis->_uri << streaming;
                 emit guardedThis->streamingChanged();
+                if (streaming) {
+                    guardedThis->_armDecodeStartupWatchdog();
+                } else {
+                    guardedThis->_decodeStartupTimer.stop();
+                }
             });
 
     connect(receiver,
@@ -376,6 +511,12 @@ void DualVideoManager::_ensureReceiver()
                 qCInfo(DualVideoManagerLog)
                     << "Secondary video decoding" << guardedThis->_uri << decoding;
                 emit guardedThis->decodingChanged();
+                if (decoding) {
+                    guardedThis->_consecutiveDecodeFailures = 0;
+                    guardedThis->_decodeStartupTimer.stop();
+                } else {
+                    guardedThis->_armDecodeStartupWatchdog();
+                }
             });
 
     connect(receiver,
@@ -397,27 +538,78 @@ void DualVideoManager::_ensureReceiver()
 
     // Match native VideoManager: enter READY only after the scene graph has
     // synchronized the dynamically loaded QGCVideoBackground item.
-    _window->scheduleRenderJob(
-        new FinishSecondaryVideoInitialization(this),
-        QQuickWindow::BeforeSynchronizingStage);
+    _scheduleRenderInitialization(videoItem->window()
+                                      ? videoItem->window()
+                                      : _window.data());
 }
 
 void DualVideoManager::_finishRenderInitialization()
 {
-    if (!_receiver || !_videoItem) {
+    if (!_receiver || !_videoItem || _renderReady) {
+        return;
+    }
+
+    const QVariant itemInitialized = _videoItem->property("itemInitialized");
+    if (itemInitialized.isValid() && !itemInitialized.toBool()) {
+        qCInfo(DualVideoManagerLog)
+            << "Waiting for the secondary video render item OpenGL context";
         return;
     }
 
     _renderReady = true;
     qCInfo(DualVideoManagerLog)
         << "Secondary video render item is ready"
-        << _videoItem->property("itemInitialized").toBool();
+        << (itemInitialized.isValid() ? itemInitialized.toBool() : true);
     _applyDesiredState();
+}
+
+void DualVideoManager::_scheduleRenderInitialization(QQuickWindow *window)
+{
+    if (!window || !_receiver || !_videoItem) {
+        return;
+    }
+
+    window->scheduleRenderJob(
+        new FinishSecondaryVideoInitialization(this),
+        QQuickWindow::BeforeSynchronizingStage);
+}
+
+void DualVideoManager::_armDecodeStartupWatchdog()
+{
+    if (!_receiver || !_receiver->started() || !_streaming || _decoding
+        || _stopping || _releaseAfterStop) {
+        _decodeStartupTimer.stop();
+        return;
+    }
+
+    const quint64 requestedMs = static_cast<quint64>(_rtspTimeout()) * 1000u;
+    const int timeoutMs = static_cast<int>(qBound<quint64>(
+        kMinimumDecodeStartupTimeoutMs,
+        requestedMs,
+        kMaximumDecodeStartupTimeoutMs));
+    _decodeStartupTimer.start(timeoutMs);
+    qCInfo(DualVideoManagerLog)
+        << "Waiting for the first decoded secondary video frame"
+        << _uri << "timeoutMs" << timeoutMs;
+}
+
+void DualVideoManager::_handleDecodeStartupTimeout()
+{
+    if (!_receiver || !_receiver->started() || !_streaming || _decoding) {
+        return;
+    }
+
+    qCWarning(DualVideoManagerLog)
+        << "Secondary RTSP is streaming but produced no decoded frame; restarting"
+        << _uri;
+    _consecutiveDecodeFailures = qMin(_consecutiveDecodeFailures + 1, 4);
+    _restartRequested = true;
+    _requestStop();
 }
 
 void DualVideoManager::_applyDesiredState()
 {
-    if (!_receiver || !_renderReady) {
+    if (!_receiver) {
         return;
     }
 
@@ -425,6 +617,12 @@ void DualVideoManager::_applyDesiredState()
     if (!shouldRun) {
         _restartTimer.stop();
         _requestStop();
+        return;
+    }
+
+    // Rendering readiness only gates starting. A disabled/changed stream must
+    // always be allowed to stop and release even while the GL item is pending.
+    if (!_renderReady) {
         return;
     }
 
@@ -482,12 +680,28 @@ void DualVideoManager::_releaseReceiver()
 
     emit videoObjectsAboutToBeReleased();
 
+    _restartTimer.stop();
+    _decodeStartupTimer.stop();
+    if (_videoItemInitializedConnection) {
+        disconnect(_videoItemInitializedConnection);
+        _videoItemInitializedConnection = {};
+    }
+    if (_videoItemWindowConnection) {
+        disconnect(_videoItemWindowConnection);
+        _videoItemWindowConnection = {};
+    }
+    if (_videoItemDestroyedConnection) {
+        disconnect(_videoItemDestroyedConnection);
+        _videoItemDestroyedConnection = {};
+    }
+
     void *const sink = receiver->sink();
     receiver->disconnect(this);
     _receiver.clear();
     _videoItem.clear();
     _renderReady = false;
     _restartRequested = false;
+    _consecutiveDecodeFailures = 0;
 
     // GstVideoReceiver's destructor drains its worker before the final sink
     // reference is released. The QML Loader remains active until the
@@ -520,6 +734,13 @@ void DualVideoManager::_releaseReceiver()
 void DualVideoManager::_scheduleRestart()
 {
     if (hasVideo() && !_paused && !_stopping) {
+        const int delayMs = qMin(
+            kMaximumRestartDelayMs,
+            kRestartDelayMs << qMin(_consecutiveDecodeFailures, 4));
+        _restartTimer.setInterval(delayMs);
+        qCInfo(DualVideoManagerLog)
+            << "Scheduling secondary video restart" << _uri
+            << "delayMs" << delayMs;
         _restartTimer.start();
     }
 }

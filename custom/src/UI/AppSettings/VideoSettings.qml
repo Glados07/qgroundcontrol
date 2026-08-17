@@ -145,7 +145,7 @@ SettingsPage {
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.") + " "
+            text: qsTr("Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.") + " "
                   + qsTr("Restart QGC after changing this option.")
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize

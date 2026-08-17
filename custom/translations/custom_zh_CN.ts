@@ -355,8 +355,8 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="146"/>
-        <source>Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.</source>
-        <translation>如有可用的厂商MediaCodec，则使用其解码H.265；否则继续使用软件解码。</translation>
+        <source>Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
+        <translation>默认开启以实现低延迟H.265播放。如果设备无法同时创建两个MediaCodec解码实例，可关闭此选项进行排障。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="147"/>
