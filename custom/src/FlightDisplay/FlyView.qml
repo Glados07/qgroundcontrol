@@ -161,7 +161,6 @@ Item {
         FlyViewVideo {
             id: videoControl
             pipView: _pipView.item2PipView
-            visible: QGroundControl.videoManager.hasVideo
         }
 
         CustomFlightDisplay.FlyViewSecondaryVideo {

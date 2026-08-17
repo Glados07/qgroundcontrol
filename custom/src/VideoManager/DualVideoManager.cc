@@ -69,6 +69,10 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
                 &Fact::rawValueChanged,
                 this,
                 [this](const QVariant &) { _refreshSettings(); });
+        connect(_settings->secondaryRtspTcpOnly(),
+                &Fact::rawValueChanged,
+                this,
+                [this](const QVariant &) { _refreshSettings(); });
     }
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
@@ -123,6 +127,40 @@ void DualVideoManager::init(QQuickWindow *window)
 
     _window = window;
     _ensureReceiver();
+    _applyDesiredState();
+}
+
+void DualVideoManager::initVideoItem(QQuickWindow *window, QQuickItem *videoItem)
+{
+    if (!window || !videoItem) {
+        qCWarning(DualVideoManagerLog)
+            << "Cannot initialize the secondary video without a window and render item";
+        return;
+    }
+
+    _window = window;
+    _requestedVideoItem = videoItem;
+
+    if (_receiver && (_videoItem != videoItem)) {
+        qCInfo(DualVideoManagerLog)
+            << "Secondary video render item changed; rebuilding receiver";
+        _restartTimer.stop();
+        _decodeStartupTimer.stop();
+        _renderReady = false;
+        _receiver->setWidget(nullptr);
+        _releaseAfterStop = true;
+        _requestStop();
+        if (_receiver) {
+            return;
+        }
+    }
+
+    _ensureReceiver();
+    if (_receiver && (_videoItem == videoItem)) {
+        _scheduleRenderInitialization(videoItem->window()
+                                          ? videoItem->window()
+                                          : window);
+    }
     _applyDesiredState();
 }
 
@@ -189,16 +227,33 @@ void DualVideoManager::_refreshSettings()
         : QString();
     const bool duplicateSource = !uri.isEmpty() && !primaryUri.isEmpty()
         && (uri == primaryUri);
+    const bool rtspTcpOnly = _settings
+        && _settings->secondaryRtspTcpOnly()->rawValue().toBool();
 
     const bool enabledChanged = (_enabled != enabled);
     const bool uriChanged = (_uri != uri);
     const bool duplicateChanged = (_duplicateSource != duplicateSource);
+    const bool transportChanged = (_rtspTcpOnly != rtspTcpOnly);
     _enabled = enabled;
     _uri = uri;
     _duplicateSource = duplicateSource;
+    _rtspTcpOnly = rtspTcpOnly;
 
-    if (uriChanged || enabledChanged || duplicateChanged) {
+    if (uriChanged || enabledChanged || duplicateChanged || transportChanged) {
         _consecutiveDecodeFailures = 0;
+    }
+
+    if (transportChanged && _receiver) {
+        _receiver->setRtspTransport(
+            _rtspTcpOnly ? VideoReceiver::RtspTransport::Tcp
+                         : VideoReceiver::RtspTransport::Auto);
+        qCInfo(DualVideoManagerLog)
+            << "Secondary RTSP transport changed"
+            << (_rtspTcpOnly ? "TCP" : "Auto");
+        if (_receiver->started() || _starting || _stopping) {
+            _restartRequested = true;
+            _requestStop();
+        }
     }
 
     if (duplicateChanged && _duplicateSource) {
@@ -234,8 +289,11 @@ void DualVideoManager::_ensureReceiver()
         return;
     }
 
-    QQuickItem *const videoItem = _window->findChild<QQuickItem *>(
-        QString::fromLatin1(kSecondaryVideoObjectName));
+    QQuickItem *videoItem = _requestedVideoItem.data();
+    if (!videoItem) {
+        videoItem = _window->findChild<QQuickItem *>(
+            QString::fromLatin1(kSecondaryVideoObjectName));
+    }
     if (!videoItem) {
         // The secondary video surface does not instantiate an OpenGL video item
         // while the URL is empty. Its Loader calls init again once the item is
@@ -260,6 +318,9 @@ void DualVideoManager::_ensureReceiver()
     receiver->setName(QString::fromLatin1(kSecondaryVideoObjectName));
     receiver->setWidget(videoItem);
     receiver->setUri(_uri);
+    receiver->setRtspTransport(
+        _rtspTcpOnly ? VideoReceiver::RtspTransport::Tcp
+                     : VideoReceiver::RtspTransport::Auto);
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
         receiver->setLowLatency(videoSettings->lowLatencyMode()->rawValue().toBool());

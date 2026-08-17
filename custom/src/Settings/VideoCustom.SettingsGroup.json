@@ -8,6 +8,20 @@
             "longDesc": "Feeds the second independent video window. Leave empty to disable the second video stream.",
             "type": "string",
             "default": "rtsp://192.168.144.24:8554/video1"
+        },
+        {
+            "name": "primaryRtspTcpOnly",
+            "shortDesc": "Use TCP for RTSP URL 1",
+            "longDesc": "Uses interleaved RTSP-over-TCP for Video 1 instead of automatic UDP/TCP negotiation.",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "name": "secondaryRtspTcpOnly",
+            "shortDesc": "Use TCP for RTSP URL 2",
+            "longDesc": "Uses interleaved RTSP-over-TCP for Video 2 instead of automatic UDP/TCP negotiation.",
+            "type": "bool",
+            "default": true
         }
     ]
 }

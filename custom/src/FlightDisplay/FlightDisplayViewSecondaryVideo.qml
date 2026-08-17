@@ -20,6 +20,7 @@ Item {
 
     property var manager: null
     property bool useSmallFont: true
+    readonly property var _renderWindow: root.Window.window
 
     readonly property real _aspectRatio: manager && manager.aspectRatio > 0
                                          ? manager.aspectRatio : (16 / 9)
@@ -39,6 +40,14 @@ Item {
     function getHeight() {
         return videoBackground.getHeight()
     }
+
+    function initVideoItem() {
+        if (root.manager && root._renderWindow && videoLoader.item) {
+            root.manager.initVideoItem(root._renderWindow, videoLoader.item)
+        }
+    }
+
+    on_RenderWindowChanged: Qt.callLater(root.initVideoItem)
 
     Image {
         id: noVideo
@@ -154,11 +163,7 @@ Item {
                     && (root.manager.hasVideo || root.manager.initialized)
             sourceComponent: videoBackgroundComponent
 
-            onLoaded: Qt.callLater(function() {
-                if (root.manager && root.Window.window) {
-                    root.manager.init(root.Window.window)
-                }
-            })
+            onLoaded: Qt.callLater(root.initVideoItem)
         }
     }
 }

@@ -26,6 +26,7 @@
 #include <QtQuick/QQuickItem>
 
 #include <gst/gst.h>
+#include <gst/rtsp/gstrtsptransport.h>
 
 QGC_LOGGING_CATEGORY(GstVideoReceiverLog, "qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver")
 
@@ -663,6 +664,16 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                          "location", input.toUtf8().constData(),
                          "latency", 25,
                          nullptr);
+            if (rtspTransport() == VideoReceiver::RtspTransport::Tcp) {
+                // Keep the public URI standards-compliant (rtsp://). The
+                // rtspsrc protocols property is the supported way to select
+                // interleaved RTP/RTCP over the RTSP TCP connection.
+                g_object_set(source,
+                             "protocols", GST_RTSP_LOWER_TRANS_TCP,
+                             nullptr);
+                qCInfo(GstVideoReceiverLog)
+                    << "Forcing RTSP-over-TCP transport for" << input;
+            }
         } else if (isTcpMPEGTS) {
             source = gst_element_factory_make("tcpclientsrc", "source");
             if (!source) {

@@ -329,47 +329,47 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="121"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="137"/>
         <source>Video Stream Integration</source>
         <translation>视频流集成</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="122"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
         <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
         <translation>控制MAVLink视频源选择和Android H.265硬件解码。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="126"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="142"/>
         <source>Use MAVLink automatic video stream</source>
         <translation>使用MAVLink自动视频流</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="132"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
         <translation>如需手动编辑视频源，请关闭此选项。更改后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="140"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
         <source>Force hardware decoding for Android H.265</source>
         <translation>强制使用Android H.265硬件解码</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="146"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="162"/>
         <source>Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
         <translation>默认开启以实现低延迟H.265播放。如果设备无法同时创建两个MediaCodec解码实例，可关闭此选项进行排障。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="147"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
         <source>Restart QGC after changing this option.</source>
         <translation>更改此选项后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="195"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="211"/>
         <source>Save photos and videos locally</source>
         <translation>在本地保存照片和视频</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="201"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="217"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
         <translation>执行相机拍照和录像时，也会将媒体保存到本设备，且不依赖云台SD卡存储。</translation>
     </message>
@@ -394,82 +394,92 @@
         <translation>连接</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="63"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="64"/>
         <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
         <translation>视频1和视频2为通用RTSP输入；相机SDK控制需单独配置。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="69"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
         <source>RTSP URL 1</source>
         <translation>RTSP地址1</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="77"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
+        <source>Use RTSP-over-TCP for URL 1</source>
+        <translation>对RTSP地址1使用TCP传输</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
         <source>RTSP URL 2</source>
         <translation>RTSP地址2</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="84"/>
-        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
-        <translation>RTSP地址2使用独立接收器。留空可禁用第二个视频窗口。</translation>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <source>Use RTSP-over-TCP for URL 2</source>
+        <translation>对RTSP地址2使用TCP传输</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window. Use TCP when UDP video packets cannot cross the radio or network path.</source>
+        <translation>RTSP地址2使用独立接收器。留空可禁用第二个视频窗口。当UDP视频数据包无法通过图传或网络链路时，请使用TCP。</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
         <source>RTSP URL 1 and RTSP URL 2 must be different.</source>
         <translation>RTSP地址1与RTSP地址2不能相同。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="103"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="119"/>
         <source>TCP URL</source>
         <translation>TCP地址</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="128"/>
         <source>UDP URL</source>
         <translation>UDP地址</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="172"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="161"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="177"/>
         <source>Aspect Ratio</source>
         <translation>宽高比</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="168"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="184"/>
         <source>Stop recording when disarmed</source>
         <translation>锁定时停止录像</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="175"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="191"/>
         <source>Low Latency Mode</source>
         <translation>低延迟模式</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="182"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="198"/>
         <source>Video decode priority</source>
         <translation>视频解码优先级</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="191"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="207"/>
         <source>Local Video Storage</source>
         <translation>本地视频存储</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="209"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="225"/>
         <source>Record File Format</source>
         <translation>录像文件格式</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="216"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="232"/>
         <source>Auto-Delete Saved Recordings</source>
         <translation>自动删除已保存录像</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="223"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="239"/>
         <source>Max Storage Usage</source>
         <translation>最大存储使用量</translation>
     </message>
@@ -774,6 +784,30 @@
         <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
         <source>Feeds the second independent video window. Leave empty to disable the second video stream.</source>
         <translation>为第二个独立视频窗口提供视频流。留空可禁用第二路视频流。</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].shortDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Use TCP for RTSP URL 1</source>
+        <translation>对RTSP地址1使用TCP</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].longDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Uses interleaved RTSP-over-TCP for Video 1 instead of automatic UDP/TCP negotiation.</source>
+        <translation>视频1使用交错式RTSP-over-TCP传输，而不进行UDP/TCP自动协商。</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].shortDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Use TCP for RTSP URL 2</source>
+        <translation>对RTSP地址2使用TCP</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].longDesc, </extracomment>
+        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
+        <source>Uses interleaved RTSP-over-TCP for Video 2 instead of automatic UDP/TCP negotiation.</source>
+        <translation>视频2使用交错式RTSP-over-TCP传输，而不进行UDP/TCP自动协商。</translation>
     </message>
 </context>
 </TS>

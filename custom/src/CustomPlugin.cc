@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "AutoConnectSettings.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
+#include "Fact.h"
 #include "FactMetaData.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
@@ -32,6 +33,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
+#include <QtCore/QTimer>
 #include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickItem>
@@ -376,6 +378,7 @@ QQmlApplicationEngine *CustomPlugin::createQmlApplicationEngine(QObject *parent)
 
 void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
 {
+    _ensureVideoCustomSettings();
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
@@ -392,6 +395,126 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     // MT11 for local photo/recording capture.
     Mt11ControlManager *mt11Manager = isSecondaryVideoReceiver
         ? mt11ControlManagerObject() : nullptr;
+
+    if (receiver && _videoCustomSettings) {
+        Fact *const transportFact = isSecondaryVideoReceiver
+            ? _videoCustomSettings->secondaryRtspTcpOnly()
+            : (isMainVideoReceiver
+                   ? _videoCustomSettings->primaryRtspTcpOnly()
+                   : nullptr);
+        if (transportFact) {
+            const auto applyTransport =
+                [guardedReceiver = QPointer<VideoReceiver>(receiver),
+                 guardedFact = QPointer<Fact>(transportFact)]() {
+                    if (!guardedReceiver || !guardedFact) {
+                        return false;
+                    }
+                    const auto requested = guardedFact->rawValue().toBool()
+                        ? VideoReceiver::RtspTransport::Tcp
+                        : VideoReceiver::RtspTransport::Auto;
+                    if (guardedReceiver->rtspTransport() == requested) {
+                        return false;
+                    }
+                    guardedReceiver->setRtspTransport(requested);
+                    return true;
+                };
+
+            (void) applyTransport();
+            if (isMainVideoReceiver) {
+                static constexpr const char *kTransportRestartPending =
+                    "customPrimaryRtspTransportRestartPending";
+                static constexpr const char *kTransportStopIssued =
+                    "customPrimaryRtspTransportStopIssued";
+
+                connect(transportFact,
+                        &Fact::rawValueChanged,
+                        receiver,
+                        [applyTransport,
+                         guardedReceiver = QPointer<VideoReceiver>(receiver)](
+                            const QVariant &) {
+                            if (!guardedReceiver || !applyTransport()) {
+                                return;
+                            }
+                            qCInfo(CustomLog)
+                                << "Video 1 RTSP transport changed; restarting receiver"
+                                << guardedReceiver->uri();
+
+                            if (!guardedReceiver->uri().startsWith(
+                                    QStringLiteral("rtsp"),
+                                    Qt::CaseInsensitive)) {
+                                return;
+                            }
+
+                            guardedReceiver->setProperty(
+                                kTransportRestartPending, true);
+                            if (guardedReceiver->started()
+                                && !guardedReceiver
+                                        ->property(kTransportStopIssued)
+                                        .toBool()) {
+                                guardedReceiver->setProperty(
+                                    kTransportStopIssued, true);
+                                guardedReceiver->stop();
+                            }
+                        });
+
+                // createVideoSink() runs before VideoManager connects its own
+                // completion handlers. Queue the stop so VideoManager first
+                // records started=true, then serialize one transport restart.
+                connect(receiver,
+                        &VideoReceiver::onStartComplete,
+                        receiver,
+                        [guardedReceiver = QPointer<VideoReceiver>(receiver)](
+                            VideoReceiver::STATUS status) {
+                            if (!guardedReceiver
+                                || status != VideoReceiver::STATUS_OK
+                                || !guardedReceiver
+                                        ->property(kTransportRestartPending)
+                                        .toBool()
+                                || guardedReceiver
+                                        ->property(kTransportStopIssued)
+                                        .toBool()) {
+                                return;
+                            }
+
+                            QTimer::singleShot(
+                                0,
+                                guardedReceiver.data(),
+                                [guardedReceiver]() {
+                                    if (!guardedReceiver
+                                        || !guardedReceiver->started()
+                                        || !guardedReceiver
+                                                ->property(kTransportRestartPending)
+                                                .toBool()
+                                        || guardedReceiver
+                                                ->property(kTransportStopIssued)
+                                                .toBool()) {
+                                        return;
+                                    }
+                                    guardedReceiver->setProperty(
+                                        kTransportStopIssued, true);
+                                    guardedReceiver->stop();
+                                });
+                        });
+
+                connect(receiver,
+                        &VideoReceiver::onStopComplete,
+                        receiver,
+                        [guardedReceiver = QPointer<VideoReceiver>(receiver)](
+                            VideoReceiver::STATUS) {
+                            if (!guardedReceiver) {
+                                return;
+                            }
+                            // Native VideoManager restarts the receiver after
+                            // this signal. Its next pipeline reads the latest
+                            // coalesced transport setting.
+                            guardedReceiver->setProperty(
+                                kTransportRestartPending, false);
+                            guardedReceiver->setProperty(
+                                kTransportStopIssued, false);
+                        });
+            }
+        }
+    }
 
     if (widget && manager) {
         manager->setMainVideoItem(widget);

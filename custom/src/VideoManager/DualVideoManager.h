@@ -55,6 +55,7 @@ public:
     QQuickItem *videoItem() const { return _videoItem.data(); }
 
     Q_INVOKABLE void init(QQuickWindow *window);
+    Q_INVOKABLE void initVideoItem(QQuickWindow *window, QQuickItem *videoItem);
     Q_INVOKABLE void startVideo();
     Q_INVOKABLE void stopVideo();
     Q_INVOKABLE void cleanup();
@@ -92,6 +93,7 @@ private:
     VideoCustomSettings *_settings = nullptr;
     QPointer<QQuickWindow> _window;
     QPointer<VideoReceiver> _receiver;
+    QPointer<QQuickItem> _requestedVideoItem;
     QPointer<QQuickItem> _videoItem;
     QMetaObject::Connection _videoItemInitializedConnection;
     QMetaObject::Connection _videoItemWindowConnection;
@@ -102,6 +104,7 @@ private:
     QSize _videoSize;
     bool _enabled = false;
     bool _duplicateSource = false;
+    bool _rtspTcpOnly = true;
     bool _renderReady = false;
     bool _streaming = false;
     bool _decoding = false;
