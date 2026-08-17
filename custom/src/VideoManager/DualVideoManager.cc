@@ -410,7 +410,8 @@ void DualVideoManager::_ensureReceiver()
                 guardedThis->_starting = false;
                 qCInfo(DualVideoManagerLog)
                     << "Secondary video start completed" << guardedReceiver->uri()
-                    << "status" << status;
+                    << "statusCode" << static_cast<int>(status)
+                    << "success" << (status == VideoReceiver::STATUS_OK);
                 if (status == VideoReceiver::STATUS_OK) {
                     guardedReceiver->setStarted(true);
                     if (guardedThis->_restartRequested
@@ -464,7 +465,11 @@ void DualVideoManager::_ensureReceiver()
 
                 qCInfo(DualVideoManagerLog)
                     << "Secondary video decoding start completed"
-                    << guardedReceiver->uri() << "status" << status;
+                    << guardedReceiver->uri()
+                    << "statusCode" << static_cast<int>(status)
+                    << "success"
+                    << (status == VideoReceiver::STATUS_OK
+                        || status == VideoReceiver::STATUS_INVALID_STATE);
                 if (status == VideoReceiver::STATUS_OK
                     || status == VideoReceiver::STATUS_INVALID_STATE) {
                     guardedThis->_armDecodeStartupWatchdog();
@@ -702,8 +707,12 @@ void DualVideoManager::_applyDesiredState()
 
     _restartTimer.stop();
     _starting = true;
-    qCInfo(DualVideoManagerLog) << "Starting secondary video" << _uri;
-    _receiver->start(_rtspTimeout());
+    const uint32_t requestedTimeout = _rtspTimeout();
+    qCInfo(DualVideoManagerLog)
+        << "Starting secondary video" << _uri
+        << "transport" << (_rtspTcpOnly ? "TCP" : "Auto")
+        << "requestedTimeout" << requestedTimeout;
+    _receiver->start(requestedTimeout);
 }
 
 void DualVideoManager::_requestStop()

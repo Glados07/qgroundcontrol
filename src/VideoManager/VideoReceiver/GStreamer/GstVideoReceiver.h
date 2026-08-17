@@ -85,6 +85,7 @@ private:
     void _noteTeeFrame();
     void _noteVideoSinkFrame();
     void _noteEndOfStream();
+    bool _activateRtspTcpFallback(const char *reason);
     /// -Unlink the branch from the src pad
     /// -Send an EOS event at the beginning of that branch
     bool _unlinkBranch(GstElement *from);
@@ -116,6 +117,12 @@ private:
     GstVideoWorker *_worker = nullptr;
     gulong _teeProbeId = 0;
     gulong _videoSinkProbeId = 0;
+    QString _lastRtspUri;
+    RtspTransport _lastRequestedRtspTransport = RtspTransport::Auto;
+    RtspTransport _activeRtspTransport = RtspTransport::Auto;
+    bool _rtspAutoFallbackToTcp = false;
+    bool _activeRtspTcp = false;
+    std::atomic_bool _sourceFrameReceived{false};
 
     static constexpr const char *_kFileMux[FILE_FORMAT_MAX + 1] = {
         "matroskamux",
