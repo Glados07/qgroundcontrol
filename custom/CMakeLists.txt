@@ -66,6 +66,29 @@ if(ANDROID)
             PATTERN "local.properties" EXCLUDE
         )
 
+        # Qt's Android deployment invokes Gradle from a generated project. Keep the
+        # regular build cache, but disable configuration-cache reuse for the custom
+        # package so stale instrumented AGP classes cannot break APK packaging before
+        # the project build script is evaluated.
+        set(_qgc_gradle_properties "${_qgc_final_android_dir}/gradle.properties")
+        if(NOT EXISTS "${_qgc_gradle_properties}")
+            message(FATAL_ERROR "QGC: Generated Android package is missing gradle.properties")
+        endif()
+        file(READ "${_qgc_gradle_properties}" _qgc_gradle_properties_contents)
+        if(_qgc_gradle_properties_contents MATCHES "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*true")
+            string(REGEX REPLACE
+                "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*true"
+                "org.gradle.configuration-cache=false"
+                _qgc_gradle_properties_contents
+                "${_qgc_gradle_properties_contents}"
+            )
+            file(WRITE "${_qgc_gradle_properties}" "${_qgc_gradle_properties_contents}")
+        elseif(NOT _qgc_gradle_properties_contents MATCHES "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*false")
+            file(APPEND "${_qgc_gradle_properties}"
+                "\n# Custom Android build stability\norg.gradle.configuration-cache=false\n"
+            )
+        endif()
+
         set(_qgc_usb_manager_overlay
             "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java"
         )

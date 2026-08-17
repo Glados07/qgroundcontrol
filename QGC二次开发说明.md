@@ -148,7 +148,7 @@
 - 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 139 个文件。
 - 仅保留 `src/CMakeLists.txt` 和 `src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处 feature 必需的受控修改，其余功能通过 custom C++、QRC、独立custom QML模块、QML URL 拦截和 Android overlay 接入。
 - General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
-- Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源，避免原生/custom 同包同类冲突。
+- Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源；合并时排除 `.gradle`、`build` 和 `local.properties`，并仅在生成副本中关闭 Gradle configuration cache，避免跨构建残留的AGP插桩状态阻断APK打包。
 - 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
 - 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
 - custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；视频层文案已同步为通用 Video 1/Video 2。当前 `custom.ts` 与 `custom_zh_CN.ts` 均为16个context、140条message且context/source完全一致；中文140条全部finished，unfinished/空译文均为0，`lrelease` 验证通过。
@@ -162,7 +162,7 @@
 5. custom同名 QML 覆盖使用 `/Custom/qml` 前缀；新增的双视频复合类型由 `Custom.FlightDisplay`模块生成到 `/qml/Custom/FlightDisplay`；Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
 6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 航向罗盘条和链路设置。
 7. 复杂协议、坐标转换和跨模块行为使用中文注释；普通布局和赋值不增加无意义注释。
-8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。
+8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。源码树和Git均不得保存 `.gradle`生成缓存；custom构建关闭configuration cache但保留普通build cache。
 
 ## 3. custom 完整目录结构
 
@@ -322,7 +322,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、VideoManager、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块，以及包含 `DualPipView`、`FlyViewSecondaryVideo` 和 `FlightDisplayViewSecondaryVideo`的 `Custom.FlightDisplay`静态 QML 模块。后者沿用原生 `FlightDisplayModule`的 `STATIC + RESOURCE_PREFIX /qml + NO_PLUGIN`模式，通过短 `QT_RESOURCE_ALIAS`生成模块内类型，并显式加入 `CUSTOM_LIBRARIES`确保Android主目标链接；不手写qmldir，也不修改原生FlightDisplay模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest`、`Mt11ProtocolTest`、`GimbalMediaSessionPolicyTest` 和 `GimbalPhotoCapturePolicyTest`，移动端不生成额外测试应用；MT11目标只链接Qt Core/Test和纯Protocol文件。它要求Quick3D/Quick3DAssetUtils，检测可选WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集 AutoPilot/Firmware、Viewer3D、Gimbal、Comms、Settings、VideoManager、Android媒体库桥、GStreamer拉流尺寸探针和Android H.265等 custom C++，以及15个明确复用的原生 Viewer3D C++ 文件，并向根目标导出 include、library、resource 和 translation 列表；创建包含 Fuel 与 Proximity Radar 详情页的 `Custom.Widgets` 静态 QML 模块，以及包含 `DualPipView`、`FlyViewSecondaryVideo` 和 `FlightDisplayViewSecondaryVideo`的 `Custom.FlightDisplay`静态 QML 模块。后者沿用原生 `FlightDisplayModule`的 `STATIC + RESOURCE_PREFIX /qml + NO_PLUGIN`模式，通过短 `QT_RESOURCE_ALIAS`生成模块内类型，并显式加入 `CUSTOM_LIBRARIES`确保Android主目标链接；不手写qmldir，也不修改原生FlightDisplay模块。桌面 `QGC_BUILD_TESTING` 构建创建独立 `SiyiProtocolTest`、`Mt11ProtocolTest`、`GimbalMediaSessionPolicyTest` 和 `GimbalPhotoCapturePolicyTest`，移动端不生成额外测试应用；MT11目标只链接Qt Core/Test和纯Protocol文件。它要求Quick3D/Quick3DAssetUtils，检测可选WebEngineQuick并定义Google 3D能力；翻译只导出 `custom_*.ts`，英文 `custom.ts`模板不编译。Android configure时把根 `android`模板复制到build目录，再用 `custom/android`同路径覆盖，复制过程排除Gradle生成缓存，并把合并副本的 `org.gradle.configuration-cache`固定为`false`、保留普通build cache；同时校验USB与媒体库custom标记并让Gradle只使用唯一合并源目录。外部WGS84样例目录不参与构建或安装。 |
 | `custom/custom.qrc` | custom RCC运行时资源清单，共68个 `<file>`；本轮继续注册同路径 `FlyView.qml`覆盖、`MT11CameraControl.qml`及共享 `GimbalCameraControl.qml/GimbalZoomControl.qml`，并打包 `VideoCustom.SettingsGroup.json`。`DualPipView.qml`、`FlyViewSecondaryVideo.qml` 和 `FlightDisplayViewSecondaryVideo.qml`不在本QRC重复打包，而由 `Custom.FlightDisplay`模块注册为可导入类型；`GimbalIndicator.qml` 与 `ProximityRadarIndicator.qml` 仍以 `QGroundControl/Toolbar/...` alias覆盖原生工具栏资源。URL拦截器只在 `/Custom/qml`候选实际存在时重定向；本文件只决定覆盖资源URL，不编译C++、不保存设置值。Fuel与Proximity Radar详情页由 `Custom.Widgets`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
@@ -1073,6 +1073,8 @@ grep 'QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2' \
 ```
 
 第一条必须指向当前 build 下的 `custom/android`，后两条必须分别命中USB和媒体库custom标记；否则安装的 APK 可能仍缺少对应Java实现。
+
+Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移除并由根 `.gitignore`忽略；`android/gradle`是必须保留的Gradle Wrapper目录，两者不能混淆。custom configure会在合并后的构建副本中写入 `org.gradle.configuration-cache=false`，普通 `org.gradle.caching`仍按原生配置保留。首次使用该修复时，应只删除或重命名目标Android生成工程的 `android-build-Custom-QGroundControl/.gradle/configuration-cache` 后重新configure/打包，不自动删除整个 `~/.gradle`。若仍出现 `pending instrumentation exception`，先执行一次 `./gradlew --stop`，再用 `--no-configuration-cache --no-build-cache --no-daemon --stacktrace`复核；该命令成功说明源码、Qt/JDK/AGP/Gradle组合可构建，异常位于Gradle状态复用链，不能据此把QML/C++业务代码判为编译失败。
 
 重点验证：
 

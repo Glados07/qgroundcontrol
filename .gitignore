@@ -76,6 +76,7 @@ ui_*
 
 # android
 android/local.properties
+/android/.gradle/
 *.class
 
 # doxygen
