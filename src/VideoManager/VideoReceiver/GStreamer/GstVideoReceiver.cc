@@ -82,14 +82,17 @@ void GstVideoReceiver::start(uint32_t timeout)
             _lastRtspUri = _uri;
             _lastRequestedRtspTransport = requestedTransport;
             _rtspAutoFallbackToTcp = false;
+            _rtspTcpFallbackToAuto = false;
         }
     } else {
         _lastRtspUri.clear();
         _rtspAutoFallbackToTcp = false;
+        _rtspTcpFallbackToAuto = false;
     }
     _activeRtspTransport = requestedTransport;
     _activeRtspTcp = requestedTransport == RtspTransport::Tcp
-        || _rtspAutoFallbackToTcp;
+        ? !_rtspTcpFallbackToAuto
+        : _rtspAutoFallbackToTcp;
     const uint32_t minimumTimeout = _activeRtspTcp
         ? kMinimumRtspTcpTimeoutSeconds
         : kMinimumRtspAutoTimeoutSeconds;
@@ -101,8 +104,12 @@ void GstVideoReceiver::start(uint32_t timeout)
             << "Starting RTSP receiver" << _uri
             << "transport"
             << (_activeRtspTcp
-                    ? (_rtspAutoFallbackToTcp ? "TCP (Auto fallback)" : "TCP")
-                    : "Auto")
+                    ? (_rtspAutoFallbackToTcp
+                           ? "TCP (Auto fallback)"
+                           : "TCP")
+                    : (_rtspTcpFallbackToAuto
+                           ? "Auto (TCP fallback)"
+                           : "Auto"))
             << "requestedTimeout" << timeout
             << "effectiveTimeout" << _timeout;
         if (_timeout != timeout) {
@@ -593,7 +600,10 @@ void GstVideoReceiver::_watchdog()
         if (elapsed > _timeout) {
             const bool isRtsp = QUrl(_uri).scheme().startsWith(
                 QStringLiteral("rtsp"), Qt::CaseInsensitive);
-            if (!_activateRtspTcpFallback("source timeout") && isRtsp) {
+            const bool transportFallbackActivated =
+                _activateRtspAutoFallback("source timeout")
+                || _activateRtspTcpFallback("source timeout");
+            if (!transportFallbackActivated && isRtsp) {
                 qCWarning(GstVideoReceiverLog)
                     << "RTSP stream timeout, no frames for" << elapsed
                     << "seconds" << _uri;
@@ -628,7 +638,10 @@ void GstVideoReceiver::_handleEOS()
     }
 
     if (_endOfStream) {
-        (void) _activateRtspTcpFallback("end of stream before media");
+        if (!_activateRtspAutoFallback("end of stream before media")) {
+            (void) _activateRtspTcpFallback(
+                "end of stream before media");
+        }
         stop();
     } else if (_decoding && _removingDecoder) {
         _shutdownDecodingBranch();
@@ -731,7 +744,7 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                 qCInfo(GstVideoReceiverLog)
                     << "Forcing RTSP-over-TCP transport for" << input
                     << (_rtspAutoFallbackToTcp
-                            ? "after the automatic transport produced no media"
+                            ? "after automatic transport produced no media"
                             : "by configuration");
             }
 
@@ -1160,12 +1173,33 @@ bool GstVideoReceiver::_activateRtspTcpFallback(const char *reason)
         return false;
     }
 
-    // rtspsrc normally negotiates UDP first and falls back to TCP. Some
-    // embedded RTSP servers never complete that transition. Preserve Auto
-    // semantics by making the next serialized restart explicitly TCP-only.
+    // Native Auto negotiation remains the first choice. If it produces no
+    // media until timeout/EOS, retry the same URI once as explicit TCP and
+    // retain that decision until the URI or requested preference changes.
     _rtspAutoFallbackToTcp = true;
     qCWarning(GstVideoReceiverLog)
         << "RTSP Auto transport produced no media; the next restart will use TCP"
+        << _uri << "reason" << reason;
+    return true;
+}
+
+bool GstVideoReceiver::_activateRtspAutoFallback(const char *reason)
+{
+    if (_sourceFrameReceived.load()
+        || _activeRtspTransport != RtspTransport::Tcp
+        || !_activeRtspTcp
+        || _rtspTcpFallbackToAuto
+        || !QUrl(_uri).scheme().startsWith(
+            QStringLiteral("rtsp"), Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    // TCP preference must not make an otherwise compatible stream unusable.
+    // Keep the fallback for the same URI/setting until either one changes, so
+    // repeated failures cannot oscillate between TCP and Auto.
+    _rtspTcpFallbackToAuto = true;
+    qCWarning(GstVideoReceiverLog)
+        << "RTSP-over-TCP produced no media; the next restart will use Auto"
         << _uri << "reason" << reason;
     return true;
 }
@@ -1300,24 +1334,48 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
 
     switch (GST_MESSAGE_TYPE(msg)) {
     case GST_MESSAGE_ERROR: {
-        gchar *debug;
-        GError *error;
+        gchar *debug = nullptr;
+        GError *error = nullptr;
         gst_message_parse_error(msg, &error, &debug);
 
-        if (debug) {
-            qCDebug(GstVideoReceiverLog) << "GStreamer debug:" << debug;
-            g_clear_pointer(&debug, g_free);
-        }
+        const gchar *sourceName = GST_MESSAGE_SRC(msg)
+            ? GST_OBJECT_NAME(GST_MESSAGE_SRC(msg)) : nullptr;
+        const gchar *domainName = error
+            ? g_quark_to_string(error->domain) : nullptr;
+        const int errorCode = error ? error->code : -1;
+        const bool transportNegotiationFailure = error
+            && error->domain == GST_RESOURCE_ERROR
+            && (error->code == GST_RESOURCE_ERROR_READ
+                || error->code == GST_RESOURCE_ERROR_OPEN_READ
+                || error->code == GST_RESOURCE_ERROR_OPEN_READ_WRITE
+                || error->code == GST_RESOURCE_ERROR_SETTINGS);
 
-        if (error) {
-            qCCritical(GstVideoReceiverLog) << "GStreamer error:" << error->message;
-            g_clear_error(&error);
-        }
+        qCCritical(GstVideoReceiverLog)
+            << "GStreamer error"
+            << "uri" << pThis->_uri
+            << "source"
+            << QString::fromUtf8(sourceName ? sourceName : "<unknown>")
+            << "domain"
+            << QString::fromUtf8(domainName ? domainName : "<unknown>")
+            << "code" << errorCode
+            << "message"
+            << QString::fromUtf8(error && error->message
+                                     ? error->message : "<none>")
+            << "debug"
+            << QString::fromUtf8(debug ? debug : "<none>");
 
-        pThis->_worker->dispatch([pThis]() {
+        g_clear_pointer(&debug, g_free);
+        g_clear_error(&error);
+
+        pThis->_worker->dispatch([pThis, transportNegotiationFailure]() {
             qCDebug(GstVideoReceiverLog) << "Stopping because of error";
-            (void) pThis->_activateRtspTcpFallback(
-                "GStreamer error before media");
+            if (transportNegotiationFailure) {
+                if (!pThis->_activateRtspAutoFallback(
+                        "RTSP transport error before media")) {
+                    (void) pThis->_activateRtspTcpFallback(
+                        "RTSP transport error before media");
+                }
+            }
             pThis->stop();
         });
         break;

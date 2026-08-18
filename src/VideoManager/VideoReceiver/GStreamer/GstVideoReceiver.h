@@ -86,6 +86,7 @@ private:
     void _noteVideoSinkFrame();
     void _noteEndOfStream();
     bool _activateRtspTcpFallback(const char *reason);
+    bool _activateRtspAutoFallback(const char *reason);
     /// -Unlink the branch from the src pad
     /// -Send an EOS event at the beginning of that branch
     bool _unlinkBranch(GstElement *from);
@@ -121,6 +122,7 @@ private:
     RtspTransport _lastRequestedRtspTransport = RtspTransport::Auto;
     RtspTransport _activeRtspTransport = RtspTransport::Auto;
     bool _rtspAutoFallbackToTcp = false;
+    bool _rtspTcpFallbackToAuto = false;
     bool _activeRtspTcp = false;
     std::atomic_bool _sourceFrameReceived{false};
 

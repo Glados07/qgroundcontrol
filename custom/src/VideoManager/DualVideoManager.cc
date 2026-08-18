@@ -280,17 +280,17 @@ void DualVideoManager::_refreshSettings()
         : QString();
     const bool duplicateSource = sameStreamUri(uri, configuredPrimaryUri)
         || sameStreamUri(uri, effectivePrimaryUri);
-    const bool rtspTcpOnly = _settings
+    const bool preferRtspTcp = _settings
         && _settings->secondaryRtspTcpOnly()->rawValue().toBool();
 
     const bool enabledChanged = (_enabled != enabled);
     const bool uriChanged = (_uri != uri);
     const bool duplicateChanged = (_duplicateSource != duplicateSource);
-    const bool transportChanged = (_rtspTcpOnly != rtspTcpOnly);
+    const bool transportChanged = (_preferRtspTcp != preferRtspTcp);
     _enabled = enabled;
     _uri = uri;
     _duplicateSource = duplicateSource;
-    _rtspTcpOnly = rtspTcpOnly;
+    _preferRtspTcp = preferRtspTcp;
 
     if (uriChanged || enabledChanged || duplicateChanged || transportChanged) {
         _consecutiveDecodeFailures = 0;
@@ -298,11 +298,11 @@ void DualVideoManager::_refreshSettings()
 
     if (transportChanged && _receiver) {
         _receiver->setRtspTransport(
-            _rtspTcpOnly ? VideoReceiver::RtspTransport::Tcp
-                         : VideoReceiver::RtspTransport::Auto);
+            _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
+                           : VideoReceiver::RtspTransport::Auto);
         qCInfo(DualVideoManagerLog)
             << "Secondary RTSP transport changed"
-            << (_rtspTcpOnly ? "TCP" : "Auto");
+            << (_preferRtspTcp ? "TCP preferred" : "Auto");
         if (_receiver->started() || _starting || _stopping) {
             _restartRequested = true;
             _requestStop();
@@ -375,8 +375,8 @@ void DualVideoManager::_ensureReceiver()
     receiver->setWidget(videoItem);
     receiver->setUri(_uri);
     receiver->setRtspTransport(
-        _rtspTcpOnly ? VideoReceiver::RtspTransport::Tcp
-                     : VideoReceiver::RtspTransport::Auto);
+        _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
+                       : VideoReceiver::RtspTransport::Auto);
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
         receiver->setLowLatency(videoSettings->lowLatencyMode()->rawValue().toBool());
@@ -766,7 +766,7 @@ void DualVideoManager::_applyDesiredState()
     const uint32_t requestedTimeout = _rtspTimeout();
     qCInfo(DualVideoManagerLog)
         << "Starting secondary video" << _uri
-        << "transport" << (_rtspTcpOnly ? "TCP" : "Auto")
+        << "transport" << (_preferRtspTcp ? "TCP preferred" : "Auto")
         << "requestedTimeout" << requestedTimeout;
     _receiver->start(requestedTimeout);
 }

@@ -11,17 +11,17 @@
         },
         {
             "name": "primaryRtspTcpOnly",
-            "shortDesc": "Use TCP for RTSP URL 1",
-            "longDesc": "Uses interleaved RTSP-over-TCP for Video 1 instead of automatic UDP/TCP negotiation.",
+            "shortDesc": "Prefer TCP for RTSP URL 1",
+            "longDesc": "Tries interleaved RTSP-over-TCP first for Video 1 and falls back to automatic transport negotiation if TCP cannot establish media.",
             "type": "bool",
             "default": false
         },
         {
             "name": "secondaryRtspTcpOnly",
-            "shortDesc": "Use TCP for RTSP URL 2",
-            "longDesc": "Uses interleaved RTSP-over-TCP for Video 2 instead of automatic UDP/TCP negotiation.",
+            "shortDesc": "Prefer TCP for RTSP URL 2",
+            "longDesc": "Tries interleaved RTSP-over-TCP first for Video 2 and falls back to automatic transport negotiation if TCP cannot establish media.",
             "type": "bool",
-            "default": true
+            "default": false
         }
     ]
 }

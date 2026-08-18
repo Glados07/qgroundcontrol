@@ -75,7 +75,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Use RTSP-over-TCP for URL 1")
+            text: qsTr("Prefer RTSP-over-TCP for URL 1")
             fact: _videoCustomSettings.primaryRtspTcpOnly
             visible: _isRTSP
         }
@@ -90,14 +90,14 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Use RTSP-over-TCP for URL 2")
+            text: qsTr("Prefer RTSP-over-TCP for URL 2")
             fact: _videoCustomSettings.secondaryRtspTcpOnly
             visible: _isRTSP
         }
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window. Use TCP when UDP video packets cannot cross the radio or network path.")
+            text: qsTr("RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window. Automatic transport is the default; when TCP is preferred but cannot establish media, QGC falls back to automatic negotiation.")
             visible: _isRTSP
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize

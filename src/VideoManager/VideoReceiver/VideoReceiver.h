@@ -35,8 +35,9 @@ public:
     QString uri() const { return _uri; }
     bool started() const { return _started; }
     bool lowLatency() const { return _lowLatency; }
-    // Auto preserves the native rtspsrc negotiation. Tcp is used by custom
-    // deployments whose network path carries RTSP/RTP only as interleaved TCP.
+    // Auto starts with native rtspsrc negotiation, while Tcp starts with
+    // interleaved TCP. The GStreamer backend may make one one-way switch to
+    // the opposite mode when the requested mode cannot establish media.
     enum class RtspTransport {
         Auto,
         Tcp,
