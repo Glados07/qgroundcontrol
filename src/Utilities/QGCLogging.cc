@@ -26,8 +26,13 @@ static QtMessageHandler defaultHandler = nullptr;
 
 static void msgHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-    // Filter via QLoggingCategory rules early
-    if (!QLoggingCategory(context.category).isDebugEnabled()) {
+    const char *const categoryName = context.category ? context.category : "default";
+
+    // Respect the rule for the actual severity. Using isDebugEnabled() here
+    // also discarded qInfo/qWarning/qCritical messages whenever a category's
+    // debug output was disabled, hiding operational failures such as
+    // GStreamer bus errors.
+    if (!QLoggingCategory(categoryName).isEnabled(type)) {
         return;
     }
 
@@ -35,7 +40,7 @@ static void msgHandler(QtMsgType type, const QMessageLogContext &context, const 
     const QString message = qFormatLogMessage(type, context, msg);
 
     // Filter out Qt Quick internals
-    if (!QString(context.category).startsWith("qt.quick")) {
+    if (!QString::fromLatin1(categoryName).startsWith("qt.quick")) {
         QGCLogging::instance()->log(message);
     }
 

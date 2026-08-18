@@ -388,6 +388,10 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     const bool isMainVideoReceiver = receiver
         && !receiver->isThermal()
         && !isSecondaryVideoReceiver;
+    if (isMainVideoReceiver) {
+        _ensureDualVideoManager();
+        _dualVideoManager->setPrimaryVideoReceiver(receiver);
+    }
     GimbalControlManager *manager =
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
     // Camera-control SDKs remain independent from the generic video layout.

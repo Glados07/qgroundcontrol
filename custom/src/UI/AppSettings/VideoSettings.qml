@@ -106,7 +106,7 @@ SettingsPage {
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("RTSP URL 1 and RTSP URL 2 must be different.")
+            text: qsTr("RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.")
             visible: _isRTSP && _dualVideoManager
                      && _dualVideoManager.duplicateSource
             wrapMode: Text.WordWrap

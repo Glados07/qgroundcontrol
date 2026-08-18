@@ -425,7 +425,7 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
-        <source>RTSP URL 1 and RTSP URL 2 must be different.</source>
+        <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -53,6 +53,7 @@ public:
     VideoReceiver *videoReceiver() const;
     QObject *videoReceiverObject() const;
     QQuickItem *videoItem() const { return _videoItem.data(); }
+    void setPrimaryVideoReceiver(VideoReceiver *receiver);
 
     Q_INVOKABLE void init(QQuickWindow *window);
     Q_INVOKABLE void initVideoItem(QQuickWindow *window, QQuickItem *videoItem);
@@ -92,12 +93,15 @@ private:
 
     VideoCustomSettings *_settings = nullptr;
     QPointer<QQuickWindow> _window;
+    QPointer<VideoReceiver> _primaryVideoReceiver;
     QPointer<VideoReceiver> _receiver;
     QPointer<QQuickItem> _requestedVideoItem;
     QPointer<QQuickItem> _videoItem;
     QMetaObject::Connection _videoItemInitializedConnection;
     QMetaObject::Connection _videoItemWindowConnection;
     QMetaObject::Connection _videoItemDestroyedConnection;
+    QMetaObject::Connection _primaryVideoUriConnection;
+    QMetaObject::Connection _primaryVideoDestroyedConnection;
     QTimer _restartTimer;
     QTimer _decodeStartupTimer;
     QString _uri;

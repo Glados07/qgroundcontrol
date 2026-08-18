@@ -425,8 +425,8 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
-        <source>RTSP URL 1 and RTSP URL 2 must be different.</source>
-        <translation>RTSP地址1与RTSP地址2不能相同。</translation>
+        <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
+        <translation>RTSP 地址2与已配置或当前生效的视频1流相同。为避免重复拉取同一视频流，第二路接收器已禁用。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="119"/>

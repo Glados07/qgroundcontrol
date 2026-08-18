@@ -16,6 +16,7 @@
 
 #include <QtCore/QVariant>
 #include <QtCore/QRunnable>
+#include <QtCore/QUrl>
 
 QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 
@@ -26,6 +27,22 @@ constexpr int kMaximumRestartDelayMs = 15000;
 constexpr int kMinimumDecodeStartupTimeoutMs = 10000;
 constexpr int kMaximumDecodeStartupTimeoutMs = 30000;
 constexpr uint32_t kFallbackRtspTimeoutSeconds = 5;
+
+bool sameStreamUri(const QString &left, const QString &right)
+{
+    const QString trimmedLeft = left.trimmed();
+    const QString trimmedRight = right.trimmed();
+    if (trimmedLeft.isEmpty() || trimmedRight.isEmpty()) {
+        return false;
+    }
+    if (trimmedLeft == trimmedRight) {
+        return true;
+    }
+
+    const QUrl leftUrl(trimmedLeft, QUrl::StrictMode);
+    const QUrl rightUrl(trimmedRight, QUrl::StrictMode);
+    return leftUrl.isValid() && rightUrl.isValid() && leftUrl == rightUrl;
+}
 
 class FinishSecondaryVideoInitialization final : public QRunnable
 {
@@ -106,6 +123,39 @@ QObject *DualVideoManager::videoReceiverObject() const
 VideoReceiver *DualVideoManager::videoReceiver() const
 {
     return _receiver.data();
+}
+
+void DualVideoManager::setPrimaryVideoReceiver(VideoReceiver *receiver)
+{
+    if (_primaryVideoReceiver == receiver) {
+        _refreshSettings();
+        return;
+    }
+
+    disconnect(_primaryVideoUriConnection);
+    disconnect(_primaryVideoDestroyedConnection);
+    _primaryVideoUriConnection = {};
+    _primaryVideoDestroyedConnection = {};
+    _primaryVideoReceiver = receiver;
+
+    if (receiver) {
+        _primaryVideoUriConnection =
+            connect(receiver,
+                    &VideoReceiver::uriChanged,
+                    this,
+                    [this](const QString &) { _refreshSettings(); });
+        _primaryVideoDestroyedConnection =
+            connect(receiver,
+                    &QObject::destroyed,
+                    this,
+                    [this]() {
+                        _primaryVideoReceiver = nullptr;
+                        _primaryVideoUriConnection = {};
+                        _primaryVideoDestroyedConnection = {};
+                    });
+    }
+
+    _refreshSettings();
 }
 
 double DualVideoManager::aspectRatio() const
@@ -222,11 +272,14 @@ void DualVideoManager::_refreshSettings()
     const QString uri = _settings
         ? _settings->secondaryRtspUrl()->rawValue().toString().trimmed()
         : QString();
-    const QString primaryUri = (videoSettings && primaryUsesRtsp)
+    const QString configuredPrimaryUri = (videoSettings && primaryUsesRtsp)
         ? videoSettings->rtspUrl()->rawValue().toString().trimmed()
         : QString();
-    const bool duplicateSource = !uri.isEmpty() && !primaryUri.isEmpty()
-        && (uri == primaryUri);
+    const QString effectivePrimaryUri = _primaryVideoReceiver
+        ? _primaryVideoReceiver->uri().trimmed()
+        : QString();
+    const bool duplicateSource = sameStreamUri(uri, configuredPrimaryUri)
+        || sameStreamUri(uri, effectivePrimaryUri);
     const bool rtspTcpOnly = _settings
         && _settings->secondaryRtspTcpOnly()->rawValue().toBool();
 
@@ -258,8 +311,11 @@ void DualVideoManager::_refreshSettings()
 
     if (duplicateChanged && _duplicateSource) {
         qCWarning(DualVideoManagerLog)
-            << "Secondary RTSP URL matches the primary URL; the duplicate receiver is disabled"
-            << _uri;
+            << "Secondary RTSP URL matches the configured or effective primary URL;"
+               " the duplicate receiver is disabled"
+            << "secondary" << _uri
+            << "configuredPrimary" << configuredPrimaryUri
+            << "effectivePrimary" << effectivePrimaryUri;
     }
 
     if (!hasVideo()) {
