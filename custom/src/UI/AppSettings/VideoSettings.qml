@@ -136,7 +136,7 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth: true
         heading: qsTr("Video Stream Integration")
-        headingDescription: qsTr("Controls MAVLink video source selection and Android H.265 hardware decoding.")
+        headingDescription: qsTr("Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.")
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
@@ -154,13 +154,13 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Force hardware decoding for Android H.265")
+            text: qsTr("Prefer hardware decoding for Android H.264/H.265")
             fact: _gimbalControlSettings.forceAndroidH265HardwareDecoder
         }
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.") + " "
+            text: qsTr("Enabled by default to prioritize low-latency vendor MediaCodec decoding for H.264 and H.265. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.") + " "
                   + qsTr("Restart QGC after changing this option.")
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize

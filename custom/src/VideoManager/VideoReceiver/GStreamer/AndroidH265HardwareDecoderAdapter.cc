@@ -28,7 +28,9 @@ constexpr const char *kAdapterFactoryName = "qgcandroidh265hwdec";
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 
-constexpr guint kAdapterRank = GST_RANK_PRIMARY + 100;
+// Stay above native Force Software (PRIMARY+1), but below a vendor decoder
+// which accepts QGC's hvc1 caps directly (PRIMARY+3 in the policy).
+constexpr guint kAdapterRank = GST_RANK_PRIMARY + 2;
 constexpr const char *kByteStreamCaps =
     "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au";
 
@@ -87,7 +89,18 @@ bool isVendorMediaCodecDecoder(GstElementFactory *factory)
         return false;
     }
 
-    const gchar *const factoryName = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
+    GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+    GstPlugin *const plugin = gst_plugin_feature_get_plugin(feature);
+    const bool isAndroidMedia = plugin
+        && qstrcmp(gst_plugin_get_name(plugin), "androidmedia") == 0;
+    if (plugin) {
+        gst_object_unref(plugin);
+    }
+    if (!isAndroidMedia) {
+        return false;
+    }
+
+    const gchar *const factoryName = gst_plugin_feature_get_name(feature);
     return AndroidH265HardwareDecoderAdapter::isVendorHardwareDecoderFactoryName(factoryName);
 }
 
@@ -326,7 +339,7 @@ GstPadProbeReturn logDecoderFirstOutputFrame(GstPad *pad, GstPadProbeInfo *info,
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
         << "Android H.265 decoder produced its first raw frame"
         << pluginAndFactoryName(factory)
-        << "hardware confirmed"
+        << "vendor MediaCodec candidate"
         << "glMemoryOutput" << glMemoryOutput
         << "bytes" << gst_buffer_get_size(buffer)
         << "pts" << static_cast<qulonglong>(GST_BUFFER_PTS(buffer))
@@ -601,6 +614,7 @@ bool AndroidH265HardwareDecoderAdapter::isVendorHardwareDecoderFactoryName(
     const QString name = QString::fromUtf8(factoryName).toLower();
     if (!name.startsWith(QStringLiteral("amcviddec-")) ||
         name.contains(QStringLiteral("secure")) ||
+        name.contains(QStringLiteral("soft")) ||
         name.contains(QStringLiteral("software")) ||
         name.contains(QStringLiteral("ffmpeg")) ||
         name.contains(QStringLiteral("swdec")) ||

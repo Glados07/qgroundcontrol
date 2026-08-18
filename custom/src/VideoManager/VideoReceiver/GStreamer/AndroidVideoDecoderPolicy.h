@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Android H.265 video decoder selection policy.
+ * Android video decoder selection policy.
  *
  ****************************************************************************/
 
@@ -9,7 +9,8 @@
 class AndroidVideoDecoderPolicy
 {
 public:
-    /// Prefer a vendor MediaCodec decoder for Android H.265. This must run
-    /// after GStreamer initialization and before decodebin3 creates its pipeline.
+    /// Prefer vendor MediaCodec decoders for Android H.264/H.265. This must
+    /// run after GStreamer initialization and before decodebin3 creates its
+    /// pipeline.
     static void apply(bool forceHardwareDecoding);
 };

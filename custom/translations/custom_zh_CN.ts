@@ -335,8 +335,8 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
-        <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
-        <translation>控制MAVLink视频源选择和Android H.265硬件解码。</translation>
+        <source>Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.</source>
+        <translation>控制MAVLink视频源选择和Android H.264/H.265硬件解码。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="142"/>
@@ -350,13 +350,13 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
-        <source>Force hardware decoding for Android H.265</source>
-        <translation>强制使用Android H.265硬件解码</translation>
+        <source>Prefer hardware decoding for Android H.264/H.265</source>
+        <translation>优先使用Android H.264/H.265硬件解码</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="162"/>
-        <source>Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
-        <translation>默认开启以实现低延迟H.265播放。如果设备无法同时创建两个MediaCodec解码实例，可关闭此选项进行排障。</translation>
+        <source>Enabled by default to prioritize low-latency vendor MediaCodec decoding for H.264 and H.265. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
+        <translation>默认开启，以优先使用低延迟的厂商MediaCodec解码H.264和H.265。如果设备无法同时创建两个MediaCodec解码实例，可关闭此选项进行排障。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>

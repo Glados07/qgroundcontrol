@@ -81,8 +81,8 @@
         },
         {
             "name": "forceAndroidH265HardwareDecoder",
-            "shortDesc": "Force Android H.265 hardware decoder",
-            "longDesc": "On Android, register a low-latency hvc1-to-byte-stream adapter and prioritize a compatible vendor MediaCodec H.265 decoder. Software decoder ranks remain available for fallback. Restart QGC after changing this option.",
+            "shortDesc": "Prefer Android H.264/H.265 hardware decoders",
+            "longDesc": "On Android, prioritize compatible vendor MediaCodec H.264 and H.265 decoders. H.265 also uses a low-latency hvc1-to-byte-stream adapter when required. Software decoder ranks remain available for fallback. Restart QGC after changing this option.",
             "type": "bool",
             "default": true,
             "qgcRebootRequired": true

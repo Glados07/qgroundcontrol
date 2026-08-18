@@ -51,6 +51,7 @@ private:
 /*===========================================================================*/
 
 typedef struct _GstElement GstElement;
+typedef struct _GstBin GstBin;
 
 class GstVideoReceiver : public VideoReceiver
 {
@@ -85,7 +86,6 @@ private:
     void _noteTeeFrame();
     void _noteVideoSinkFrame();
     void _noteEndOfStream();
-    bool _activateRtspTcpFallback(const char *reason);
     bool _activateRtspAutoFallback(const char *reason);
     /// -Unlink the branch from the src pad
     /// -Send an EOS event at the beginning of that branch
@@ -97,6 +97,8 @@ private:
     void _dispatchSignal(Task emitter);
 
     static gboolean _onBusMessage(GstBus *bus, GstMessage *message, gpointer user_data);
+    static void _onDecoderElementAdded(GstBin *bin, GstBin *subBin, GstElement *element, gpointer data);
+    static GstPadProbeReturn _onDecoderOutput(GstPad *pad, GstPadProbeInfo *info, gpointer data);
     static void _onNewPad(GstElement *element, GstPad *pad, gpointer data);
     static void _wrapWithGhostPad(GstElement *element, GstPad *pad, gpointer data);
     static void _linkPad(GstElement *element, GstPad *pad, gpointer data);
@@ -121,9 +123,9 @@ private:
     QString _lastRtspUri;
     RtspTransport _lastRequestedRtspTransport = RtspTransport::Auto;
     RtspTransport _activeRtspTransport = RtspTransport::Auto;
-    bool _rtspAutoFallbackToTcp = false;
     bool _rtspTcpFallbackToAuto = false;
     bool _activeRtspTcp = false;
+    bool _stopCompletionPending = false;
     std::atomic_bool _sourceFrameReceived{false};
 
     static constexpr const char *_kFileMux[FILE_FORMAT_MAX + 1] = {

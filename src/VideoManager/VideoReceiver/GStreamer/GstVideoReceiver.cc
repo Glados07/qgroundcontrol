@@ -33,6 +33,7 @@ QGC_LOGGING_CATEGORY(GstVideoReceiverLog, "qgc.videomanager.videoreceiver.gstrea
 namespace {
 constexpr uint32_t kMinimumRtspTcpTimeoutSeconds = 5;
 constexpr uint32_t kMinimumRtspAutoTimeoutSeconds = 8;
+constexpr guint64 kRtspTeardownTimeoutNanoseconds = GST_SECOND;
 }
 
 GstVideoReceiver::GstVideoReceiver(QObject *parent)
@@ -81,18 +82,15 @@ void GstVideoReceiver::start(uint32_t timeout)
             || (_lastRequestedRtspTransport != requestedTransport)) {
             _lastRtspUri = _uri;
             _lastRequestedRtspTransport = requestedTransport;
-            _rtspAutoFallbackToTcp = false;
             _rtspTcpFallbackToAuto = false;
         }
     } else {
         _lastRtspUri.clear();
-        _rtspAutoFallbackToTcp = false;
         _rtspTcpFallbackToAuto = false;
     }
     _activeRtspTransport = requestedTransport;
     _activeRtspTcp = requestedTransport == RtspTransport::Tcp
-        ? !_rtspTcpFallbackToAuto
-        : _rtspAutoFallbackToTcp;
+        && !_rtspTcpFallbackToAuto;
     const uint32_t minimumTimeout = _activeRtspTcp
         ? kMinimumRtspTcpTimeoutSeconds
         : kMinimumRtspAutoTimeoutSeconds;
@@ -104,9 +102,7 @@ void GstVideoReceiver::start(uint32_t timeout)
             << "Starting RTSP receiver" << _uri
             << "transport"
             << (_activeRtspTcp
-                    ? (_rtspAutoFallbackToTcp
-                           ? "TCP (Auto fallback)"
-                           : "TCP")
+                    ? "TCP"
                     : (_rtspTcpFallbackToAuto
                            ? "Auto (TCP fallback)"
                            : "Auto"))
@@ -272,6 +268,10 @@ void GstVideoReceiver::start(uint32_t timeout)
         GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-started");
         qCDebug(GstVideoReceiverLog) << "Started" << _uri;
 
+        // A successful start generation owns exactly one stop completion.
+        // Multiple queued stop requests must not each trigger an owner-side
+        // restart timer for the same pipeline.
+        _stopCompletionPending = true;
         _dispatchSignal([this]() { emit onStartComplete(STATUS_OK); });
     }
 }
@@ -283,8 +283,14 @@ void GstVideoReceiver::stop()
         return;
     }
 
-    if (_uri.isEmpty()) {
-        qCWarning(GstVideoReceiverLog) << "Stop called on empty URI";
+    if (!_pipeline && !_stopCompletionPending) {
+        // start()/stop() are queued on the private worker. More than one GUI
+        // side restart request can therefore leave a stale stop behind the
+        // stop that already released the pipeline. Do not emit another
+        // onStopComplete: every completion schedules another owner restart.
+        qCDebug(GstVideoReceiverLog)
+            << "Ignoring redundant stop; receiver has no active pipeline"
+            << _uri;
         return;
     }
 
@@ -369,7 +375,10 @@ void GstVideoReceiver::stop()
 
     qCDebug(GstVideoReceiverLog) << "Stopped" << _uri;
 
-    _dispatchSignal([this]() { emit onStopComplete(STATUS_OK); });
+    if (_stopCompletionPending) {
+        _stopCompletionPending = false;
+        _dispatchSignal([this]() { emit onStopComplete(STATUS_OK); });
+    }
 }
 
 void GstVideoReceiver::startDecoding(void *sink)
@@ -601,8 +610,7 @@ void GstVideoReceiver::_watchdog()
             const bool isRtsp = QUrl(_uri).scheme().startsWith(
                 QStringLiteral("rtsp"), Qt::CaseInsensitive);
             const bool transportFallbackActivated =
-                _activateRtspAutoFallback("source timeout")
-                || _activateRtspTcpFallback("source timeout");
+                _activateRtspAutoFallback("source timeout");
             if (!transportFallbackActivated && isRtsp) {
                 qCWarning(GstVideoReceiverLog)
                     << "RTSP stream timeout, no frames for" << elapsed
@@ -638,10 +646,7 @@ void GstVideoReceiver::_handleEOS()
     }
 
     if (_endOfStream) {
-        if (!_activateRtspAutoFallback("end of stream before media")) {
-            (void) _activateRtspTcpFallback(
-                "end of stream before media");
-        }
+        (void) _activateRtspAutoFallback("end of stream before media");
         stop();
     } else if (_decoding && _removingDecoder) {
         _shutdownDecodingBranch();
@@ -731,6 +736,10 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
             g_object_set(source,
                          "location", input.toUtf8().constData(),
                          "latency", 25,
+                         // Embedded camera servers often need longer than
+                         // rtspsrc's 100 ms default to consume TEARDOWN before
+                         // accepting the next client session.
+                         "teardown-timeout", kRtspTeardownTimeoutNanoseconds,
                          nullptr);
             if (_activeRtspTcp) {
                 // Keep the public URI standards-compliant (rtsp://). The
@@ -743,20 +752,25 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                              nullptr);
                 qCInfo(GstVideoReceiverLog)
                     << "Forcing RTSP-over-TCP transport for" << input
-                    << (_rtspAutoFallbackToTcp
-                            ? "after automatic transport produced no media"
-                            : "by configuration");
+                    << "by configuration";
             }
 
             guint effectiveProtocols = 0;
+            guint64 effectiveTeardownTimeout = 0;
             g_object_get(source, "protocols", &effectiveProtocols, nullptr);
+            g_object_get(source,
+                         "teardown-timeout",
+                         &effectiveTeardownTimeout,
+                         nullptr);
             qCInfo(GstVideoReceiverLog)
                 << "Configured RTSP source" << input
                 << "requestedTransport"
                 << (_activeRtspTransport == RtspTransport::Tcp ? "TCP" : "Auto")
                 << "effectiveTransport" << (_activeRtspTcp ? "TCP" : "Auto")
                 << "effectiveProtocols"
-                << QStringLiteral("0x%1").arg(effectiveProtocols, 0, 16);
+                << QStringLiteral("0x%1").arg(effectiveProtocols, 0, 16)
+                << "teardownTimeoutMs"
+                << (effectiveTeardownTimeout / GST_MSECOND);
             if (_activeRtspTcp
                 && effectiveProtocols
                     != static_cast<guint>(GST_RTSP_LOWER_TRANS_TCP)) {
@@ -906,6 +920,11 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
     GstElement *decoder = gst_element_factory_make("decodebin3", nullptr);
     if (!decoder) {
         qCCritical(GstVideoReceiverLog) << "gst_element_factory_make('decodebin3') failed";
+    } else {
+        (void) g_signal_connect(decoder,
+                                "deep-element-added",
+                                G_CALLBACK(_onDecoderElementAdded),
+                                this);
     }
 
     return decoder;
@@ -1163,26 +1182,6 @@ void GstVideoReceiver::_noteEndOfStream()
     _endOfStream = true;
 }
 
-bool GstVideoReceiver::_activateRtspTcpFallback(const char *reason)
-{
-    if (_sourceFrameReceived.load()
-        || _activeRtspTransport != RtspTransport::Auto
-        || _rtspAutoFallbackToTcp
-        || !QUrl(_uri).scheme().startsWith(
-            QStringLiteral("rtsp"), Qt::CaseInsensitive)) {
-        return false;
-    }
-
-    // Native Auto negotiation remains the first choice. If it produces no
-    // media until timeout/EOS, retry the same URI once as explicit TCP and
-    // retain that decision until the URI or requested preference changes.
-    _rtspAutoFallbackToTcp = true;
-    qCWarning(GstVideoReceiverLog)
-        << "RTSP Auto transport produced no media; the next restart will use TCP"
-        << _uri << "reason" << reason;
-    return true;
-}
-
 bool GstVideoReceiver::_activateRtspAutoFallback(const char *reason)
 {
     if (_sourceFrameReceived.load()
@@ -1370,11 +1369,8 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
         pThis->_worker->dispatch([pThis, transportNegotiationFailure]() {
             qCDebug(GstVideoReceiverLog) << "Stopping because of error";
             if (transportNegotiationFailure) {
-                if (!pThis->_activateRtspAutoFallback(
-                        "RTSP transport error before media")) {
-                    (void) pThis->_activateRtspTcpFallback(
-                        "RTSP transport error before media");
-                }
+                (void) pThis->_activateRtspAutoFallback(
+                    "RTSP transport error before media");
             }
             pThis->stop();
         });
@@ -1413,6 +1409,105 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
     }
 
     return TRUE;
+}
+
+void GstVideoReceiver::_onDecoderElementAdded(GstBin * /* bin */,
+                                              GstBin * /* subBin */,
+                                              GstElement *element,
+                                              gpointer data)
+{
+    auto *const receiver = static_cast<GstVideoReceiver *>(data);
+    GstElementFactory *const factory = element
+        ? gst_element_get_factory(element)
+        : nullptr;
+    const gchar *const klass = factory
+        ? gst_element_factory_get_metadata(factory, GST_ELEMENT_METADATA_KLASS)
+        : nullptr;
+    if (!receiver || !factory || !klass
+        || !g_strrstr(klass, "Decoder") || !g_strrstr(klass, "Video")) {
+        return;
+    }
+
+    GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+    GstPlugin *const plugin = gst_plugin_feature_get_plugin(feature);
+    const QString pluginName = plugin
+        ? QString::fromUtf8(gst_plugin_get_name(plugin))
+        : QStringLiteral("unknown");
+    const QString factoryName = QString::fromUtf8(
+        gst_plugin_feature_get_name(feature));
+    if (plugin) {
+        gst_object_unref(plugin);
+    }
+
+    // This proves which decoder element decodebin instantiated for each
+    // receiver. A decoded-frame log is still required to prove that the
+    // element actually produced video.
+    qCInfo(GstVideoReceiverLog)
+        << "Decoder element instantiated"
+        << "receiver" << receiver
+        << "name" << receiver->name()
+        << "uri" << receiver->uri()
+        << "factory" << pluginName + QLatin1Char('/') + factoryName
+        << "class" << QString::fromUtf8(klass)
+        << "instance" << element;
+
+    GstPad *const srcPad = gst_element_get_static_pad(element, "src");
+    if (srcPad) {
+        (void) gst_pad_add_probe(srcPad,
+                                 GST_PAD_PROBE_TYPE_BUFFER,
+                                 _onDecoderOutput,
+                                 receiver,
+                                 nullptr);
+        gst_object_unref(srcPad);
+    }
+}
+
+GstPadProbeReturn GstVideoReceiver::_onDecoderOutput(GstPad *pad,
+                                                     GstPadProbeInfo *info,
+                                                     gpointer data)
+{
+    auto *const receiver = static_cast<GstVideoReceiver *>(data);
+    GstBuffer *const buffer = info ? gst_pad_probe_info_get_buffer(info) : nullptr;
+    GstElement *const element = pad ? gst_pad_get_parent_element(pad) : nullptr;
+    GstElementFactory *const factory = element
+        ? gst_element_get_factory(element)
+        : nullptr;
+    if (!receiver || !buffer || !element || !factory) {
+        if (element) {
+            gst_object_unref(element);
+        }
+        return GST_PAD_PROBE_OK;
+    }
+
+    GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+    GstPlugin *const plugin = gst_plugin_feature_get_plugin(feature);
+    const QString pluginName = plugin
+        ? QString::fromUtf8(gst_plugin_get_name(plugin))
+        : QStringLiteral("unknown");
+    const QString factoryName = QString::fromUtf8(
+        gst_plugin_feature_get_name(feature));
+    if (plugin) {
+        gst_object_unref(plugin);
+    }
+
+    GstCaps *const caps = gst_pad_get_current_caps(pad);
+    gchar *const capsText = caps ? gst_caps_to_string(caps) : nullptr;
+    qCInfo(GstVideoReceiverLog)
+        << "Decoder produced its first output frame"
+        << "receiver" << receiver
+        << "name" << receiver->name()
+        << "uri" << receiver->uri()
+        << "factory" << pluginName + QLatin1Char('/') + factoryName
+        << "instance" << element
+        << "bytes" << gst_buffer_get_size(buffer)
+        << "caps" << QString::fromUtf8(capsText ? capsText : "unknown");
+
+    g_free(capsText);
+    if (caps) {
+        gst_caps_unref(caps);
+    }
+    gst_object_unref(element);
+    return GST_PAD_PROBE_REMOVE;
 }
 
 void GstVideoReceiver::_onNewPad(GstElement *element, GstPad *pad, gpointer data)

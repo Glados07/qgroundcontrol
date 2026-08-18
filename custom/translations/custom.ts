@@ -335,7 +335,7 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
-        <source>Controls MAVLink video source selection and Android H.265 hardware decoding.</source>
+        <source>Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -350,12 +350,12 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
-        <source>Force hardware decoding for Android H.265</source>
+        <source>Prefer hardware decoding for Android H.264/H.265</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="162"/>
-        <source>Enabled by default for low-latency H.265 playback. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
+        <source>Enabled by default to prioritize low-latency vendor MediaCodec decoding for H.264 and H.265. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
