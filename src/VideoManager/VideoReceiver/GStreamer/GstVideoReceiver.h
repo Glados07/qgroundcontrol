@@ -92,6 +92,7 @@ private:
     void _noteVideoSinkFrame();
     void _noteEndOfStream();
     bool _activateRtspAutoFallback(const char *reason);
+    bool _advanceRtspOptionsCompatibility(const char *reason);
     /// -Unlink the branch from the src pad
     /// -Send an EOS event at the beginning of that branch
     bool _unlinkBranch(GstElement *from);
@@ -133,6 +134,11 @@ private:
     RtspTransport _activeRtspTransport = RtspTransport::Auto;
     bool _rtspTcpFallbackToAuto = false;
     bool _activeRtspTcp = false;
+    // 0: standard rtspsrc headers, 1: basic headers only, 2: skip OPTIONS.
+    // Kept atomic because rtspsrc's before-send callback runs outside the
+    // private VideoReceiver worker thread.
+    std::atomic_int _rtspOptionsCompatibility{0};
+    std::atomic_int _activeRtspOptionsCompatibility{0};
     bool _stopCompletionPending = false;
     mutable QMutex _activePipelineUriMutex;
     QString _activePipelineUri;

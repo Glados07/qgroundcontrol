@@ -437,6 +437,15 @@ void DualVideoManager::_refreshSettings()
         _consecutiveDecodeFailures = 0;
     }
 
+    // A user-visible configuration change represents a new connection
+    // attempt and must not inherit a retry delay from the previous
+    // configuration. Passive primary-receiver state notifications also call
+    // _refreshSettings(), but do not change any of these values; they must not
+    // cancel or bypass an already scheduled retry for the secondary stream.
+    if (uriChanged || enabledChanged || duplicateChanged || transportChanged) {
+        _restartTimer.stop();
+    }
+
     if (transportChanged && _receiver) {
         _receiver->setRtspTransport(
             _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
@@ -906,7 +915,18 @@ void DualVideoManager::_applyDesiredState()
         return;
     }
 
-    _restartTimer.stop();
+    // _refreshSettings() is also invoked while the primary receiver moves
+    // through its active/releasing handoff states. Those unrelated updates
+    // previously started the secondary receiver immediately and silently
+    // bypassed its 2/4/8/15 second RTSP backoff. Keep the current deadline;
+    // the timer callback will enter this function again when it expires.
+    if (_restartTimer.isActive()) {
+        qCInfo(DualVideoManagerLog)
+            << "Keeping scheduled secondary video restart" << _uri
+            << "remainingMs" << _restartTimer.remainingTime();
+        return;
+    }
+
     _starting = true;
     const uint32_t requestedTimeout = _rtspTimeout();
     qCInfo(DualVideoManagerLog)

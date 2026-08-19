@@ -111,7 +111,14 @@ void GstVideoReceiver::_start(uint32_t timeout,
     const bool isRtsp = QUrl(startUri).scheme().startsWith(
         QStringLiteral("rtsp"), Qt::CaseInsensitive);
     if (isRtsp) {
-        if ((_lastRtspUri != startUri)
+        const bool uriChanged = _lastRtspUri != startUri;
+        if (uriChanged) {
+            // OPTIONS compatibility is a property of the server/URI rather
+            // than the selected lower transport. Retain it while switching
+            // TCP/Auto, but never leak it to a different stream.
+            _rtspOptionsCompatibility.store(0);
+        }
+        if (uriChanged
             || (_lastRequestedRtspTransport != requestedTransport)) {
             _lastRtspUri = startUri;
             _lastRequestedRtspTransport = requestedTransport;
@@ -120,10 +127,13 @@ void GstVideoReceiver::_start(uint32_t timeout,
     } else {
         _lastRtspUri.clear();
         _rtspTcpFallbackToAuto = false;
+        _rtspOptionsCompatibility.store(0);
     }
     _activeRtspTransport = requestedTransport;
     _activeRtspTcp = requestedTransport == RtspTransport::Tcp
         && !_rtspTcpFallbackToAuto;
+    _activeRtspOptionsCompatibility.store(
+        _rtspOptionsCompatibility.load());
     const uint32_t minimumTimeout = _activeRtspTcp
         ? kMinimumRtspTcpTimeoutSeconds
         : kMinimumRtspAutoTimeoutSeconds;
@@ -284,7 +294,6 @@ void GstVideoReceiver::_start(uint32_t timeout,
             _rtspTeardownPending.store(true);
             (void) gst_element_set_state(_pipeline, GST_STATE_NULL);
             gst_clear_object(&_pipeline);
-            _rtspTeardownPending.store(false);
         }
 
         if (!pipelineUp) {
@@ -329,7 +338,6 @@ void GstVideoReceiver::stop()
         qCDebug(GstVideoReceiverLog)
             << "Ignoring redundant stop; receiver has no active pipeline"
             << stoppingUri;
-        _rtspTeardownPending.store(false);
         return;
     }
 
@@ -404,7 +412,9 @@ void GstVideoReceiver::stop()
         _decoderValve = nullptr;
         _tee = nullptr;
         _source = nullptr;
-        _rtspTeardownPending.store(false);
+        // Keep teardown mode set until the next _start(). set_state(NULL)
+        // may complete asynchronously, and a late rtspsrc before-send(PAUSE)
+        // must still be suppressed after the pipeline reference is cleared.
         _setPipelineUri(QString());
 
         _lastSourceFrameTime = 0;
@@ -784,6 +794,12 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                                     G_CALLBACK(_onRtspBeforeSend),
                                     this);
 
+            const int optionsCompatibility =
+                _activeRtspOptionsCompatibility.load();
+            const gboolean useBasicHeaders =
+                optionsCompatibility >= 1 ? TRUE : FALSE;
+            const gboolean skipOptions =
+                optionsCompatibility >= 2 ? TRUE : FALSE;
             g_object_set(source,
                          "location", input.toUtf8().constData(),
                          "latency", 25,
@@ -791,6 +807,16 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                          // rtspsrc's 100 ms default to consume TEARDOWN before
                          // accepting the next client session.
                          "teardown-timeout", kRtspTeardownTimeoutNanoseconds,
+                         // Some embedded RTSP implementations close the
+                         // control socket when they receive OPTIONS. After
+                         // detecting that exact failure, use only the basic
+                         // request headers without changing rtspsrc's normal
+                         // reconnect behavior for an established UDP stream.
+                         "short-header", useBasicHeaders,
+                         // In skip mode there is no OPTIONS response, so
+                         // rtspsrc would later choose OPTIONS for keepalive.
+                         // Do not reintroduce the rejected method after PLAY.
+                         "do-rtsp-keep-alive", !skipOptions,
                          nullptr);
             if (_activeRtspTcp) {
                 // Keep the public URI standards-compliant (rtsp://). The
@@ -808,10 +834,18 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
 
             guint effectiveProtocols = 0;
             guint64 effectiveTeardownTimeout = 0;
+            gboolean effectiveShortHeader = FALSE;
+            gboolean effectiveUdpReconnect = TRUE;
+            gboolean effectiveKeepAlive = TRUE;
             g_object_get(source, "protocols", &effectiveProtocols, nullptr);
             g_object_get(source,
                          "teardown-timeout",
                          &effectiveTeardownTimeout,
+                         nullptr);
+            g_object_get(source,
+                         "short-header", &effectiveShortHeader,
+                         "udp-reconnect", &effectiveUdpReconnect,
+                         "do-rtsp-keep-alive", &effectiveKeepAlive,
                          nullptr);
             qCInfo(GstVideoReceiverLog)
                 << "Configured RTSP source" << input
@@ -821,7 +855,11 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                 << "effectiveProtocols"
                 << QStringLiteral("0x%1").arg(effectiveProtocols, 0, 16)
                 << "teardownTimeoutMs"
-                << (effectiveTeardownTimeout / GST_MSECOND);
+                << (effectiveTeardownTimeout / GST_MSECOND)
+                << "optionsCompatibility" << optionsCompatibility
+                << "shortHeader" << effectiveShortHeader
+                << "udpReconnect" << effectiveUdpReconnect
+                << "rtspKeepAlive" << effectiveKeepAlive;
             if (_activeRtspTcp
                 && effectiveProtocols
                     != static_cast<guint>(GST_RTSP_LOWER_TRANS_TCP)) {
@@ -1255,6 +1293,40 @@ bool GstVideoReceiver::_activateRtspAutoFallback(const char *reason)
     return true;
 }
 
+bool GstVideoReceiver::_advanceRtspOptionsCompatibility(const char *reason)
+{
+    const QString activeUri = _pipelineUri();
+    const int currentMode = _activeRtspOptionsCompatibility.load();
+    if (_sourceFrameReceived.load()
+        || currentMode >= 2
+        || !QUrl(activeUri).scheme().startsWith(
+            QStringLiteral("rtsp"), Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    const int nextMode = currentMode + 1;
+    int expectedMode = currentMode;
+    if (!_rtspOptionsCompatibility.compare_exchange_strong(expectedMode,
+                                                            nextMode)) {
+        // More than one bus error can be forwarded for the same pipeline.
+        // A single attempt is allowed to advance only one compatibility
+        // level, so basic-header mode always gets a real connection attempt.
+        return false;
+    }
+    if (nextMode == 1) {
+        qCWarning(GstVideoReceiverLog)
+            << "RTSP server closed the initial OPTIONS request; the next "
+               "restart will use basic RTSP headers"
+            << activeUri << "reason" << reason;
+    } else {
+        qCWarning(GstVideoReceiverLog)
+            << "RTSP server also rejected basic OPTIONS; the next restart "
+               "will skip OPTIONS and continue with DESCRIBE"
+            << activeUri << "reason" << reason;
+    }
+    return true;
+}
+
 bool GstVideoReceiver::_unlinkBranch(GstElement *from)
 {
     GstPad *src = gst_element_get_static_pad(from, "src");
@@ -1416,6 +1488,13 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
                 || error->code == GST_RESOURCE_ERROR_OPEN_READ
                 || error->code == GST_RESOURCE_ERROR_OPEN_READ_WRITE
                 || error->code == GST_RESOURCE_ERROR_SETTINGS);
+        const bool optionsEndOfFile = error
+            && error->domain == GST_RESOURCE_ERROR
+            && error->code == GST_RESOURCE_ERROR_READ
+            && lastRtspMethod == GST_RTSP_OPTIONS
+            && !pThis->_sourceFrameReceived.load()
+            && debug
+            && g_strrstr(debug, "Received end-of-file");
 
         qCCritical(GstVideoReceiverLog)
             << "GStreamer error"
@@ -1438,14 +1517,19 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
         g_clear_pointer(&debug, g_free);
         g_clear_error(&error);
 
-        pThis->_worker->dispatch([pThis, transportNegotiationFailure]() {
-            qCDebug(GstVideoReceiverLog) << "Stopping because of error";
-            if (transportNegotiationFailure) {
-                (void) pThis->_activateRtspAutoFallback(
-                    "RTSP transport error before media");
-            }
-            pThis->stop();
-        });
+        pThis->_worker->dispatch(
+            [pThis, transportNegotiationFailure, optionsEndOfFile]() {
+                qCDebug(GstVideoReceiverLog) << "Stopping because of error";
+                if (optionsEndOfFile) {
+                    (void) pThis->_advanceRtspOptionsCompatibility(
+                        "server EOF while receiving OPTIONS response");
+                }
+                if (transportNegotiationFailure && !optionsEndOfFile) {
+                    (void) pThis->_activateRtspAutoFallback(
+                        "RTSP transport error before media");
+                }
+                pThis->stop();
+            });
         break;
     }
     case GST_MESSAGE_EOS:
@@ -1508,6 +1592,33 @@ gboolean GstVideoReceiver::_onRtspBeforeSend(GstElement * /* source */,
 
     const bool suppressPause = method == GST_RTSP_PAUSE
         && receiver->_rtspTeardownPending.load();
+    const bool suppressOptions = method == GST_RTSP_OPTIONS
+        && receiver->_activeRtspOptionsCompatibility.load() >= 2;
+    const bool suppressed = suppressPause || suppressOptions;
+    const auto headerCount = [message](GstRTSPHeaderField field) {
+        int count = 0;
+        gchar *value = nullptr;
+        while (gst_rtsp_message_get_header(message,
+                                           field,
+                                           &value,
+                                           count) == GST_RTSP_OK) {
+            ++count;
+        }
+        return count;
+    };
+    const GstRTSPHeaderField realExtensionFields[] = {
+        GST_RTSP_HDR_CLIENT_CHALLENGE,
+        GST_RTSP_HDR_CLIENT_ID,
+        GST_RTSP_HDR_COMPANY_ID,
+        GST_RTSP_HDR_GUID,
+        GST_RTSP_HDR_REGION_DATA,
+        GST_RTSP_HDR_PLAYER_START_TIME,
+    };
+    int realExtensionHeaders = 0;
+    for (const GstRTSPHeaderField field : realExtensionFields) {
+        realExtensionHeaders += headerCount(field);
+    }
+    const int userAgentHeaders = headerCount(GST_RTSP_HDR_USER_AGENT);
     const gchar *const methodText = gst_rtsp_method_as_text(method);
     QUrl requestUrl = QUrl::fromEncoded(
         QByteArray(requestUri ? requestUri : ""),
@@ -1525,11 +1636,30 @@ gboolean GstVideoReceiver::_onRtspBeforeSend(GstElement * /* source */,
                 : QStringLiteral("<none>"))
         << "method"
         << QString::fromLatin1(methodText ? methodText : "<unknown>")
-        << "suppressed" << suppressPause;
+        << "userAgentHeaders" << userAgentHeaders
+        << "realExtensionHeaders" << realExtensionHeaders
+        << "optionsCompatibility"
+        << receiver->_activeRtspOptionsCompatibility.load()
+        << "suppressed" << suppressed;
 
     if (suppressPause) {
         qCInfo(GstVideoReceiverLog)
             << "Suppressing RTSP PAUSE during pipeline teardown"
+            << "receiver" << receiver
+            << "name" << receiver->name()
+            << "uri" << receiver->_pipelineUri();
+        return FALSE;
+    }
+
+    if (suppressOptions) {
+        // gst_rtspsrc treats a before-send FALSE result as a successful no-op.
+        // Its OPTIONS parser then falls back to the mandatory
+        // DESCRIBE/SETUP/PLAY method set and proceeds with DESCRIBE. This is a
+        // compatibility path for servers which close the socket instead of
+        // returning a valid response to OPTIONS.
+        qCWarning(GstVideoReceiverLog)
+            << "Skipping RTSP OPTIONS rejected by the server; continuing "
+               "with DESCRIBE"
             << "receiver" << receiver
             << "name" << receiver->name()
             << "uri" << receiver->_pipelineUri();
