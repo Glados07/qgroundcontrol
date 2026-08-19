@@ -155,6 +155,7 @@ void QtMultimediaReceiver::start(uint32_t timeout)
         emit onStartComplete(STATUS_INVALID_URL);
         return;
     }
+    emit onStartAttempt(_uri);
     _mediaPlayer->setSource(QUrl::fromUserInput(_uri));
 
     _frameTimer.setInterval(timeout);

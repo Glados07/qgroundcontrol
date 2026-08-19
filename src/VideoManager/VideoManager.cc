@@ -27,12 +27,14 @@
 #include "QtMultimediaReceiver.h"
 #include "UVCReceiver.h"
 
-#include <QtCore/qapplicationstatic.h>
 #include <QtCore/QDir>
+#include <QtCore/QPointer>
+#include <QtCore/QTimer>
+#include <QtCore/QUrl>
+#include <QtCore/qapplicationstatic.h>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
-#include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
 
@@ -40,6 +42,14 @@ static constexpr const char *kFileExtension[VideoReceiver::FILE_FORMAT_MAX + 1] 
     "mkv",
     "mov",
     "mp4"
+};
+
+static constexpr int kReceiverRetryDelayMs[] = {
+    1000,
+    2000,
+    4000,
+    8000,
+    15000,
 };
 
 Q_APPLICATION_STATIC(VideoManager, _videoManagerInstance);
@@ -122,7 +132,18 @@ void VideoManager::init(QQuickWindow *window)
 
 void VideoManager::cleanup()
 {
+    if (_cleaningUp) {
+        return;
+    }
+    _cleaningUp = true;
+
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        auto lifecycle = _receiverLifecycle.find(receiver);
+        if (lifecycle != _receiverLifecycle.end()) {
+            lifecycle->desiredRunning = false;
+            lifecycle->restartAfterStop = false;
+        }
+        _cancelReceiverRestart(receiver);
         QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
     }
 }
@@ -602,24 +623,214 @@ void VideoManager::_communicationLostChanged(bool connectionLost)
 
 void VideoManager::_restartAllVideos()
 {
+    if (_cleaningUp) {
+        return;
+    }
+
+    if (!hasVideo()) {
+        stopVideo();
+        return;
+    }
+
     for (VideoReceiver *videoReceiver : std::as_const(_videoReceivers)) {
+        auto lifecycle = _receiverLifecycle.find(videoReceiver);
+        if (lifecycle != _receiverLifecycle.end()) {
+            lifecycle->desiredRunning = true;
+        }
         _restartVideo(videoReceiver);
     }
 }
 
+void VideoManager::_cancelReceiverRestart(VideoReceiver *receiver)
+{
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return;
+    }
+
+    ++lifecycle->generation;
+    if (lifecycle->restartTimer) {
+        lifecycle->restartTimer->stop();
+        lifecycle->restartTimer->deleteLater();
+        lifecycle->restartTimer = nullptr;
+    }
+}
+
+void VideoManager::_resetReceiverRetry(VideoReceiver *receiver, const char *reason)
+{
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return;
+    }
+
+    _cancelReceiverRestart(receiver);
+    lifecycle = _receiverLifecycle.find(receiver);
+    lifecycle->retryIndex = 0;
+    lifecycle->uri = receiver->uri();
+    lifecycle->rtspTransport = static_cast<int>(receiver->rtspTransport());
+
+    qCDebug(VideoManagerLog)
+        << "Reset video receiver retry state" << receiver->name()
+        << receiver->uri() << "reason" << reason;
+}
+
+void VideoManager::_markReceiverHealthy(VideoReceiver *receiver, const char *reason)
+{
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return;
+    }
+
+    // decodingChanged is queued from the receiver worker. Ignore a late true
+    // from the pipeline that just stopped; cancelling the already scheduled
+    // retry here would otherwise strand a desired receiver. Do not update the
+    // desired URI/transport snapshot here: this frame may belong to the old
+    // pipeline while a new configuration is already visible on the receiver.
+    if ((!receiver->started() && !lifecycle->startPending)
+        || lifecycle->stopPending
+        || lifecycle->restartTimer) {
+        return;
+    }
+
+    lifecycle->retryIndex = 0;
+
+    qCDebug(VideoManagerLog)
+        << "Video receiver established media" << receiver->name()
+        << receiver->uri() << "reason" << reason;
+}
+
+bool VideoManager::_receiverConfigurationChanged(VideoReceiver *receiver)
+{
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return false;
+    }
+
+    if ((lifecycle->uri == receiver->uri())
+        && (lifecycle->rtspTransport == static_cast<int>(receiver->rtspTransport()))) {
+        return false;
+    }
+
+    _resetReceiverRetry(receiver, "URI or RTSP transport changed");
+    return true;
+}
+
+void VideoManager::_scheduleReceiverStart(VideoReceiver *receiver, bool failureBackoff)
+{
+    if (_cleaningUp) {
+        return;
+    }
+
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return;
+    }
+
+    _cancelReceiverRestart(receiver);
+    lifecycle = _receiverLifecycle.find(receiver);
+
+    if (!lifecycle->desiredRunning || !hasVideo() || receiver->uri().isEmpty()) {
+        return;
+    }
+
+    int delayMs = 0;
+    if (failureBackoff) {
+        const bool isRtsp = QUrl(receiver->uri()).scheme().startsWith(
+            QStringLiteral("rtsp"), Qt::CaseInsensitive);
+        if (isRtsp) {
+            const uint32_t retryIndex = qMin(
+                lifecycle->retryIndex,
+                static_cast<uint32_t>(std::size(kReceiverRetryDelayMs) - 1));
+            delayMs = kReceiverRetryDelayMs[retryIndex];
+            lifecycle->retryIndex = qMin(
+                retryIndex + 1,
+                static_cast<uint32_t>(std::size(kReceiverRetryDelayMs) - 1));
+        } else {
+            delayMs = kReceiverRetryDelayMs[0];
+        }
+    }
+
+    const quint64 generation = lifecycle->generation;
+    const QString scheduledUri = receiver->uri();
+    const int scheduledTransport = static_cast<int>(receiver->rtspTransport());
+    QTimer *const timer = new QTimer(receiver);
+    timer->setSingleShot(true);
+    timer->setTimerType(Qt::PreciseTimer);
+    lifecycle->restartTimer = timer;
+
+    const QPointer<VideoReceiver> guardedReceiver(receiver);
+    (void) connect(timer, &QTimer::timeout, this,
+                   [this, guardedReceiver, timer, generation, scheduledUri, scheduledTransport]() {
+        timer->deleteLater();
+        if (!guardedReceiver) {
+            return;
+        }
+
+        auto lifecycle = _receiverLifecycle.find(guardedReceiver.data());
+        if (lifecycle == _receiverLifecycle.end()) {
+            return;
+        }
+
+        if (lifecycle->restartTimer == timer) {
+            lifecycle->restartTimer = nullptr;
+        }
+
+        if (lifecycle->generation != generation) {
+            return;
+        }
+
+        if (!lifecycle->desiredRunning || !hasVideo() || guardedReceiver->uri().isEmpty()) {
+            return;
+        }
+
+        if ((guardedReceiver->uri() != scheduledUri)
+            || (static_cast<int>(guardedReceiver->rtspTransport()) != scheduledTransport)) {
+            _resetReceiverRetry(guardedReceiver.data(), "configuration changed while restart was pending");
+            _scheduleReceiverStart(guardedReceiver.data(), false);
+            return;
+        }
+
+        _startReceiver(guardedReceiver.data());
+    });
+
+    qCInfo(VideoManagerLog)
+        << "Scheduling video receiver start" << receiver->name()
+        << scheduledUri << "delayMs" << delayMs
+        << "generation" << generation;
+    timer->start(delayMs);
+}
+
 void VideoManager::_restartVideo(VideoReceiver *receiver)
 {
-    if (!receiver) {
+    if (_cleaningUp || !receiver) {
         qCDebug(VideoManagerLog) << "VideoReceiver is NULL";
         return;
     }
 
     qCDebug(VideoManagerLog) << "Restart video receiver" << receiver->name();
 
-    if (receiver->started()) {
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle == _receiverLifecycle.end()) {
+        return;
+    }
+
+    lifecycle->desiredRunning = hasVideo() && !receiver->uri().isEmpty();
+    _resetReceiverRetry(receiver, "restart requested");
+    lifecycle = _receiverLifecycle.find(receiver);
+
+    if (!lifecycle->desiredRunning || receiver->uri().isEmpty()) {
+        lifecycle->restartAfterStop = false;
         _stopReceiver(receiver);
-        // onStopComplete Signal Will Restart It
+        return;
+    }
+
+    if (receiver->started()) {
+        lifecycle->restartAfterStop = true;
+        _stopReceiver(receiver);
+    } else if (lifecycle->startPending) {
+        lifecycle->restartAfterStop = true;
     } else {
+        lifecycle->restartAfterStop = false;
         _startReceiver(receiver);
     }
 }
@@ -631,7 +842,12 @@ void VideoManager::_stopReceiver(VideoReceiver *receiver)
         return;
     }
 
-    if (receiver->started()) {
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (receiver->started()
+        && ((lifecycle == _receiverLifecycle.end()) || !lifecycle->stopPending)) {
+        if (lifecycle != _receiverLifecycle.end()) {
+            lifecycle->stopPending = true;
+        }
         receiver->stop();
     }
 }
@@ -639,15 +855,30 @@ void VideoManager::_stopReceiver(VideoReceiver *receiver)
 void VideoManager::stopVideo()
 {
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        auto lifecycle = _receiverLifecycle.find(receiver);
+        if (lifecycle != _receiverLifecycle.end()) {
+            lifecycle->desiredRunning = false;
+            lifecycle->restartAfterStop = false;
+        }
+        _cancelReceiverRestart(receiver);
         _stopReceiver(receiver);
     }
 }
 
 void VideoManager::_startReceiver(VideoReceiver *receiver)
 {
-    if (!receiver) {
+    if (_cleaningUp || !receiver) {
         qCDebug(VideoManagerLog) << "VideoReceiver is NULL";
         return;
+    }
+
+    auto lifecycle = _receiverLifecycle.find(receiver);
+    if (lifecycle != _receiverLifecycle.end()) {
+        (void) _receiverConfigurationChanged(receiver);
+        lifecycle = _receiverLifecycle.find(receiver);
+        if (!lifecycle->desiredRunning || lifecycle->startPending || lifecycle->stopPending) {
+            return;
+        }
     }
 
     if (receiver->started()) {
@@ -666,6 +897,9 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
 
     const uint32_t timeout = ((source == VideoSettings::videoSourceRTSP) ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3);
 
+    if (lifecycle != _receiverLifecycle.end()) {
+        lifecycle->startPending = true;
+    }
     receiver->start(timeout);
 }
 
@@ -692,19 +926,61 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             return;
         }
 
+        auto lifecycle = _receiverLifecycle.find(receiver);
+        if (lifecycle != _receiverLifecycle.end()) {
+            lifecycle->startPending = false;
+        }
+
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "Start complete, status:" << status;
         switch (status) {
         case VideoReceiver::STATUS_OK:
             receiver->setStarted(true);
+            lifecycle = _receiverLifecycle.find(receiver);
+            if ((lifecycle != _receiverLifecycle.end())
+                && (!lifecycle->desiredRunning || lifecycle->restartAfterStop)) {
+                _stopReceiver(receiver);
+                break;
+            }
             if (receiver->sink()) {
                 receiver->startDecoding(receiver->sink());
             }
             break;
         case VideoReceiver::STATUS_INVALID_URL:
+            receiver->setStarted(false);
+            lifecycle = _receiverLifecycle.find(receiver);
+            if ((lifecycle != _receiverLifecycle.end())
+                && lifecycle->restartAfterStop
+                && lifecycle->desiredRunning
+                && !receiver->uri().isEmpty()) {
+                lifecycle->restartAfterStop = false;
+                _scheduleReceiverStart(receiver, false);
+            } else {
+                _cancelReceiverRestart(receiver);
+            }
+            break;
         case VideoReceiver::STATUS_INVALID_STATE:
+            // A start was coalesced with an already active pipeline. Reflect
+            // that state so a pending explicit stop or configuration restart
+            // can still be serialized through onStopComplete.
+            receiver->setStarted(true);
+            lifecycle = _receiverLifecycle.find(receiver);
+            if ((lifecycle != _receiverLifecycle.end())
+                && (!lifecycle->desiredRunning || lifecycle->restartAfterStop)) {
+                _stopReceiver(receiver);
+            }
             break;
         default:
-            _restartVideo(receiver);
+            receiver->setStarted(false);
+            lifecycle = _receiverLifecycle.find(receiver);
+            if (lifecycle != _receiverLifecycle.end()) {
+                const bool intentionalRestart = lifecycle->restartAfterStop
+                    || _receiverConfigurationChanged(receiver);
+                lifecycle = _receiverLifecycle.find(receiver);
+                lifecycle->restartAfterStop = false;
+                if (lifecycle->desiredRunning) {
+                    _scheduleReceiverStart(receiver, !intentionalRestart);
+                }
+            }
             break;
         }
     });
@@ -712,14 +988,29 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::onStopComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Stop complete" << receiver->name() << receiver->uri()  << ", status:" << status;
         receiver->setStarted(false);
-        if (status == VideoReceiver::STATUS_INVALID_URL) {
-            qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
-        } else {
-            QTimer::singleShot(1000, receiver, [this, receiver]() {
-                qCDebug(VideoManagerLog) << "Restarting video receiver" << receiver->name() << receiver->uri();
-                _startReceiver(receiver);
-            });
+
+        const bool configurationChanged = _receiverConfigurationChanged(receiver);
+        auto lifecycle = _receiverLifecycle.find(receiver);
+        if (lifecycle == _receiverLifecycle.end()) {
+            return;
         }
+
+        lifecycle->stopPending = false;
+        const bool intentionalRestart = lifecycle->restartAfterStop || configurationChanged;
+        lifecycle->restartAfterStop = false;
+
+        if (!lifecycle->desiredRunning || !hasVideo() || receiver->uri().isEmpty()) {
+            _cancelReceiverRestart(receiver);
+            return;
+        }
+
+        if ((status == VideoReceiver::STATUS_INVALID_URL) && !configurationChanged) {
+            qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
+            _cancelReceiverRestart(receiver);
+            return;
+        }
+
+        _scheduleReceiverStart(receiver, !intentionalRestart);
     });
 
     (void) connect(receiver, &VideoReceiver::streamingChanged, this, [this, receiver](bool active) {
@@ -732,6 +1023,9 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::decodingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "decoding changed, active:" << (active ? "yes" : "no");
+        if (active) {
+            _markReceiverHealthy(receiver, "first decoded frame");
+        }
         if (!receiver->isThermal()) {
             _decoding = active;
             emit decodingChanged();
@@ -782,16 +1076,21 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) _updateSettings(receiver);
 
     _videoReceivers.append(receiver);
-
-    if (hasVideo()) {
-        _startReceiver(receiver);
-    }
+    ReceiverLifecycleState &lifecycle = _receiverLifecycle[receiver];
+    lifecycle.uri = receiver->uri();
+    lifecycle.rtspTransport = static_cast<int>(receiver->rtspTransport());
 }
 
 void VideoManager::startVideo()
 {
+    if (_cleaningUp) {
+        qCDebug(VideoManagerLog) << "Ignoring video start during cleanup";
+        return;
+    }
+
     if (!hasVideo()) {
         qCDebug(VideoManagerLog) << "Stream not enabled/configured";
+        stopVideo();
         return;
     }
 
@@ -813,5 +1112,8 @@ FinishVideoInitialization::~FinishVideoInitialization()
 
 void FinishVideoInitialization::run()
 {
-    VideoManager::instance()->startVideo();
+    (void) QMetaObject::invokeMethod(
+        VideoManager::instance(),
+        &VideoManager::startVideo,
+        Qt::QueuedConnection);
 }

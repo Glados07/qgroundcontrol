@@ -18,12 +18,15 @@
 #include <QtCore/QRunnable>
 #include <QtCore/QUrl>
 
+#include <algorithm>
+
 QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 
 namespace {
 constexpr const char *kSecondaryVideoObjectName = "secondaryVideoContent";
 constexpr int kRestartDelayMs = 1000;
 constexpr int kMaximumRestartDelayMs = 15000;
+constexpr int kPrimaryActiveUriClearDelayMs = 1000;
 constexpr int kMinimumDecodeStartupTimeoutMs = 10000;
 constexpr int kMaximumDecodeStartupTimeoutMs = 30000;
 constexpr uint32_t kFallbackRtspTimeoutSeconds = 5;
@@ -81,6 +84,25 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
             this,
             &DualVideoManager::_handleDecodeStartupTimeout);
 
+    _primaryActiveUriClearTimer.setSingleShot(true);
+    _primaryActiveUriClearTimer.setTimerType(Qt::PreciseTimer);
+    _primaryActiveUriClearTimer.setInterval(kPrimaryActiveUriClearDelayMs);
+    connect(&_primaryActiveUriClearTimer,
+            &QTimer::timeout,
+            this,
+            [this]() {
+                if (_cleaningUp || _primaryReleasingUris.isEmpty()) {
+                    return;
+                }
+
+                const auto releasedUris = _primaryReleasingUris.values();
+                _primaryReleasingUris.clear();
+                qCInfo(DualVideoManagerLog)
+                    << "Released stopped primary RTSP URI handoff guards"
+                    << releasedUris;
+                _refreshSettings();
+            });
+
     if (_settings) {
         connect(_settings->secondaryRtspUrl(),
                 &Fact::rawValueChanged,
@@ -112,6 +134,7 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
 
 DualVideoManager::~DualVideoManager()
 {
+    _primaryActiveUriClearTimer.stop();
     cleanup();
 }
 
@@ -127,23 +150,98 @@ VideoReceiver *DualVideoManager::videoReceiver() const
 
 void DualVideoManager::setPrimaryVideoReceiver(VideoReceiver *receiver)
 {
+    if (_cleaningUp) {
+        return;
+    }
+
     if (_primaryVideoReceiver == receiver) {
+        if (receiver && receiver->started() && _primaryActiveUri.isEmpty()) {
+            _recordPrimaryActiveUri(receiver->uri());
+            return;
+        }
         _refreshSettings();
         return;
     }
 
+    if (_primaryVideoReceiver) {
+        _schedulePrimaryActiveUriClear();
+    }
+
     disconnect(_primaryVideoUriConnection);
+    disconnect(_primaryVideoStartAttemptConnection);
+    disconnect(_primaryVideoStartConnection);
+    disconnect(_primaryVideoStopConnection);
     disconnect(_primaryVideoDestroyedConnection);
     _primaryVideoUriConnection = {};
+    _primaryVideoStartAttemptConnection = {};
+    _primaryVideoStartConnection = {};
+    _primaryVideoStopConnection = {};
     _primaryVideoDestroyedConnection = {};
     _primaryVideoReceiver = receiver;
+    _primaryStartAttemptUri.clear();
 
     if (receiver) {
+        const QPointer<VideoReceiver> guardedReceiver(receiver);
         _primaryVideoUriConnection =
             connect(receiver,
                     &VideoReceiver::uriChanged,
                     this,
-                    [this](const QString &) { _refreshSettings(); });
+                    [this, guardedReceiver](const QString &) {
+                        if (!guardedReceiver
+                            || _primaryVideoReceiver != guardedReceiver) {
+                            return;
+                        }
+                        _refreshSettings();
+                    });
+        _primaryVideoStartAttemptConnection =
+            connect(receiver,
+                    &VideoReceiver::onStartAttempt,
+                    this,
+                    [this, guardedReceiver](const QString &uri) {
+                        if (_cleaningUp
+                            || !guardedReceiver
+                            || _primaryVideoReceiver != guardedReceiver) {
+                            return;
+                        }
+
+                        _primaryStartAttemptUri = uri.trimmed();
+                        _refreshSettings();
+                    });
+        _primaryVideoStartConnection =
+            connect(receiver,
+                    &VideoReceiver::onStartComplete,
+                    this,
+                    [this, guardedReceiver](VideoReceiver::STATUS status) {
+                        if (_cleaningUp
+                            || !guardedReceiver
+                            || _primaryVideoReceiver != guardedReceiver) {
+                            return;
+                        }
+
+                        const QString attemptedUri = _primaryStartAttemptUri;
+                        _primaryStartAttemptUri.clear();
+                        if (status == VideoReceiver::STATUS_OK) {
+                            _recordPrimaryActiveUri(
+                                attemptedUri.isEmpty()
+                                    ? guardedReceiver->uri()
+                                    : attemptedUri);
+                        } else {
+                            _refreshSettings();
+                        }
+                    });
+        _primaryVideoStopConnection =
+            connect(receiver,
+                    &VideoReceiver::onStopComplete,
+                    this,
+                    [this, guardedReceiver](VideoReceiver::STATUS) {
+                        if (_cleaningUp
+                            || !guardedReceiver
+                            || _primaryVideoReceiver != guardedReceiver) {
+                            return;
+                        }
+
+                        _schedulePrimaryActiveUriClear();
+                    });
         _primaryVideoDestroyedConnection =
             connect(receiver,
                     &QObject::destroyed,
@@ -151,8 +249,21 @@ void DualVideoManager::setPrimaryVideoReceiver(VideoReceiver *receiver)
                     [this]() {
                         _primaryVideoReceiver = nullptr;
                         _primaryVideoUriConnection = {};
+                        _primaryVideoStartAttemptConnection = {};
+                        _primaryVideoStartConnection = {};
+                        _primaryVideoStopConnection = {};
                         _primaryVideoDestroyedConnection = {};
+                        _primaryStartAttemptUri.clear();
+                        if (!_cleaningUp) {
+                            _schedulePrimaryActiveUriClear();
+                            _refreshSettings();
+                        }
                     });
+
+        if (receiver->started()) {
+            _recordPrimaryActiveUri(receiver->uri());
+            return;
+        }
     }
 
     _refreshSettings();
@@ -230,12 +341,29 @@ void DualVideoManager::stopVideo()
 
 void DualVideoManager::cleanup()
 {
+    _cleaningUp = true;
     _restartTimer.stop();
     _decodeStartupTimer.stop();
+    _primaryActiveUriClearTimer.stop();
     _paused = true;
     _starting = false;
     _stopping = false;
     _restartRequested = false;
+    _primaryStartAttemptUri.clear();
+    _primaryActiveUri.clear();
+    _primaryReleasingUris.clear();
+
+    disconnect(_primaryVideoUriConnection);
+    disconnect(_primaryVideoStartAttemptConnection);
+    disconnect(_primaryVideoStartConnection);
+    disconnect(_primaryVideoStopConnection);
+    disconnect(_primaryVideoDestroyedConnection);
+    _primaryVideoUriConnection = {};
+    _primaryVideoStartAttemptConnection = {};
+    _primaryVideoStartConnection = {};
+    _primaryVideoStopConnection = {};
+    _primaryVideoDestroyedConnection = {};
+    _primaryVideoReceiver = nullptr;
 
     if (_fullScreen) {
         _fullScreen = false;
@@ -262,6 +390,10 @@ void DualVideoManager::setFullScreen(bool fullScreen)
 
 void DualVideoManager::_refreshSettings()
 {
+    if (_cleaningUp) {
+        return;
+    }
+
     const bool oldHasVideo = hasVideo();
     VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings();
     const bool primaryUsesRtsp = videoSettings
@@ -278,8 +410,17 @@ void DualVideoManager::_refreshSettings()
     const QString effectivePrimaryUri = _primaryVideoReceiver
         ? _primaryVideoReceiver->uri().trimmed()
         : QString();
+    const bool releasingPrimarySource = std::any_of(
+        _primaryReleasingUris.cbegin(),
+        _primaryReleasingUris.cend(),
+        [&uri](const QString &releasingUri) {
+            return sameStreamUri(uri, releasingUri);
+        });
     const bool duplicateSource = sameStreamUri(uri, configuredPrimaryUri)
-        || sameStreamUri(uri, effectivePrimaryUri);
+        || sameStreamUri(uri, effectivePrimaryUri)
+        || sameStreamUri(uri, _primaryStartAttemptUri)
+        || sameStreamUri(uri, _primaryActiveUri)
+        || releasingPrimarySource;
     const bool preferRtspTcp = _settings
         && _settings->secondaryRtspTcpOnly()->rawValue().toBool();
 
@@ -311,11 +452,15 @@ void DualVideoManager::_refreshSettings()
 
     if (duplicateChanged && _duplicateSource) {
         qCWarning(DualVideoManagerLog)
-            << "Secondary RTSP URL matches the configured or effective primary URL;"
+            << "Secondary RTSP URL matches a configured, current, starting,"
+               " active, or releasing primary URL;"
                " the duplicate receiver is disabled"
             << "secondary" << _uri
             << "configuredPrimary" << configuredPrimaryUri
-            << "effectivePrimary" << effectivePrimaryUri;
+            << "currentPrimary" << effectivePrimaryUri
+            << "startingPrimary" << _primaryStartAttemptUri
+            << "activePrimary" << _primaryActiveUri
+            << "releasingPrimary" << _primaryReleasingUris.values();
     }
 
     if (!hasVideo()) {
@@ -341,7 +486,7 @@ void DualVideoManager::_refreshSettings()
 
 void DualVideoManager::_ensureReceiver()
 {
-    if (_receiver || !hasVideo() || !_window) {
+    if (_cleaningUp || _receiver || !hasVideo() || !_window) {
         return;
     }
 
@@ -869,6 +1014,63 @@ void DualVideoManager::_scheduleRestart()
             << "delayMs" << delayMs;
         _restartTimer.start();
     }
+}
+
+void DualVideoManager::_recordPrimaryActiveUri(const QString &uri)
+{
+    if (_cleaningUp) {
+        return;
+    }
+
+    const QString activeUri = uri.trimmed();
+    if (activeUri.isEmpty()) {
+        return;
+    }
+
+    for (auto it = _primaryReleasingUris.begin();
+         it != _primaryReleasingUris.end();) {
+        if (sameStreamUri(activeUri, *it)) {
+            it = _primaryReleasingUris.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (_primaryReleasingUris.isEmpty()) {
+        _primaryActiveUriClearTimer.stop();
+    }
+
+    if (_primaryActiveUri == activeUri) {
+        _refreshSettings();
+        return;
+    }
+
+    _primaryActiveUri = activeUri;
+    qCInfo(DualVideoManagerLog)
+        << "Tracking active primary RTSP URI for secondary handoff"
+        << _primaryActiveUri;
+    _refreshSettings();
+}
+
+void DualVideoManager::_schedulePrimaryActiveUriClear()
+{
+    if (_cleaningUp) {
+        _primaryActiveUri.clear();
+        _primaryReleasingUris.clear();
+        return;
+    }
+
+    if (_primaryActiveUri.isEmpty()) {
+        return;
+    }
+
+    const QString releasingUri = _primaryActiveUri;
+    _primaryActiveUri.clear();
+    _primaryReleasingUris.insert(releasingUri);
+    qCInfo(DualVideoManagerLog)
+        << "Holding stopped primary RTSP URI before secondary handoff"
+        << releasingUri
+        << "delayMs" << kPrimaryActiveUriClearDelayMs;
+    _primaryActiveUriClearTimer.start();
 }
 
 uint32_t DualVideoManager::_rtspTimeout() const

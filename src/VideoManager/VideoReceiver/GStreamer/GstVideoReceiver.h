@@ -52,6 +52,7 @@ private:
 
 typedef struct _GstElement GstElement;
 typedef struct _GstBin GstBin;
+typedef struct _GstRTSPMessage GstRTSPMessage;
 
 class GstVideoReceiver : public VideoReceiver
 {
@@ -75,6 +76,10 @@ private slots:
     void _handleEOS();
 
 private:
+    void _start(uint32_t timeout,
+                const QString &startUri,
+                RtspTransport requestedTransport,
+                bool lowLatencyMode);
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);
@@ -95,8 +100,11 @@ private:
 
     bool _needDispatch();
     void _dispatchSignal(Task emitter);
+    QString _pipelineUri() const;
+    void _setPipelineUri(const QString &uri);
 
     static gboolean _onBusMessage(GstBus *bus, GstMessage *message, gpointer user_data);
+    static gboolean _onRtspBeforeSend(GstElement *source, GstRTSPMessage *message, gpointer data);
     static void _onDecoderElementAdded(GstBin *bin, GstBin *subBin, GstElement *element, gpointer data);
     static GstPadProbeReturn _onDecoderOutput(GstPad *pad, GstPadProbeInfo *info, gpointer data);
     static void _onNewPad(GstElement *element, GstPad *pad, gpointer data);
@@ -126,6 +134,10 @@ private:
     bool _rtspTcpFallbackToAuto = false;
     bool _activeRtspTcp = false;
     bool _stopCompletionPending = false;
+    mutable QMutex _activePipelineUriMutex;
+    QString _activePipelineUri;
+    std::atomic_bool _rtspTeardownPending{false};
+    std::atomic_int _lastRtspMethod{0};
     std::atomic_bool _sourceFrameReceived{false};
 
     static constexpr const char *_kFileMux[FILE_FORMAT_MAX + 1] = {

@@ -9,15 +9,19 @@
 
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QRunnable>
 #include <QtCore/QSize>
 // #include <QtQmlIntegration/QtQmlIntegration>
 
+#include <cstdint>
+
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
+class QTimer;
 class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
@@ -108,7 +112,24 @@ private slots:
     void _videoSourceChanged();
 
 private:
+    struct ReceiverLifecycleState {
+        QTimer *restartTimer = nullptr;
+        quint64 generation = 0;
+        uint32_t retryIndex = 0;
+        bool desiredRunning = false;
+        bool startPending = false;
+        bool stopPending = false;
+        bool restartAfterStop = false;
+        QString uri;
+        int rtspTransport = -1;
+    };
+
+    void _cancelReceiverRestart(VideoReceiver *receiver);
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
+    void _markReceiverHealthy(VideoReceiver *receiver, const char *reason);
+    bool _receiverConfigurationChanged(VideoReceiver *receiver);
+    void _resetReceiverRetry(VideoReceiver *receiver, const char *reason);
+    void _scheduleReceiverStart(VideoReceiver *receiver, bool failureBackoff);
     bool _updateAutoStream(VideoReceiver *receiver);
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
@@ -120,11 +141,13 @@ private:
     static void _cleanupOldVideos();
 
     QList<VideoReceiver*> _videoReceivers;
+    QHash<VideoReceiver*, ReceiverLifecycleState> _receiverLifecycle;
 
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
 
     bool _initialized = false;
+    bool _cleaningUp = false;
     bool _fullScreen = false;
     QAtomicInteger<bool> _decoding = false;
     QAtomicInteger<bool> _recording = false;

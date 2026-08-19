@@ -9,6 +9,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QTimer>
@@ -89,6 +90,8 @@ private:
     void _requestStop();
     void _scheduleRestart();
     void _releaseReceiver();
+    void _recordPrimaryActiveUri(const QString &uri);
+    void _schedulePrimaryActiveUriClear();
     uint32_t _rtspTimeout() const;
 
     VideoCustomSettings *_settings = nullptr;
@@ -101,10 +104,17 @@ private:
     QMetaObject::Connection _videoItemWindowConnection;
     QMetaObject::Connection _videoItemDestroyedConnection;
     QMetaObject::Connection _primaryVideoUriConnection;
+    QMetaObject::Connection _primaryVideoStartAttemptConnection;
+    QMetaObject::Connection _primaryVideoStartConnection;
+    QMetaObject::Connection _primaryVideoStopConnection;
     QMetaObject::Connection _primaryVideoDestroyedConnection;
     QTimer _restartTimer;
     QTimer _decodeStartupTimer;
+    QTimer _primaryActiveUriClearTimer;
     QString _uri;
+    QString _primaryStartAttemptUri;
+    QString _primaryActiveUri;
+    QSet<QString> _primaryReleasingUris;
     QSize _videoSize;
     bool _enabled = false;
     bool _duplicateSource = false;
@@ -118,5 +128,6 @@ private:
     bool _stopping = false;
     bool _restartRequested = false;
     bool _releaseAfterStop = false;
+    bool _cleaningUp = false;
     int _consecutiveDecodeFailures = 0;
 };

@@ -80,6 +80,11 @@ public:
     static bool isValidStatus(STATUS status) { return ((status >= STATUS_MIN) && (status <= STATUS_MAX)); }
 
 signals:
+    // Emitted when a concrete receiver start generation has frozen its URI.
+    // The URI property may change while an asynchronous start is still in
+    // flight, so lifecycle observers must not infer the active URI from the
+    // mutable property in onStartComplete.
+    void onStartAttempt(const QString &uri);
     void timeout();
     void streamingChanged(bool active);
     void decodingChanged(bool active);
