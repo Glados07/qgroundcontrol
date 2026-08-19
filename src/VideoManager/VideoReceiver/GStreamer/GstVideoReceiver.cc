@@ -1274,7 +1274,17 @@ void GstVideoReceiver::_noteEndOfStream()
 bool GstVideoReceiver::_activateRtspAutoFallback(const char *reason)
 {
     const QString activeUri = _pipelineUri();
-    if (_sourceFrameReceived.load()
+    const bool sourceFrameReceived = _sourceFrameReceived.load();
+    const GstRTSPMethod lastRtspMethod = static_cast<GstRTSPMethod>(
+        _lastRtspMethod.load());
+    // A connection failure, OPTIONS, and DESCRIBE all happen before SETUP and
+    // therefore cannot diagnose an RTP lower-transport incompatibility.
+    const bool preSetupControlFailure = !sourceFrameReceived
+        && (lastRtspMethod == GST_RTSP_INVALID
+            || lastRtspMethod == GST_RTSP_OPTIONS
+            || lastRtspMethod == GST_RTSP_DESCRIBE);
+    if (sourceFrameReceived
+        || preSetupControlFailure
         || _activeRtspTransport != RtspTransport::Tcp
         || !_activeRtspTcp
         || _rtspTcpFallbackToAuto
@@ -1524,7 +1534,7 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
                     (void) pThis->_advanceRtspOptionsCompatibility(
                         "server EOF while receiving OPTIONS response");
                 }
-                if (transportNegotiationFailure && !optionsEndOfFile) {
+                if (transportNegotiationFailure) {
                     (void) pThis->_activateRtspAutoFallback(
                         "RTSP transport error before media");
                 }

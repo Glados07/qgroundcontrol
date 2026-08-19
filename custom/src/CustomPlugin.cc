@@ -27,6 +27,7 @@
 #include "Viewer3D/Viewer3DSettings.h"
 
 #include <QtCore/qapplicationstatic.h>
+#include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QLocale>
@@ -40,11 +41,54 @@
 
 QGC_LOGGING_CATEGORY(CustomLog, "gcs.custom.customplugin")
 
+namespace {
+
+#ifdef QGC_GST_STREAMING
+void configureGStreamerNetworkPolicy()
+{
+    // GstRTSPConnection uses a GSocketClient with proxy support enabled. GLib
+    // can consequently route private camera RTSP URLs through the desktop
+    // proxy, which may accept the TCP connection and then close
+    // OPTIONS/DESCRIBE before SDP. The custom plugin is constructed before
+    // VideoManager/GStreamer initialization, so select GLib's built-in dummy
+    // resolver (which returns direct://) before GIO creates its process-wide
+    // default resolver. This also makes other GIO-backed network sources use
+    // direct connections; QtNetwork maps/downloads are not controlled by this
+    // selector. Integrators that genuinely need a GStreamer/GIO proxy can opt
+    // back in with QGC_GST_USE_SYSTEM_PROXY=1.
+    const QByteArray systemProxyOptIn =
+        qgetenv("QGC_GST_USE_SYSTEM_PROXY").trimmed().toLower();
+    const bool useSystemProxy = systemProxyOptIn == "1"
+        || systemProxyOptIn == "true"
+        || systemProxyOptIn == "yes"
+        || systemProxyOptIn == "on";
+    if (!useSystemProxy) {
+        if (qputenv("GIO_USE_PROXY_RESOLVER", "dummy")) {
+            qCInfo(CustomLog)
+                << "GStreamer GIO proxy policy: direct"
+                << "resolver" << qgetenv("GIO_USE_PROXY_RESOLVER");
+        } else {
+            qCCritical(CustomLog)
+                << "Failed to configure the direct GStreamer GIO proxy policy";
+        }
+    } else {
+        qCInfo(CustomLog)
+            << "GStreamer GIO proxy policy: environment/system"
+            << "resolver" << qgetenv("GIO_USE_PROXY_RESOLVER");
+    }
+}
+#endif
+
+} // namespace
+
 Q_APPLICATION_STATIC(CustomPlugin, _customPluginInstance);
 
 CustomPlugin::CustomPlugin(QObject *parent)
     : QGCCorePlugin(parent)
 {
+#ifdef QGC_GST_STREAMING
+    configureGStreamerNetworkPolicy();
+#endif
 }
 
 CustomPlugin::~CustomPlugin() = default;
