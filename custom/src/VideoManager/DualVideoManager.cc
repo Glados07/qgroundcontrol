@@ -95,11 +95,7 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
                     return;
                 }
 
-                const auto releasedUris = _primaryReleasingUris.values();
                 _primaryReleasingUris.clear();
-                qCInfo(DualVideoManagerLog)
-                    << "Released stopped primary RTSP URI handoff guards"
-                    << releasedUris;
                 _refreshSettings();
             });
 
@@ -303,8 +299,6 @@ void DualVideoManager::initVideoItem(QQuickWindow *window, QQuickItem *videoItem
     _requestedVideoItem = videoItem;
 
     if (_receiver && (_videoItem != videoItem)) {
-        qCInfo(DualVideoManagerLog)
-            << "Secondary video render item changed; rebuilding receiver";
         _restartTimer.stop();
         _decodeStartupTimer.stop();
         _renderReady = false;
@@ -450,9 +444,6 @@ void DualVideoManager::_refreshSettings()
         _receiver->setRtspTransport(
             _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
                            : VideoReceiver::RtspTransport::Auto);
-        qCInfo(DualVideoManagerLog)
-            << "Secondary RTSP transport changed"
-            << (_preferRtspTcp ? "TCP preferred" : "Auto");
         if (_receiver->started() || _starting || _stopping) {
             _restartRequested = true;
             _requestStop();
@@ -596,8 +587,6 @@ void DualVideoManager::_ensureReceiver()
                         return;
                     }
 
-                    qCInfo(DualVideoManagerLog)
-                        << "Secondary video render item was destroyed; rebuilding receiver";
                     guardedThis->_restartTimer.stop();
                     guardedThis->_renderReady = false;
                     guardedThis->_decodeStartupTimer.stop();
@@ -618,10 +607,12 @@ void DualVideoManager::_ensureReceiver()
                 }
 
                 guardedThis->_starting = false;
-                qCInfo(DualVideoManagerLog)
-                    << "Secondary video start completed" << guardedReceiver->uri()
-                    << "statusCode" << static_cast<int>(status)
-                    << "success" << (status == VideoReceiver::STATUS_OK);
+                if (status != VideoReceiver::STATUS_OK) {
+                    qCWarning(DualVideoManagerLog)
+                        << "Secondary video start failed"
+                        << guardedReceiver->uri()
+                        << "statusCode" << static_cast<int>(status);
+                }
                 if (status == VideoReceiver::STATUS_OK) {
                     guardedReceiver->setStarted(true);
                     if (guardedThis->_restartRequested
@@ -673,13 +664,13 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
 
-                qCInfo(DualVideoManagerLog)
-                    << "Secondary video decoding start completed"
-                    << guardedReceiver->uri()
-                    << "statusCode" << static_cast<int>(status)
-                    << "success"
-                    << (status == VideoReceiver::STATUS_OK
-                        || status == VideoReceiver::STATUS_INVALID_STATE);
+                if (status != VideoReceiver::STATUS_OK
+                    && status != VideoReceiver::STATUS_INVALID_STATE) {
+                    qCWarning(DualVideoManagerLog)
+                        << "Secondary video decoding start failed"
+                        << guardedReceiver->uri()
+                        << "statusCode" << static_cast<int>(status);
+                }
                 if (status == VideoReceiver::STATUS_OK
                     || status == VideoReceiver::STATUS_INVALID_STATE) {
                     guardedThis->_armDecodeStartupWatchdog();
@@ -766,8 +757,6 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_streaming = streaming;
-                qCInfo(DualVideoManagerLog)
-                    << "Secondary video streaming" << guardedThis->_uri << streaming;
                 emit guardedThis->streamingChanged();
                 if (streaming) {
                     guardedThis->_armDecodeStartupWatchdog();
@@ -784,8 +773,6 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_decoding = decoding;
-                qCInfo(DualVideoManagerLog)
-                    << "Secondary video decoding" << guardedThis->_uri << decoding;
                 emit guardedThis->decodingChanged();
                 if (decoding) {
                     guardedThis->_consecutiveDecodeFailures = 0;
@@ -803,8 +790,6 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
                 guardedThis->_videoSize = videoSize;
-                qCInfo(DualVideoManagerLog)
-                    << "Secondary video size" << guardedThis->_uri << videoSize;
                 emit guardedThis->videoSizeChanged();
             });
 
@@ -827,15 +812,10 @@ void DualVideoManager::_finishRenderInitialization()
 
     const QVariant itemInitialized = _videoItem->property("itemInitialized");
     if (itemInitialized.isValid() && !itemInitialized.toBool()) {
-        qCInfo(DualVideoManagerLog)
-            << "Waiting for the secondary video render item OpenGL context";
         return;
     }
 
     _renderReady = true;
-    qCInfo(DualVideoManagerLog)
-        << "Secondary video render item is ready"
-        << (itemInitialized.isValid() ? itemInitialized.toBool() : true);
     _applyDesiredState();
 }
 
@@ -864,9 +844,6 @@ void DualVideoManager::_armDecodeStartupWatchdog()
         requestedMs,
         kMaximumDecodeStartupTimeoutMs));
     _decodeStartupTimer.start(timeoutMs);
-    qCInfo(DualVideoManagerLog)
-        << "Waiting for the first decoded secondary video frame"
-        << _uri << "timeoutMs" << timeoutMs;
 }
 
 void DualVideoManager::_handleDecodeStartupTimeout()
@@ -921,18 +898,11 @@ void DualVideoManager::_applyDesiredState()
     // bypassed its 2/4/8/15 second RTSP backoff. Keep the current deadline;
     // the timer callback will enter this function again when it expires.
     if (_restartTimer.isActive()) {
-        qCInfo(DualVideoManagerLog)
-            << "Keeping scheduled secondary video restart" << _uri
-            << "remainingMs" << _restartTimer.remainingTime();
         return;
     }
 
     _starting = true;
     const uint32_t requestedTimeout = _rtspTimeout();
-    qCInfo(DualVideoManagerLog)
-        << "Starting secondary video" << _uri
-        << "transport" << (_preferRtspTcp ? "TCP preferred" : "Auto")
-        << "requestedTimeout" << requestedTimeout;
     _receiver->start(requestedTimeout);
 }
 
@@ -1029,9 +999,6 @@ void DualVideoManager::_scheduleRestart()
             kMaximumRestartDelayMs,
             kRestartDelayMs << qMin(_consecutiveDecodeFailures, 4));
         _restartTimer.setInterval(delayMs);
-        qCInfo(DualVideoManagerLog)
-            << "Scheduling secondary video restart" << _uri
-            << "delayMs" << delayMs;
         _restartTimer.start();
     }
 }
@@ -1065,9 +1032,6 @@ void DualVideoManager::_recordPrimaryActiveUri(const QString &uri)
     }
 
     _primaryActiveUri = activeUri;
-    qCInfo(DualVideoManagerLog)
-        << "Tracking active primary RTSP URI for secondary handoff"
-        << _primaryActiveUri;
     _refreshSettings();
 }
 
@@ -1086,10 +1050,6 @@ void DualVideoManager::_schedulePrimaryActiveUriClear()
     const QString releasingUri = _primaryActiveUri;
     _primaryActiveUri.clear();
     _primaryReleasingUris.insert(releasingUri);
-    qCInfo(DualVideoManagerLog)
-        << "Holding stopped primary RTSP URI before secondary handoff"
-        << releasingUri
-        << "delayMs" << kPrimaryActiveUriClearDelayMs;
     _primaryActiveUriClearTimer.start();
 }
 

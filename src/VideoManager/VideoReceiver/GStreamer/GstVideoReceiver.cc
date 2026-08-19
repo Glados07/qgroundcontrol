@@ -22,6 +22,7 @@
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QDateTime>
+#include <QtCore/QDebug>
 #include <QtCore/QUrl>
 #include <QtQuick/QQuickItem>
 
@@ -123,11 +124,13 @@ void GstVideoReceiver::_start(uint32_t timeout,
             _lastRtspUri = startUri;
             _lastRequestedRtspTransport = requestedTransport;
             _rtspTcpFallbackToAuto = false;
+            _lastReportedRtspResourceError.store(-1);
         }
     } else {
         _lastRtspUri.clear();
         _rtspTcpFallbackToAuto = false;
         _rtspOptionsCompatibility.store(0);
+        _lastReportedRtspResourceError.store(-1);
     }
     _activeRtspTransport = requestedTransport;
     _activeRtspTcp = requestedTransport == RtspTransport::Tcp
@@ -140,23 +143,11 @@ void GstVideoReceiver::_start(uint32_t timeout,
     _timeout = isRtsp ? qMax(timeout, minimumTimeout) : timeout;
     _buffer = lowLatencyMode ? -1 : 0;
 
-    if (isRtsp) {
-        qCInfo(GstVideoReceiverLog)
-            << "Starting RTSP receiver" << startUri
-            << "transport"
-            << (_activeRtspTcp
-                    ? "TCP"
-                    : (_rtspTcpFallbackToAuto
-                           ? "Auto (TCP fallback)"
-                           : "Auto"))
-            << "requestedTimeout" << timeout
-            << "effectiveTimeout" << _timeout;
-        if (_timeout != timeout) {
-            qCWarning(GstVideoReceiverLog)
-                << "Raised an unsafe RTSP timeout" << timeout
-                << "to" << _timeout << "seconds for" << startUri;
-        }
-    } else {
+    if (isRtsp && _timeout != timeout) {
+        qCWarning(GstVideoReceiverLog)
+            << "Raised an unsafe RTSP timeout" << timeout
+            << "to" << _timeout << "seconds for" << startUri;
+    } else if (!isRtsp) {
         qCDebug(GstVideoReceiverLog)
             << "Starting" << startUri << ", lowLatency" << lowLatencyMode
             << ", timeout" << _timeout;
@@ -827,39 +818,10 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                 g_object_set(source,
                              "protocols", requestedProtocols,
                              nullptr);
-                qCInfo(GstVideoReceiverLog)
-                    << "Forcing RTSP-over-TCP transport for" << input
-                    << "by configuration";
             }
 
             guint effectiveProtocols = 0;
-            guint64 effectiveTeardownTimeout = 0;
-            gboolean effectiveShortHeader = FALSE;
-            gboolean effectiveUdpReconnect = TRUE;
-            gboolean effectiveKeepAlive = TRUE;
             g_object_get(source, "protocols", &effectiveProtocols, nullptr);
-            g_object_get(source,
-                         "teardown-timeout",
-                         &effectiveTeardownTimeout,
-                         nullptr);
-            g_object_get(source,
-                         "short-header", &effectiveShortHeader,
-                         "udp-reconnect", &effectiveUdpReconnect,
-                         "do-rtsp-keep-alive", &effectiveKeepAlive,
-                         nullptr);
-            qCInfo(GstVideoReceiverLog)
-                << "Configured RTSP source" << input
-                << "requestedTransport"
-                << (_activeRtspTransport == RtspTransport::Tcp ? "TCP" : "Auto")
-                << "effectiveTransport" << (_activeRtspTcp ? "TCP" : "Auto")
-                << "effectiveProtocols"
-                << QStringLiteral("0x%1").arg(effectiveProtocols, 0, 16)
-                << "teardownTimeoutMs"
-                << (effectiveTeardownTimeout / GST_MSECOND)
-                << "optionsCompatibility" << optionsCompatibility
-                << "shortHeader" << effectiveShortHeader
-                << "udpReconnect" << effectiveUdpReconnect
-                << "rtspKeepAlive" << effectiveKeepAlive;
             if (_activeRtspTcp
                 && effectiveProtocols
                     != static_cast<guint>(GST_RTSP_LOWER_TRANS_TCP)) {
@@ -1104,7 +1066,6 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 
     if (!_streaming) {
         _streaming = true;
-        qCInfo(GstVideoReceiverLog) << "Streaming started" << _pipelineUri();
         _dispatchSignal([this]() { emit streamingChanged(_streaming); });
     }
 
@@ -1249,6 +1210,7 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 void GstVideoReceiver::_noteTeeFrame()
 {
     if (!_sourceFrameReceived.exchange(true)) {
+        _lastReportedRtspResourceError.store(-1);
         qCInfo(GstVideoReceiverLog)
             << "First source media frame reached the receiver" << _pipelineUri();
     }
@@ -1483,11 +1445,29 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
         GError *error = nullptr;
         gst_message_parse_error(msg, &error, &debug);
 
-        const gchar *sourceName = GST_MESSAGE_SRC(msg)
-            ? GST_OBJECT_NAME(GST_MESSAGE_SRC(msg)) : nullptr;
+        GstObject *const messageSource = GST_MESSAGE_SRC(msg);
+        const gchar *sourceName = messageSource
+            ? GST_OBJECT_NAME(messageSource) : nullptr;
+        GstElementFactory *const sourceFactory =
+            messageSource && GST_IS_ELEMENT(messageSource)
+                ? gst_element_get_factory(GST_ELEMENT(messageSource))
+                : nullptr;
+        const gchar *const sourceFactoryName = sourceFactory
+            ? gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(sourceFactory))
+            : nullptr;
         const gchar *domainName = error
             ? g_quark_to_string(error->domain) : nullptr;
         const int errorCode = error ? error->code : -1;
+        const QString pipelineUri = pThis->_pipelineUri();
+        // rtspsrc resource failures are handled by the receiver owners' bounded
+        // restart paths. Keep them visible without reporting an
+        // application-critical fault.
+        const bool rtspResourceError = error
+            && error->domain == GST_RESOURCE_ERROR
+            && sourceFactoryName
+            && g_strcmp0(sourceFactoryName, "rtspsrc") == 0
+            && QUrl(pipelineUri).scheme().startsWith(
+                QStringLiteral("rtsp"), Qt::CaseInsensitive);
         const GstRTSPMethod lastRtspMethod = static_cast<GstRTSPMethod>(
             pThis->_lastRtspMethod.load());
         const gchar *const lastRtspMethodText =
@@ -1506,23 +1486,39 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
             && debug
             && g_strrstr(debug, "Received end-of-file");
 
-        qCCritical(GstVideoReceiverLog)
-            << "GStreamer error"
-            << "uri" << pThis->_pipelineUri()
-            << "source"
-            << QString::fromUtf8(sourceName ? sourceName : "<unknown>")
-            << "domain"
-            << QString::fromUtf8(domainName ? domainName : "<unknown>")
-            << "code" << errorCode
-            << "lastRtspMethod"
-            << QString::fromLatin1(lastRtspMethodText
-                                       ? lastRtspMethodText
-                                       : "<none>")
-            << "message"
-            << QString::fromUtf8(error && error->message
-                                     ? error->message : "<none>")
-            << "debug"
-            << QString::fromUtf8(debug ? debug : "<none>");
+        const int retryableErrorSignature = rtspResourceError
+            ? ((errorCode & 0xffff) << 16)
+                | (static_cast<int>(lastRtspMethod) & 0xffff)
+            : -1;
+        const bool repeatedRetryableError = rtspResourceError
+            && pThis->_lastReportedRtspResourceError.exchange(
+                   retryableErrorSignature) == retryableErrorSignature;
+        if (!repeatedRetryableError
+            || GstVideoReceiverLog().isDebugEnabled()) {
+            QMessageLogger messageLogger(__FILE__, __LINE__, Q_FUNC_INFO);
+            QDebug errorLog = rtspResourceError
+                ? (repeatedRetryableError
+                       ? messageLogger.debug(GstVideoReceiverLog)
+                       : messageLogger.warning(GstVideoReceiverLog))
+                : messageLogger.critical(GstVideoReceiverLog);
+            errorLog
+                << "GStreamer error"
+                << "uri" << pipelineUri
+                << "source"
+                << QString::fromUtf8(sourceName ? sourceName : "<unknown>")
+                << "domain"
+                << QString::fromUtf8(domainName ? domainName : "<unknown>")
+                << "code" << errorCode
+                << "lastRtspMethod"
+                << QString::fromLatin1(lastRtspMethodText
+                                           ? lastRtspMethodText
+                                           : "<none>")
+                << "message"
+                << QString::fromUtf8(error && error->message
+                                         ? error->message : "<none>")
+                << "debug"
+                << QString::fromUtf8(debug ? debug : "<none>");
+        }
 
         g_clear_pointer(&debug, g_free);
         g_clear_error(&error);
@@ -1587,10 +1583,9 @@ gboolean GstVideoReceiver::_onRtspBeforeSend(GstElement * /* source */,
     }
 
     GstRTSPMethod method = GST_RTSP_INVALID;
-    const gchar *requestUri = nullptr;
     if (gst_rtsp_message_parse_request(message,
                                        &method,
-                                       &requestUri,
+                                       nullptr,
                                        nullptr) != GST_RTSP_OK) {
         qCWarning(GstVideoReceiverLog)
             << "Unable to parse outgoing RTSP request"
@@ -1604,60 +1599,8 @@ gboolean GstVideoReceiver::_onRtspBeforeSend(GstElement * /* source */,
         && receiver->_rtspTeardownPending.load();
     const bool suppressOptions = method == GST_RTSP_OPTIONS
         && receiver->_activeRtspOptionsCompatibility.load() >= 2;
-    const bool suppressed = suppressPause || suppressOptions;
-    const auto headerCount = [message](GstRTSPHeaderField field) {
-        int count = 0;
-        gchar *value = nullptr;
-        while (gst_rtsp_message_get_header(message,
-                                           field,
-                                           &value,
-                                           count) == GST_RTSP_OK) {
-            ++count;
-        }
-        return count;
-    };
-    const GstRTSPHeaderField realExtensionFields[] = {
-        GST_RTSP_HDR_CLIENT_CHALLENGE,
-        GST_RTSP_HDR_CLIENT_ID,
-        GST_RTSP_HDR_COMPANY_ID,
-        GST_RTSP_HDR_GUID,
-        GST_RTSP_HDR_REGION_DATA,
-        GST_RTSP_HDR_PLAYER_START_TIME,
-    };
-    int realExtensionHeaders = 0;
-    for (const GstRTSPHeaderField field : realExtensionFields) {
-        realExtensionHeaders += headerCount(field);
-    }
-    const int userAgentHeaders = headerCount(GST_RTSP_HDR_USER_AGENT);
-    const gchar *const methodText = gst_rtsp_method_as_text(method);
-    QUrl requestUrl = QUrl::fromEncoded(
-        QByteArray(requestUri ? requestUri : ""),
-        QUrl::StrictMode);
-    requestUrl.setUserName(QString());
-    requestUrl.setPassword(QString());
-    qCInfo(GstVideoReceiverLog)
-        << "RTSP request"
-        << "receiver" << receiver
-        << "name" << receiver->name()
-        << "uri" << receiver->_pipelineUri()
-        << "requestUri"
-        << (requestUri
-                ? requestUrl.toString(QUrl::FullyEncoded)
-                : QStringLiteral("<none>"))
-        << "method"
-        << QString::fromLatin1(methodText ? methodText : "<unknown>")
-        << "userAgentHeaders" << userAgentHeaders
-        << "realExtensionHeaders" << realExtensionHeaders
-        << "optionsCompatibility"
-        << receiver->_activeRtspOptionsCompatibility.load()
-        << "suppressed" << suppressed;
 
     if (suppressPause) {
-        qCInfo(GstVideoReceiverLog)
-            << "Suppressing RTSP PAUSE during pipeline teardown"
-            << "receiver" << receiver
-            << "name" << receiver->name()
-            << "uri" << receiver->_pipelineUri();
         return FALSE;
     }
 
@@ -1667,12 +1610,6 @@ gboolean GstVideoReceiver::_onRtspBeforeSend(GstElement * /* source */,
         // DESCRIBE/SETUP/PLAY method set and proceeds with DESCRIBE. This is a
         // compatibility path for servers which close the socket instead of
         // returning a valid response to OPTIONS.
-        qCWarning(GstVideoReceiverLog)
-            << "Skipping RTSP OPTIONS rejected by the server; continuing "
-               "with DESCRIBE"
-            << "receiver" << receiver
-            << "name" << receiver->name()
-            << "uri" << receiver->_pipelineUri();
         return FALSE;
     }
 

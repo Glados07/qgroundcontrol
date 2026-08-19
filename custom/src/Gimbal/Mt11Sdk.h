@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QHash>
 #include <QtCore/QObject>
@@ -65,4 +66,7 @@ private:
     double _maximumZoom = 30.0;
     QElapsedTimer _pendingClock;
     QHash<quint8, qint64> _pendingCommandDeadlines;
+    // At most one remembered payload per command keeps repeated firmware
+    // responses quiet without allowing unbounded diagnostic state.
+    QHash<quint8, QByteArray> _lastWarnedInvalidAckPayloads;
 };

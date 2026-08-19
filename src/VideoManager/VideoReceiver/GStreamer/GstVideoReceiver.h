@@ -145,6 +145,9 @@ private:
     std::atomic_bool _rtspTeardownPending{false};
     std::atomic_int _lastRtspMethod{0};
     std::atomic_bool _sourceFrameReceived{false};
+    // Keep one visible warning for each distinct recoverable RTSP failure
+    // during an outage. Repeated retries remain available through debug logs.
+    std::atomic_int _lastReportedRtspResourceError{-1};
 
     static constexpr const char *_kFileMux[FILE_FORMAT_MAX + 1] = {
         "matroskamux",

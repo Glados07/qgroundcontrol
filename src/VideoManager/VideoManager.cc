@@ -793,10 +793,6 @@ void VideoManager::_scheduleReceiverStart(VideoReceiver *receiver, bool failureB
         _startReceiver(guardedReceiver.data());
     });
 
-    qCInfo(VideoManagerLog)
-        << "Scheduling video receiver start" << receiver->name()
-        << scheduledUri << "delayMs" << delayMs
-        << "generation" << generation;
     timer->start(delayMs);
 }
 

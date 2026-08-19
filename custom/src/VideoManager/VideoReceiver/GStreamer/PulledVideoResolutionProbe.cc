@@ -229,8 +229,6 @@ bool PulledVideoResolutionProbe::install(
     (void) updateFromCurrentPadCaps(context, sinkPad);
     gst_object_unref(sinkPad);
 
-    qCDebug(PulledVideoResolutionProbeLog)
-        << "Installed negotiated-caps probe for" << receiver->name();
     return true;
 #else
     Q_UNUSED(sink);

@@ -31,9 +31,13 @@ void Mt11Sdk::setEndpoint(const QString& host, quint16 port)
 {
     const QHostAddress address(host);
     if (address.isNull() || port == 0) {
+        const bool endpointChanged = !_host.isNull() || (_port != 0);
         _host = {};
         _port = 0;
         _pendingCommandDeadlines.clear();
+        if (endpointChanged) {
+            _lastWarnedInvalidAckPayloads.clear();
+        }
         emit communicationError(
             tr("Invalid MT11 SDK endpoint: %1:%2").arg(host).arg(port));
         return;
@@ -49,6 +53,7 @@ void Mt11Sdk::setEndpoint(const QString& host, quint16 port)
     _host = address;
     _port = port;
     _pendingCommandDeadlines.clear();
+    _lastWarnedInvalidAckPayloads.clear();
 }
 
 void Mt11Sdk::setZoomRange(double minimumZoom, double maximumZoom)
@@ -254,9 +259,14 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
                 _pendingCommandDeadlines.insert(command, pendingDeadline);
             }
         }
-        qCWarning(Mt11SdkLog)
-            << "Rejected invalid MT11 ACK" << Qt::hex << command
-            << payload.toHex(' ');
+        const auto warnedPayload = _lastWarnedInvalidAckPayloads.constFind(command);
+        if (warnedPayload == _lastWarnedInvalidAckPayloads.cend()
+            || warnedPayload.value() != payload) {
+            _lastWarnedInvalidAckPayloads.insert(command, payload);
+            qCWarning(Mt11SdkLog)
+                << "Rejected invalid MT11 ACK" << Qt::hex << command
+                << payload.toHex(' ');
+        }
     }
 }
 

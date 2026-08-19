@@ -483,9 +483,6 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                             if (!guardedReceiver || !applyTransport()) {
                                 return;
                             }
-                            qCInfo(CustomLog)
-                                << "Video 1 RTSP transport changed; restarting receiver"
-                                << guardedReceiver->uri();
 
                             if (!guardedReceiver->uri().startsWith(
                                     QStringLiteral("rtsp"),
@@ -637,13 +634,11 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                     },
                     Qt::QueuedConnection);
             };
-        const bool padProbeInstalled =
-            PulledVideoResolutionProbe::install(
-                sink,
-                parent,
-                queueNegotiatedResolution);
+        (void) PulledVideoResolutionProbe::install(
+            sink,
+            parent,
+            queueNegotiatedResolution);
 
-        bool videoItemObserverInstalled = false;
         if (widget) {
             QPointer<QQuickItem> guardedWidget(widget);
             const auto reportVideoItemResolution =
@@ -670,22 +665,7 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                 manager,
                 reportVideoItemResolution,
                 Qt::QueuedConnection);
-            videoItemObserverInstalled = true;
         }
-
-        const QSize initialImplicitSize(
-            widget ? qRound(widget->implicitWidth()) : 0,
-            widget ? qRound(widget->implicitHeight()) : 0);
-        qCInfo(CustomLog)
-            << "Installed main pulled-video resolution observers:"
-            << "receiver" << receiver->name()
-            << "widgetClass"
-            << (widget ? widget->metaObject()->className() : "<null>")
-            << "widgetName"
-            << (widget ? widget->objectName() : QString())
-            << "initialImplicitSize" << initialImplicitSize
-            << "videoItem" << videoItemObserverInstalled
-            << "padProbe" << padProbeInstalled;
     }
 #endif
 
