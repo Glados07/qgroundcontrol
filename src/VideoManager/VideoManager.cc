@@ -667,7 +667,6 @@ void VideoManager::_resetReceiverRetry(VideoReceiver *receiver, const char *reas
     lifecycle = _receiverLifecycle.find(receiver);
     lifecycle->retryIndex = 0;
     lifecycle->uri = receiver->uri();
-    lifecycle->rtspTransport = static_cast<int>(receiver->rtspTransport());
 
     qCDebug(VideoManagerLog)
         << "Reset video receiver retry state" << receiver->name()
@@ -684,8 +683,8 @@ void VideoManager::_markReceiverHealthy(VideoReceiver *receiver, const char *rea
     // decodingChanged is queued from the receiver worker. Ignore a late true
     // from the pipeline that just stopped; cancelling the already scheduled
     // retry here would otherwise strand a desired receiver. Do not update the
-    // desired URI/transport snapshot here: this frame may belong to the old
-    // pipeline while a new configuration is already visible on the receiver.
+    // desired URI snapshot here: this frame may belong to the old pipeline
+    // while a new configuration is already visible on the receiver.
     if ((!receiver->started() && !lifecycle->startPending)
         || lifecycle->stopPending
         || lifecycle->restartTimer) {
@@ -706,12 +705,11 @@ bool VideoManager::_receiverConfigurationChanged(VideoReceiver *receiver)
         return false;
     }
 
-    if ((lifecycle->uri == receiver->uri())
-        && (lifecycle->rtspTransport == static_cast<int>(receiver->rtspTransport()))) {
+    if (lifecycle->uri == receiver->uri()) {
         return false;
     }
 
-    _resetReceiverRetry(receiver, "URI or RTSP transport changed");
+    _resetReceiverRetry(receiver, "URI changed");
     return true;
 }
 
@@ -752,7 +750,6 @@ void VideoManager::_scheduleReceiverStart(VideoReceiver *receiver, bool failureB
 
     const quint64 generation = lifecycle->generation;
     const QString scheduledUri = receiver->uri();
-    const int scheduledTransport = static_cast<int>(receiver->rtspTransport());
     QTimer *const timer = new QTimer(receiver);
     timer->setSingleShot(true);
     timer->setTimerType(Qt::PreciseTimer);
@@ -760,7 +757,7 @@ void VideoManager::_scheduleReceiverStart(VideoReceiver *receiver, bool failureB
 
     const QPointer<VideoReceiver> guardedReceiver(receiver);
     (void) connect(timer, &QTimer::timeout, this,
-                   [this, guardedReceiver, timer, generation, scheduledUri, scheduledTransport]() {
+                   [this, guardedReceiver, timer, generation, scheduledUri]() {
         timer->deleteLater();
         if (!guardedReceiver) {
             return;
@@ -783,8 +780,7 @@ void VideoManager::_scheduleReceiverStart(VideoReceiver *receiver, bool failureB
             return;
         }
 
-        if ((guardedReceiver->uri() != scheduledUri)
-            || (static_cast<int>(guardedReceiver->rtspTransport()) != scheduledTransport)) {
+        if (guardedReceiver->uri() != scheduledUri) {
             _resetReceiverRetry(guardedReceiver.data(), "configuration changed while restart was pending");
             _scheduleReceiverStart(guardedReceiver.data(), false);
             return;
@@ -1074,7 +1070,6 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     _videoReceivers.append(receiver);
     ReceiverLifecycleState &lifecycle = _receiverLifecycle[receiver];
     lifecycle.uri = receiver->uri();
-    lifecycle.rtspTransport = static_cast<int>(receiver->rtspTransport());
 }
 
 void VideoManager::startVideo()

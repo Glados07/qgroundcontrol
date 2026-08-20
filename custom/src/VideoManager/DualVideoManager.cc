@@ -104,10 +104,6 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
                 &Fact::rawValueChanged,
                 this,
                 [this](const QVariant &) { _refreshSettings(); });
-        connect(_settings->secondaryRtspTcpOnly(),
-                &Fact::rawValueChanged,
-                this,
-                [this](const QVariant &) { _refreshSettings(); });
     }
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
@@ -415,19 +411,14 @@ void DualVideoManager::_refreshSettings()
         || sameStreamUri(uri, _primaryStartAttemptUri)
         || sameStreamUri(uri, _primaryActiveUri)
         || releasingPrimarySource;
-    const bool preferRtspTcp = _settings
-        && _settings->secondaryRtspTcpOnly()->rawValue().toBool();
-
     const bool enabledChanged = (_enabled != enabled);
     const bool uriChanged = (_uri != uri);
     const bool duplicateChanged = (_duplicateSource != duplicateSource);
-    const bool transportChanged = (_preferRtspTcp != preferRtspTcp);
     _enabled = enabled;
     _uri = uri;
     _duplicateSource = duplicateSource;
-    _preferRtspTcp = preferRtspTcp;
 
-    if (uriChanged || enabledChanged || duplicateChanged || transportChanged) {
+    if (uriChanged || enabledChanged || duplicateChanged) {
         _consecutiveDecodeFailures = 0;
     }
 
@@ -436,18 +427,8 @@ void DualVideoManager::_refreshSettings()
     // configuration. Passive primary-receiver state notifications also call
     // _refreshSettings(), but do not change any of these values; they must not
     // cancel or bypass an already scheduled retry for the secondary stream.
-    if (uriChanged || enabledChanged || duplicateChanged || transportChanged) {
+    if (uriChanged || enabledChanged || duplicateChanged) {
         _restartTimer.stop();
-    }
-
-    if (transportChanged && _receiver) {
-        _receiver->setRtspTransport(
-            _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
-                           : VideoReceiver::RtspTransport::Auto);
-        if (_receiver->started() || _starting || _stopping) {
-            _restartRequested = true;
-            _requestStop();
-        }
     }
 
     if (duplicateChanged && _duplicateSource) {
@@ -519,9 +500,6 @@ void DualVideoManager::_ensureReceiver()
     receiver->setName(QString::fromLatin1(kSecondaryVideoObjectName));
     receiver->setWidget(videoItem);
     receiver->setUri(_uri);
-    receiver->setRtspTransport(
-        _preferRtspTcp ? VideoReceiver::RtspTransport::Tcp
-                       : VideoReceiver::RtspTransport::Auto);
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
         receiver->setLowLatency(videoSettings->lowLatencyMode()->rawValue().toBool());

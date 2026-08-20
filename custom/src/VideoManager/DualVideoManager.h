@@ -118,7 +118,6 @@ private:
     QSize _videoSize;
     bool _enabled = false;
     bool _duplicateSource = false;
-    bool _preferRtspTcp = false;
     bool _renderReady = false;
     bool _streaming = false;
     bool _decoding = false;

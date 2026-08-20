@@ -13,8 +13,6 @@
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
 
-#include <atomic>
-
 class QGCVideoStreamInfo;
 class QQuickItem;
 
@@ -35,15 +33,6 @@ public:
     QString uri() const { return _uri; }
     bool started() const { return _started; }
     bool lowLatency() const { return _lowLatency; }
-    // Auto always uses native rtspsrc negotiation. Tcp starts with interleaved
-    // TCP and may make one one-way fallback to Auto if it cannot establish
-    // media. A native Auto attempt must never be replaced with forced TCP:
-    // rtspsrc already performs its own lower-transport negotiation.
-    enum class RtspTransport {
-        Auto,
-        Tcp,
-    };
-    RtspTransport rtspTransport() const { return _rtspTransport.load(); }
     QGCVideoStreamInfo *videoStreamInfo() { return _videoStreamInfo; }
     QString recordingOutput() const { return _recordingOutput; }
 
@@ -53,7 +42,6 @@ public:
     void setUri(const QString &uri) { if (uri != _uri) { _uri = uri; emit uriChanged(_uri); } }
     void setStarted(bool started) { if (started != _started) { _started = started; emit startedChanged(_started); } }
     void setLowLatency(bool lowLatency) { if (lowLatency != _lowLatency) { _lowLatency = lowLatency; emit lowLatencyChanged(_lowLatency); } }
-    void setRtspTransport(RtspTransport transport) { _rtspTransport.store(transport); }
     void setVideoStreamInfo(QGCVideoStreamInfo *videoStreamInfo) { if (videoStreamInfo != _videoStreamInfo) { _videoStreamInfo = videoStreamInfo; emit videoStreamInfoChanged(); } }
 
     // QMediaFormat::FileFormat
@@ -128,7 +116,6 @@ protected:
     bool _recording = false;
     bool _streaming = false;
     bool _lowLatency = false;
-    std::atomic<RtspTransport> _rtspTransport{RtspTransport::Auto};
     bool _resetVideoSink = false;
     bool _endOfStream = false;
     bool _removingDecoder = false;

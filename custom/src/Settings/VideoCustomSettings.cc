@@ -55,5 +55,3 @@ DECLARE_SETTINGGROUP(VideoCustom, "Video")
 }
 
 DECLARE_SETTINGSFACT(VideoCustomSettings, secondaryRtspUrl)
-DECLARE_SETTINGSFACT(VideoCustomSettings, primaryRtspTcpOnly)
-DECLARE_SETTINGSFACT(VideoCustomSettings, secondaryRtspTcpOnly)

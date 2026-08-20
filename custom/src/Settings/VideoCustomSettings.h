@@ -18,6 +18,4 @@ public:
     DEFINE_SETTING_NAME_GROUP()
 
     DEFINE_SETTINGFACT(secondaryRtspUrl)
-    DEFINE_SETTINGFACT(primaryRtspTcpOnly)
-    DEFINE_SETTINGFACT(secondaryRtspTcpOnly)
 };

@@ -404,23 +404,13 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
-        <source>Prefer RTSP-over-TCP for URL 1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
         <source>RTSP URL 2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>Prefer RTSP-over-TCP for URL 2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
-        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window. Automatic transport is the default; when TCP is preferred but cannot establish media, QGC falls back to automatic negotiation.</source>
+        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -783,30 +773,6 @@
         <extracomment>.QGC.MetaData.Facts[secondaryRtspUrl].longDesc, </extracomment>
         <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
         <source>Feeds the second independent video window. Leave empty to disable the second video stream.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].shortDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Prefer TCP for RTSP URL 1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].longDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Tries interleaved RTSP-over-TCP first for Video 1 and falls back to automatic transport negotiation if TCP cannot establish media.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].shortDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Prefer TCP for RTSP URL 2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].longDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Tries interleaved RTSP-over-TCP first for Video 2 and falls back to automatic transport negotiation if TCP cannot establish media.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

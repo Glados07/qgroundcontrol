@@ -20,6 +20,8 @@
 #include <gst/gstelement.h>
 #include <gst/gstpad.h>
 
+#include <atomic>
+
 #include "VideoReceiver.h"
 
 Q_DECLARE_LOGGING_CATEGORY(GstVideoReceiverLog)
@@ -78,7 +80,6 @@ private slots:
 private:
     void _start(uint32_t timeout,
                 const QString &startUri,
-                RtspTransport requestedTransport,
                 bool lowLatencyMode);
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
@@ -91,7 +92,6 @@ private:
     void _noteTeeFrame();
     void _noteVideoSinkFrame();
     void _noteEndOfStream();
-    bool _activateRtspAutoFallback(const char *reason);
     bool _advanceRtspOptionsCompatibility(const char *reason);
     /// -Unlink the branch from the src pad
     /// -Send an EOS event at the beginning of that branch
@@ -130,10 +130,6 @@ private:
     gulong _teeProbeId = 0;
     gulong _videoSinkProbeId = 0;
     QString _lastRtspUri;
-    RtspTransport _lastRequestedRtspTransport = RtspTransport::Auto;
-    RtspTransport _activeRtspTransport = RtspTransport::Auto;
-    bool _rtspTcpFallbackToAuto = false;
-    bool _activeRtspTcp = false;
     // 0: standard rtspsrc headers, 1: basic headers only, 2: skip OPTIONS.
     // Kept atomic because rtspsrc's before-send callback runs outside the
     // private VideoReceiver worker thread.

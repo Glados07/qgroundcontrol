@@ -404,24 +404,14 @@
         <translation>RTSP地址1</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
-        <source>Prefer RTSP-over-TCP for URL 1</source>
-        <translation>RTSP地址1优先使用TCP传输</translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
         <source>RTSP URL 2</source>
         <translation>RTSP地址2</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>Prefer RTSP-over-TCP for URL 2</source>
-        <translation>RTSP地址2优先使用TCP传输</translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
-        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window. Automatic transport is the default; when TCP is preferred but cannot establish media, QGC falls back to automatic negotiation.</source>
-        <translation>RTSP地址2使用独立接收器，留空可禁用第二个视频窗口。默认采用自动传输协商；优先TCP但无法建立媒体流时，QGC会回退到自动协商。</translation>
+        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
+        <translation>RTSP地址2使用独立接收器，留空可禁用第二个视频窗口。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
@@ -784,30 +774,6 @@
         <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
         <source>Feeds the second independent video window. Leave empty to disable the second video stream.</source>
         <translation>为第二个独立视频窗口提供视频流。留空可禁用第二路视频流。</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].shortDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Prefer TCP for RTSP URL 1</source>
-        <translation>RTSP地址1优先使用TCP</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[primaryRtspTcpOnly].longDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Tries interleaved RTSP-over-TCP first for Video 1 and falls back to automatic transport negotiation if TCP cannot establish media.</source>
-        <translation>视频1先尝试交错式RTSP-over-TCP；如果TCP无法建立媒体流，则回退到自动传输协商。</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].shortDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Prefer TCP for RTSP URL 2</source>
-        <translation>RTSP地址2优先使用TCP</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[secondaryRtspTcpOnly].longDesc, </extracomment>
-        <location filename="../src/Settings/VideoCustom.SettingsGroup.json"/>
-        <source>Tries interleaved RTSP-over-TCP first for Video 2 and falls back to automatic transport negotiation if TCP cannot establish media.</source>
-        <translation>视频2先尝试交错式RTSP-over-TCP；如果TCP无法建立媒体流，则回退到自动传输协商。</translation>
     </message>
 </context>
 </TS>

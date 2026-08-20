@@ -121,7 +121,6 @@ private:
         bool stopPending = false;
         bool restartAfterStop = false;
         QString uri;
-        int rtspTransport = -1;
     };
 
     void _cancelReceiverRestart(VideoReceiver *receiver);

@@ -28,13 +28,11 @@
 
 #include <gst/gst.h>
 #include <gst/rtsp/gstrtspmessage.h>
-#include <gst/rtsp/gstrtsptransport.h>
 
 QGC_LOGGING_CATEGORY(GstVideoReceiverLog, "qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver")
 
 namespace {
-constexpr uint32_t kMinimumRtspTcpTimeoutSeconds = 5;
-constexpr uint32_t kMinimumRtspAutoTimeoutSeconds = 8;
+constexpr uint32_t kMinimumRtspTimeoutSeconds = 8;
 constexpr guint64 kRtspTeardownTimeoutNanoseconds = GST_SECOND;
 }
 
@@ -65,17 +63,13 @@ void GstVideoReceiver::start(uint32_t timeout)
         // is still queued; the worker must never read a concurrently-mutated
         // implicitly-shared QString or silently start a different URI.
         const QString startUri = _uri;
-        const RtspTransport requestedTransport = rtspTransport();
         const bool lowLatencyMode = lowLatency();
         if (!startUri.isEmpty()) {
             emit onStartAttempt(startUri);
         }
         _worker->dispatch(
-            [this, timeout, startUri, requestedTransport, lowLatencyMode]() {
-                _start(timeout,
-                       startUri,
-                       requestedTransport,
-                       lowLatencyMode);
+            [this, timeout, startUri, lowLatencyMode]() {
+                _start(timeout, startUri, lowLatencyMode);
             });
         return;
     }
@@ -84,12 +78,11 @@ void GstVideoReceiver::start(uint32_t timeout)
     if (!startUri.isEmpty()) {
         emit onStartAttempt(startUri);
     }
-    _start(timeout, startUri, rtspTransport(), lowLatency());
+    _start(timeout, startUri, lowLatency());
 }
 
 void GstVideoReceiver::_start(uint32_t timeout,
                               const QString &startUri,
-                              RtspTransport requestedTransport,
                               bool lowLatencyMode)
 {
     if (_pipeline) {
@@ -114,33 +107,20 @@ void GstVideoReceiver::_start(uint32_t timeout,
     if (isRtsp) {
         const bool uriChanged = _lastRtspUri != startUri;
         if (uriChanged) {
-            // OPTIONS compatibility is a property of the server/URI rather
-            // than the selected lower transport. Retain it while switching
-            // TCP/Auto, but never leak it to a different stream.
+            // OPTIONS compatibility is a property of the server/URI. Never
+            // leak it to a different stream.
             _rtspOptionsCompatibility.store(0);
-        }
-        if (uriChanged
-            || (_lastRequestedRtspTransport != requestedTransport)) {
             _lastRtspUri = startUri;
-            _lastRequestedRtspTransport = requestedTransport;
-            _rtspTcpFallbackToAuto = false;
             _lastReportedRtspResourceError.store(-1);
         }
     } else {
         _lastRtspUri.clear();
-        _rtspTcpFallbackToAuto = false;
         _rtspOptionsCompatibility.store(0);
         _lastReportedRtspResourceError.store(-1);
     }
-    _activeRtspTransport = requestedTransport;
-    _activeRtspTcp = requestedTransport == RtspTransport::Tcp
-        && !_rtspTcpFallbackToAuto;
     _activeRtspOptionsCompatibility.store(
         _rtspOptionsCompatibility.load());
-    const uint32_t minimumTimeout = _activeRtspTcp
-        ? kMinimumRtspTcpTimeoutSeconds
-        : kMinimumRtspAutoTimeoutSeconds;
-    _timeout = isRtsp ? qMax(timeout, minimumTimeout) : timeout;
+    _timeout = isRtsp ? qMax(timeout, kMinimumRtspTimeoutSeconds) : timeout;
     _buffer = lowLatencyMode ? -1 : 0;
 
     if (isRtsp && _timeout != timeout) {
@@ -656,13 +636,11 @@ void GstVideoReceiver::_watchdog()
             const QString streamUri = _pipelineUri();
             const bool isRtsp = QUrl(streamUri).scheme().startsWith(
                 QStringLiteral("rtsp"), Qt::CaseInsensitive);
-            const bool transportFallbackActivated =
-                _activateRtspAutoFallback("source timeout");
-            if (!transportFallbackActivated && isRtsp) {
+            if (isRtsp) {
                 qCWarning(GstVideoReceiverLog)
                     << "RTSP stream timeout, no frames for" << elapsed
                     << "seconds" << streamUri;
-            } else if (!isRtsp) {
+            } else {
                 qCWarning(GstVideoReceiverLog)
                     << "Stream timeout, no frames for" << elapsed
                     << "seconds" << streamUri;
@@ -693,7 +671,6 @@ void GstVideoReceiver::_handleEOS()
     }
 
     if (_endOfStream) {
-        (void) _activateRtspAutoFallback("end of stream before media");
         stop();
     } else if (_decoding && _removingDecoder) {
         _shutdownDecodingBranch();
@@ -791,6 +768,9 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                 optionsCompatibility >= 1 ? TRUE : FALSE;
             const gboolean skipOptions =
                 optionsCompatibility >= 2 ? TRUE : FALSE;
+            // Leave "protocols" at the rtspsrc default. GStreamer then
+            // negotiates the available RTP lower transport, including TCP,
+            // without a product-specific transport setting.
             g_object_set(source,
                          "location", input.toUtf8().constData(),
                          "latency", 25,
@@ -809,26 +789,6 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                          // Do not reintroduce the rejected method after PLAY.
                          "do-rtsp-keep-alive", !skipOptions,
                          nullptr);
-            if (_activeRtspTcp) {
-                // Keep the public URI standards-compliant (rtsp://). The
-                // rtspsrc protocols property is the supported way to select
-                // interleaved RTP/RTCP over the RTSP TCP connection.
-                const guint requestedProtocols =
-                    static_cast<guint>(GST_RTSP_LOWER_TRANS_TCP);
-                g_object_set(source,
-                             "protocols", requestedProtocols,
-                             nullptr);
-            }
-
-            guint effectiveProtocols = 0;
-            g_object_get(source, "protocols", &effectiveProtocols, nullptr);
-            if (_activeRtspTcp
-                && effectiveProtocols
-                    != static_cast<guint>(GST_RTSP_LOWER_TRANS_TCP)) {
-                qCWarning(GstVideoReceiverLog)
-                    << "RTSP source did not retain TCP-only protocols for"
-                    << input;
-            }
         } else if (isTcpMPEGTS) {
             source = gst_element_factory_make("tcpclientsrc", "source");
             if (!source) {
@@ -1233,38 +1193,6 @@ void GstVideoReceiver::_noteEndOfStream()
     _endOfStream = true;
 }
 
-bool GstVideoReceiver::_activateRtspAutoFallback(const char *reason)
-{
-    const QString activeUri = _pipelineUri();
-    const bool sourceFrameReceived = _sourceFrameReceived.load();
-    const GstRTSPMethod lastRtspMethod = static_cast<GstRTSPMethod>(
-        _lastRtspMethod.load());
-    // A connection failure, OPTIONS, and DESCRIBE all happen before SETUP and
-    // therefore cannot diagnose an RTP lower-transport incompatibility.
-    const bool preSetupControlFailure = !sourceFrameReceived
-        && (lastRtspMethod == GST_RTSP_INVALID
-            || lastRtspMethod == GST_RTSP_OPTIONS
-            || lastRtspMethod == GST_RTSP_DESCRIBE);
-    if (sourceFrameReceived
-        || preSetupControlFailure
-        || _activeRtspTransport != RtspTransport::Tcp
-        || !_activeRtspTcp
-        || _rtspTcpFallbackToAuto
-        || !QUrl(activeUri).scheme().startsWith(
-            QStringLiteral("rtsp"), Qt::CaseInsensitive)) {
-        return false;
-    }
-
-    // TCP preference must not make an otherwise compatible stream unusable.
-    // Keep the fallback for the same URI/setting until either one changes, so
-    // repeated failures cannot oscillate between TCP and Auto.
-    _rtspTcpFallbackToAuto = true;
-    qCWarning(GstVideoReceiverLog)
-        << "RTSP-over-TCP produced no media; the next restart will use Auto"
-        << activeUri << "reason" << reason;
-    return true;
-}
-
 bool GstVideoReceiver::_advanceRtspOptionsCompatibility(const char *reason)
 {
     const QString activeUri = _pipelineUri();
@@ -1472,12 +1400,6 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
             pThis->_lastRtspMethod.load());
         const gchar *const lastRtspMethodText =
             gst_rtsp_method_as_text(lastRtspMethod);
-        const bool transportNegotiationFailure = error
-            && error->domain == GST_RESOURCE_ERROR
-            && (error->code == GST_RESOURCE_ERROR_READ
-                || error->code == GST_RESOURCE_ERROR_OPEN_READ
-                || error->code == GST_RESOURCE_ERROR_OPEN_READ_WRITE
-                || error->code == GST_RESOURCE_ERROR_SETTINGS);
         const bool optionsEndOfFile = error
             && error->domain == GST_RESOURCE_ERROR
             && error->code == GST_RESOURCE_ERROR_READ
@@ -1524,15 +1446,11 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
         g_clear_error(&error);
 
         pThis->_worker->dispatch(
-            [pThis, transportNegotiationFailure, optionsEndOfFile]() {
+            [pThis, optionsEndOfFile]() {
                 qCDebug(GstVideoReceiverLog) << "Stopping because of error";
                 if (optionsEndOfFile) {
                     (void) pThis->_advanceRtspOptionsCompatibility(
                         "server EOF while receiving OPTIONS response");
-                }
-                if (transportNegotiationFailure) {
-                    (void) pThis->_activateRtspAutoFallback(
-                        "RTSP transport error before media");
                 }
                 pThis->stop();
             });
