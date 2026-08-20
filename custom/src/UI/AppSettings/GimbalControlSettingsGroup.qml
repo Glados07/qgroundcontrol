@@ -55,11 +55,31 @@ Loader {
                     enabled: root.gimbalControlSettings.enabled.rawValue
                 }
 
-                LabelledFactTextField {
+            }
+
+            SettingsGroupLayout {
+                Layout.fillWidth: true
+                heading: qsTr("Zoom Step")
+
+                GridLayout {
                     Layout.fillWidth: true
-                    label: qsTr("Zoom Step")
-                    fact: root.gimbalControlSettings.zoomStep
-                    enabled: root.gimbalControlSettings.enabled.rawValue
+                    columns: ScreenTools.isMobile ? 1 : 2
+                    columnSpacing: ScreenTools.defaultFontPixelWidth * 2
+                    rowSpacing: ScreenTools.defaultFontPixelHeight / 2
+
+                    LabelledFactTextField {
+                        Layout.fillWidth: true
+                        label: qsTr("A8 Mini")
+                        fact: root.gimbalControlSettings.zoomStep
+                        enabled: root.gimbalControlSettings.enabled.rawValue
+                    }
+
+                    LabelledFactTextField {
+                        Layout.fillWidth: true
+                        label: qsTr("MT11")
+                        fact: root.gimbalControlSettings.mt11ZoomStep
+                        enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+                    }
                 }
             }
 
@@ -85,13 +105,6 @@ Loader {
                     Layout.fillWidth: true
                     label: qsTr("SDK Port")
                     fact: root.gimbalControlSettings.mt11SdkPort
-                    enabled: root.gimbalControlSettings.mt11Enabled.rawValue
-                }
-
-                LabelledFactTextField {
-                    Layout.fillWidth: true
-                    label: qsTr("Zoom Step")
-                    fact: root.gimbalControlSettings.mt11ZoomStep
                     enabled: root.gimbalControlSettings.mt11Enabled.rawValue
                 }
 

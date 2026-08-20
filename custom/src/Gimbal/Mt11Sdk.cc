@@ -59,16 +59,33 @@ void Mt11Sdk::setEndpoint(const QString& host, quint16 port)
 void Mt11Sdk::setZoomRange(double minimumZoom, double maximumZoom)
 {
     if (!qIsFinite(minimumZoom) || !qIsFinite(maximumZoom)
-        || minimumZoom < 1.0 || maximumZoom > 30.0
+        || minimumZoom < Mt11Protocol::MinimumZoom
+        || maximumZoom > Mt11Protocol::MaximumAbsoluteZoom
         || minimumZoom > maximumZoom) {
         emit communicationError(
-            tr("Invalid MT11 zoom range: %1-%2.")
+            tr("Invalid MT11 absolute zoom range: %1-%2.")
                 .arg(minimumZoom)
                 .arg(maximumZoom));
         return;
     }
-    _minimumZoom = minimumZoom;
-    _maximumZoom = maximumZoom;
+    _minimumAbsoluteZoom = minimumZoom;
+    _maximumAbsoluteZoom = maximumZoom;
+}
+
+void Mt11Sdk::setFeedbackZoomRange(double minimumZoom, double maximumZoom)
+{
+    if (!qIsFinite(minimumZoom) || !qIsFinite(maximumZoom)
+        || minimumZoom < Mt11Protocol::MinimumZoom
+        || maximumZoom > Mt11Protocol::MaximumFeedbackZoom
+        || minimumZoom > maximumZoom) {
+        emit communicationError(
+            tr("Invalid MT11 feedback zoom range: %1-%2.")
+                .arg(minimumZoom)
+                .arg(maximumZoom));
+        return;
+    }
+    _minimumFeedbackZoom = minimumZoom;
+    _maximumFeedbackZoom = maximumZoom;
 }
 
 void Mt11Sdk::clearPendingRequests()
@@ -91,9 +108,10 @@ bool Mt11Sdk::sendManualZoom(qint8 direction)
 bool Mt11Sdk::sendAbsoluteZoom(double zoomLevel)
 {
     if (!qIsFinite(zoomLevel)
-        || zoomLevel < _minimumZoom || zoomLevel > _maximumZoom) {
+        || zoomLevel < _minimumAbsoluteZoom
+        || zoomLevel > _maximumAbsoluteZoom) {
         emit communicationError(
-            tr("MT11 zoom value is outside the configured range: %1")
+            tr("MT11 absolute zoom value is outside the configured range: %1")
                 .arg(zoomLevel));
         return false;
     }
@@ -195,7 +213,8 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
     if (command == Mt11Protocol::CommandManualZoom) {
         double zoom = 0.0;
         parsed = Mt11Protocol::parseManualZoomAckPayload(payload, &zoom)
-            && zoom >= _minimumZoom && zoom <= _maximumZoom;
+            && zoom >= _minimumFeedbackZoom
+            && zoom <= _maximumFeedbackZoom;
         if (parsed) {
             emit packetReceived();
             emit manualZoomReceived(zoom);
@@ -211,7 +230,10 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
                || command == Mt11Protocol::CommandCurrentZoomValue) {
         double zoom = 0.0;
         parsed = Mt11Protocol::parseZoomValuePayload(
-            payload, _minimumZoom, _maximumZoom, &zoom);
+            payload,
+            _minimumFeedbackZoom,
+            _maximumFeedbackZoom,
+            &zoom);
         if (parsed) {
             emit packetReceived();
             if (command == Mt11Protocol::CommandMaximumZoomValue) {

@@ -40,6 +40,11 @@ namespace {
 QGC_LOGGING_CATEGORY(Mt11ControlLog, "gcs.custom.gimbal.mt11.control")
 
 constexpr double kZoomTolerance = 0.051;
+constexpr int kZoomFeedbackFreshnessMs = 6500;
+constexpr int kAbsoluteZoomPollMs = 250;
+constexpr int kAbsoluteZoomConfirmationTimeoutMs = 10000;
+constexpr int kContinuousZoomPollMs = 350;
+constexpr int kContinuousZoomStopRetryMs = 150;
 constexpr int kLocalPhotoTimeoutMs = 5000;
 constexpr int kLocalRecordingStartTimeoutMs = 3000;
 constexpr int kLocalRecordingStopTimeoutMs = 5000;
@@ -149,15 +154,27 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     , _sdk(new Mt11Sdk(this))
 {
     Q_CHECK_PTR(_settings);
-    _sdk->setZoomRange(kMinimumZoom, kProtocolMaximumZoom);
+    _sdk->setZoomRange(kMinimumZoom, kAbsoluteCommandMaximumZoom);
+    _sdk->setFeedbackZoomRange(kMinimumZoom, kFeedbackMaximumZoom);
 
     _pollTimer.setInterval(2000);
     _sdkResponseTimer.setSingleShot(true);
     // A complete 0x16/0x18/0x0a/0x10 poll batch repeats every two seconds.
     // Keep the reachability watchdog safely beyond one missed batch.
     _sdkResponseTimer.setInterval(6000);
+    _maximumZoomFreshnessTimer.setSingleShot(true);
+    _maximumZoomFreshnessTimer.setInterval(kZoomFeedbackFreshnessMs);
+    _zoomStatusFreshnessTimer.setSingleShot(true);
+    _zoomStatusFreshnessTimer.setInterval(kZoomFeedbackFreshnessMs);
+    _absoluteZoomPollTimer.setInterval(kAbsoluteZoomPollMs);
+    _absoluteZoomConfirmationTimer.setSingleShot(true);
+    _absoluteZoomConfirmationTimer.setInterval(
+        kAbsoluteZoomConfirmationTimeoutMs);
+    _continuousZoomPollTimer.setInterval(kContinuousZoomPollMs);
     _continuousZoomWatchdog.setSingleShot(true);
     _continuousZoomWatchdog.setInterval(60000);
+    _continuousZoomStopRetryTimer.setSingleShot(true);
+    _continuousZoomStopRetryTimer.setInterval(kContinuousZoomStopRetryMs);
     _recordingStatusDelayTimer.setSingleShot(true);
     _recordingStatusDelayTimer.setInterval(400);
     _recordingCommandTimer.setSingleShot(true);
@@ -208,6 +225,27 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_pollSdk);
     connect(&_sdkResponseTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_markSdkNotResponding);
+    connect(&_maximumZoomFreshnessTimer, &QTimer::timeout, this, [this]() {
+        if (_continuousZoomActive) {
+            (void) stopZoom();
+        }
+        _setMaximumZoomKnown(false);
+    });
+    connect(&_zoomStatusFreshnessTimer, &QTimer::timeout, this, [this]() {
+        if (_continuousZoomActive) {
+            (void) stopZoom();
+        }
+        // An absolute command owns its separate 10-second confirmation
+        // generation. Expiring the old/current feedback must not cancel that
+        // generation and unlock a second 0x0f command while the first moves.
+        _setZoomStatusKnown(false);
+    });
+    connect(&_absoluteZoomPollTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_pollPendingAbsoluteZoom);
+    connect(&_absoluteZoomConfirmationTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout);
+    connect(&_continuousZoomPollTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_pollContinuousZoom);
     connect(&_continuousZoomWatchdog, &QTimer::timeout, this, [this]() {
         if (_continuousZoomActive) {
             (void) stopZoom();
@@ -215,6 +253,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
                 tr("MT11 continuous zoom stopped after the safety timeout."));
         }
     });
+    connect(&_continuousZoomStopRetryTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_retryContinuousZoomStop);
     connect(&_recordingStatusDelayTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_requestRecordingStatusAfterDelay);
     connect(&_recordingCommandTimer, &QTimer::timeout,
@@ -260,16 +300,43 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
 
 Mt11ControlManager::~Mt11ControlManager()
 {
+    const bool stopZoomRequired = _zoomCommandPending || _continuousZoomActive
+        || _continuousZoomStopRetryTimer.isActive();
+    // shutdownLocalMedia(true) can run a bounded nested event loop. Retire the
+    // entire SDK-control generation before entering it so timers or late UDP
+    // ACKs cannot re-enter this half-destructed manager and restart polling.
+    _pollTimer.stop();
+    _sdkResponseTimer.stop();
+    _maximumZoomFreshnessTimer.stop();
+    _zoomStatusFreshnessTimer.stop();
+    _absoluteZoomPollTimer.stop();
+    _absoluteZoomConfirmationTimer.stop();
+    _continuousZoomPollTimer.stop();
+    _continuousZoomWatchdog.stop();
+    _continuousZoomStopRetryTimer.stop();
+    _recordingStatusDelayTimer.stop();
+    _recordingCommandTimer.stop();
+    _thermalCommandTimer.stop();
+    _photoCommandTimer.stop();
+    _zoomCommandPending = false;
+    _continuousZoomActive = false;
+    _continuousZoomDirection = 0;
+    if (_sdk) {
+        disconnect(_sdk, nullptr, this, nullptr);
+    }
+    if (stopZoomRequired && _sdk) {
+        // Destruction has no event-loop opportunity for the normal delayed
+        // retry, so send the one bounded safety copy immediately, before any
+        // potentially blocking local-media finalization.
+        (void) _sdk->sendManualZoom(0);
+        (void) _sdk->sendManualZoom(0);
+    }
     _localPhotoTimer.stop();
     ++_localPhotoSequence;
     _localPhotoGrabLifetime.clear();
     _localPhotoPending = false;
     _localPhotoSaveThreadPool.waitForDone();
     shutdownLocalMedia(true);
-    if (_continuousZoomActive && _sdk) {
-        (void) _sdk->sendManualZoom(0);
-    }
-    _continuousZoomWatchdog.stop();
 }
 
 bool Mt11ControlManager::enabled() const
@@ -291,18 +358,22 @@ double Mt11ControlManager::zoomStep() const
     }
     return qRound(qBound(0.1,
                          _settings->mt11ZoomStep()->rawValue().toDouble(),
-                         kProtocolMaximumZoom - kMinimumZoom) * 10.0) / 10.0;
+                         kAbsoluteCommandMaximumZoom - kMinimumZoom) * 10.0) / 10.0;
 }
 
 bool Mt11ControlManager::zoomInAvailable() const
 {
-    return zoomControlsUnlocked()
+    return zoomControlsUnlocked() && !_zoomCommandPending
+        && !_continuousZoomActive
+        && !_continuousZoomStopRetryTimer.isActive()
         && _currentZoom < _maximumZoom - kZoomTolerance;
 }
 
 bool Mt11ControlManager::zoomOutAvailable() const
 {
-    return zoomControlsUnlocked()
+    return zoomControlsUnlocked() && !_zoomCommandPending
+        && !_continuousZoomActive
+        && !_continuousZoomStopRetryTimer.isActive()
         && _currentZoom > kMinimumZoom + kZoomTolerance;
 }
 
@@ -344,24 +415,43 @@ bool Mt11ControlManager::zoomOut()
 bool Mt11ControlManager::setZoom(double zoomLevel)
 {
     if (!_cameraCommandAvailable() || !zoomControlsUnlocked()
+        || _zoomCommandPending || _continuousZoomActive
         || !qIsFinite(zoomLevel)) {
         return false;
     }
+    if (_currentZoom > kAbsoluteCommandMaximumZoom + kZoomTolerance) {
+        _setLastError(tr("MT11 zoom above 30x supports press-and-hold control only."));
+        return false;
+    }
     const double target = qRound(zoomLevel * 10.0) / 10.0;
-    if (target < kMinimumZoom || target > _maximumZoom) {
+    const double absoluteMaximum = qMin(
+        _maximumZoom, kAbsoluteCommandMaximumZoom);
+    if (target < kMinimumZoom || target > absoluteMaximum) {
         _setLastError(tr("The requested MT11 zoom is outside the supported range."));
         return false;
     }
-    if (_continuousZoomActive && !stopZoom()) {
-        return false;
+    // A retry belonging to the preceding hold must never arrive after 0x0f
+    // and interrupt the new absolute movement. Direct callers can reach this
+    // method during the short retry window, so serialize the safety copy now.
+    if (_continuousZoomStopRetryTimer.isActive()) {
+        _continuousZoomStopRetryTimer.stop();
+        _configureSdkEndpoint();
+        const bool retrySent = _sdk->sendManualZoom(0);
+        emit zoomAvailabilityChanged();
+        if (!retrySent) {
+            return false;
+        }
     }
     _configureSdkEndpoint();
     if (!_sdk->sendAbsoluteZoom(target)) {
         return false;
     }
-    _zoomCommandPending = true;
-    _setCurrentZoom(target);
-    emit zoomAvailabilityChanged();
+    _pendingAbsoluteZoomTarget = target;
+    _setZoomCommandPending(true);
+    _absoluteZoomPollTimer.start();
+    _absoluteZoomConfirmationTimer.start();
+    // Keep currentZoom as measured state. The 0x0f ACK is followed by 0x18,
+    // which alone confirms the actual lens position.
     _setLastError({});
     return true;
 }
@@ -382,40 +472,42 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
         || (normalizedDirection < 0 && !zoomOutAvailable())) {
         return false;
     }
+    // Do not let the bounded stop retry from a previous gesture stop this
+    // newly-started direction command.
+    _continuousZoomStopRetryTimer.stop();
     _configureSdkEndpoint();
     if (!_sdk->sendManualZoom(static_cast<qint8>(normalizedDirection))) {
         return false;
     }
     _continuousZoomActive = true;
     _continuousZoomDirection = normalizedDirection;
+    _continuousZoomPollTimer.start();
     _continuousZoomWatchdog.start();
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
+    _setLastError({});
+    _pollContinuousZoom();
     return true;
 }
 
 bool Mt11ControlManager::stopZoom()
 {
     if (!_continuousZoomActive) {
-        // A release/cancel can arrive after state was reset (camera switch,
-        // disable or shutdown). Sending the documented zero command is
-        // harmless and, more importantly, guarantees that an MT11 which saw
-        // the preceding +/-1 command is not left zooming continuously.
-        if (!enabled() || !_sdk) {
-            return false;
-        }
-        _configureSdkEndpoint();
-        return _sdk->sendManualZoom(0);
+        // Release, cancel and an automatic boundary stop can converge here.
+        // An already scheduled retry means the stop sequence is in progress;
+        // do not create an unbounded series of additional UDP commands.
+        return _continuousZoomStopRetryTimer.isActive();
     }
+    // Clear local motion state before sending. A synchronous transport error
+    // can then safely invalidate controls without recursively stopping again.
+    _finishContinuousZoomState();
     _configureSdkEndpoint();
     const bool sent = _sdk->sendManualZoom(0);
-    _continuousZoomWatchdog.stop();
-    _continuousZoomActive = false;
-    _continuousZoomDirection = 0;
-    emit continuousZoomActiveChanged();
-    emit zoomAvailabilityChanged();
-    if (sent) {
-        (void) _sdk->requestCurrentZoom();
+    if (enabled()) {
+        // UDP write success does not prove device receipt. Send exactly one
+        // delayed safety copy, then query 0x18 for the settled position.
+        _continuousZoomStopRetryTimer.start();
+        emit zoomAvailabilityChanged();
     }
     return sent;
 }
@@ -487,12 +579,39 @@ bool Mt11ControlManager::toggleThermalMode()
         return _sdk->requestVideoMode();
     }
 
+    if (_continuousZoomActive && !stopZoom()) {
+        _setLastError(tr("Failed to stop MT11 zoom before changing the video mode."));
+        return false;
+    }
+    if (_zoomCommandPending) {
+        _configureSdkEndpoint();
+        const bool stopped = _sdk->sendManualZoom(0);
+        _setZoomCommandPending(false);
+        if (!stopped || !_sdk->sendManualZoom(0)) {
+            _setLastError(tr("Failed to stop MT11 zoom before changing the video mode."));
+            return false;
+        }
+    }
+    if (_continuousZoomStopRetryTimer.isActive()) {
+        // Serialize the bounded safety copy ahead of the mode command. A
+        // delayed 0x05(0) must not cross the main-lens switch boundary.
+        _continuousZoomStopRetryTimer.stop();
+        _configureSdkEndpoint();
+        const bool retrySent = _sdk->sendManualZoom(0);
+        emit zoomAvailabilityChanged();
+        if (!retrySent) {
+            return false;
+        }
+    }
     _thermalCommandTarget = !_thermalModeEnabled;
     _configureSdkEndpoint();
     if (!_sdk->setThermalMode(_thermalCommandTarget)) {
         return false;
     }
     _setThermalCommandPending(true);
+    // 0x16 describes the current main lens. Do not expose capability or
+    // position from the previous lens while the switch is pending.
+    _invalidateZoomState();
     _thermalCommandTimer.start();
     return true;
 }
@@ -678,21 +797,23 @@ void Mt11ControlManager::_settingsChanged()
     const bool hadCameraRecording = _recording;
     const bool hadRecordingSession = recordingSessionActive();
 
+    const bool stopSequencePending = _zoomCommandPending
+        || _continuousZoomActive
+        || _continuousZoomStopRetryTimer.isActive();
+    _continuousZoomStopRetryTimer.stop();
     if (_continuousZoomActive) {
+        _finishContinuousZoomState();
+    }
+    if (_lastEnabled && _sdk) {
         // The Fact already contains its new value when this slot runs, while
         // Mt11Sdk still holds the previous endpoint. Stop directly against
         // that latched endpoint before any call to _configureSdkEndpoint().
         (void) _sdk->sendManualZoom(0);
-        _continuousZoomWatchdog.stop();
-        _continuousZoomActive = false;
-        _continuousZoomDirection = 0;
-        emit continuousZoomActiveChanged();
-        emit zoomAvailabilityChanged();
-    } else if (_lastEnabled && _sdk) {
-        // Stop against the old endpoint before applying a changed SDK host or
-        // disabling the control. The MT11 manual-zoom protocol requires an
-        // explicit zero command on release.
-        (void) _sdk->sendManualZoom(0);
+        if (stopSequencePending) {
+            // The delayed retry cannot safely survive an endpoint change, so
+            // deliver its one bounded copy before switching the SDK endpoint.
+            (void) _sdk->sendManualZoom(0);
+        }
     }
 
     // Stop an already-confirmed SD-card recording against the old endpoint
@@ -717,15 +838,17 @@ void Mt11ControlManager::_settingsChanged()
     const bool nowEnabled = enabled();
     _pollTimer.stop();
     _sdkResponseTimer.stop();
+    _maximumZoomFreshnessTimer.stop();
+    _zoomStatusFreshnessTimer.stop();
+    _continuousZoomPollTimer.stop();
     _continuousZoomWatchdog.stop();
+    _continuousZoomStopRetryTimer.stop();
     _recordingStatusDelayTimer.stop();
     _recordingCommandTimer.stop();
     _thermalCommandTimer.stop();
     _photoCommandTimer.stop();
     _setSdkResponding(false);
-    _setZoomStatusKnown(false);
-    _maximumZoomKnown = false;
-    _zoomCommandPending = false;
+    _invalidateZoomState();
     _setCameraStatusKnown(false);
     _setRecording(false);
     _setRecordingCommandPending(false);
@@ -766,9 +889,14 @@ void Mt11ControlManager::_pollSdk()
     if (!_sdkResponseTimer.isActive()) {
         _sdkResponseTimer.start();
     }
-    (void) _sdk->requestMaximumZoom();
-    if (!_continuousZoomActive) {
-        (void) _sdk->requestCurrentZoom();
+    // Do not accept capabilities from the previous main lens while a video
+    // mode change is still unconfirmed. The confirming 0x10/0x11 feedback
+    // triggers a fresh 0x16/0x18 pair immediately.
+    if (!_thermalCommandPending) {
+        (void) _sdk->requestMaximumZoom();
+        if (!_continuousZoomActive) {
+            (void) _sdk->requestCurrentZoom();
+        }
     }
     (void) _sdk->requestCameraSystemStatus();
     if (!_thermalCommandPending) {
@@ -778,47 +906,70 @@ void Mt11ControlManager::_pollSdk()
 
 void Mt11ControlManager::_markSdkNotResponding()
 {
+    if (_continuousZoomActive) {
+        (void) stopZoom();
+    } else if (_zoomCommandPending && _sdk) {
+        _setZoomCommandPending(false);
+        (void) _sdk->sendManualZoom(0);
+        (void) _sdk->sendManualZoom(0);
+    }
     _setSdkResponding(false);
+    _invalidateZoomState();
     _setLastError(tr("No response from the MT11 SDK endpoint."));
 }
 
 void Mt11ControlManager::_handleManualZoom(double zoomLevel)
 {
-    if (!enabled()) return;
+    if (!enabled() || _thermalCommandPending) return;
     _setCurrentZoom(zoomLevel);
     _setZoomStatusKnown(true);
+    _zoomStatusFreshnessTimer.start();
+    _checkContinuousZoomBoundary();
 }
 
 void Mt11ControlManager::_handleAbsoluteZoomFeedback(bool accepted)
 {
-    if (!enabled()) return;
-    _zoomCommandPending = false;
-    emit zoomAvailabilityChanged();
+    if (!enabled() || !_zoomCommandPending) return;
     if (!accepted) {
+        _absoluteZoomPollTimer.stop();
+        _absoluteZoomConfirmationTimer.stop();
+        _setZoomCommandPending(false);
         _setZoomStatusKnown(false);
         _setLastError(tr("The MT11 camera rejected the zoom command."));
         return;
     }
+    // Keep the buttons gated until 0x18 confirms the measured result. Clearing
+    // pending on the acceptance ACK would allow another step to be calculated
+    // from the old currentZoom value.
     (void) requestCurrentZoom();
 }
 
 void Mt11ControlManager::_handleMaximumZoom(double maximumZoom)
 {
-    if (!enabled()) return;
+    if (!enabled() || _thermalCommandPending) return;
     _setMaximumZoom(maximumZoom);
-    if (!_maximumZoomKnown) {
-        _maximumZoomKnown = true;
-        emit zoomAvailabilityChanged();
+    _setMaximumZoomKnown(true);
+    _maximumZoomFreshnessTimer.start();
+    if (_currentZoom > _maximumZoom) {
+        _setCurrentZoom(_maximumZoom);
     }
+    _checkContinuousZoomBoundary();
 }
 
 void Mt11ControlManager::_handleCurrentZoom(double zoomLevel)
 {
-    if (!enabled()) return;
-    _zoomCommandPending = false;
+    if (!enabled() || _thermalCommandPending) return;
     _setCurrentZoom(zoomLevel);
     _setZoomStatusKnown(true);
-    emit zoomAvailabilityChanged();
+    _zoomStatusFreshnessTimer.start();
+    if (_zoomCommandPending
+        && qAbs(_currentZoom - _pendingAbsoluteZoomTarget)
+            <= kZoomTolerance) {
+        _absoluteZoomPollTimer.stop();
+        _absoluteZoomConfirmationTimer.stop();
+        _setZoomCommandPending(false);
+    }
+    _checkContinuousZoomBoundary();
 }
 
 void Mt11ControlManager::_handleCameraSystemStatus(
@@ -908,17 +1059,65 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
     if (!enabled()) return;
     Q_UNUSED(subStream);
     const bool thermal = mainStream == Mt11Protocol::VideoSourceThermal;
+    // The maximum/current zoom feedback belongs to the exact main lens, not
+    // merely to the coarse RGB-versus-thermal UI state. Zoom, wide and
+    // composite sources can all be non-thermal yet have different limits.
+    const bool modeChanged = _thermalModeKnown
+        && mainStream != _mainVideoSource;
+    const bool commandConfirmed = _thermalCommandPending
+        && thermal == _thermalCommandTarget;
+    const bool refreshZoomState = modeChanged || commandConfirmed;
+
+    if (refreshZoomState) {
+        if (_continuousZoomActive) {
+            // A locally started continuous movement must still receive one
+            // immediate safety stop even when another controller changed the
+            // main source first.
+            (void) stopZoom();
+        }
+        if (_continuousZoomStopRetryTimer.isActive()) {
+            // The main lens has already changed. Cancel the old generation's
+            // delayed copy instead of sending it to the newly selected lens.
+            _continuousZoomStopRetryTimer.stop();
+            emit zoomAvailabilityChanged();
+        }
+        if (_zoomCommandPending) {
+            // 0x0f is routed to the main lens. Once an external source change
+            // is observed, its old target can no longer be confirmed safely;
+            // retire it without issuing a cross-lens command. Our own mode
+            // switch path flushes this movement before sending 0x11.
+            _setZoomCommandPending(false);
+        }
+        // Retire any 0x16/0x18 requests issued for the prior main lens before
+        // opening a fresh request generation below.
+        _sdk->clearPendingRequests();
+        _invalidateZoomState();
+    }
+    _mainVideoSource = mainStream;
     _setThermalModeKnown(true);
     _setThermalModeEnabled(thermal);
-    if (_thermalCommandPending && thermal == _thermalCommandTarget) {
+    if (commandConfirmed) {
         _thermalCommandTimer.stop();
         _setThermalCommandPending(false);
+    }
+    if (refreshZoomState && !_thermalCommandPending) {
+        _requestZoomState();
     }
 }
 
 void Mt11ControlManager::_handleCommunicationError(const QString& message)
 {
+    if (_continuousZoomActive) {
+        (void) stopZoom();
+    } else if (_zoomCommandPending && _sdk) {
+        // Clear first so a synchronous write error from the stop copies cannot
+        // recurse into another stop sequence.
+        _setZoomCommandPending(false);
+        (void) _sdk->sendManualZoom(0);
+        (void) _sdk->sendManualZoom(0);
+    }
     _setSdkResponding(false);
+    _invalidateZoomState();
     _setLastError(message);
 }
 
@@ -984,6 +1183,14 @@ void Mt11ControlManager::_handleThermalCommandTimeout()
 {
     _setThermalCommandPending(false);
     _setThermalModeKnown(false);
+    if (_continuousZoomActive) {
+        (void) stopZoom();
+    }
+    _sdk->clearPendingRequests();
+    _invalidateZoomState();
+    // The set command may have reached the camera even though its ACK was
+    // lost. Re-read both the actual mode and that lens' zoom state.
+    _pollSdk();
     _setLastError(tr("Timed out confirming the MT11 video mode."));
 }
 
@@ -1051,17 +1258,149 @@ bool Mt11ControlManager::_cameraCommandAvailable()
 
 bool Mt11ControlManager::_sendZoomStep(int direction)
 {
-    if (!zoomControlsUnlocked() || _zoomCommandPending
+    if ((direction != -1 && direction != 1)
+        || !zoomControlsUnlocked() || _zoomCommandPending
+        || _continuousZoomActive
         || (direction > 0 && !zoomInAvailable())
         || (direction < 0 && !zoomOutAvailable())) {
         return false;
     }
+    // The documented 0x0f absolute command addresses only 1.0x-30.0x.
+    // Above 30x both directions deliberately remain hold-only, avoiding a
+    // short press which could jump a hybrid-zoom position back below 30x.
+    if (_currentZoom > kAbsoluteCommandMaximumZoom + kZoomTolerance) {
+        _setLastError(tr("MT11 zoom above 30x supports press-and-hold control only."));
+        return false;
+    }
+    const double steppedTarget = qRound(
+        (_currentZoom + direction * zoomStep()) * 10.0) / 10.0;
+    const double stepUpperBound = qMin(
+        _maximumZoom, kAbsoluteCommandMaximumZoom);
     const double target = qBound(
         kMinimumZoom,
-        qRound((_currentZoom + (direction > 0 ? zoomStep() : -zoomStep()))
-               * 10.0) / 10.0,
-        _maximumZoom);
+        steppedTarget,
+        stepUpperBound);
+    if (qAbs(target - _currentZoom) <= kZoomTolerance) {
+        if (direction > 0
+            && _maximumZoom > kAbsoluteCommandMaximumZoom + kZoomTolerance
+            && _currentZoom >= kAbsoluteCommandMaximumZoom - kZoomTolerance) {
+            _setLastError(tr("MT11 zoom above 30x supports press-and-hold control only."));
+        }
+        return false;
+    }
     return setZoom(target);
+}
+
+void Mt11ControlManager::_pollPendingAbsoluteZoom()
+{
+    if (!_zoomCommandPending || !enabled() || !_sdk
+        || _continuousZoomActive || _thermalCommandPending) {
+        _absoluteZoomPollTimer.stop();
+        return;
+    }
+    _configureSdkEndpoint();
+    if (!_sdkResponseTimer.isActive()) {
+        _sdkResponseTimer.start();
+    }
+    (void) _sdk->requestCurrentZoom();
+}
+
+void Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout()
+{
+    if (!_zoomCommandPending) {
+        return;
+    }
+    _absoluteZoomPollTimer.stop();
+    _setZoomCommandPending(false);
+    _setLastError(tr("Timed out confirming the MT11 zoom target."));
+    if (enabled() && !_thermalCommandPending) {
+        (void) requestCurrentZoom();
+    }
+}
+
+void Mt11ControlManager::_pollContinuousZoom()
+{
+    if (!_continuousZoomActive || !enabled() || !_sdk
+        || _thermalCommandPending) {
+        return;
+    }
+    _configureSdkEndpoint();
+    if (!_sdkResponseTimer.isActive()) {
+        _sdkResponseTimer.start();
+    }
+    // 0x05 starts a camera-side continuous movement. 0x18 is the measured
+    // feedback loop used by the UI and by the device-boundary stop below.
+    (void) _sdk->requestCurrentZoom();
+}
+
+void Mt11ControlManager::_retryContinuousZoomStop()
+{
+    if (!enabled() || !_sdk) {
+        emit zoomAvailabilityChanged();
+        return;
+    }
+    _configureSdkEndpoint();
+    (void) _sdk->sendManualZoom(0);
+    if (!_thermalCommandPending) {
+        if (!_sdkResponseTimer.isActive()) {
+            _sdkResponseTimer.start();
+        }
+        (void) _sdk->requestCurrentZoom();
+    }
+    emit zoomAvailabilityChanged();
+}
+
+void Mt11ControlManager::_finishContinuousZoomState()
+{
+    _continuousZoomPollTimer.stop();
+    _continuousZoomWatchdog.stop();
+    if (!_continuousZoomActive && _continuousZoomDirection == 0) {
+        return;
+    }
+    _continuousZoomActive = false;
+    _continuousZoomDirection = 0;
+    emit continuousZoomActiveChanged();
+    emit zoomAvailabilityChanged();
+}
+
+void Mt11ControlManager::_checkContinuousZoomBoundary()
+{
+    if (!_continuousZoomActive || !_maximumZoomKnown
+        || !_zoomStatusKnown) {
+        return;
+    }
+    const bool reachedMaximum = _continuousZoomDirection > 0
+        && _currentZoom >= _maximumZoom - kZoomTolerance;
+    const bool reachedMinimum = _continuousZoomDirection < 0
+        && _currentZoom <= kMinimumZoom + kZoomTolerance;
+    if (reachedMaximum || reachedMinimum) {
+        (void) stopZoom();
+    }
+}
+
+void Mt11ControlManager::_invalidateZoomState()
+{
+    _maximumZoomFreshnessTimer.stop();
+    _zoomStatusFreshnessTimer.stop();
+    _absoluteZoomPollTimer.stop();
+    _absoluteZoomConfirmationTimer.stop();
+    _setMaximumZoomKnown(false);
+    _setZoomStatusKnown(false);
+    _setZoomCommandPending(false);
+    _setMaximumZoom(kAbsoluteCommandMaximumZoom);
+}
+
+void Mt11ControlManager::_requestZoomState()
+{
+    if (!enabled() || !_sdk || _thermalCommandPending) {
+        return;
+    }
+    _configureSdkEndpoint();
+    if (!_sdkResponseTimer.isActive()) {
+        _sdkResponseTimer.start();
+    }
+    (void) _sdk->requestMaximumZoom();
+    (void) _sdk->requestCurrentZoom();
 }
 
 bool Mt11ControlManager::_sendCameraRecordingToggle(bool targetRecording)
@@ -1091,13 +1430,16 @@ void Mt11ControlManager::_setSdkResponding(bool responding)
     if (_sdkResponding == responding) return;
     _sdkResponding = responding;
     emit sdkRespondingChanged();
+    emit zoomAvailabilityChanged();
 }
 
 void Mt11ControlManager::_setCurrentZoom(double zoomLevel)
 {
+    const double upperBound = _maximumZoomKnown
+        ? _maximumZoom : kSupportedHybridMaximumZoom;
     zoomLevel = qBound(kMinimumZoom,
                        qRound(zoomLevel * 10.0) / 10.0,
-                       _maximumZoom);
+                       upperBound);
     if (qAbs(_currentZoom - zoomLevel) <= 0.001) return;
     _currentZoom = zoomLevel;
     emit currentZoomChanged();
@@ -1106,10 +1448,19 @@ void Mt11ControlManager::_setCurrentZoom(double zoomLevel)
 
 void Mt11ControlManager::_setMaximumZoom(double zoomLevel)
 {
-    zoomLevel = qBound(kMinimumZoom, zoomLevel, kProtocolMaximumZoom);
+    zoomLevel = qBound(kMinimumZoom,
+                       qRound(zoomLevel * 10.0) / 10.0,
+                       kSupportedHybridMaximumZoom);
     if (qAbs(_maximumZoom - zoomLevel) <= 0.001) return;
     _maximumZoom = zoomLevel;
     emit maximumZoomChanged();
+    emit zoomAvailabilityChanged();
+}
+
+void Mt11ControlManager::_setMaximumZoomKnown(bool known)
+{
+    if (_maximumZoomKnown == known) return;
+    _maximumZoomKnown = known;
     emit zoomAvailabilityChanged();
 }
 
@@ -1118,6 +1469,17 @@ void Mt11ControlManager::_setZoomStatusKnown(bool known)
     if (_zoomStatusKnown == known) return;
     _zoomStatusKnown = known;
     emit zoomStatusKnownChanged();
+    emit zoomAvailabilityChanged();
+}
+
+void Mt11ControlManager::_setZoomCommandPending(bool pending)
+{
+    if (_zoomCommandPending == pending) return;
+    _zoomCommandPending = pending;
+    if (!pending) {
+        _absoluteZoomPollTimer.stop();
+        _absoluteZoomConfirmationTimer.stop();
+    }
     emit zoomAvailabilityChanged();
 }
 
@@ -1171,6 +1533,7 @@ void Mt11ControlManager::_setThermalCommandPending(bool pending)
     if (_thermalCommandPending == pending) return;
     _thermalCommandPending = pending;
     emit thermalCommandPendingChanged();
+    emit zoomAvailabilityChanged();
 }
 
 void Mt11ControlManager::_setLastError(const QString& message)

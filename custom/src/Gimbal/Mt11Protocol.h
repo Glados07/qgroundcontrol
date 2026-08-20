@@ -13,6 +13,13 @@
 class Mt11Protocol
 {
 public:
+    // Command 0x0f accepts only the documented 1.0x-30.0x absolute
+    // target. Zoom feedback has a wider representation because commands
+    // 0x05, 0x16 and 0x18 report the camera's hybrid zoom ratio.
+    static constexpr double MinimumZoom = 1.0;
+    static constexpr double MaximumAbsoluteZoom = 30.0;
+    static constexpr double MaximumFeedbackZoom = 255.9;
+
     enum Command : quint8 {
         CommandManualZoom       = 0x05,
         CommandCameraSystemInfo = 0x0a,

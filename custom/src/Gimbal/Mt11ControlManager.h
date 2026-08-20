@@ -68,7 +68,8 @@ public:
     bool zoomInAvailable() const;
     bool zoomOutAvailable() const;
     bool zoomControlsUnlocked() const {
-        return enabled() && _maximumZoomKnown && _zoomStatusKnown;
+        return enabled() && _sdkResponding && _maximumZoomKnown
+            && _zoomStatusKnown && !_thermalCommandPending;
     }
     bool zoomCommandPending() const { return _zoomCommandPending; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
@@ -171,12 +172,22 @@ private:
     void _configureSdkEndpoint();
     bool _cameraCommandAvailable();
     bool _sendZoomStep(int direction);
+    void _pollPendingAbsoluteZoom();
+    void _handleAbsoluteZoomConfirmationTimeout();
+    void _pollContinuousZoom();
+    void _retryContinuousZoomStop();
+    void _finishContinuousZoomState();
+    void _checkContinuousZoomBoundary();
+    void _invalidateZoomState();
+    void _requestZoomState();
     bool _sendCameraRecordingToggle(bool targetRecording);
     void _requestRecordingStatusAfterDelay();
     void _setSdkResponding(bool responding);
     void _setCurrentZoom(double zoomLevel);
     void _setMaximumZoom(double zoomLevel);
+    void _setMaximumZoomKnown(bool known);
     void _setZoomStatusKnown(bool known);
+    void _setZoomCommandPending(bool pending);
     void _setCameraStatusKnown(bool known);
     void _setRecording(bool recording);
     void _setRecordingCommandPending(bool pending);
@@ -200,13 +211,24 @@ private:
     quint16 _configuredSdkPort() const;
 
     static constexpr double kMinimumZoom = 1.0;
-    static constexpr double kProtocolMaximumZoom = 30.0;
+    // Command 0x0f can address 1.0x-30.0x. Commands 0x05/0x16/0x18
+    // report the wider device/hybrid range independently. The wire field can
+    // represent 255.9x, while this MT11 product policy supports up to 165.1x.
+    static constexpr double kAbsoluteCommandMaximumZoom = 30.0;
+    static constexpr double kSupportedHybridMaximumZoom = 165.1;
+    static constexpr double kFeedbackMaximumZoom = 255.9;
 
     GimbalControlSettings* _settings = nullptr;
     Mt11Sdk* _sdk = nullptr;
     QTimer _pollTimer;
     QTimer _sdkResponseTimer;
+    QTimer _maximumZoomFreshnessTimer;
+    QTimer _zoomStatusFreshnessTimer;
+    QTimer _absoluteZoomPollTimer;
+    QTimer _absoluteZoomConfirmationTimer;
+    QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
+    QTimer _continuousZoomStopRetryTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimer;
     QTimer _thermalCommandTimer;
@@ -221,10 +243,11 @@ private:
     quint16 _appliedSdkPort = 0;
     bool _sdkResponding = false;
     double _currentZoom = kMinimumZoom;
-    double _maximumZoom = kProtocolMaximumZoom;
+    double _maximumZoom = kAbsoluteCommandMaximumZoom;
     bool _maximumZoomKnown = false;
     bool _zoomStatusKnown = false;
     bool _zoomCommandPending = false;
+    double _pendingAbsoluteZoomTarget = kMinimumZoom;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
     bool _cameraStatusKnown = false;
@@ -239,6 +262,7 @@ private:
     bool _thermalModeEnabled = false;
     bool _thermalCommandPending = false;
     bool _thermalCommandTarget = false;
+    quint8 _mainVideoSource = 0xff;
     QPointer<QQuickItem> _videoItem;
     QPointer<VideoReceiver> _videoReceiver;
     QPointer<QObject> _localPhotoGrabLifetime;

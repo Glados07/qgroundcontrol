@@ -501,40 +501,49 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="40"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="73"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="92"/>
         <source>Enabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="46"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
         <source>SDK Host</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="86"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
         <source>SDK Port</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="60"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="93"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="62"/>
         <source>Zoom Step</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="68"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="72"/>
+        <source>A8 Mini</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <source>MT11</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="88"/>
         <source>UniPod MT11 Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="69"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="89"/>
         <source>Independent SDK camera controls.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="113"/>
         <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -570,6 +579,21 @@
     <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="215"/>
         <source>MT11 continuous zoom stopped after the safety timeout.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="545"/>
+        <source>Failed to stop MT11 zoom before changing the video mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1186"/>
+        <source>MT11 zoom above 30x supports press-and-hold control only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1254"/>
+        <source>Timed out confirming the MT11 zoom target.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -692,8 +716,13 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11Sdk.cc" line="52"/>
-        <source>Invalid MT11 zoom range: %1-%2.</source>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="66"/>
+        <source>Invalid MT11 absolute zoom range: %1-%2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="82"/>
+        <source>Invalid MT11 feedback zoom range: %1-%2.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -702,8 +731,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11Sdk.cc" line="78"/>
-        <source>MT11 zoom value is outside the configured range: %1</source>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="113"/>
+        <source>MT11 absolute zoom value is outside the configured range: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -757,7 +786,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.</source>
+        <source>Each tap changes the exact absolute zoom target by this amount while the current and target values are within the documented 1.0x to 30.0x absolute-command range. Holding a zoom button uses native continuous zoom across the device-reported range instead. The default tap step is 1.0x.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

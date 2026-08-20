@@ -149,8 +149,19 @@ void Mt11ProtocolTest::zoomPayloads()
     QVERIFY(Mt11Protocol::parseManualZoomAckPayload(
         QByteArray::fromHex("4b00"), &zoom));
     QCOMPARE(zoom, 7.5);
+    // 0x05 ACK is little-endian uint16/10: 0x0673 / 10 = 165.1x.
+    QVERIFY(Mt11Protocol::parseManualZoomAckPayload(
+        QByteArray::fromHex("7306"), &zoom));
+    QCOMPARE(zoom, 165.1);
+    QVERIFY(Mt11Protocol::parseManualZoomAckPayload(
+        QByteArray::fromHex("ff09"), &zoom));
+    QCOMPARE(zoom, 255.9);
     QVERIFY(!Mt11Protocol::parseManualZoomAckPayload(
         QByteArray::fromHex("0900"), &zoom));
+    QVERIFY(!Mt11Protocol::parseManualZoomAckPayload(
+        QByteArray::fromHex("000a"), &zoom));
+    QVERIFY(!Mt11Protocol::parseManualZoomAckPayload(
+        QByteArray::fromHex("7306"), nullptr));
 
     bool accepted = false;
     QVERIFY(Mt11Protocol::parseAbsoluteZoomAckPayload(
@@ -168,6 +179,15 @@ void Mt11ProtocolTest::zoomPayloads()
     QVERIFY(Mt11Protocol::parseZoomValuePayload(
         QByteArray::fromHex("0705"), 1.0, 30.0, &zoom));
     QCOMPARE(zoom, 7.5);
+    // 0x16/0x18 use integer + one decimal digit: 0xa5 + 0.1 = 165.1x.
+    QVERIFY(Mt11Protocol::parseZoomValuePayload(
+        QByteArray::fromHex("a501"), 1.0, 255.9, &zoom));
+    QCOMPARE(zoom, 165.1);
+    QVERIFY(Mt11Protocol::parseZoomValuePayload(
+        QByteArray::fromHex("ff09"), 1.0, 255.9, &zoom));
+    QCOMPARE(zoom, 255.9);
+    QVERIFY(!Mt11Protocol::parseZoomValuePayload(
+        QByteArray::fromHex("a501"), 1.0, 165.0, &zoom));
     QVERIFY(!Mt11Protocol::parseZoomValuePayload(
         QByteArray::fromHex("070a"), 1.0, 30.0, &zoom));
     QVERIFY(!Mt11Protocol::parseZoomValuePayload(

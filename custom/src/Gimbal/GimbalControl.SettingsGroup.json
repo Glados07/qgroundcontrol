@@ -64,7 +64,7 @@
         {
             "name": "mt11ZoomStep",
             "shortDesc": "UniPod MT11 zoom step",
-            "longDesc": "Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.",
+            "longDesc": "Each tap changes the exact absolute zoom target by this amount while the current and target values are within the documented 1.0x to 30.0x absolute-command range. Holding a zoom button uses native continuous zoom across the device-reported range instead. The default tap step is 1.0x.",
             "type": "double",
             "units": "x",
             "min": 0.1,

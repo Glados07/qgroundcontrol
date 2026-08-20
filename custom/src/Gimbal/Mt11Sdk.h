@@ -21,7 +21,12 @@ public:
     explicit Mt11Sdk(QObject* parent = nullptr);
 
     void setEndpoint(const QString& host, quint16 port);
+    // Configures only command 0x0f absolute targets. The protocol itself
+    // limits this range to 1.0x-30.0x.
     void setZoomRange(double minimumZoom, double maximumZoom);
+    // Configures validation for hybrid zoom feedback from commands 0x05,
+    // 0x16 and 0x18 independently of the absolute-command range.
+    void setFeedbackZoomRange(double minimumZoom, double maximumZoom);
     void clearPendingRequests();
 
     bool sendManualZoom(qint8 direction);
@@ -62,8 +67,10 @@ private:
     QUdpSocket _socket;
     QHostAddress _host = QHostAddress(QStringLiteral("192.168.144.24"));
     quint16 _port = 37260;
-    double _minimumZoom = 1.0;
-    double _maximumZoom = 30.0;
+    double _minimumAbsoluteZoom = 1.0;
+    double _maximumAbsoluteZoom = 30.0;
+    double _minimumFeedbackZoom = 1.0;
+    double _maximumFeedbackZoom = 255.9;
     QElapsedTimer _pendingClock;
     QHash<quint8, qint64> _pendingCommandDeadlines;
     // At most one remembered payload per command keeps repeated firmware

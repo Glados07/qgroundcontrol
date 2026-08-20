@@ -1,10 +1,9 @@
 /****************************************************************************
  *
- * 合并相机控制栏中的思翼A8 Mini缩放子控件。
- * 短按立即发送并显示下一合法0x0f目标；长按420 ms后通常只启动一次0x05
- * 原生连续变倍，并从最初按下起按qRound(totalMs / 600)单调更新合法
- * 显示目标。到达由卡录分辨率和设备反馈共同限定的有效端点立即停止，
- * 且不做可能反向的绝对纠偏；拉流分辨率只负责视频会话可用门控。
+ * Shared A8 Mini and MT11 zoom control. A short release asks the selected
+ * manager for one exact step. Holding for 420 ms starts native continuous
+ * zoom; release, cancellation, hiding and application suspension all ask the
+ * manager to stop. Device-specific zoom ranges remain in their managers.
  *
  ****************************************************************************/
 
@@ -179,10 +178,8 @@ Item {
                         return
                     }
 
-                    // 先标记为已消费，避免后端同步改变 enabled 时重入并在释放
-                    // 阶段误补发一次短按命令。长按420 ms后成立；Manager以真实
-                    // 按下时刻为时间零点，按qRound(totalMs / 600)只推进同方向
-                    // 合法显示目标；物理运动通常只启动一次原生0x05连续变倍。
+                    // Consume before calling the manager so a synchronous
+                    // availability change cannot turn this hold into a tap.
                     gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))
@@ -240,7 +237,7 @@ Item {
 
             QGCLabel {
                 anchors.centerIn: parent
-                // currentZoom表示当前合法目标倍率；目标成功发送后立即显示。
+                // Each manager owns whether this is a target or feedback value.
                 text: root.online && root.zoomKnown
                       ? root.zoomValue.toFixed(1) + "x"
                       : "--"
@@ -317,9 +314,8 @@ Item {
                         return
                     }
 
-                    // 长按420 ms后成立；Manager以真实按下时刻为时间零点，
-                    // 按qRound(totalMs / 600)只推进同方向合法显示目标；物理
-                    // 运动通常只启动一次原生0x05连续变倍，释放不会补发短按。
+                    // Consume before calling the manager so release cannot
+                    // append a short-step command to continuous zoom.
                     gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))

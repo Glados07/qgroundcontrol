@@ -46,7 +46,9 @@ QByteArray Mt11Protocol::manualZoomPacket(qint8 direction)
 
 QByteArray Mt11Protocol::absoluteZoomPacket(double zoomLevel)
 {
-    if (!qIsFinite(zoomLevel) || zoomLevel < 1.0 || zoomLevel > 30.0) {
+    if (!qIsFinite(zoomLevel)
+        || zoomLevel < MinimumZoom
+        || zoomLevel > MaximumAbsoluteZoom) {
         return {};
     }
 
@@ -192,8 +194,11 @@ bool Mt11Protocol::parseManualZoomAckPayload(const QByteArray& payload,
     const quint16 tenths =
         static_cast<quint16>(static_cast<quint8>(payload.at(0)))
         | (static_cast<quint16>(static_cast<quint8>(payload.at(1))) << 8);
+    // Command 0x05 reports a little-endian uint16 in tenths. This is
+    // deliberately different from the integer/fraction byte pair returned
+    // by commands 0x16 and 0x18.
     const double parsedZoom = tenths / 10.0;
-    if (parsedZoom < 1.0 || parsedZoom > 30.0) {
+    if (parsedZoom < MinimumZoom || parsedZoom > MaximumFeedbackZoom) {
         return false;
     }
     *zoomLevel = parsedZoom;

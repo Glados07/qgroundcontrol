@@ -501,40 +501,49 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="40"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="73"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="92"/>
         <source>Enabled</source>
         <translation>启用</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="46"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
         <source>SDK Host</source>
         <translation>SDK主机地址</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="86"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
         <source>SDK Port</source>
         <translation>SDK端口</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="60"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="93"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="62"/>
         <source>Zoom Step</source>
         <translation>变焦步长</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="68"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="72"/>
+        <source>A8 Mini</source>
+        <translation>A8 Mini</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <source>MT11</source>
+        <translation>MT11</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="88"/>
         <source>UniPod MT11 Gimbal Camera</source>
         <translation>UniPod MT11云台相机</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="69"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="89"/>
         <source>Independent SDK camera controls.</source>
         <translation>独立SDK相机控制。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="113"/>
         <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
         <translation>MT11 SDK主机地址和端口用于控制变焦、拍照、录像及热成像模式。请在“视频 &gt; 连接 &gt; RTSP地址2”中配置其视频地址。</translation>
     </message>
@@ -571,6 +580,21 @@
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="215"/>
         <source>MT11 continuous zoom stopped after the safety timeout.</source>
         <translation>MT11 连续变焦已在安全超时后停止。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="545"/>
+        <source>Failed to stop MT11 zoom before changing the video mode.</source>
+        <translation>切换视频模式前停止MT11变倍失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1186"/>
+        <source>MT11 zoom above 30x supports press-and-hold control only.</source>
+        <translation>MT11在30x以上仅支持长按连续变倍。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1254"/>
+        <source>Timed out confirming the MT11 zoom target.</source>
+        <translation>确认MT11目标倍率超时。</translation>
     </message>
     <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="334"/>
@@ -692,9 +716,14 @@
         <translation>MT11 SDK端点无效：%1:%2</translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11Sdk.cc" line="52"/>
-        <source>Invalid MT11 zoom range: %1-%2.</source>
-        <translation>MT11变焦范围无效：%1-%2。</translation>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="66"/>
+        <source>Invalid MT11 absolute zoom range: %1-%2.</source>
+        <translation>MT11绝对变倍范围无效：%1-%2。</translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="82"/>
+        <source>Invalid MT11 feedback zoom range: %1-%2.</source>
+        <translation>MT11变倍反馈范围无效：%1-%2。</translation>
     </message>
     <message>
         <location filename="../src/Gimbal/Mt11Sdk.cc" line="65"/>
@@ -702,9 +731,9 @@
         <translation>MT11手动变焦方向无效：%1</translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11Sdk.cc" line="78"/>
-        <source>MT11 zoom value is outside the configured range: %1</source>
-        <translation>MT11变焦值超出配置范围：%1</translation>
+        <location filename="../src/Gimbal/Mt11Sdk.cc" line="113"/>
+        <source>MT11 absolute zoom value is outside the configured range: %1</source>
+        <translation>MT11绝对变倍值超出配置范围：%1</translation>
     </message>
     <message>
         <location filename="../src/Gimbal/Mt11Sdk.cc" line="251"/>
@@ -757,8 +786,8 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap advances to the next legal absolute zoom target between 1.0x and 30.0x.</source>
-        <translation>每次点击都会将变焦推进到1.0x至30.0x范围内的下一个合法绝对目标值。</translation>
+        <source>Each tap changes the exact absolute zoom target by this amount while the current and target values are within the documented 1.0x to 30.0x absolute-command range. Holding a zoom button uses native continuous zoom across the device-reported range instead. The default tap step is 1.0x.</source>
+        <translation>每次短按仅在当前倍率和目标倍率均位于文档规定的1.0x至30.0x绝对命令范围内时，按此步长精确改变目标倍率。长按缩放按钮则在设备报告的完整倍率范围内使用原生连续变倍。默认短按步长为1.0x。</translation>
     </message>
 </context>
 <context>
