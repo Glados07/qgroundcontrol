@@ -36,6 +36,28 @@ public:
                                      int preferredDirection,
                                      double* displayTarget);
 
+    // Select the legal display origin for a native held gesture. When a tap
+    // target is still being confirmed, that newer operator target must remain
+    // visible instead of being rolled back to an older measured sample during
+    // the 0x0f -> 0x05 handoff. An idle hold starts from measured feedback.
+    static bool holdStartDisplayTarget(double measuredZoom,
+                                       double displayZoom,
+                                       double zoomStep,
+                                       double deviceMaximumZoom,
+                                       int direction,
+                                       bool absoluteCommandPending,
+                                       double* displayTarget);
+
+    // Report whether native held motion is meaningful in direction. While an
+    // absolute tap is still moving, either its published target or the latest
+    // measured position may make the takeover direction feasible.
+    static bool holdDirectionAvailable(double measuredZoom,
+                                       double displayZoom,
+                                       double zoomStep,
+                                       double deviceMaximumZoom,
+                                       int direction,
+                                       bool absoluteCommandPending);
+
     // Advance an existing legal display target only across grid stops which
     // measuredZoom has reached or passed in direction. Valid input returns the
     // resulting legal target even when no new stop has been reached.

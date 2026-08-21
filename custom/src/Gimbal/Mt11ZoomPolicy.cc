@@ -137,6 +137,66 @@ bool Mt11ZoomPolicy::alignedDisplayTarget(double measuredZoom,
                                            displayTarget);
 }
 
+bool Mt11ZoomPolicy::holdStartDisplayTarget(double measuredZoom,
+                                            double displayZoom,
+                                            double zoomStep,
+                                            double deviceMaximumZoom,
+                                            int direction,
+                                            bool absoluteCommandPending,
+                                            double* displayTarget)
+{
+    if (!displayTarget || (direction != -1 && direction != 1)) {
+        return false;
+    }
+
+    if (absoluteCommandPending) {
+        if (!validMeasuredZoom(measuredZoom, deviceMaximumZoom)
+            || !isDisplayTarget(displayZoom,
+                                zoomStep,
+                                deviceMaximumZoom)) {
+            return false;
+        }
+        *displayTarget = qRound(displayZoom * 10.0) / 10.0;
+        return true;
+    }
+
+    return alignedDisplayTarget(measuredZoom,
+                                zoomStep,
+                                deviceMaximumZoom,
+                                direction,
+                                displayTarget);
+}
+
+bool Mt11ZoomPolicy::holdDirectionAvailable(double measuredZoom,
+                                            double displayZoom,
+                                            double zoomStep,
+                                            double deviceMaximumZoom,
+                                            int direction,
+                                            bool absoluteCommandPending)
+{
+    if ((direction != -1 && direction != 1)
+        || !validMeasuredZoom(measuredZoom, deviceMaximumZoom)) {
+        return false;
+    }
+
+    const auto canMoveFrom = [direction, deviceMaximumZoom](double zoom) {
+        return direction > 0
+            ? zoom < deviceMaximumZoom - kComparisonTolerance
+            : zoom > MinimumZoom + kComparisonTolerance;
+    };
+    if (canMoveFrom(measuredZoom)) {
+        return true;
+    }
+
+    // The device may already be moving away from the last sample under 0x0f.
+    // Treat the newest legal target as an additional feasibility bound, not
+    // as proof of physical position. This allows an opposite held gesture to
+    // explicitly preempt the pending absolute generation at either endpoint.
+    return absoluteCommandPending
+        && isDisplayTarget(displayZoom, zoomStep, deviceMaximumZoom)
+        && canMoveFrom(displayZoom);
+}
+
 bool Mt11ZoomPolicy::heldProgressTarget(double displayZoom,
                                         double measuredZoom,
                                         double zoomStep,

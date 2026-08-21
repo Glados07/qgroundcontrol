@@ -441,6 +441,68 @@ void Mt11ProtocolTest::mt11ZoomPolicy()
                                                   &targetZoom));
     QCOMPARE(targetZoom, 6.0);
 
+    // A native hold may immediately supersede an in-flight tap. Preserve the
+    // latest legal operator target during that 0x0f -> 0x05 handoff instead of
+    // rolling the display back to an older measured sample. With no pending
+    // tap, measured feedback remains the hold origin.
+    QVERIFY(Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
+                                                    2.0,
+                                                    zoomStep,
+                                                    deviceMaximumZoom,
+                                                    1,
+                                                    true,
+                                                    &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
+                                                    2.0,
+                                                    zoomStep,
+                                                    deviceMaximumZoom,
+                                                    1,
+                                                    false,
+                                                    &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
+    QVERIFY(!Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
+                                                     2.5,
+                                                     zoomStep,
+                                                     deviceMaximumZoom,
+                                                     1,
+                                                     true,
+                                                     &targetZoom));
+
+    // Pending absolute motion broadens held feasibility to the union of the
+    // last measured position and newest target. In particular, an opposite
+    // hold can take over a tap which is moving away from a physical endpoint.
+    QVERIFY(!Mt11ZoomPolicy::holdDirectionAvailable(1.0,
+                                                     1.0,
+                                                     zoomStep,
+                                                     deviceMaximumZoom,
+                                                     -1,
+                                                     false));
+    QVERIFY(Mt11ZoomPolicy::holdDirectionAvailable(1.0,
+                                                    2.0,
+                                                    zoomStep,
+                                                    deviceMaximumZoom,
+                                                    -1,
+                                                    true));
+    QVERIFY(Mt11ZoomPolicy::holdDirectionAvailable(2.0,
+                                                    1.0,
+                                                    zoomStep,
+                                                    deviceMaximumZoom,
+                                                    -1,
+                                                    true));
+    QVERIFY(!Mt11ZoomPolicy::holdDirectionAvailable(deviceMaximumZoom,
+                                                     165.0,
+                                                     zoomStep,
+                                                     deviceMaximumZoom,
+                                                     1,
+                                                     false));
+    QVERIFY(Mt11ZoomPolicy::holdDirectionAvailable(deviceMaximumZoom,
+                                                    164.0,
+                                                    zoomStep,
+                                                    deviceMaximumZoom,
+                                                    1,
+                                                    true));
+
     // One feedback sample may cross several legal stops. Only the farthest
     // reached stop is published; the raw 5.6x observation never leaks out.
     QVERIFY(Mt11ZoomPolicy::heldProgressTarget(1.0,

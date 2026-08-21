@@ -27,6 +27,7 @@ SettingsPage {
     property var    _settingsManager:                   QGroundControl.settingsManager
     property var    _flyViewSettings:                   _settingsManager.flyViewSettings
     property var    _flyViewCustomSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
+    property var    _gimbalControlSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlSettings : null
     property var    _mavlinkActionsSettings:            _settingsManager.mavlinkActionsSettings
     property Fact   _virtualJoystick:                   _settingsManager.appSettings.virtualJoystick
     property Fact   _virtualJoystickAutoCenterThrottle: _settingsManager.appSettings.virtualJoystickAutoCenterThrottle
@@ -260,7 +261,13 @@ SettingsPage {
         Layout.fillWidth:   true
         Layout.preferredHeight: item ? item.implicitHeight : 0
         Layout.minimumHeight:   item ? item.implicitHeight : 0
-        source:             "qrc:/Custom/qml/QGroundControl/AppSettings/GimbalControlSettingsGroup.qml"
+        active:             _gimbalControlSettings !== null && _gimbalControlSettings !== undefined
+        visible:            active
+        source:             Qt.resolvedUrl("GimbalControlSettingsGroup.qml")
+
+        onLoaded: {
+            item.gimbalControlSettings = _gimbalControlSettings
+        }
 
         onStatusChanged: {
             if (status === Loader.Error) {
