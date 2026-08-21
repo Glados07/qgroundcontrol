@@ -4,81 +4,72 @@
 <context>
     <name>BatteryIndicator</name>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="45"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="50"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="60"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="64"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="69"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="75"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="110"/>
         <source>n/a</source>
         <translation>无数据</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
-        <source>Battery %1</source>
-        <translation>电池%1</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
+        <source>Power %1</source>
+        <translation>电源%1</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
         <source>Status</source>
         <translation>状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="205"/>
-        <source>Charge State</source>
-        <translation>充电状态</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="224"/>
+        <source>Power State</source>
+        <translation>电源状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="210"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="229"/>
         <source>Measured Voltage</source>
         <translation>母线电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="215"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="234"/>
         <source>Power</source>
         <translation>功率</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="220"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="239"/>
         <source>Current</source>
         <translation>电流</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="225"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="244"/>
         <source>Consumed</source>
         <translation>已消耗</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="242"/>
-        <source>Battery Display</source>
-        <translation>电池显示</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="259"/>
+        <source>Low Power Failsafe</source>
+        <translation>电源低压故障保护</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="246"/>
-        <source>Coloring</source>
-        <translation>颜色设置</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="264"/>
+        <source>Vehicle Action</source>
+        <translation>故障保护动作</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="261"/>
-        <source>100%</source>
-        <translation>100%</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="270"/>
+        <source>Low Voltage</source>
+        <translation>警告电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="319"/>
-        <source>Low</source>
-        <translation>低</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="275"/>
+        <source>Critical Voltage</source>
+        <translation>故障保护触发电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="332"/>
-        <source>Critical</source>
-        <translation>危急</translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="348"/>
-        <source>Vehicle Power</source>
-        <translation>飞行器电源</translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="349"/>
-        <source>Configure</source>
-        <translation>配置</translation>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="280"/>
+        <source>Emergency Voltage</source>
+        <translation>紧急电压(立刻降落)</translation>
     </message>
 </context>
 <context>

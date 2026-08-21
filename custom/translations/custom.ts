@@ -4,80 +4,71 @@
 <context>
     <name>BatteryIndicator</name>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="45"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="50"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="60"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="64"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="69"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="75"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="110"/>
         <source>n/a</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
-        <source>Battery %1</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
+        <source>Power %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="200"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
         <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="205"/>
-        <source>Charge State</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="224"/>
+        <source>Power State</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="210"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="229"/>
         <source>Measured Voltage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="215"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="234"/>
         <source>Power</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="220"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="239"/>
         <source>Current</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="225"/>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="244"/>
         <source>Consumed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="242"/>
-        <source>Battery Display</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="259"/>
+        <source>Low Power Failsafe</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="246"/>
-        <source>Coloring</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="264"/>
+        <source>Vehicle Action</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="261"/>
-        <source>100%</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="270"/>
+        <source>Low Voltage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="319"/>
-        <source>Low</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="275"/>
+        <source>Critical Voltage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="332"/>
-        <source>Critical</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="348"/>
-        <source>Vehicle Power</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="349"/>
-        <source>Configure</source>
+        <location filename="../src/QmlControls/BatteryIndicator.qml" line="280"/>
+        <source>Emergency Voltage</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

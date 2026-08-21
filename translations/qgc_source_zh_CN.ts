@@ -15298,9 +15298,9 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
   <context>
     <name>SafetyComponent</name>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="65"/>
-      <source>Low Battery Failsafe Trigger</source>
-      <translation>低电量故障保护触发器</translation>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="74"/>
+      <source>Low Power Failsafe Trigger</source>
+      <translation>电源低压故障保护触发器</translation>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="93"/>
@@ -15310,19 +15310,19 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
       <translation>故障保护动作：</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="105"/>
-      <source>Battery Warn Level:</source>
-      <translation>电量警告水平：</translation>
-    </message>
-    <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="114"/>
-      <source>Battery Failsafe Level:</source>
-      <translation>电量故障保护水平：</translation>
+      <source>Power Low Voltage:</source>
+      <translation>警告电压：</translation>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="123"/>
-      <source>Battery Emergency Level:</source>
-      <translation>电量紧急水平：</translation>
+      <source>Power Critical Voltage:</source>
+      <translation>故障保护触发电压：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="132"/>
+      <source>Power Emergency Voltage:</source>
+      <translation>紧急电压(立刻降落)：</translation>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="141"/>

@@ -10,8 +10,36 @@
 #include "CustomFirmwarePlugin.h"
 
 #include "CustomAutoPilotPlugin.h"
+#include "FactMetaData.h"
 #include "Vehicle.h"
 #include "px4_custom_mode.h"
+
+namespace {
+
+struct UavcanPowerParameter {
+    const char *name;
+    const char *severity;
+    float defaultVoltage;
+};
+
+constexpr UavcanPowerParameter kUavcanPowerParameters[] = {
+    {"UAVCAN_POW_LOW",   "low",       50.f},
+    {"UAVCAN_POW_CRITI", "critical",  45.f},
+    {"UAVCAN_POW_EMERG", "emergency", 40.f},
+};
+
+const UavcanPowerParameter *findUavcanPowerParameter(const QString &name)
+{
+    for (const UavcanPowerParameter &parameter : kUavcanPowerParameters) {
+        if (name == QLatin1StringView(parameter.name)) {
+            return &parameter;
+        }
+    }
+
+    return nullptr;
+}
+
+} // namespace
 
 CustomFirmwarePlugin::CustomFirmwarePlugin()
 {
@@ -28,6 +56,34 @@ CustomFirmwarePlugin::CustomFirmwarePlugin()
 AutoPilotPlugin *CustomFirmwarePlugin::autopilotPlugin(Vehicle *vehicle) const
 {
     return new CustomAutoPilotPlugin(vehicle, vehicle);
+}
+
+FactMetaData *CustomFirmwarePlugin::_getMetaDataForFact(QObject *parameterMetaData, const QString &name,
+                                                        FactMetaData::ValueType_t type, MAV_TYPE vehicleType) const
+{
+    FactMetaData *const metaData = PX4FirmwarePlugin::_getMetaDataForFact(parameterMetaData, name, type, vehicleType);
+    const UavcanPowerParameter *const parameter = findUavcanPowerParameter(name);
+    if (!metaData || !parameter) {
+        return metaData;
+    }
+
+    const QString severity = QString::fromLatin1(parameter->severity);
+    const QString description = QStringLiteral("Total voltage below which a UAVCAN battery reports a %1 warning. "
+                                               "Thresholds must satisfy UAVCAN_POW_LOW > UAVCAN_POW_CRITI > "
+                                               "UAVCAN_POW_EMERG > 0.")
+                                    .arg(severity);
+
+    metaData->setName(name);
+    metaData->setGroup(QStringLiteral("UAVCAN"));
+    metaData->setShortDescription(QStringLiteral("UAVCAN battery %1 voltage threshold").arg(severity));
+    metaData->setLongDescription(description);
+    metaData->setRawDefaultValue(parameter->defaultVoltage);
+    metaData->setRawUnits(QStringLiteral("V"));
+    metaData->setDecimalPlaces(2);
+    metaData->setRawIncrement(0.1);
+    metaData->setVehicleRebootRequired(true);
+
+    return metaData;
 }
 
 const QVariantList &CustomFirmwarePlugin::toolIndicators(const Vehicle *vehicle)

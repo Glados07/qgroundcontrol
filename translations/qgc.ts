@@ -15232,8 +15232,8 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
 <context>
     <name>SafetyComponent</name>
     <message>
-        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="65"/>
-        <source>Low Battery Failsafe Trigger</source>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="74"/>
+        <source>Low Power Failsafe Trigger</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -15244,18 +15244,18 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="105"/>
-        <source>Battery Warn Level:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="114"/>
-        <source>Battery Failsafe Level:</source>
+        <source>Power Low Voltage:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="123"/>
-        <source>Battery Emergency Level:</source>
+        <source>Power Critical Voltage:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="132"/>
+        <source>Power Emergency Voltage:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

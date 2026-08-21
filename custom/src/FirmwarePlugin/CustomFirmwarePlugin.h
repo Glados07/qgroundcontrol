@@ -23,6 +23,8 @@ public:
     CustomFirmwarePlugin();
 
     AutoPilotPlugin *autopilotPlugin(Vehicle *vehicle) const final;
+    FactMetaData *_getMetaDataForFact(QObject *parameterMetaData, const QString &name, FactMetaData::ValueType_t type,
+                                      MAV_TYPE vehicleType) const final;
     const QVariantList &toolIndicators(const Vehicle *vehicle) final;
     bool hasGimbal(Vehicle *vehicle, bool &rollSupported, bool &pitchSupported, bool &yawSupported) const final;
     void updateAvailableFlightModes(FlightModeList &modeList) override;
