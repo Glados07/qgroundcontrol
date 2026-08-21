@@ -20,6 +20,9 @@ Rectangle {
     // Enabled by the MT11 wrapper. Keeping this off makes the A8 Mini control
     // layout and manager contract unchanged.
     property bool thermalControlsVisible: false
+    // MT11 exposes both the legal step target and authoritative 0x18
+    // feedback. A8 keeps its existing single-value presentation.
+    property bool showActualZoom: false
 
     readonly property bool available: Boolean(manager && manager.enabled)
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
@@ -140,6 +143,7 @@ Rectangle {
             id: zoomControl
 
             manager: root.manager
+            showActualZoom: root.showActualZoom
             controlSize: root.actionSize
             controlSpacing: root.itemSpacing
             Layout.alignment: Qt.AlignHCenter

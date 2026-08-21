@@ -25,6 +25,8 @@ class Mt11ControlManager : public QObject
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool sdkResponding READ sdkResponding NOTIFY sdkRespondingChanged)
     Q_PROPERTY(double currentZoom READ currentZoom NOTIFY currentZoomChanged)
+    Q_PROPERTY(double actualZoom READ actualZoom NOTIFY actualZoomChanged)
+    Q_PROPERTY(bool actualZoomKnown READ actualZoomKnown NOTIFY actualZoomKnownChanged)
     Q_PROPERTY(double zoomStep READ zoomStep NOTIFY zoomStepChanged)
     Q_PROPERTY(double minimumZoom READ minimumZoom CONSTANT)
     Q_PROPERTY(double maximumZoom READ maximumZoom NOTIFY maximumZoomChanged)
@@ -65,6 +67,8 @@ public:
     bool enabled() const;
     bool sdkResponding() const { return _sdkResponding; }
     double currentZoom() const { return _currentZoom; }
+    double actualZoom() const { return _measuredZoom; }
+    bool actualZoomKnown() const { return _measuredZoomKnown; }
     double zoomStep() const;
     double minimumZoom() const { return kMinimumZoom; }
     double maximumZoom() const { return _maximumZoom; }
@@ -128,6 +132,8 @@ signals:
     void enabledChanged();
     void sdkRespondingChanged();
     void currentZoomChanged();
+    void actualZoomChanged();
+    void actualZoomKnownChanged();
     void zoomStepChanged();
     void maximumZoomChanged();
     void zoomStatusKnownChanged();
@@ -178,22 +184,36 @@ private slots:
     void _handleLocalRecordingStopTimeout();
 
 private:
+    enum class ContinuousZoomPhase {
+        Idle,
+        AbsoluteStep,
+        ManualHandoff,
+        ManualPulse,
+        StepDwell,
+    };
+
     void _configureSdkEndpoint();
     bool _cameraCommandAvailable();
     bool _sendZoomStep(int direction);
     bool _zoomTapAvailable(int direction) const;
     bool _zoomHoldAvailable(int direction) const;
+    bool _postHoldHighZoomOverrideAllowed(int direction) const;
     bool _flushContinuousZoomStopRetry();
     void _observeZoomFeedback(double zoomLevel);
     void _alignDisplayToMeasured(int preferredDirection = 0);
-    void _advanceContinuousZoomDisplay();
+    bool _startNextContinuousZoomStep();
+    bool _sendContinuousAbsoluteStep(double targetZoom);
+    bool _startContinuousManualStep(double targetZoom);
+    void _completeContinuousZoomStep();
+    void _stopContinuousManualPulse();
+    void _retryContinuousManualPulseStop();
+    void _handleContinuousManualPulseTimeout();
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
     void _startPendingContinuousZoom();
     void _pollContinuousZoom();
     void _retryContinuousZoomStop();
     void _finishContinuousZoomState();
-    void _checkContinuousZoomBoundary();
     void _invalidateZoomState();
     void _requestZoomState();
     bool _sendCameraRecordingToggle(bool targetRecording);
@@ -243,7 +263,10 @@ private:
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
     QTimer _continuousZoomStartTimer;
+    QTimer _continuousZoomStepTimer;
     QTimer _continuousZoomPollTimer;
+    QTimer _continuousZoomPulseWatchdog;
+    QTimer _continuousZoomPulseStopRetryTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStopRetryTimer;
     QTimer _recordingStatusDelayTimer;
@@ -269,6 +292,9 @@ private:
     double _pendingAbsoluteZoomTarget = kMinimumZoom;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
+    ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
+    double _continuousZoomStepTarget = kMinimumZoom;
+    QElapsedTimer _continuousZoomStepClock;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
     bool _postHoldZoomFeedbackPending = false;

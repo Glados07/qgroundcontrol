@@ -29,6 +29,7 @@ Item {
         onLoaded: {
             item.manager = Qt.binding(function() { return root.manager })
             item.thermalControlsVisible = true
+            item.showActualZoom = true
         }
 
         onStatusChanged: {

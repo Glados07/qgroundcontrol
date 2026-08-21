@@ -204,8 +204,11 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
     qint64 pendingDeadline = 0;
     if (command != Mt11Protocol::CommandFunctionFeedback
         && !_takePendingCommand(command, &pendingDeadline)) {
-        qCDebug(Mt11SdkLog)
-            << "Ignoring unmatched or expired MT11 ACK" << Qt::hex << command;
+        // MT11 firmware keeps publishing 0x05 movement feedback while a
+        // manual zoom is active and can deliver 0x18 responses after the
+        // request window has expired. These packets are expected and are
+        // deliberately ignored; logging every one floods the application
+        // console at roughly the camera feedback rate.
         return;
     }
 

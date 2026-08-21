@@ -441,34 +441,6 @@ void Mt11ProtocolTest::mt11ZoomPolicy()
                                                   &targetZoom));
     QCOMPARE(targetZoom, 6.0);
 
-    // A native hold may immediately supersede an in-flight tap. Preserve the
-    // latest legal operator target during that 0x0f -> 0x05 handoff instead of
-    // rolling the display back to an older measured sample. With no pending
-    // tap, measured feedback remains the hold origin.
-    QVERIFY(Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
-                                                    2.0,
-                                                    zoomStep,
-                                                    deviceMaximumZoom,
-                                                    1,
-                                                    true,
-                                                    &targetZoom));
-    QCOMPARE(targetZoom, 2.0);
-    QVERIFY(Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
-                                                    2.0,
-                                                    zoomStep,
-                                                    deviceMaximumZoom,
-                                                    1,
-                                                    false,
-                                                    &targetZoom));
-    QCOMPARE(targetZoom, 1.0);
-    QVERIFY(!Mt11ZoomPolicy::holdStartDisplayTarget(1.0,
-                                                     2.5,
-                                                     zoomStep,
-                                                     deviceMaximumZoom,
-                                                     1,
-                                                     true,
-                                                     &targetZoom));
-
     // Pending absolute motion broadens held feasibility to the union of the
     // last measured position and newest target. In particular, an opposite
     // hold can take over a tap which is moving away from a physical endpoint.
@@ -496,6 +468,14 @@ void Mt11ProtocolTest::mt11ZoomPolicy()
                                                      deviceMaximumZoom,
                                                      1,
                                                      false));
+    // 165.0x is the last legal 1x-grid target even though the physical device
+    // maximum is 165.1x; there is no phantom held step above it.
+    QVERIFY(!Mt11ZoomPolicy::holdDirectionAvailable(165.0,
+                                                     165.0,
+                                                     zoomStep,
+                                                     deviceMaximumZoom,
+                                                     1,
+                                                     false));
     QVERIFY(Mt11ZoomPolicy::holdDirectionAvailable(deviceMaximumZoom,
                                                     164.0,
                                                     zoomStep,
@@ -503,71 +483,85 @@ void Mt11ProtocolTest::mt11ZoomPolicy()
                                                     1,
                                                     true));
 
-    // One feedback sample may cross several legal stops. Only the farthest
-    // reached stop is published; the raw 5.6x observation never leaks out.
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(1.0,
-                                                5.6,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 5.0);
-    QVERIFY(ZoomStepPolicy::isAlignedZoom(
-        targetZoom, zoomStep, 1.0, deviceMaximumZoom));
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(10.0,
-                                                5.6,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                -1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 6.0);
-    QVERIFY(ZoomStepPolicy::isAlignedZoom(
-        targetZoom, zoomStep, 1.0, deviceMaximumZoom));
+    // A held gesture advances by exactly one configured grid step. Protocol
+    // selection (absolute at/below 30x, bounded manual pulse above 30x) is a
+    // manager concern and never changes the target grid.
+    QVERIFY(Mt11ZoomPolicy::heldStepTarget(1.0,
+                                           1.0,
+                                           deviceMaximumZoom,
+                                           1,
+                                           &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(Mt11ZoomPolicy::heldStepTarget(1.0,
+                                           2.0,
+                                           deviceMaximumZoom,
+                                           1,
+                                           &targetZoom));
+    QCOMPARE(targetZoom, 3.0);
+    QVERIFY(Mt11ZoomPolicy::heldStepTarget(29.0,
+                                           2.0,
+                                           deviceMaximumZoom,
+                                           1,
+                                           &targetZoom));
+    QCOMPARE(targetZoom, 31.0);
+    QVERIFY(Mt11ZoomPolicy::heldStepTarget(165.0,
+                                           1.0,
+                                           deviceMaximumZoom,
+                                           -1,
+                                           &targetZoom));
+    QCOMPARE(targetZoom, 164.0);
+    QVERIFY(!Mt11ZoomPolicy::heldStepTarget(165.0,
+                                            1.0,
+                                            deviceMaximumZoom,
+                                            1,
+                                            &targetZoom));
 
-    // Feedback which has not crossed the next stop keeps the previous legal
-    // display target in either direction.
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(6.0,
-                                                5.6,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 6.0);
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(6.0,
-                                                5.6,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                -1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 6.0);
+    // A same-direction tap-to-hold takeover retransmits the same pending
+    // target instead of jumping from 1x directly to 3x. The opposite gesture
+    // replaces it with exactly the adjacent legal target.
+    QVERIFY(Mt11ZoomPolicy::heldGestureStepTarget(1.0,
+                                                  2.0,
+                                                  1.0,
+                                                  deviceMaximumZoom,
+                                                  1,
+                                                  true,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(Mt11ZoomPolicy::heldGestureStepTarget(1.0,
+                                                  2.0,
+                                                  1.0,
+                                                  deviceMaximumZoom,
+                                                  -1,
+                                                  true,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
+    QVERIFY(Mt11ZoomPolicy::heldGestureStepTarget(165.1,
+                                                  165.0,
+                                                  1.0,
+                                                  deviceMaximumZoom,
+                                                  -1,
+                                                  false,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 164.0);
+
+    QCOMPARE(Mt11ZoomPolicy::heldStepCadenceMs(0.1), 350);
+    QCOMPARE(Mt11ZoomPolicy::heldStepCadenceMs(1.0), 600);
+    QCOMPARE(Mt11ZoomPolicy::heldStepCadenceMs(2.0), 1200);
+    QCOMPARE(Mt11ZoomPolicy::heldStepCadenceMs(5.0), 2000);
+    QCOMPARE(Mt11ZoomPolicy::heldStepCadenceMs(0.0), 0);
+    QVERIFY(!Mt11ZoomPolicy::heldStepTargetReached(4.9, 5.0, 1));
+    QVERIFY(Mt11ZoomPolicy::heldStepTargetReached(5.0, 5.0, 1));
+    QVERIFY(Mt11ZoomPolicy::heldStepTargetReached(5.1, 5.0, 1));
+    QVERIFY(!Mt11ZoomPolicy::heldStepTargetReached(5.1, 5.0, -1));
+    QVERIFY(Mt11ZoomPolicy::heldStepTargetReached(5.0, 5.0, -1));
+    QVERIFY(Mt11ZoomPolicy::heldStepTargetReached(4.9, 5.0, -1));
 
     // The device-reported 165.1x physical ceiling is deliberately not a
     // display endpoint. With a 1.0x step the last published stop is 165.0x.
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(164.0,
-                                                165.0,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 165.0);
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(164.0,
-                                                165.1,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 165.0);
     QVERIFY(Mt11ZoomPolicy::isDisplayTarget(
-        targetZoom, zoomStep, deviceMaximumZoom));
+        165.0, zoomStep, deviceMaximumZoom));
     QVERIFY(!Mt11ZoomPolicy::isDisplayTarget(
         165.1, zoomStep, deviceMaximumZoom));
-    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(165.0,
-                                                160.4,
-                                                zoomStep,
-                                                deviceMaximumZoom,
-                                                -1,
-                                                &targetZoom));
-    QCOMPARE(targetZoom, 161.0);
     QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(165.1,
                                                   zoomStep,
                                                   deviceMaximumZoom,
@@ -588,14 +582,6 @@ void Mt11ProtocolTest::mt11ZoomPolicy()
         165.1, 0.1, deviceMaximumZoom, 0, &targetZoom));
     QCOMPARE(targetZoom, 165.1);
 
-    targetZoom = 77.0;
-    QVERIFY(!Mt11ZoomPolicy::heldProgressTarget(5.6,
-                                                 6.0,
-                                                 zoomStep,
-                                                 deviceMaximumZoom,
-                                                 1,
-                                                 &targetZoom));
-    QCOMPARE(targetZoom, 77.0);
 }
 
 void Mt11ProtocolTest::cameraAndFunctionPayloads()

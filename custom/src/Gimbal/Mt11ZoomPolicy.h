@@ -36,21 +36,9 @@ public:
                                      int preferredDirection,
                                      double* displayTarget);
 
-    // Select the legal display origin for a native held gesture. When a tap
-    // target is still being confirmed, that newer operator target must remain
-    // visible instead of being rolled back to an older measured sample during
-    // the 0x0f -> 0x05 handoff. An idle hold starts from measured feedback.
-    static bool holdStartDisplayTarget(double measuredZoom,
-                                       double displayZoom,
-                                       double zoomStep,
-                                       double deviceMaximumZoom,
-                                       int direction,
-                                       bool absoluteCommandPending,
-                                       double* displayTarget);
-
-    // Report whether native held motion is meaningful in direction. While an
-    // absolute tap is still moving, either its published target or the latest
-    // measured position may make the takeover direction feasible.
+    // Report whether a held gesture has a legal first command in direction.
+    // This uses the same pending-target takeover rule as
+    // heldGestureStepTarget(), including at the minimum and display maximum.
     static bool holdDirectionAvailable(double measuredZoom,
                                        double displayZoom,
                                        double zoomStep,
@@ -58,13 +46,36 @@ public:
                                        int direction,
                                        bool absoluteCommandPending);
 
-    // Advance an existing legal display target only across grid stops which
-    // measuredZoom has reached or passed in direction. Valid input returns the
-    // resulting legal target even when no new stop has been reached.
-    static bool heldProgressTarget(double displayZoom,
-                                   double measuredZoom,
-                                   double zoomStep,
-                                   double deviceMaximumZoom,
-                                   int direction,
-                                   double* displayTarget);
+    // Resolve exactly one held-gesture target over the complete MT11 display
+    // range. The manager chooses 0x0f for targets at/below 30x and a bounded
+    // feedback-controlled 0x05 pulse above it.
+    static bool heldStepTarget(double displayZoom,
+                               double zoomStep,
+                               double deviceMaximumZoom,
+                               int direction,
+                               double* targetZoom);
+
+    // Resolve the first command target when a held gesture takes ownership.
+    // A same-direction absolute target which is still physically in flight is
+    // returned unchanged so the manager can retransmit it once, instead of
+    // skipping a configured step. Opposite-direction takeover moves by one
+    // legal display step immediately.
+    static bool heldGestureStepTarget(double measuredZoom,
+                                      double displayZoom,
+                                      double zoomStep,
+                                      double deviceMaximumZoom,
+                                      int direction,
+                                      bool absoluteCommandPending,
+                                      double* targetZoom);
+
+    // Keep approximately the same target-rate for ordinary 1x/2x steps:
+    // 1x per 600 ms and 2x per 1200 ms. Extreme settings are bounded so a
+    // held gesture remains responsive and does not create a tight packet loop.
+    static int heldStepCadenceMs(double zoomStep);
+
+    // True once authoritative 0x18 feedback reaches or passes this step's
+    // target in the commanded direction.
+    static bool heldStepTargetReached(double measuredZoom,
+                                      double targetZoom,
+                                      int direction);
 };

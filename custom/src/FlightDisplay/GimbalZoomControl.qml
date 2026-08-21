@@ -1,9 +1,10 @@
 /****************************************************************************
  *
  * Shared A8 Mini and MT11 zoom control. A short release asks the selected
- * manager for one exact step. Holding for 420 ms starts native continuous
- * zoom; release, cancellation, hiding and application suspension all ask the
- * manager to stop. Device-specific zoom ranges remain in their managers.
+ * manager for one exact step. Holding for 420 ms starts the manager-owned
+ * held sequence; release, cancellation, hiding and application suspension all
+ * ask the manager to stop. Device-specific protocols, feedback bounds, ranges
+ * and pacing remain in their managers.
  *
  ****************************************************************************/
 
@@ -18,6 +19,7 @@ Item {
     id: root
 
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlManager : null
+    property bool showActualZoom: false
     property real controlSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
@@ -36,6 +38,12 @@ Item {
     readonly property bool canZoomIn: canTapZoomIn || canHoldZoomIn
     readonly property bool canZoomOut: canTapZoomOut || canHoldZoomOut
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
+    readonly property bool actualZoomKnown: Boolean(showActualZoom
+                                                     && manager
+                                                     && manager.actualZoomKnown)
+    readonly property real actualZoomValue: showActualZoom && manager
+                                             ? Number(manager.actualZoom)
+                                             : zoomValue
 
     implicitWidth: zoomColumn.implicitWidth
     implicitHeight: zoomColumn.implicitHeight
@@ -235,9 +243,16 @@ Item {
         Rectangle {
             Layout.row: 1
             Layout.column: 0
-            Layout.preferredWidth: Math.max(root.controlSize,
-                                            ScreenTools.defaultFontPixelWidth * 5.2)
-            Layout.preferredHeight: root.controlSize * 0.78
+            Layout.preferredWidth: Math.max(
+                                       root.controlSize,
+                                       root.showActualZoom
+                                           ? Math.max(targetZoomLabel.implicitWidth,
+                                                      actualZoomLabel.implicitWidth)
+                                             + root.controlSpacing * 2.0
+                                           : ScreenTools.defaultFontPixelWidth
+                                             * 5.2)
+            Layout.preferredHeight: root.controlSize
+                                    * (root.showActualZoom ? 1.08 : 0.78)
             Layout.alignment: Qt.AlignHCenter
             radius: height / 2
             color: "#e8ffffff"
@@ -247,12 +262,46 @@ Item {
             QGCLabel {
                 anchors.centerIn: parent
                 // Each manager owns whether this is a target or feedback value.
+                visible: !root.showActualZoom
                 text: root.online && root.zoomKnown
                       ? root.zoomValue.toFixed(1) + "x"
                       : "--"
                 color: "#101820"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize
+            }
+
+            Column {
+                id: zoomValueColumn
+
+                anchors.centerIn: parent
+                spacing: 0
+                visible: root.showActualZoom
+
+                QGCLabel {
+                    id: targetZoomLabel
+
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Target") + " "
+                          + (root.online && root.zoomKnown
+                             ? root.zoomValue.toFixed(1) + "x"
+                             : "--")
+                    color: "#101820"
+                    font.bold: true
+                    font.pointSize: ScreenTools.smallFontPointSize * 0.82
+                }
+
+                QGCLabel {
+                    id: actualZoomLabel
+
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Actual") + " "
+                          + (root.online && root.actualZoomKnown
+                             ? root.actualZoomValue.toFixed(1) + "x"
+                             : "--")
+                    color: "#40505d"
+                    font.pointSize: ScreenTools.smallFontPointSize * 0.74
+                }
             }
         }
 

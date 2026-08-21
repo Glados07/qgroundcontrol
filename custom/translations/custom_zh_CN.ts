@@ -220,6 +220,19 @@
     </message>
 </context>
 <context>
+    <name>GimbalZoomControl</name>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="285"/>
+        <source>Target</source>
+        <translation>目标</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="298"/>
+        <source>Actual</source>
+        <translation>实际</translation>
+    </message>
+</context>
+<context>
     <name>GimbalCameraControl</name>
     <message>
         <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="277"/>
@@ -582,6 +595,11 @@
         <translation>MT11 连续变焦已在安全超时后停止。</translation>
     </message>
     <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1690"/>
+        <source>MT11 held zoom stopped because no 0x18 feedback reached the next step.</source>
+        <translation>由于没有0x18反馈到达下一步长档位，MT11长按变倍已停止。</translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="545"/>
         <source>Failed to stop MT11 zoom before changing the video mode.</source>
         <translation>切换视频模式前停止MT11变倍失败。</translation>
@@ -786,8 +804,8 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding uses native continuous zoom across the device-reported range; raw intermediate feedback remains private and the displayed value advances only after a legal step is reached. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
-        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法档位；快速连点从上一个已显示目标继续。长按在设备报告的范围内使用原生连续变倍；原始中间反馈仅在内部使用，界面只在到达合法步长档位后更新。30.0x以上双向禁用短按，只允许长按连续变倍。默认步长为1.0x。</translation>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding advances exactly one configured step at a time. When both the measured and target zoom stay at or below 30.0x, each held step uses an exact 0x0F command; a step which crosses or stays above 30.0x uses a bounded 0x05 pulse and stops as soon as authoritative 0x18 feedback reaches or passes the target. The control displays the issued Target separately from the Actual value updated only by 0x18. A 1.0x step has a nominal minimum target cadence of 600 ms and a 2.0x step has 1200 ms, bounded to 350-2000 ms for other settings; waiting for measured arrival and the stop/settle sequence can extend the actual interval. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法档位；快速连点从上一个已显示目标继续。长按严格按所配置步长逐档推进：实测和目标倍率都不超过30.0x时，每档使用精确0x0F命令；跨越或保持在30.0x以上的档位使用有界0x05脉冲，并在权威0x18反馈到达或越过目标后立即停止。控制栏分别显示已下发的目标倍率和仅由0x18更新的实际倍率。步长为1.0x时名义最短目标节奏为每600毫秒一档，2.0x时为每1200毫秒一档，其他设置限制在350至2000毫秒；等待实测到档及停止/稳定序列会延长实际档间隔。30.0x以上双向禁用短按，只允许长按。默认步长为1.0x。</translation>
     </message>
 </context>
 <context>

@@ -13,9 +13,9 @@
 namespace {
 
 constexpr double kComparisonTolerance = 0.051;
-// MT11 feedback has one decimal place. This covers the complete 1.0x-255.9x
-// wire domain even with the minimum supported 0.1x display step.
-constexpr int kMaximumExaminedStops = 4096;
+constexpr int kMinimumHeldStepCadenceMs = 350;
+constexpr int kMaximumHeldStepCadenceMs = 2000;
+constexpr int kHeldStepCadencePerZoomMs = 600;
 
 bool validDomain(double zoomStep, double deviceMaximumZoom)
 {
@@ -137,36 +137,6 @@ bool Mt11ZoomPolicy::alignedDisplayTarget(double measuredZoom,
                                            displayTarget);
 }
 
-bool Mt11ZoomPolicy::holdStartDisplayTarget(double measuredZoom,
-                                            double displayZoom,
-                                            double zoomStep,
-                                            double deviceMaximumZoom,
-                                            int direction,
-                                            bool absoluteCommandPending,
-                                            double* displayTarget)
-{
-    if (!displayTarget || (direction != -1 && direction != 1)) {
-        return false;
-    }
-
-    if (absoluteCommandPending) {
-        if (!validMeasuredZoom(measuredZoom, deviceMaximumZoom)
-            || !isDisplayTarget(displayZoom,
-                                zoomStep,
-                                deviceMaximumZoom)) {
-            return false;
-        }
-        *displayTarget = qRound(displayZoom * 10.0) / 10.0;
-        return true;
-    }
-
-    return alignedDisplayTarget(measuredZoom,
-                                zoomStep,
-                                deviceMaximumZoom,
-                                direction,
-                                displayTarget);
-}
-
 bool Mt11ZoomPolicy::holdDirectionAvailable(double measuredZoom,
                                             double displayZoom,
                                             double zoomStep,
@@ -174,40 +144,25 @@ bool Mt11ZoomPolicy::holdDirectionAvailable(double measuredZoom,
                                             int direction,
                                             bool absoluteCommandPending)
 {
-    if ((direction != -1 && direction != 1)
-        || !validMeasuredZoom(measuredZoom, deviceMaximumZoom)) {
-        return false;
-    }
-
-    const auto canMoveFrom = [direction, deviceMaximumZoom](double zoom) {
-        return direction > 0
-            ? zoom < deviceMaximumZoom - kComparisonTolerance
-            : zoom > MinimumZoom + kComparisonTolerance;
-    };
-    if (canMoveFrom(measuredZoom)) {
-        return true;
-    }
-
-    // The device may already be moving away from the last sample under 0x0f.
-    // Treat the newest legal target as an additional feasibility bound, not
-    // as proof of physical position. This allows an opposite held gesture to
-    // explicitly preempt the pending absolute generation at either endpoint.
-    return absoluteCommandPending
-        && isDisplayTarget(displayZoom, zoomStep, deviceMaximumZoom)
-        && canMoveFrom(displayZoom);
+    double targetZoom = displayZoom;
+    return heldGestureStepTarget(measuredZoom,
+                                 displayZoom,
+                                 zoomStep,
+                                 deviceMaximumZoom,
+                                 direction,
+                                 absoluteCommandPending,
+                                 &targetZoom);
 }
 
-bool Mt11ZoomPolicy::heldProgressTarget(double displayZoom,
-                                        double measuredZoom,
-                                        double zoomStep,
-                                        double deviceMaximumZoom,
-                                        int direction,
-                                        double* displayTarget)
+bool Mt11ZoomPolicy::heldStepTarget(double displayZoom,
+                                    double zoomStep,
+                                    double deviceMaximumZoom,
+                                    int direction,
+                                    double* targetZoom)
 {
-    if (!displayTarget
+    if (!targetZoom
         || (direction != -1 && direction != 1)
-        || !validDomain(zoomStep, deviceMaximumZoom)
-        || !validMeasuredZoom(measuredZoom, deviceMaximumZoom)) {
+        || !validDomain(zoomStep, deviceMaximumZoom)) {
         return false;
     }
 
@@ -222,29 +177,65 @@ bool Mt11ZoomPolicy::heldProgressTarget(double displayZoom,
         return false;
     }
 
-    double resolvedTarget = qRound(displayZoom * 10.0) / 10.0;
-    for (int examinedStops = 0;
-         examinedStops < kMaximumExaminedStops;
-         ++examinedStops) {
-        double nextTarget = resolvedTarget;
-        if (!ZoomStepPolicy::stepTarget(resolvedTarget,
-                                        zoomStep,
-                                        MinimumZoom,
-                                        maximumDisplayZoom,
-                                        direction,
-                                        &nextTarget)) {
-            break;
-        }
+    return ZoomStepPolicy::stepTarget(displayZoom,
+                                      zoomStep,
+                                      MinimumZoom,
+                                      maximumDisplayZoom,
+                                      direction,
+                                      targetZoom);
+}
 
-        const bool reached = direction > 0
-            ? measuredZoom >= nextTarget - kComparisonTolerance
-            : measuredZoom <= nextTarget + kComparisonTolerance;
-        if (!reached) {
-            break;
-        }
-        resolvedTarget = nextTarget;
+bool Mt11ZoomPolicy::heldGestureStepTarget(double measuredZoom,
+                                           double displayZoom,
+                                           double zoomStep,
+                                           double deviceMaximumZoom,
+                                           int direction,
+                                           bool absoluteCommandPending,
+                                           double* targetZoom)
+{
+    if (!targetZoom
+        || (direction != -1 && direction != 1)
+        || !validMeasuredZoom(measuredZoom, deviceMaximumZoom)
+        || !isDisplayTarget(displayZoom,
+                            zoomStep,
+                            deviceMaximumZoom)) {
+        return false;
     }
 
-    *displayTarget = resolvedTarget;
-    return true;
+    const double pendingDelta = displayZoom - measuredZoom;
+    if (absoluteCommandPending
+        && pendingDelta * direction > kComparisonTolerance) {
+        *targetZoom = qRound(displayZoom * 10.0) / 10.0;
+        return true;
+    }
+
+    return heldStepTarget(displayZoom,
+                          zoomStep,
+                          deviceMaximumZoom,
+                          direction,
+                          targetZoom);
+}
+
+int Mt11ZoomPolicy::heldStepCadenceMs(double zoomStep)
+{
+    if (!qIsFinite(zoomStep) || zoomStep <= 0.0) {
+        return 0;
+    }
+    return qBound(kMinimumHeldStepCadenceMs,
+                  qRound(zoomStep * kHeldStepCadencePerZoomMs),
+                  kMaximumHeldStepCadenceMs);
+}
+
+bool Mt11ZoomPolicy::heldStepTargetReached(double measuredZoom,
+                                           double targetZoom,
+                                           int direction)
+{
+    if (!qIsFinite(measuredZoom)
+        || !qIsFinite(targetZoom)
+        || (direction != -1 && direction != 1)) {
+        return false;
+    }
+    return direction > 0
+        ? measuredZoom >= targetZoom - kComparisonTolerance
+        : measuredZoom <= targetZoom + kComparisonTolerance;
 }

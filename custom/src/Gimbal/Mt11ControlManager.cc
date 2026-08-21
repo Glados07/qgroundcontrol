@@ -45,8 +45,10 @@ constexpr int kZoomFeedbackFreshnessMs = 6500;
 constexpr int kAbsoluteZoomPollMs = 250;
 constexpr int kAbsoluteZoomConfirmationTimeoutMs = 10000;
 constexpr int kContinuousZoomHandoffDelayMs = 150;
-constexpr int kContinuousZoomPollMs = 350;
+constexpr int kContinuousZoomPollMs = 100;
+constexpr int kContinuousZoomPulseSafetyMs = 500;
 constexpr int kContinuousZoomStopRetryMs = 150;
+constexpr int kContinuousZoomSettleMarginMs = 50;
 constexpr int kLocalPhotoTimeoutMs = 5000;
 constexpr int kLocalRecordingStartTimeoutMs = 3000;
 constexpr int kLocalRecordingStopTimeoutMs = 5000;
@@ -174,7 +176,13 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
         kAbsoluteZoomConfirmationTimeoutMs);
     _continuousZoomStartTimer.setSingleShot(true);
     _continuousZoomStartTimer.setInterval(kContinuousZoomHandoffDelayMs);
+    _continuousZoomStepTimer.setSingleShot(true);
     _continuousZoomPollTimer.setInterval(kContinuousZoomPollMs);
+    _continuousZoomPulseWatchdog.setSingleShot(true);
+    _continuousZoomPulseWatchdog.setInterval(kContinuousZoomPulseSafetyMs);
+    _continuousZoomPulseStopRetryTimer.setSingleShot(true);
+    _continuousZoomPulseStopRetryTimer.setInterval(
+        kContinuousZoomStopRetryMs);
     _continuousZoomWatchdog.setSingleShot(true);
     _continuousZoomWatchdog.setInterval(60000);
     _continuousZoomStopRetryTimer.setSingleShot(true);
@@ -242,7 +250,10 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
         // An absolute command owns its separate 10-second confirmation
         // generation. Expiring the old/current feedback must not cancel that
         // generation and unlock a second 0x0f command while the first moves.
-        _measuredZoomKnown = false;
+        if (_measuredZoomKnown) {
+            _measuredZoomKnown = false;
+            emit actualZoomKnownChanged();
+        }
         _setZoomStatusKnown(false);
     });
     connect(&_absoluteZoomPollTimer, &QTimer::timeout,
@@ -251,8 +262,18 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout);
     connect(&_continuousZoomStartTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_startPendingContinuousZoom);
+    connect(&_continuousZoomStepTimer, &QTimer::timeout, this, [this]() {
+        if (_continuousZoomActive
+            && !_startNextContinuousZoomStep()) {
+            (void) stopZoom();
+        }
+    });
     connect(&_continuousZoomPollTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_pollContinuousZoom);
+    connect(&_continuousZoomPulseWatchdog, &QTimer::timeout,
+            this, &Mt11ControlManager::_handleContinuousManualPulseTimeout);
+    connect(&_continuousZoomPulseStopRetryTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_retryContinuousManualPulseStop);
     connect(&_continuousZoomWatchdog, &QTimer::timeout, this, [this]() {
         if (_continuousZoomActive) {
             (void) stopZoom();
@@ -319,7 +340,10 @@ Mt11ControlManager::~Mt11ControlManager()
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
     _continuousZoomStartTimer.stop();
+    _continuousZoomStepTimer.stop();
     _continuousZoomPollTimer.stop();
+    _continuousZoomPulseWatchdog.stop();
+    _continuousZoomPulseStopRetryTimer.stop();
     _continuousZoomWatchdog.stop();
     _continuousZoomStopRetryTimer.stop();
     _recordingStatusDelayTimer.stop();
@@ -329,6 +353,7 @@ Mt11ControlManager::~Mt11ControlManager()
     _zoomCommandPending = false;
     _continuousZoomActive = false;
     _continuousZoomDirection = 0;
+    _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
     if (_sdk) {
@@ -494,9 +519,11 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
 {
     Q_UNUSED(pressDurationMs);
     const int normalizedDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+    const bool postHoldOverride =
+        _postHoldHighZoomOverrideAllowed(normalizedDirection);
     if (!_cameraCommandAvailable() || !zoomControlsUnlocked()
         || normalizedDirection == 0 || _continuousZoomActive
-        || _postHoldZoomFeedbackPending
+        || (_postHoldZoomFeedbackPending && !postHoldOverride)
         || (normalizedDirection > 0 && !zoomInHoldAvailable())
         || (normalizedDirection < 0 && !zoomOutHoldAvailable())) {
         return false;
@@ -507,60 +534,29 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
         return false;
     }
 
-    const bool supersedesAbsoluteCommand = _zoomCommandPending;
-    double holdDisplayTarget = _currentZoom;
-    if (!Mt11ZoomPolicy::holdStartDisplayTarget(
-            _measuredZoom,
-            _currentZoom,
-            zoomStep(),
-            _maximumZoom,
-            normalizedDirection,
-            supersedesAbsoluteCommand,
-            &holdDisplayTarget)) {
-        return false;
+    // At >30x only held control exists. A lost post-release 0x18 must not make
+    // an operator at the physical high end unable to reverse direction; the
+    // bounded stop retry has already been serialized above. Tap remains gated
+    // by settled feedback, especially around the 30.0/30.1 protocol boundary.
+    if (postHoldOverride) {
+        _postHoldZoomFeedbackPending = false;
     }
 
-    _configureSdkEndpoint();
-    if (supersedesAbsoluteCommand) {
-        // MT11 firmware can keep executing 0x0f while a newer 0x05 direction
-        // arrives, which makes a tap followed by a hold appear unresponsive.
-        // Send one ordered manual stop first to retire the absolute motion.
-        // There is deliberately no delayed retry in this handoff: such a stop
-        // could overtake and terminate the newer held gesture. ACKs cannot be
-        // correlated because production sequence is fixed at zero, so motion
-        // state remains owned by solicited 0x18 feedback.
-        if (!_sdk->sendManualZoom(0)) {
-            return false;
-        }
-    }
-
-    // The newer held gesture owns the manager as soon as its takeover stop is
-    // sent. Release/cancel during the bounded handoff delay therefore cancels
-    // the pending direction and sends a stop; it can never start motion after
-    // the pointer has already been released.
-    // Keep the newest legal tap target as the display origin during an
-    // absolute-to-manual handoff. Raw feedback subsequently advances only
-    // across reached legal stops and never rolls the UI back to a stale sample.
-    _setZoomCommandPending(false);
-    _setCurrentZoom(holdDisplayTarget);
-    _setZoomStatusKnown(true);
     _continuousZoomActive = true;
     _continuousZoomDirection = normalizedDirection;
+    _continuousZoomPhase = ContinuousZoomPhase::Idle;
+    _continuousZoomStepTarget = _currentZoom;
     _continuousZoomDirectionSent = false;
-    _continuousZoomDirectionRetryRequired = supersedesAbsoluteCommand;
+    _continuousZoomDirectionRetryRequired = false;
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
+    _continuousZoomWatchdog.start();
     _setLastError({});
-
-    if (supersedesAbsoluteCommand) {
-        // Give firmware a short, bounded processing window between retiring
-        // 0x0f and starting 0x05. Sending both back-to-back is accepted by the
-        // UDP stack but can leave the MT11 busy on the absolute controller.
-        _continuousZoomStartTimer.start();
-        return true;
+    if (!_startNextContinuousZoomStep()) {
+        _finishContinuousZoomState();
+        return false;
     }
-    _startPendingContinuousZoom();
-    return _continuousZoomActive && _continuousZoomDirectionSent;
+    return true;
 }
 
 bool Mt11ControlManager::stopZoom()
@@ -571,10 +567,13 @@ bool Mt11ControlManager::stopZoom()
         // do not create an unbounded series of additional UDP commands.
         return _continuousZoomStopRetryTimer.isActive();
     }
-    // Clear local motion state before sending. A synchronous transport error
-    // can then safely invalidate controls without recursively stopping again.
+    // Release cancels every future discrete step and every delayed direction
+    // copy before the stop is sent. It therefore cannot restart motion after
+    // the pointer has left the button.
     _postHoldZoomFeedbackPending = true;
+    _continuousZoomPulseStopRetryTimer.stop();
     _finishContinuousZoomState();
+    _setZoomCommandPending(false);
     _configureSdkEndpoint();
     const bool sent = _sdk->sendManualZoom(0);
     if (enabled()) {
@@ -1051,7 +1050,6 @@ void Mt11ControlManager::_handleMaximumZoom(double maximumZoom)
         && _measuredZoomKnown) {
         _alignDisplayToMeasured();
     }
-    _checkContinuousZoomBoundary();
 }
 
 void Mt11ControlManager::_handleCurrentZoom(double zoomLevel)
@@ -1371,9 +1369,11 @@ bool Mt11ControlManager::_zoomTapAvailable(int direction) const
 
 bool Mt11ControlManager::_zoomHoldAvailable(int direction) const
 {
+    const bool postHoldOverride =
+        _postHoldHighZoomOverrideAllowed(direction);
     if (!zoomControlsUnlocked() || _continuousZoomActive
-        || _postHoldZoomFeedbackPending
-        || _continuousZoomStopRetryTimer.isActive()
+        || (_postHoldZoomFeedbackPending && !postHoldOverride)
+        || (_continuousZoomStopRetryTimer.isActive() && !postHoldOverride)
         || (direction != -1 && direction != 1)) {
         return false;
     }
@@ -1384,6 +1384,15 @@ bool Mt11ControlManager::_zoomHoldAvailable(int direction) const
         _maximumZoom,
         direction,
         _zoomCommandPending);
+}
+
+bool Mt11ControlManager::_postHoldHighZoomOverrideAllowed(int direction) const
+{
+    return _postHoldZoomFeedbackPending
+        && (direction == -1 || direction == 1)
+        && _measuredZoomKnown
+        && _measuredZoom
+            > kAbsoluteCommandMaximumZoom + kZoomTolerance;
 }
 
 bool Mt11ControlManager::_flushContinuousZoomStopRetry()
@@ -1403,32 +1412,63 @@ void Mt11ControlManager::_observeZoomFeedback(double zoomLevel)
     if (!qIsFinite(zoomLevel)
         || zoomLevel < kMinimumZoom - kZoomTolerance
         || zoomLevel > kSupportedHybridMaximumZoom + kZoomTolerance) {
-        _measuredZoomKnown = false;
+        if (_measuredZoomKnown) {
+            _measuredZoomKnown = false;
+            emit actualZoomKnownChanged();
+            emit zoomAvailabilityChanged();
+        }
         _setZoomStatusKnown(false);
         return;
     }
 
     const double measured = qRound(zoomLevel * 10.0) / 10.0;
-    const bool measurementChanged = !_measuredZoomKnown
+    const bool wasMeasurementKnown = _measuredZoomKnown;
+    const bool measurementChanged = !wasMeasurementKnown
         || qAbs(_measuredZoom - measured) > 0.001;
     _measuredZoom = measured;
     _measuredZoomKnown = true;
+    if (!wasMeasurementKnown) {
+        emit actualZoomKnownChanged();
+    }
+    if (measurementChanged) {
+        emit actualZoomChanged();
+    }
     _zoomStatusFreshnessTimer.start();
 
-    if (_zoomCommandPending) {
+    if (_continuousZoomActive) {
+        if (measurementChanged) {
+            // This is an inactivity watchdog, not a total gesture-duration
+            // limit. A complete 1x->165x held traversal legitimately exceeds
+            // 60 seconds at the configured step cadence.
+            _continuousZoomWatchdog.start();
+        }
+        _setZoomStatusKnown(true);
+        if (_continuousZoomPhase == ContinuousZoomPhase::AbsoluteStep
+            && _zoomCommandPending
+            && Mt11ZoomPolicy::heldStepTargetReached(
+                _measuredZoom,
+                _continuousZoomStepTarget,
+                _continuousZoomDirection)) {
+            _setZoomCommandPending(false);
+            _completeContinuousZoomStep();
+        } else if (_continuousZoomPhase
+                       == ContinuousZoomPhase::ManualPulse
+                   && Mt11ZoomPolicy::heldStepTargetReached(
+                       _measuredZoom,
+                       _continuousZoomStepTarget,
+                       _continuousZoomDirection)) {
+            _stopContinuousManualPulse();
+        }
+    } else if (_zoomCommandPending) {
         if (qAbs(_measuredZoom - _pendingAbsoluteZoomTarget)
             <= kZoomTolerance) {
             _setZoomCommandPending(false);
         }
         _setZoomStatusKnown(true);
-    } else if (_continuousZoomActive) {
-        _advanceContinuousZoomDisplay();
-        _setZoomStatusKnown(true);
     } else {
         _alignDisplayToMeasured();
     }
 
-    _checkContinuousZoomBoundary();
     if (measurementChanged) {
         emit zoomAvailabilityChanged();
     }
@@ -1454,28 +1494,200 @@ void Mt11ControlManager::_alignDisplayToMeasured(int preferredDirection)
     _setZoomStatusKnown(true);
 }
 
-void Mt11ControlManager::_advanceContinuousZoomDisplay()
+bool Mt11ControlManager::_startNextContinuousZoomStep()
 {
-    if (!_continuousZoomActive || !_continuousZoomDirectionSent
-        || !_measuredZoomKnown
+    if (!_continuousZoomActive || !_measuredZoomKnown
+        || !_maximumZoomKnown
         || (_continuousZoomDirection != -1
             && _continuousZoomDirection != 1)) {
+        return false;
+    }
+
+    if (_continuousZoomPulseStopRetryTimer.isActive()) {
+        // Explicitly serialize the next direction behind the current pulse's
+        // delayed stop copy. Do not rely only on nominal timer intervals: an
+        // event-loop stall can make both callbacks ready in the same turn.
+        _continuousZoomStepTimer.start(qMax(
+            kContinuousZoomSettleMarginMs,
+            _continuousZoomPulseStopRetryTimer.remainingTime()
+                + kContinuousZoomSettleMarginMs));
+        return true;
+    }
+
+    double targetZoom = _currentZoom;
+    if (!Mt11ZoomPolicy::heldGestureStepTarget(
+            _measuredZoom,
+            _currentZoom,
+            zoomStep(),
+            _maximumZoom,
+            _continuousZoomDirection,
+            _zoomCommandPending,
+            &targetZoom)) {
+        return false;
+    }
+
+    _continuousZoomStepTarget = targetZoom;
+    _continuousZoomStepClock.restart();
+
+    // A preceding bounded pulse may have physically crossed more than one
+    // display stop before its 0x18 reply arrived. Catch the target up by one
+    // configured step per cadence without starting another camera movement.
+    if (!_zoomCommandPending
+        && Mt11ZoomPolicy::heldStepTargetReached(
+            _measuredZoom,
+            targetZoom,
+            _continuousZoomDirection)) {
+        _setCurrentZoom(targetZoom);
+        _setZoomStatusKnown(true);
+        _completeContinuousZoomStep();
+        return true;
+    }
+
+    // 0x0f is exact but is valid only when both the current physical position
+    // and target are inside its documented 1x-30x domain. Crossing either
+    // side of 30x therefore uses the bounded feedback-controlled 0x05 pulse.
+    if (_measuredZoom
+            <= kAbsoluteCommandMaximumZoom + kZoomTolerance
+        && targetZoom
+            <= kAbsoluteCommandMaximumZoom + kZoomTolerance) {
+        // A same-direction tap-to-hold takeover resolves to the already-
+        // published target. Retransmitting that exact 0x0f value starts a
+        // fresh confirmation generation if the first UDP command was ignored,
+        // while never skipping the configured step.
+        return _sendContinuousAbsoluteStep(targetZoom);
+    }
+    return _startContinuousManualStep(targetZoom);
+}
+
+bool Mt11ControlManager::_sendContinuousAbsoluteStep(double targetZoom)
+{
+    _configureSdkEndpoint();
+    if (!_sdk || !_sdk->sendAbsoluteZoom(targetZoom)) {
+        return false;
+    }
+
+    _continuousZoomPhase = ContinuousZoomPhase::AbsoluteStep;
+    _absoluteZoomPollTimer.stop();
+    _pendingAbsoluteZoomTarget = targetZoom;
+    _setZoomCommandPending(true);
+    _setCurrentZoom(targetZoom);
+    _setZoomStatusKnown(true);
+    _absoluteZoomConfirmationTimer.start();
+    _continuousZoomPollTimer.start();
+    _pollContinuousZoom();
+    return true;
+}
+
+bool Mt11ControlManager::_startContinuousManualStep(double targetZoom)
+{
+    _continuousZoomStepTarget = targetZoom;
+    _continuousZoomDirectionSent = false;
+    _continuousZoomDirectionRetryRequired = false;
+
+    if (_zoomCommandPending) {
+        // Retire an in-flight 0x0f tap before crossing into manual control.
+        // The bounded delay keeps firmware from ignoring 0x05 while its
+        // absolute controller is still leaving the previous generation.
+        _configureSdkEndpoint();
+        if (!_sdk || !_sdk->sendManualZoom(0)) {
+            return false;
+        }
+        _setZoomCommandPending(false);
+        _continuousZoomPhase = ContinuousZoomPhase::ManualHandoff;
+        _continuousZoomDirectionRetryRequired = true;
+        _setCurrentZoom(targetZoom);
+        _setZoomStatusKnown(true);
+        _continuousZoomStartTimer.start();
+        return true;
+    }
+
+    _continuousZoomPhase = ContinuousZoomPhase::ManualPulse;
+    _setCurrentZoom(targetZoom);
+    _setZoomStatusKnown(true);
+    _startPendingContinuousZoom();
+    return _continuousZoomActive && _continuousZoomDirectionSent;
+}
+
+void Mt11ControlManager::_completeContinuousZoomStep()
+{
+    if (!_continuousZoomActive) {
+        return;
+    }
+    _continuousZoomStartTimer.stop();
+    _continuousZoomPollTimer.stop();
+    _continuousZoomPulseWatchdog.stop();
+    _continuousZoomDirectionSent = false;
+    _continuousZoomDirectionRetryRequired = false;
+    _continuousZoomPhase = ContinuousZoomPhase::StepDwell;
+    _continuousZoomWatchdog.start();
+
+    const int cadenceMs =
+        Mt11ZoomPolicy::heldStepCadenceMs(zoomStep());
+    const qint64 elapsedMs = _continuousZoomStepClock.isValid()
+        ? _continuousZoomStepClock.elapsed() : 0;
+    // Never let the next direction overtake this pulse's one delayed stop
+    // copy. Keep a small processing margin after that copy as the bounded
+    // settle window, even when physical motion already consumed the cadence.
+    const int remainingMs = qMax(
+        kContinuousZoomStopRetryMs + kContinuousZoomSettleMarginMs,
+        cadenceMs - static_cast<int>(qMin<qint64>(elapsedMs, cadenceMs)));
+    _continuousZoomStepTimer.start(remainingMs);
+}
+
+void Mt11ControlManager::_stopContinuousManualPulse()
+{
+    if (!_continuousZoomActive
+        || _continuousZoomPhase != ContinuousZoomPhase::ManualPulse) {
         return;
     }
 
-    // Advance only across canonical legal stops actually reached by feedback.
-    // Intermediate values such as 5.6x remain private observations and can
-    // never leak into the value rendered by QML.
-    double reachedTarget = _currentZoom;
-    if (Mt11ZoomPolicy::heldProgressTarget(_currentZoom,
-                                           _measuredZoom,
-                                           zoomStep(),
-                                           _maximumZoom,
-                                           _continuousZoomDirection,
-                                           &reachedTarget)) {
-        _setCurrentZoom(reachedTarget);
-        _setZoomStatusKnown(true);
+    // Cancel the optional direction copy before stopping. It can never arrive
+    // after this step's stop and accidentally restart free-running movement.
+    _continuousZoomStartTimer.stop();
+    _continuousZoomPulseWatchdog.stop();
+    _continuousZoomDirectionSent = false;
+    _continuousZoomDirectionRetryRequired = false;
+    _configureSdkEndpoint();
+    if (!_sdk || !_sdk->sendManualZoom(0)) {
+        return;
     }
+    if (!_continuousZoomActive) {
+        return;
+    }
+    _continuousZoomPulseStopRetryTimer.start();
+    _completeContinuousZoomStep();
+}
+
+void Mt11ControlManager::_retryContinuousManualPulseStop()
+{
+    if (!_continuousZoomActive
+        || _continuousZoomPhase != ContinuousZoomPhase::StepDwell
+        || !enabled() || !_sdk) {
+        return;
+    }
+    _configureSdkEndpoint();
+    (void) _sdk->sendManualZoom(0);
+    if (!_continuousZoomActive
+        || _continuousZoomPhase != ContinuousZoomPhase::StepDwell) {
+        return;
+    }
+    if (!_thermalCommandPending) {
+        if (!_sdkResponseTimer.isActive()) {
+            _sdkResponseTimer.start();
+        }
+        (void) _sdk->requestCurrentZoom();
+    }
+}
+
+void Mt11ControlManager::_handleContinuousManualPulseTimeout()
+{
+    if (!_continuousZoomActive
+        || _continuousZoomPhase != ContinuousZoomPhase::ManualPulse) {
+        return;
+    }
+    (void) stopZoom();
+    _setLastError(
+        tr("MT11 held zoom stopped because no 0x18 feedback reached the next step."));
 }
 
 bool Mt11ControlManager::_sendZoomStep(int direction)
@@ -1532,6 +1744,10 @@ void Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout()
     _absoluteZoomPollTimer.stop();
     _setZoomCommandPending(false);
     _setLastError(tr("Timed out confirming the MT11 zoom target."));
+    if (_continuousZoomActive
+        && _continuousZoomPhase == ContinuousZoomPhase::AbsoluteStep) {
+        (void) stopZoom();
+    }
     if (enabled() && !_thermalCommandPending) {
         (void) requestCurrentZoom();
     }
@@ -1540,6 +1756,8 @@ void Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout()
 void Mt11ControlManager::_startPendingContinuousZoom()
 {
     if (!_continuousZoomActive
+        || (_continuousZoomPhase != ContinuousZoomPhase::ManualHandoff
+            && _continuousZoomPhase != ContinuousZoomPhase::ManualPulse)
         || (_continuousZoomDirection != -1
             && _continuousZoomDirection != 1)
         || !enabled() || !_sdk) {
@@ -1560,6 +1778,16 @@ void Mt11ControlManager::_startPendingContinuousZoom()
         return;
     }
 
+    if (_measuredZoomKnown
+        && Mt11ZoomPolicy::heldStepTargetReached(
+            _measuredZoom,
+            _continuousZoomStepTarget,
+            _continuousZoomDirection)) {
+        _setCurrentZoom(_continuousZoomStepTarget);
+        _completeContinuousZoomStep();
+        return;
+    }
+
     _configureSdkEndpoint();
     if (!_sdk->sendManualZoom(
             static_cast<qint8>(_continuousZoomDirection))) {
@@ -1572,9 +1800,10 @@ void Mt11ControlManager::_startPendingContinuousZoom()
         return;
     }
 
+    _continuousZoomPhase = ContinuousZoomPhase::ManualPulse;
     _continuousZoomDirectionSent = true;
     _continuousZoomPollTimer.start();
-    _continuousZoomWatchdog.start();
+    _continuousZoomPulseWatchdog.start();
     _pollContinuousZoom();
     if (_continuousZoomDirectionRetryRequired) {
         // One bounded, idempotent direction copy covers firmware which was
@@ -1586,7 +1815,9 @@ void Mt11ControlManager::_startPendingContinuousZoom()
 
 void Mt11ControlManager::_pollContinuousZoom()
 {
-    if (!_continuousZoomActive || !_continuousZoomDirectionSent
+    if (!_continuousZoomActive
+        || (_continuousZoomPhase != ContinuousZoomPhase::AbsoluteStep
+            && _continuousZoomPhase != ContinuousZoomPhase::ManualPulse)
         || !enabled() || !_sdk
         || _thermalCommandPending) {
         return;
@@ -1595,8 +1826,8 @@ void Mt11ControlManager::_pollContinuousZoom()
     if (!_sdkResponseTimer.isActive()) {
         _sdkResponseTimer.start();
     }
-    // 0x05 starts a camera-side continuous movement. 0x18 is the measured
-    // feedback loop used by the UI and by the device-boundary stop below.
+    // 0x18 is the only authoritative measured-feedback loop. It confirms each
+    // <=30x absolute step and bounds every >30x manual pulse.
     (void) _sdk->requestCurrentZoom();
 }
 
@@ -1620,33 +1851,23 @@ void Mt11ControlManager::_retryContinuousZoomStop()
 void Mt11ControlManager::_finishContinuousZoomState()
 {
     _continuousZoomStartTimer.stop();
+    _continuousZoomStepTimer.stop();
     _continuousZoomPollTimer.stop();
+    _continuousZoomPulseWatchdog.stop();
+    _continuousZoomPulseStopRetryTimer.stop();
     _continuousZoomWatchdog.stop();
     if (!_continuousZoomActive && _continuousZoomDirection == 0) {
         return;
     }
     _continuousZoomActive = false;
     _continuousZoomDirection = 0;
+    _continuousZoomPhase = ContinuousZoomPhase::Idle;
+    _continuousZoomStepTarget = _currentZoom;
+    _continuousZoomStepClock.invalidate();
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
-}
-
-void Mt11ControlManager::_checkContinuousZoomBoundary()
-{
-    if (!_continuousZoomActive || !_continuousZoomDirectionSent
-        || !_maximumZoomKnown
-        || !_measuredZoomKnown) {
-        return;
-    }
-    const bool reachedMaximum = _continuousZoomDirection > 0
-        && _measuredZoom >= _maximumZoom - kZoomTolerance;
-    const bool reachedMinimum = _continuousZoomDirection < 0
-        && _measuredZoom <= kMinimumZoom + kZoomTolerance;
-    if (reachedMaximum || reachedMinimum) {
-        (void) stopZoom();
-    }
 }
 
 void Mt11ControlManager::_invalidateZoomState()
@@ -1656,7 +1877,10 @@ void Mt11ControlManager::_invalidateZoomState()
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
     _postHoldZoomFeedbackPending = false;
-    _measuredZoomKnown = false;
+    if (_measuredZoomKnown) {
+        _measuredZoomKnown = false;
+        emit actualZoomKnownChanged();
+    }
     _setMaximumZoomKnown(false);
     _setZoomStatusKnown(false);
     _setZoomCommandPending(false);
