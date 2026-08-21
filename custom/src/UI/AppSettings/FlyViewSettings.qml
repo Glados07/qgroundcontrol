@@ -252,6 +252,23 @@ SettingsPage {
         }
     }
 
+    // Camera SDK controls belong directly below Instrument Panel. Keeping this
+    // before the potentially tall 3D View group also makes the zoom-step fields
+    // visible without scrolling through the Viewer3D settings first.
+    Loader {
+        id:                 gimbalControlSettingsGroupLoader
+        Layout.fillWidth:   true
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+        Layout.minimumHeight:   item ? item.implicitHeight : 0
+        source:             "qrc:/Custom/qml/QGroundControl/AppSettings/GimbalControlSettingsGroup.qml"
+
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.warn("Gimbal control settings group failed to load:", source)
+            }
+        }
+    }
+
     // Viewer3D 设置组独立加载，便于后续继续移植或替换 3D 模块。
     Loader {
         id:                 viewer3DSettingsGroupLoader
@@ -267,18 +284,4 @@ SettingsPage {
         }
     }
 
-    // 思翼云台缩放设置组放在 3D View 设置下方，保持 Viewer3D 和 Gimbal 两个模块边界清晰。
-    Loader {
-        id:                 gimbalControlSettingsGroupLoader
-        Layout.fillWidth:   true
-        Layout.preferredHeight: item ? item.implicitHeight : 0
-        Layout.minimumHeight:   item ? item.implicitHeight : 0
-        source:             "qrc:/Custom/qml/QGroundControl/AppSettings/GimbalControlSettingsGroup.qml"
-
-        onStatusChanged: {
-            if (status === Loader.Error) {
-                console.warn("Gimbal control settings group failed to load:", source)
-            }
-        }
-    }
 }

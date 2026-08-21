@@ -602,6 +602,11 @@
         <translation>请求的MT11变焦倍率超出支持范围。</translation>
     </message>
     <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="456"/>
+        <source>The requested MT11 zoom is not aligned to the configured zoom step.</source>
+        <translation>请求的MT11变焦倍率不在所配置步长的合法档位上。</translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="489"/>
         <source>The MT11 video receiver was detached during local recording.</source>
         <translation>本地录像期间MT11视频接收器已断开。</translation>
@@ -615,11 +620,6 @@
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="669"/>
         <source>No response from the MT11 SDK endpoint.</source>
         <translation>MT11 SDK端点无响应。</translation>
-    </message>
-    <message>
-        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="684"/>
-        <source>The MT11 camera rejected the zoom command.</source>
-        <translation>MT11相机拒绝执行变焦命令。</translation>
     </message>
     <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="733"/>
@@ -786,8 +786,8 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap changes the exact absolute zoom target by this amount while the current and target values are within the documented 1.0x to 30.0x absolute-command range. Holding a zoom button uses native continuous zoom across the device-reported range instead. The default tap step is 1.0x.</source>
-        <translation>每次短按仅在当前倍率和目标倍率均位于文档规定的1.0x至30.0x绝对命令范围内时，按此步长精确改变目标倍率。长按缩放按钮则在设备报告的完整倍率范围内使用原生连续变倍。默认短按步长为1.0x。</translation>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding uses native continuous zoom across the device-reported range; raw intermediate feedback remains private and the displayed value advances only after a legal step is reached. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法档位；快速连点从上一个已显示目标继续。长按在设备报告的范围内使用原生连续变倍；原始中间反馈仅在内部使用，界面只在到达合法步长档位后更新。30.0x以上双向禁用短按，只允许长按连续变倍。默认步长为1.0x。</translation>
     </message>
 </context>
 <context>

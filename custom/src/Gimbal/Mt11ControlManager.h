@@ -31,6 +31,10 @@ class Mt11ControlManager : public QObject
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
     Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInTapAvailable READ zoomInTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutTapAvailable READ zoomOutTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInHoldAvailable READ zoomInHoldAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutHoldAvailable READ zoomOutHoldAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomControlsUnlocked READ zoomControlsUnlocked NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomCommandPending READ zoomCommandPending NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
@@ -67,9 +71,14 @@ public:
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
     bool zoomInAvailable() const;
     bool zoomOutAvailable() const;
+    bool zoomInTapAvailable() const;
+    bool zoomOutTapAvailable() const;
+    bool zoomInHoldAvailable() const;
+    bool zoomOutHoldAvailable() const;
     bool zoomControlsUnlocked() const {
         return enabled() && _sdkResponding && _maximumZoomKnown
-            && _zoomStatusKnown && !_thermalCommandPending;
+            && _measuredZoomKnown && _zoomStatusKnown
+            && !_thermalCommandPending;
     }
     bool zoomCommandPending() const { return _zoomCommandPending; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
@@ -172,6 +181,12 @@ private:
     void _configureSdkEndpoint();
     bool _cameraCommandAvailable();
     bool _sendZoomStep(int direction);
+    bool _zoomTapAvailable(int direction) const;
+    bool _zoomHoldAvailable(int direction) const;
+    bool _flushContinuousZoomStopRetry();
+    void _observeZoomFeedback(double zoomLevel);
+    void _alignDisplayToMeasured(int preferredDirection = 0);
+    void _advanceContinuousZoomDisplay();
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
     void _pollContinuousZoom();
@@ -243,6 +258,8 @@ private:
     quint16 _appliedSdkPort = 0;
     bool _sdkResponding = false;
     double _currentZoom = kMinimumZoom;
+    double _measuredZoom = kMinimumZoom;
+    bool _measuredZoomKnown = false;
     double _maximumZoom = kAbsoluteCommandMaximumZoom;
     bool _maximumZoomKnown = false;
     bool _zoomStatusKnown = false;
@@ -250,6 +267,7 @@ private:
     double _pendingAbsoluteZoomTarget = kMinimumZoom;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
+    bool _postHoldZoomFeedbackPending = false;
     bool _cameraStatusKnown = false;
     bool _recording = false;
     bool _recordingCommandPending = false;

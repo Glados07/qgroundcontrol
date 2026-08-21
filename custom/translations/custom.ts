@@ -602,6 +602,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="456"/>
+        <source>The requested MT11 zoom is not aligned to the configured zoom step.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="489"/>
         <source>The MT11 video receiver was detached during local recording.</source>
         <translation type="unfinished"></translation>
@@ -614,11 +619,6 @@
     <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="669"/>
         <source>No response from the MT11 SDK endpoint.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="684"/>
-        <source>The MT11 camera rejected the zoom command.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -786,7 +786,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap changes the exact absolute zoom target by this amount while the current and target values are within the documented 1.0x to 30.0x absolute-command range. Holding a zoom button uses native continuous zoom across the device-reported range instead. The default tap step is 1.0x.</source>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding uses native continuous zoom across the device-reported range; raw intermediate feedback remains private and the displayed value advances only after a legal step is reached. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

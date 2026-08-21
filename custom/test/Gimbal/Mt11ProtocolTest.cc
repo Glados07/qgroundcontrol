@@ -5,6 +5,8 @@
  ****************************************************************************/
 
 #include "Mt11Protocol.h"
+#include "Mt11ZoomPolicy.h"
+#include "ZoomStepPolicy.h"
 
 #include <QtTest/QTest>
 
@@ -20,6 +22,8 @@ private slots:
     void strictFrameDecoding();
     void multiFrameDatagramIsAtomic();
     void zoomPayloads();
+    void zoomStepPolicy();
+    void mt11ZoomPolicy();
     void cameraAndFunctionPayloads();
     void videoModePayloads();
 };
@@ -192,6 +196,344 @@ void Mt11ProtocolTest::zoomPayloads()
         QByteArray::fromHex("070a"), 1.0, 30.0, &zoom));
     QVERIFY(!Mt11Protocol::parseZoomValuePayload(
         QByteArray::fromHex("0009"), 1.0, 30.0, &zoom));
+}
+
+void Mt11ProtocolTest::zoomStepPolicy()
+{
+    constexpr double minimumZoom = 1.0;
+    constexpr double absoluteMaximumZoom = 30.0;
+    constexpr double zoomStep = 1.0;
+
+    double currentZoom = minimumZoom;
+    double targetZoom = 0.0;
+    for (int expected = 2; expected <= 30; ++expected) {
+        QVERIFY(ZoomStepPolicy::stepTarget(currentZoom,
+                                           zoomStep,
+                                           minimumZoom,
+                                           absoluteMaximumZoom,
+                                           1,
+                                           &targetZoom));
+        QCOMPARE(targetZoom, static_cast<double>(expected));
+        QVERIFY(ZoomStepPolicy::isAlignedZoom(targetZoom,
+                                              zoomStep,
+                                              minimumZoom,
+                                              absoluteMaximumZoom));
+        currentZoom = targetZoom;
+    }
+    QVERIFY(!ZoomStepPolicy::stepTarget(currentZoom,
+                                        zoomStep,
+                                        minimumZoom,
+                                        absoluteMaximumZoom,
+                                        1,
+                                        &targetZoom));
+
+    for (int expected = 29; expected >= 1; --expected) {
+        QVERIFY(ZoomStepPolicy::stepTarget(currentZoom,
+                                           zoomStep,
+                                           minimumZoom,
+                                           absoluteMaximumZoom,
+                                           -1,
+                                           &targetZoom));
+        QCOMPARE(targetZoom, static_cast<double>(expected));
+        QVERIFY(ZoomStepPolicy::isAlignedZoom(targetZoom,
+                                              zoomStep,
+                                              minimumZoom,
+                                              absoluteMaximumZoom));
+        currentZoom = targetZoom;
+    }
+    QVERIFY(!ZoomStepPolicy::stepTarget(currentZoom,
+                                        zoomStep,
+                                        minimumZoom,
+                                        absoluteMaximumZoom,
+                                        -1,
+                                        &targetZoom));
+
+    // Measured feedback can be off-grid after native continuous zoom. A tap
+    // must select the next minimum-anchored stop in its requested direction,
+    // never turn that measured value into a new grid origin.
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        1.6, zoomStep, minimumZoom, absoluteMaximumZoom, 1, &targetZoom));
+    QCOMPARE(targetZoom, 2.0);
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        1.6, zoomStep, minimumZoom, absoluteMaximumZoom, -1, &targetZoom));
+    QCOMPARE(targetZoom, 1.0);
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        5.6, zoomStep, minimumZoom, absoluteMaximumZoom, 1, &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        5.6, zoomStep, minimumZoom, absoluteMaximumZoom, -1, &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        29.5, zoomStep, minimumZoom, absoluteMaximumZoom, 1, &targetZoom));
+    QCOMPARE(targetZoom, 30.0);
+    QVERIFY(ZoomStepPolicy::stepTarget(
+        29.5, zoomStep, minimumZoom, absoluteMaximumZoom, -1, &targetZoom));
+    QCOMPARE(targetZoom, 29.0);
+
+    // A non-integral device ceiling remains one exact legal terminal stop.
+    constexpr double nonIntegralMaximumZoom = 8.5;
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(nonIntegralMaximumZoom,
+                                          zoomStep,
+                                          minimumZoom,
+                                          nonIntegralMaximumZoom));
+    QVERIFY(ZoomStepPolicy::stepTarget(8.0,
+                                       zoomStep,
+                                       minimumZoom,
+                                       nonIntegralMaximumZoom,
+                                       1,
+                                       &targetZoom));
+    QCOMPARE(targetZoom, nonIntegralMaximumZoom);
+    QVERIFY(ZoomStepPolicy::stepTarget(nonIntegralMaximumZoom,
+                                       zoomStep,
+                                       minimumZoom,
+                                       nonIntegralMaximumZoom,
+                                       -1,
+                                       &targetZoom));
+    QCOMPARE(targetZoom, 8.0);
+
+    // The generic grid helper deliberately preserves its recovery behavior
+    // above the supplied ceiling. MT11 must apply its hold-only >30x gate
+    // before calling it, otherwise a downward tap at 100x would target 30x.
+    QVERIFY(!ZoomStepPolicy::stepTarget(30.0,
+                                        zoomStep,
+                                        minimumZoom,
+                                        absoluteMaximumZoom,
+                                        1,
+                                        &targetZoom));
+    QVERIFY(ZoomStepPolicy::stepTarget(30.0,
+                                       zoomStep,
+                                       minimumZoom,
+                                       absoluteMaximumZoom,
+                                       -1,
+                                       &targetZoom));
+    QCOMPARE(targetZoom, 29.0);
+    QVERIFY(!ZoomStepPolicy::stepTarget(100.0,
+                                        zoomStep,
+                                        minimumZoom,
+                                        absoluteMaximumZoom,
+                                        1,
+                                        &targetZoom));
+    QVERIFY(ZoomStepPolicy::stepTarget(100.0,
+                                       zoomStep,
+                                       minimumZoom,
+                                       absoluteMaximumZoom,
+                                       -1,
+                                       &targetZoom));
+    QCOMPARE(targetZoom, 30.0);
+    QVERIFY(!ZoomStepPolicy::isAlignedZoom(100.0,
+                                           zoomStep,
+                                           minimumZoom,
+                                           absoluteMaximumZoom));
+
+    // Public absolute-set entry points can use this predicate to reject
+    // in-range values which are nevertheless outside the configured grid.
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(2.0,
+                                          zoomStep,
+                                          minimumZoom,
+                                          absoluteMaximumZoom));
+    QVERIFY(!ZoomStepPolicy::isAlignedZoom(2.5,
+                                           zoomStep,
+                                           minimumZoom,
+                                           absoluteMaximumZoom));
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(2.5,
+                                          0.5,
+                                          minimumZoom,
+                                          absoluteMaximumZoom));
+    QVERIFY(!ZoomStepPolicy::isAlignedZoom(30.1,
+                                           zoomStep,
+                                           minimumZoom,
+                                           absoluteMaximumZoom));
+
+    QVERIFY(ZoomStepPolicy::alignmentTarget(5.5,
+                                            zoomStep,
+                                            minimumZoom,
+                                            absoluteMaximumZoom,
+                                            1,
+                                            &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(ZoomStepPolicy::alignmentTarget(5.5,
+                                            zoomStep,
+                                            minimumZoom,
+                                            absoluteMaximumZoom,
+                                            -1,
+                                            &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+}
+
+void Mt11ProtocolTest::mt11ZoomPolicy()
+{
+    constexpr double zoomStep = 1.0;
+    constexpr double deviceMaximumZoom = 165.1;
+    double targetZoom = 0.0;
+
+    // Raw measured feedback owns the protocol gate; the already-aligned
+    // display target owns grid planning for an eligible tap.
+    QVERIFY(Mt11ZoomPolicy::tapTarget(5.6,
+                                      6.0,
+                                      zoomStep,
+                                      deviceMaximumZoom,
+                                      1,
+                                      &targetZoom));
+    QCOMPARE(targetZoom, 7.0);
+    QVERIFY(Mt11ZoomPolicy::tapTarget(5.6,
+                                      6.0,
+                                      zoomStep,
+                                      deviceMaximumZoom,
+                                      -1,
+                                      &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(!Mt11ZoomPolicy::tapTarget(5.6,
+                                       5.6,
+                                       zoomStep,
+                                       deviceMaximumZoom,
+                                       1,
+                                       &targetZoom));
+
+    // Exactly 30.0x still permits a downward absolute tap. At 30.1x and
+    // above, measured feedback blocks both directions even if displayZoom is
+    // a superficially valid 30.0x target.
+    QVERIFY(!Mt11ZoomPolicy::tapTarget(30.0,
+                                       30.0,
+                                       zoomStep,
+                                       deviceMaximumZoom,
+                                       1,
+                                       &targetZoom));
+    QVERIFY(Mt11ZoomPolicy::tapTarget(30.0,
+                                      30.0,
+                                      zoomStep,
+                                      deviceMaximumZoom,
+                                      -1,
+                                      &targetZoom));
+    QCOMPARE(targetZoom, 29.0);
+    for (const double measuredZoom : {30.1, 100.0}) {
+        QVERIFY(!Mt11ZoomPolicy::tapTarget(measuredZoom,
+                                           30.0,
+                                           zoomStep,
+                                           deviceMaximumZoom,
+                                           1,
+                                           &targetZoom));
+        QVERIFY(!Mt11ZoomPolicy::tapTarget(measuredZoom,
+                                           30.0,
+                                           zoomStep,
+                                           deviceMaximumZoom,
+                                           -1,
+                                           &targetZoom));
+    }
+
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(5.6,
+                                                  zoomStep,
+                                                  deviceMaximumZoom,
+                                                  0,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(
+        targetZoom, zoomStep, 1.0, deviceMaximumZoom));
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(5.5,
+                                                  zoomStep,
+                                                  deviceMaximumZoom,
+                                                  -1,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(5.5,
+                                                  zoomStep,
+                                                  deviceMaximumZoom,
+                                                  1,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+
+    // One feedback sample may cross several legal stops. Only the farthest
+    // reached stop is published; the raw 5.6x observation never leaks out.
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(1.0,
+                                                5.6,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 5.0);
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(
+        targetZoom, zoomStep, 1.0, deviceMaximumZoom));
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(10.0,
+                                                5.6,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                -1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(ZoomStepPolicy::isAlignedZoom(
+        targetZoom, zoomStep, 1.0, deviceMaximumZoom));
+
+    // Feedback which has not crossed the next stop keeps the previous legal
+    // display target in either direction.
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(6.0,
+                                                5.6,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(6.0,
+                                                5.6,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                -1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 6.0);
+
+    // The device-reported 165.1x physical ceiling is deliberately not a
+    // display endpoint. With a 1.0x step the last published stop is 165.0x.
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(164.0,
+                                                165.0,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 165.0);
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(164.0,
+                                                165.1,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 165.0);
+    QVERIFY(Mt11ZoomPolicy::isDisplayTarget(
+        targetZoom, zoomStep, deviceMaximumZoom));
+    QVERIFY(!Mt11ZoomPolicy::isDisplayTarget(
+        165.1, zoomStep, deviceMaximumZoom));
+    QVERIFY(Mt11ZoomPolicy::heldProgressTarget(165.0,
+                                                160.4,
+                                                zoomStep,
+                                                deviceMaximumZoom,
+                                                -1,
+                                                &targetZoom));
+    QCOMPARE(targetZoom, 161.0);
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(165.1,
+                                                  zoomStep,
+                                                  deviceMaximumZoom,
+                                                  0,
+                                                  &targetZoom));
+    QCOMPARE(targetZoom, 165.0);
+
+    // Non-integral physical limits and step sizes never append an off-grid
+    // MT11 endpoint. This differs intentionally from A8 recording ceilings.
+    QVERIFY(Mt11ZoomPolicy::isDisplayTarget(29.0, 2.0, 30.0));
+    QVERIFY(!Mt11ZoomPolicy::isDisplayTarget(30.0, 2.0, 30.0));
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(
+        30.0, 2.0, 30.0, 1, &targetZoom));
+    QCOMPARE(targetZoom, 29.0);
+    QVERIFY(Mt11ZoomPolicy::isDisplayTarget(
+        165.1, 0.1, deviceMaximumZoom));
+    QVERIFY(Mt11ZoomPolicy::alignedDisplayTarget(
+        165.1, 0.1, deviceMaximumZoom, 0, &targetZoom));
+    QCOMPARE(targetZoom, 165.1);
+
+    targetZoom = 77.0;
+    QVERIFY(!Mt11ZoomPolicy::heldProgressTarget(5.6,
+                                                 6.0,
+                                                 zoomStep,
+                                                 deviceMaximumZoom,
+                                                 1,
+                                                 &targetZoom));
+    QCOMPARE(targetZoom, 77.0);
 }
 
 void Mt11ProtocolTest::cameraAndFunctionPayloads()

@@ -37,6 +37,10 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
     Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInTapAvailable READ zoomInTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutTapAvailable READ zoomOutTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInHoldAvailable READ zoomInHoldAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutHoldAvailable READ zoomOutHoldAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomControlsUnlocked READ zoomControlsUnlocked NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomCommandPending READ zoomCommandPending NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomValueUncertain READ zoomValueUncertain NOTIFY zoomAvailabilityChanged)
@@ -69,6 +73,10 @@ public:
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
     bool zoomInAvailable() const;
     bool zoomOutAvailable() const;
+    bool zoomInTapAvailable() const { return zoomInAvailable(); }
+    bool zoomOutTapAvailable() const { return zoomOutAvailable(); }
+    bool zoomInHoldAvailable() const { return zoomInAvailable(); }
+    bool zoomOutHoldAvailable() const { return zoomOutAvailable(); }
     bool zoomControlsUnlocked() const {
         return enabled() && _videoStreamAvailable && _maximumZoomKnown;
     }

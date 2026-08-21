@@ -315,6 +315,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         src/Gimbal/A8MiniZoomPolicy.h
         src/Gimbal/SiyiProtocol.cc
         src/Gimbal/SiyiProtocol.h
+        src/Gimbal/ZoomStepPolicy.cc
+        src/Gimbal/ZoomStepPolicy.h
     )
     target_include_directories(SiyiProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
@@ -332,6 +334,10 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/Gimbal/Mt11ProtocolTest.cc
         src/Gimbal/Mt11Protocol.cc
         src/Gimbal/Mt11Protocol.h
+        src/Gimbal/Mt11ZoomPolicy.cc
+        src/Gimbal/Mt11ZoomPolicy.h
+        src/Gimbal/ZoomStepPolicy.cc
+        src/Gimbal/ZoomStepPolicy.h
     )
     target_include_directories(Mt11ProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal

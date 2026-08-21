@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "A8MiniZoomPolicy.h"
+#include "ZoomStepPolicy.h"
 
 #include <QtCore/QtMath>
 
@@ -15,54 +16,6 @@ static constexpr double kComparisonTolerance = 0.051;
 // sufficient to finish actual-position verification. Target display is owned
 // separately by the Manager and does not wait for this tracker.
 static constexpr int kTargetConfirmationCount = 1;
-
-static bool isLegalZoomTenths(int zoomTenths,
-                              int stepTenths,
-                              int minimumTenths,
-                              int maximumTenths)
-{
-    if (zoomTenths < minimumTenths || zoomTenths > maximumTenths) {
-        return false;
-    }
-
-    // There is one canonical grid anchored at the minimum. The exact
-    // recording-mode ceiling is appended as the final legal stop when the last
-    // interval is shorter than zoomStep.
-    return zoomTenths == maximumTenths
-        || (zoomTenths - minimumTenths) % stepTenths == 0;
-}
-
-static void considerNearestCandidate(int candidateTenths,
-                                     int currentTenths,
-                                     int minimumTenths,
-                                     int maximumTenths,
-                                     int tieDirection,
-                                     bool* selectedValid,
-                                     int* selectedTenths,
-                                     int* selectedDistance)
-{
-    if (!selectedValid
-        || !selectedTenths
-        || !selectedDistance
-        || candidateTenths < minimumTenths
-        || candidateTenths > maximumTenths) {
-        return;
-    }
-
-    const int candidateDistance = qAbs(currentTenths - candidateTenths);
-    const bool preferredTie =
-        *selectedValid
-        && candidateDistance == *selectedDistance
-        && ((tieDirection < 0 && candidateTenths < *selectedTenths)
-            || (tieDirection >= 0 && candidateTenths > *selectedTenths));
-    if (!*selectedValid
-        || candidateDistance < *selectedDistance
-        || preferredTie) {
-        *selectedValid = true;
-        *selectedTenths = candidateTenths;
-        *selectedDistance = candidateDistance;
-    }
-}
 
 } // namespace
 
@@ -175,30 +128,8 @@ bool A8MiniZoomPolicy::isAlignedZoom(double zoomLevel,
                                      double minimumZoom,
                                      double maximumZoom)
 {
-    if (!qIsFinite(zoomLevel)
-        || !qIsFinite(zoomStep)
-        || !qIsFinite(minimumZoom)
-        || !qIsFinite(maximumZoom)
-        || zoomStep <= 0.0
-        || minimumZoom > maximumZoom
-        || zoomLevel < minimumZoom - kComparisonTolerance
-        || zoomLevel > maximumZoom + kComparisonTolerance) {
-        return false;
-    }
-
-    const int zoomTenths = qRound(zoomLevel * 10.0);
-    const int stepTenths = qRound(zoomStep * 10.0);
-    const int minimumTenths = qRound(minimumZoom * 10.0);
-    if (stepTenths < 1) {
-        return false;
-    }
-
-    // Both directions use the same minimum-anchored grid. The exact stream
-    // ceiling remains a legal endpoint even when its final interval is short:
-    // 1 -> 2 -> ... -> 5 -> 5.5 and 5.5 -> 5 -> ... -> 1.
-    const int maximumTenths = qRound(maximumZoom * 10.0);
-    return isLegalZoomTenths(
-        zoomTenths, stepTenths, minimumTenths, maximumTenths);
+    return ZoomStepPolicy::isAlignedZoom(
+        zoomLevel, zoomStep, minimumZoom, maximumZoom);
 }
 
 bool A8MiniZoomPolicy::feedbackReachedStop(double actualZoom,
@@ -351,68 +282,12 @@ bool A8MiniZoomPolicy::alignmentTarget(double currentZoom,
                                        int direction,
                                        double* targetZoom)
 {
-    if (!targetZoom
-        || !qIsFinite(currentZoom)
-        || !qIsFinite(zoomStep)
-        || !qIsFinite(minimumZoom)
-        || !qIsFinite(maximumZoom)
-        || zoomStep <= 0.0
-        || minimumZoom > maximumZoom
-        || currentZoom < minimumZoom - kComparisonTolerance
-        || currentZoom > maximumZoom + kComparisonTolerance
-        || direction < -1
-        || direction > 1) {
-        return false;
-    }
-
-    const int stepTenths = qRound(zoomStep * 10.0);
-    const int minimumTenths = qRound(minimumZoom * 10.0);
-    const int maximumTenths = qRound(maximumZoom * 10.0);
-    if (stepTenths < 1 || minimumTenths > maximumTenths) {
-        return false;
-    }
-    const int currentTenths = qBound(
-        minimumTenths,
-        qRound(currentZoom * 10.0),
-        maximumTenths);
-
-    bool selectedValid = false;
-    int selectedTenths = minimumTenths;
-    int selectedDistance = 0;
-
-    const int lowerTenths =
-        minimumTenths
-        + ((currentTenths - minimumTenths) / stepTenths) * stepTenths;
-    considerNearestCandidate(lowerTenths,
-                             currentTenths,
-                             minimumTenths,
-                             maximumTenths,
-                             direction,
-                             &selectedValid,
-                             &selectedTenths,
-                             &selectedDistance);
-    considerNearestCandidate(lowerTenths + stepTenths,
-                             currentTenths,
-                             minimumTenths,
-                             maximumTenths,
-                             direction,
-                             &selectedValid,
-                             &selectedTenths,
-                             &selectedDistance);
-    considerNearestCandidate(maximumTenths,
-                             currentTenths,
-                             minimumTenths,
-                             maximumTenths,
-                             direction,
-                             &selectedValid,
-                             &selectedTenths,
-                             &selectedDistance);
-    if (!selectedValid) {
-        return false;
-    }
-
-    *targetZoom = selectedTenths / 10.0;
-    return true;
+    return ZoomStepPolicy::alignmentTarget(currentZoom,
+                                           zoomStep,
+                                           minimumZoom,
+                                           maximumZoom,
+                                           direction,
+                                           targetZoom);
 }
 
 bool A8MiniZoomPolicy::stepTarget(double currentZoom,
@@ -422,67 +297,12 @@ bool A8MiniZoomPolicy::stepTarget(double currentZoom,
                                   int direction,
                                   double* targetZoom)
 {
-    if (!targetZoom
-        || !qIsFinite(currentZoom)
-        || !qIsFinite(zoomStep)
-        || !qIsFinite(minimumZoom)
-        || !qIsFinite(maximumZoom)
-        || zoomStep <= 0.0
-        || minimumZoom > maximumZoom
-        || (direction != -1 && direction != 1)) {
-        return false;
-    }
-
-    const int currentTenths = qRound(currentZoom * 10.0);
-    const int stepTenths = qRound(zoomStep * 10.0);
-    const int minimumTenths = qRound(minimumZoom * 10.0);
-    const int maximumTenths = qRound(maximumZoom * 10.0);
-    if (stepTenths < 1 || minimumTenths > maximumTenths) {
-        return false;
-    }
-
-    int candidateTenths = currentTenths;
-    if (direction > 0) {
-        if (currentTenths >= maximumTenths) {
-            return false;
-        }
-        if (currentTenths < minimumTenths) {
-            candidateTenths = minimumTenths;
-        } else {
-            const int nextMinimumGridTenths =
-                minimumTenths
-                + (((currentTenths - minimumTenths) / stepTenths) + 1)
-                    * stepTenths;
-            candidateTenths =
-                qMin(maximumTenths, nextMinimumGridTenths);
-        }
-    } else {
-        if (currentTenths <= minimumTenths) {
-            return false;
-        }
-        if (currentTenths > maximumTenths) {
-            candidateTenths = maximumTenths;
-        } else {
-            candidateTenths =
-                minimumTenths
-                + ((currentTenths - minimumTenths - 1) / stepTenths)
-                    * stepTenths;
-        }
-    }
-
-    if (candidateTenths < minimumTenths
-        || candidateTenths > maximumTenths
-        || !isLegalZoomTenths(candidateTenths,
-                              stepTenths,
-                              minimumTenths,
-                              maximumTenths)
-        || (direction > 0 && candidateTenths <= currentTenths)
-        || (direction < 0 && candidateTenths >= currentTenths)) {
-        return false;
-    }
-
-    *targetZoom = candidateTenths / 10.0;
-    return true;
+    return ZoomStepPolicy::stepTarget(currentZoom,
+                                      zoomStep,
+                                      minimumZoom,
+                                      maximumZoom,
+                                      direction,
+                                      targetZoom);
 }
 
 bool A8MiniZoomPolicy::heldTarget(double startZoom,

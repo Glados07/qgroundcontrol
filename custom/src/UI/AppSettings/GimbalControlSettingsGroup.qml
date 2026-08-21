@@ -17,7 +17,9 @@ Loader {
 
     implicitWidth: item ? item.implicitWidth : 0
     implicitHeight: item ? item.implicitHeight : 0
-    active: QGroundControl.corePlugin && QGroundControl.corePlugin.gimbalControlSettings
+    active: Boolean(QGroundControl.corePlugin
+                    && QGroundControl.corePlugin.gimbalControlSettings)
+    visible: active
     sourceComponent: settingsComponent
 
     property var gimbalControlSettings: QGroundControl.corePlugin
@@ -29,33 +31,6 @@ Loader {
 
         ColumnLayout {
             spacing: ScreenTools.defaultFontPixelHeight
-
-            SettingsGroupLayout {
-                Layout.fillWidth: true
-                heading: qsTr("SIYI A8 Mini Gimbal Camera")
-                headingDescription: qsTr("Private SDK camera controls.")
-
-                FactCheckBoxSlider {
-                    Layout.fillWidth: true
-                    text: qsTr("Enabled")
-                    fact: root.gimbalControlSettings.enabled
-                }
-
-                LabelledFactTextField {
-                    Layout.fillWidth: true
-                    label: qsTr("SDK Host")
-                    fact: root.gimbalControlSettings.sdkHost
-                    enabled: root.gimbalControlSettings.enabled.rawValue
-                }
-
-                LabelledFactTextField {
-                    Layout.fillWidth: true
-                    label: qsTr("SDK Port")
-                    fact: root.gimbalControlSettings.sdkPort
-                    enabled: root.gimbalControlSettings.enabled.rawValue
-                }
-
-            }
 
             SettingsGroupLayout {
                 Layout.fillWidth: true
@@ -83,6 +58,32 @@ Loader {
                 }
             }
 
+            SettingsGroupLayout {
+                Layout.fillWidth: true
+                heading: qsTr("SIYI A8 Mini Gimbal Camera")
+                headingDescription: qsTr("Private SDK camera controls.")
+
+                FactCheckBoxSlider {
+                    Layout.fillWidth: true
+                    text: qsTr("Enabled")
+                    fact: root.gimbalControlSettings.enabled
+                }
+
+                LabelledFactTextField {
+                    Layout.fillWidth: true
+                    label: qsTr("SDK Host")
+                    fact: root.gimbalControlSettings.sdkHost
+                    enabled: root.gimbalControlSettings.enabled.rawValue
+                }
+
+                LabelledFactTextField {
+                    Layout.fillWidth: true
+                    label: qsTr("SDK Port")
+                    fact: root.gimbalControlSettings.sdkPort
+                    enabled: root.gimbalControlSettings.enabled.rawValue
+                }
+
+            }
             SettingsGroupLayout {
                 Layout.fillWidth: true
                 heading: qsTr("UniPod MT11 Gimbal Camera")

@@ -29,8 +29,12 @@ Item {
     readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
     readonly property bool canSend: online
-    readonly property bool canZoomIn: Boolean(manager && manager.zoomInAvailable)
-    readonly property bool canZoomOut: Boolean(manager && manager.zoomOutAvailable)
+    readonly property bool canTapZoomIn: Boolean(manager && manager.zoomInTapAvailable)
+    readonly property bool canTapZoomOut: Boolean(manager && manager.zoomOutTapAvailable)
+    readonly property bool canHoldZoomIn: Boolean(manager && manager.zoomInHoldAvailable)
+    readonly property bool canHoldZoomOut: Boolean(manager && manager.zoomOutHoldAvailable)
+    readonly property bool canZoomIn: canTapZoomIn || canHoldZoomIn
+    readonly property bool canZoomOut: canTapZoomOut || canHoldZoomOut
     readonly property real zoomValue: manager ? Number(manager.currentZoom) : 1.0
 
     implicitWidth: zoomColumn.implicitWidth
@@ -177,6 +181,10 @@ Item {
                     if (gestureState !== root.gesturePressed) {
                         return
                     }
+                    if (!root.canHoldZoomOut) {
+                        gestureState = root.gestureConsumed
+                        return
+                    }
 
                     // Consume before calling the manager so a synchronous
                     // availability change cannot turn this hold into a tap.
@@ -198,6 +206,7 @@ Item {
                         root.manager.stopZoom()
                     } else if (completedState === root.gesturePressed
                                && releasedInside
+                               && root.canTapZoomOut
                                && root.manager) {
                         root.manager.zoomOut()
                     }
@@ -313,6 +322,10 @@ Item {
                     if (gestureState !== root.gesturePressed) {
                         return
                     }
+                    if (!root.canHoldZoomIn) {
+                        gestureState = root.gestureConsumed
+                        return
+                    }
 
                     // Consume before calling the manager so release cannot
                     // append a short-step command to continuous zoom.
@@ -334,6 +347,7 @@ Item {
                         root.manager.stopZoom()
                     } else if (completedState === root.gesturePressed
                                && releasedInside
+                               && root.canTapZoomIn
                                && root.manager) {
                         root.manager.zoomIn()
                     }
