@@ -115,10 +115,11 @@ Item {
         case MAVLink.MAV_BATTERY_CHARGE_STATE_OK:
             return { source: "/qmlimages/BatteryGreen.svg", color: qgcPal.colorGreen }
         case MAVLink.MAV_BATTERY_CHARGE_STATE_LOW:
-            return { source: "/qmlimages/BatteryOrange.svg", color: qgcPal.colorOrange }
+            return { source: "/qmlimages/BatteryYellow.svg", color: qgcPal.colorYellow }
         case MAVLink.MAV_BATTERY_CHARGE_STATE_CRITICAL:
-            return { source: "/qmlimages/BatteryCritical.svg", color: qgcPal.colorRed }
+            return { source: "/qmlimages/BatteryOrange.svg", color: qgcPal.colorOrange }
         case MAVLink.MAV_BATTERY_CHARGE_STATE_EMERGENCY:
+            return { source: "/qmlimages/BatteryCritical.svg", color: qgcPal.colorRed }
         case MAVLink.MAV_BATTERY_CHARGE_STATE_FAILED:
         case MAVLink.MAV_BATTERY_CHARGE_STATE_UNHEALTHY:
             return { source: "/qmlimages/BatteryEMERGENCY.svg", color: qgcPal.colorRed }
