@@ -23,9 +23,9 @@ struct UavcanPowerParameter {
 };
 
 constexpr UavcanPowerParameter kUavcanPowerParameters[] = {
-    {"UAVCAN_POW_LOW",   "low",       50.f},
-    {"UAVCAN_POW_CRITI", "critical",  45.f},
-    {"UAVCAN_POW_EMERG", "emergency", 40.f},
+    {"UAVCAN_POW_LOW",   "low",       47.4f},
+    {"UAVCAN_POW_CRITI", "critical",  45.6f},
+    {"UAVCAN_POW_EMERG", "emergency", 44.4f},
 };
 
 const UavcanPowerParameter *findUavcanPowerParameter(const QString &name)
