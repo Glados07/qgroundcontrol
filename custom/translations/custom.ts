@@ -595,11 +595,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1690"/>
-        <source>MT11 held zoom stopped because no 0x18 feedback reached the next step.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="545"/>
         <source>Failed to stop MT11 zoom before changing the video mode.</source>
         <translation type="unfinished"></translation>
@@ -804,7 +799,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding advances exactly one configured step at a time. When both the measured and target zoom stay at or below 30.0x, each held step uses an exact 0x0F command; a step which crosses or stays above 30.0x uses a bounded 0x05 pulse and stops as soon as authoritative 0x18 feedback reaches or passes the target. The control displays the issued Target separately from the Actual value updated only by 0x18. A 1.0x step has a nominal minimum target cadence of 600 ms and a 2.0x step has 1200 ms, bounded to 350-2000 ms for other settings; waiting for measured arrival and the stop/settle sequence can extend the actual interval. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Holding for 420 ms starts one native 0x05 continuous-zoom run over the full 1.0x-to-device-maximum range and moves smoothly at the camera's native speed until release, cancellation or a physical endpoint. The configured step does not control held-motion speed or repeatedly stop and restart the lens. During a hold, authoritative 0x18 feedback is requested every 100 ms: Actual exposes the measured value while Target remains a monotonic legal step reference. Taking over a pending tap first sends 0x05 stop, waits 150 ms, then sends the held direction and at most one direction copy while the control remains held. Release and cancellation send an immediate stop plus one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

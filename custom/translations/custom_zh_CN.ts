@@ -595,11 +595,6 @@
         <translation>MT11 连续变焦已在安全超时后停止。</translation>
     </message>
     <message>
-        <location filename="../src/Gimbal/Mt11ControlManager.cc" line="1690"/>
-        <source>MT11 held zoom stopped because no 0x18 feedback reached the next step.</source>
-        <translation>由于没有0x18反馈到达下一步长档位，MT11长按变倍已停止。</translation>
-    </message>
-    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="545"/>
         <source>Failed to stop MT11 zoom before changing the video mode.</source>
         <translation>切换视频模式前停止MT11变倍失败。</translation>
@@ -804,8 +799,8 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. Holding advances exactly one configured step at a time. When both the measured and target zoom stay at or below 30.0x, each held step uses an exact 0x0F command; a step which crosses or stays above 30.0x uses a bounded 0x05 pulse and stops as soon as authoritative 0x18 feedback reaches or passes the target. The control displays the issued Target separately from the Actual value updated only by 0x18. A 1.0x step has a nominal minimum target cadence of 600 ms and a 2.0x step has 1200 ms, bounded to 350-2000 ms for other settings; waiting for measured arrival and the stop/settle sequence can extend the actual interval. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
-        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法档位；快速连点从上一个已显示目标继续。长按严格按所配置步长逐档推进：实测和目标倍率都不超过30.0x时，每档使用精确0x0F命令；跨越或保持在30.0x以上的档位使用有界0x05脉冲，并在权威0x18反馈到达或越过目标后立即停止。控制栏分别显示已下发的目标倍率和仅由0x18更新的实际倍率。步长为1.0x时名义最短目标节奏为每600毫秒一档，2.0x时为每1200毫秒一档，其他设置限制在350至2000毫秒；等待实测到档及停止/稳定序列会延长实际档间隔。30.0x以上双向禁用短按，只允许长按。默认步长为1.0x。</translation>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Holding for 420 ms starts one native 0x05 continuous-zoom run over the full 1.0x-to-device-maximum range and moves smoothly at the camera's native speed until release, cancellation or a physical endpoint. The configured step does not control held-motion speed or repeatedly stop and restart the lens. During a hold, authoritative 0x18 feedback is requested every 100 ms: Actual exposes the measured value while Target remains a monotonic legal step reference. Taking over a pending tap first sends 0x05 stop, waits 150 ms, then sends the held direction and at most one direction copy while the control remains held. Release and cancellation send an immediate stop plus one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法目标；快速连点从上一个已显示目标继续。当到30.0x的剩余区间不足一个配置步长时，短按会直接使用精确的30.0x作为最后目标，例如步长2.0x时序列为1.0/3.0/.../29.0/30.0。长按420毫秒后，在1.0x至设备上限的全范围内只启动一次原生0x05连续变倍，并以相机原生速度平滑运动，直至释放、取消或到达物理端点；配置步长不控制长按物理速度，也不会让镜头反复停止和重启。长按期间每100毫秒请求一次权威0x18反馈：Actual显示实测值，Target保持单调的合法步长参考。长按接管未完成的短按时，先发送0x05停止，等待150毫秒，再发送长按方向；只要控件仍处于按住状态，最多补发一份方向命令。释放和取消会立即停止，并发送一份有界安全副本。30.0x以上双向禁用短按，只允许长按。默认步长为1.0x。</translation>
     </message>
 </context>
 <context>

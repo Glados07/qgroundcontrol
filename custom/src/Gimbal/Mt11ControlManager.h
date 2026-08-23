@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
@@ -186,10 +185,8 @@ private slots:
 private:
     enum class ContinuousZoomPhase {
         Idle,
-        AbsoluteStep,
         ManualHandoff,
-        ManualPulse,
-        StepDwell,
+        ManualContinuous,
     };
 
     void _configureSdkEndpoint();
@@ -197,17 +194,11 @@ private:
     bool _sendZoomStep(int direction);
     bool _zoomTapAvailable(int direction) const;
     bool _zoomHoldAvailable(int direction) const;
+    bool _zoomBoundaryReached(int direction) const;
     bool _postHoldHighZoomOverrideAllowed(int direction) const;
     bool _flushContinuousZoomStopRetry();
     void _observeZoomFeedback(double zoomLevel);
     void _alignDisplayToMeasured(int preferredDirection = 0);
-    bool _startNextContinuousZoomStep();
-    bool _sendContinuousAbsoluteStep(double targetZoom);
-    bool _startContinuousManualStep(double targetZoom);
-    void _completeContinuousZoomStep();
-    void _stopContinuousManualPulse();
-    void _retryContinuousManualPulseStop();
-    void _handleContinuousManualPulseTimeout();
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
     void _startPendingContinuousZoom();
@@ -263,10 +254,7 @@ private:
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
     QTimer _continuousZoomStartTimer;
-    QTimer _continuousZoomStepTimer;
     QTimer _continuousZoomPollTimer;
-    QTimer _continuousZoomPulseWatchdog;
-    QTimer _continuousZoomPulseStopRetryTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStopRetryTimer;
     QTimer _recordingStatusDelayTimer;
@@ -293,8 +281,6 @@ private:
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
     ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
-    double _continuousZoomStepTarget = kMinimumZoom;
-    QElapsedTimer _continuousZoomStepClock;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
     bool _postHoldZoomFeedbackPending = false;
