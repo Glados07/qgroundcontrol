@@ -99,8 +99,8 @@ ColumnLayout {
             Layout.preferredHeight: root._cameraSelectorHeight
                                     + cameraSelector.innerMargin * 2
             radius: height / 2
-            color: "#dc121a24"
-            border.color: "#566f8290"
+            color: "#b83b4b58"
+            border.color: "#708fa4b3"
             border.width: 1
 
             readonly property real innerMargin: Math.max(

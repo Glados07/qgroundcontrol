@@ -22,8 +22,8 @@ Rectangle {
     // Enabled by the MT11 wrapper. Keeping this off makes the A8 Mini control
     // layout and manager contract unchanged.
     property bool thermalControlsVisible: false
-    // MT11 exposes both the legal step target and authoritative 0x18
-    // feedback. A8 keeps its existing single-value presentation.
+    // Optional diagnostic presentation. Product camera wrappers keep this
+    // disabled so the normal control bar shows one target value consistently.
     property bool showActualZoom: false
 
     readonly property bool available: Boolean(manager && manager.enabled)
@@ -33,7 +33,7 @@ Rectangle {
     readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.48
     readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.45
     readonly property color accentColor: "#65d9f4"
-    readonly property color panelColor: online ? "#e0121a24" : "#d018202a"
+    readonly property color panelColor: online ? "#b83b4b58" : "#aa303c47"
     readonly property color buttonColor: "#321f2b36"
     readonly property color buttonHoverColor: "#4a334653"
     readonly property color buttonPressedColor: "#e8f2f7fa"
@@ -46,11 +46,6 @@ Rectangle {
                                                    && !recordingSessionCapturing
                                                    && !recordingSessionPending
     readonly property bool recordingSessionVisualActive: recordingSessionActive || recordingSessionCapturing
-    readonly property bool mediaErrorVisible: Boolean(manager
-                                                       && (recordingSessionFailed
-                                                           || manager.localMediaError.length > 0
-                                                           || (manager.lastError.length > 0
-                                                               && !recordingSessionCapturing)))
     readonly property bool videoModeKnown: Boolean(thermalControlsVisible
                                                      && manager
                                                      && manager.videoModeKnown)
@@ -68,9 +63,7 @@ Rectangle {
     height: implicitHeight
     radius: Math.min(14, ScreenTools.defaultFontPixelHeight * 0.7)
     color: panelColor
-    border.color: mediaErrorVisible
-                  ? qgcPal.colorRed
-                  : (online ? "#567b93a6" : "#50677480")
+    border.color: online ? "#708fa4b3" : "#6077828b"
     border.width: 1
     visible: available
 

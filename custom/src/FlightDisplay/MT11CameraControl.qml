@@ -38,7 +38,8 @@ Item {
         onLoaded: {
             item.manager = Qt.binding(function() { return root.manager })
             item.thermalControlsVisible = true
-            item.showActualZoom = true
+            // Keep the same compact target-only zoom presentation as A8 Mini.
+            item.showActualZoom = false
         }
 
         onStatusChanged: {

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
@@ -216,13 +217,13 @@ private:
     bool _zoomTapAvailable(int direction) const;
     bool _zoomHoldAvailable(int direction) const;
     bool _zoomBoundaryReached(int direction) const;
-    bool _postHoldHighZoomOverrideAllowed(int direction) const;
     bool _flushContinuousZoomStopRetry();
     void _observeZoomFeedback(double zoomLevel);
     void _alignDisplayToMeasured(int preferredDirection = 0);
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
     void _startPendingContinuousZoom();
+    void _advanceContinuousZoomPace();
     void _pollContinuousZoom();
     void _retryContinuousZoomStop();
     void _finishContinuousZoomState();
@@ -275,6 +276,7 @@ private:
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
     QTimer _continuousZoomStartTimer;
+    QTimer _continuousZoomPaceTimer;
     QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStopRetryTimer;
@@ -299,12 +301,19 @@ private:
     bool _zoomStatusKnown = false;
     bool _zoomCommandPending = false;
     double _pendingAbsoluteZoomTarget = kMinimumZoom;
+    int _absoluteZoomTargetFeedbackCount = 0;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
     ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
+    bool _continuousZoomDriveRunning = false;
+    QElapsedTimer _continuousZoomMotionElapsed;
+    int _continuousZoomEndpointFeedbackCount = 0;
+    bool _continuousZoomNonEndpointObserved = false;
     bool _postHoldZoomFeedbackPending = false;
+    int _postHoldBoundaryCandidate = 0;
+    int _postHoldBoundaryFeedbackCount = 0;
     bool _cameraStatusKnown = false;
     bool _recording = false;
     bool _recordingCommandPending = false;
