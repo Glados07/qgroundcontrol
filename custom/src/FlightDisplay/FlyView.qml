@@ -210,6 +210,7 @@ Item {
             anchors.fill: widgetLayer
             z: _fullItemZorder + 2
             parentToolInsets: widgetLayer.totalToolInsets
+            rightTopReserve: _rightPanelWidth
             mapControl: _mapControl
             visible: !_anyVideoFullScreen
         }

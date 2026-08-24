@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Fly View custom overlay for the heading compass bar and fuel-cell warning.
+ * Fly View custom overlay for vehicle/gimbal compass bars and fuel-cell warning.
  *
  ****************************************************************************/
 
@@ -18,17 +18,34 @@ Item {
     property var parentToolInsets
     property var totalToolInsets: toolInsets
     property var mapControl
+    property real rightTopReserve: 0
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
+    property var _gimbalController: _activeVehicle ? _activeVehicle.gimbalController : null
+    property var _activeGimbal: _gimbalController ? _gimbalController.activeGimbal : null
     property var _flyViewCustomSettings: QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
     property bool _showHeadingCompassBar: Boolean(_flyViewCustomSettings &&
                                                   _flyViewCustomSettings.showHeadingCompassBar &&
                                                   _flyViewCustomSettings.showHeadingCompassBar.rawValue)
+    property bool _showGimbalHeadingCompassBar: Boolean(_flyViewCustomSettings &&
+                                                        _flyViewCustomSettings.showGimbalHeadingCompassBar &&
+                                                        _flyViewCustomSettings.showGimbalHeadingCompassBar.rawValue)
     property real _heading: _activeVehicle ? Number(_activeVehicle.heading.rawValue) : NaN
     property bool _headingValid: isFinite(_heading)
+    property real _gimbalAbsoluteYaw: _activeGimbal ? Number(_activeGimbal.absoluteYaw.rawValue) : NaN
+    property real _gimbalBodyYaw: _activeGimbal ? Number(_activeGimbal.bodyYaw.rawValue) : NaN
+    // Native Gimbal has no per-attitude timestamp. This vehicle-link gate
+    // intentionally matches the top toolbar's feedback validity boundary.
+    property bool _vehicleCommunicationLost: !_activeVehicle ||
+                                             !_activeVehicle.vehicleLinkManager ||
+                                             _activeVehicle.vehicleLinkManager.communicationLost
+    property bool _gimbalHeadingValid: Boolean(_activeVehicle &&
+                                               !_vehicleCommunicationLost &&
+                                               _activeGimbal &&
+                                               isFinite(_gimbalAbsoluteYaw))
     property real _toolsMargin: ScreenTools.defaultFontPixelWidth * 0.75
 
-    // 罗盘条只占用底部中央区域；关闭时完整透传 QGC 原生 inset。
+    // 两条罗盘分别只占用顶部/底部中央区域；关闭时完整透传 QGC 原生 inset。
     QGCToolInsets {
         id: toolInsets
         leftEdgeTopInset:       parentToolInsets.leftEdgeTopInset
@@ -38,12 +55,58 @@ Item {
         rightEdgeCenterInset:   parentToolInsets.rightEdgeCenterInset
         rightEdgeBottomInset:   parentToolInsets.rightEdgeBottomInset
         topEdgeLeftInset:       parentToolInsets.topEdgeLeftInset
-        topEdgeCenterInset:     parentToolInsets.topEdgeCenterInset
+        topEdgeCenterInset:     Math.max(parentToolInsets.topEdgeCenterInset,
+                                         gimbalCompassBarLoader.visible
+                                         ? gimbalCompassBarLoader.y + gimbalCompassBarLoader.height
+                                         : 0)
         topEdgeRightInset:      parentToolInsets.topEdgeRightInset
         bottomEdgeLeftInset:    parentToolInsets.bottomEdgeLeftInset
         bottomEdgeCenterInset:  Math.max(parentToolInsets.bottomEdgeCenterInset,
                                          compassBarLoader.visible ? parent.height - compassBarLoader.y : 0)
         bottomEdgeRightInset:   parentToolInsets.bottomEdgeRightInset
+    }
+
+    // The gimbal bar uses the active MAVLink gimbal's feedback-confirmed
+    // earth-frame azimuth. bodyYaw is shown only as a secondary relative value.
+    Loader {
+        id: gimbalCompassBarLoader
+
+        readonly property real _safeLeft: parentToolInsets.leftEdgeTopInset + root._toolsMargin
+        readonly property real _safeRight: Math.max(parentToolInsets.rightEdgeTopInset,
+                                                     root.rightTopReserve) + root._toolsMargin
+        readonly property real _availableWidth: Math.max(0,
+                                                         parent.width - _safeLeft - _safeRight)
+
+        active: root.visible &&
+                root._showGimbalHeadingCompassBar &&
+                root._gimbalHeadingValid
+        visible: active && status === Loader.Ready && width > 0
+        source: "qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml"
+        anchors.top: parent.top
+        anchors.topMargin: parentToolInsets.topEdgeCenterInset + root._toolsMargin
+        width: Math.min(item ? item.implicitWidth : ScreenTools.defaultFontPixelWidth * 50,
+                        _availableWidth)
+        height: item ? item.implicitHeight : 0
+        x: Math.max(_safeLeft,
+                    Math.min((parent.width - width) / 2,
+                             parent.width - _safeRight - width))
+
+        onLoaded: {
+            item.directionDegrees = Qt.binding(function() {
+                return root._gimbalAbsoluteYaw
+            })
+            item.secondaryDegrees = Qt.binding(function() {
+                return root._gimbalBodyYaw
+            })
+            item.indicatorPrefix = qsTr("Gimbal")
+            item.secondaryPrefix = qsTr("REL")
+        }
+
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.warn("Fly View gimbal compass bar failed to load:", source)
+            }
+        }
     }
 
     // 新增 QML 未注册到原生 FlightDisplay 模块，使用明确的 custom QRC 地址加载。
@@ -84,7 +147,10 @@ Item {
 
         active:                   _reloadEnabled && _parametersReady
         anchors.top:              parent.top
-        anchors.topMargin:        parentToolInsets.topEdgeCenterInset + ScreenTools.defaultFontPixelHeight * 5
+        anchors.topMargin:        Math.max(parentToolInsets.topEdgeCenterInset +
+                                           ScreenTools.defaultFontPixelHeight * 5,
+                                           toolInsets.topEdgeCenterInset +
+                                           ScreenTools.defaultFontPixelHeight * 2)
         anchors.horizontalCenter: parent.horizontalCenter
         sourceComponent:          generatorBusVoltageAlertComponent
     }

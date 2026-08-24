@@ -36,6 +36,7 @@ SettingsPage {
     property Fact   _showAdditionalIndicatorsCompass:   _flyViewSettings.showAdditionalIndicatorsCompass
     property Fact   _lockNoseUpCompass:                 _flyViewSettings.lockNoseUpCompass
     property Fact   _showHeadingCompassBar:             _flyViewCustomSettings ? _flyViewCustomSettings.showHeadingCompassBar : null
+    property Fact   _showGimbalHeadingCompassBar:       _flyViewCustomSettings ? _flyViewCustomSettings.showGimbalHeadingCompassBar : null
     property Fact   _guidedMinimumAltitude:             _flyViewSettings.guidedMinimumAltitude
     property Fact   _guidedMaximumAltitude:             _flyViewSettings.guidedMaximumAltitude
     property Fact   _maxGoToLocationDistance:           _flyViewSettings.maxGoToLocationDistance
@@ -222,7 +223,8 @@ SettingsPage {
         heading:            qsTr("Instrument Panel")
         visible:            _showAdditionalIndicatorsCompass.visible ||
                             _lockNoseUpCompass.visible ||
-                            Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible)
+                            Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible) ||
+                            Boolean(_showGimbalHeadingCompassBar && _showGimbalHeadingCompassBar.visible)
 
         Loader {
             id:                 headingCompassBarToggleLoader
@@ -233,8 +235,22 @@ SettingsPage {
             visible:            active
 
             sourceComponent: FactCheckBoxSlider {
-                text:           qsTr("Show Heading Compass Bar")
+                text:           qsTr("Show Vehicle Heading Compass Bar")
                 fact:           _showHeadingCompassBar
+            }
+        }
+
+        Loader {
+            id:                 gimbalHeadingCompassBarToggleLoader
+            Layout.fillWidth:   true
+            Layout.preferredHeight: item ? item.implicitHeight : 0
+            Layout.minimumHeight:   item ? item.implicitHeight : 0
+            active:             _showGimbalHeadingCompassBar !== null
+            visible:            active
+
+            sourceComponent: FactCheckBoxSlider {
+                text:           qsTr("Show Gimbal Heading Compass Bar")
+                fact:           _showGimbalHeadingCompassBar
             }
         }
 

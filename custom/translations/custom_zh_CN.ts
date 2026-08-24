@@ -92,9 +92,27 @@
 <context>
     <name>FlyViewSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="233"/>
-        <source>Show Heading Compass Bar</source>
-        <translation>显示航向罗盘条</translation>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="238"/>
+        <source>Show Vehicle Heading Compass Bar</source>
+        <translation>显示飞行器航向罗盘条</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="252"/>
+        <source>Show Gimbal Heading Compass Bar</source>
+        <translation>显示云台指向罗盘条</translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewCustomLayer</name>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="101"/>
+        <source>Gimbal</source>
+        <translation>云台</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="102"/>
+        <source>REL</source>
+        <translation>相对</translation>
     </message>
 </context>
 <context>

@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/gimbal`
 
-最后更新：2026-08-23
+最后更新：2026-08-24
 
 ## 1. 当前开发进度
 
@@ -15,7 +15,7 @@
 1. Viewer3D 三维飞行视图。
 2. 思翼 A8 Mini 云台控制与独立本地照片/录像。
 3. RTSP 视频流集成与 Android H.264/H.265 低延迟硬件解码优先策略。
-4. 飞行界面底部航向罗盘条。
+4. 飞行界面上下双罗盘条（底部飞行器航向＋顶部云台指向）。
 5. Android 遥控器默认界面缩放。
 6. Android USB 飞控连接。
 7. Fuel 燃料状态与低电压告警。
@@ -27,9 +27,9 @@
 各模块当前所处阶段如下：
 
 - **已集成**：Viewer3D、思翼云台、Fuel、Proximity Radar、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
-- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、UniPod MT11私有SDK与变焦/热成像/变焦+热成像拼接三种工作模式、通用独立第二路RTSP、Map/Video 1/Video 2三视图、统一视觉的双相机右栏、底部航向罗盘条、Android 86%界面缩放缺省值、Android H.264/H.265厂商MediaCodec优先策略和Android USB串口管理器已经进入当前工作树。H.264只提升经过 `androidmedia` 插件与厂商名称筛选且原生接受 `avc` 的decoder；H.265兼容原生 `hvc1` 的厂商decoder可直接提rank，只有H.265 Annex-B厂商decoder需要独立adapter。软件decoder rank均保留。双路是否能各自创建并持续驱动独立MediaCodec实例，仍须按第12章在目标设备验证，不能仅凭协议测试、静态接线、候选rank或adapter注册判定整机验收通过。
+- **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放即时单击/原生连续长按状态机、SD卡与本地媒体双支路、UniPod MT11私有SDK与变焦/热成像/变焦+热成像拼接三种工作模式、通用独立第二路RTSP、Map/Video 1/Video 2三视图、统一视觉的双相机右栏、底部飞行器航向与顶部云台指向双罗盘条、Android 86%界面缩放缺省值、Android H.264/H.265厂商MediaCodec优先策略和Android USB串口管理器已经进入当前工作树。H.264只提升经过 `androidmedia` 插件与厂商名称筛选且原生接受 `avc` 的decoder；H.265兼容原生 `hvc1` 的厂商decoder可直接提rank，只有H.265 Annex-B厂商decoder需要独立adapter。软件decoder rank均保留。双路是否能各自创建并持续驱动独立MediaCodec实例，仍须按第12章在目标设备验证，不能仅凭协议测试、静态接线、候选rank或adapter注册判定整机验收通过。
 - **已有实测基础与最新日志边界**：Ubuntu 24.04 下 A8 Mini 云台控制及 H.265 RTSP 播放曾正常；Android 下同一云台使用 H.264 编码曾正常。MT11 `rtsp://192.168.144.24:8554/video1` 的SDP已由外部工具确认为标准RTSP、H.265 Main、1920×1080、30 fps，用户也已在官方QGC验证同一URL可播放。14:28 Desktop附件中MT11 16次start、16次均未到SETUP；0e44随后证明同机GStreamer/GIO会把私网RTSP误送到 `192.168.163.1:7897` 系统代理。最新295d Desktop附件是在Ubuntu系统代理仍开启的条件下运行，但进程先打印GIO direct resolver；MT11 URL 2从标准OPTIONS依次进入DESCRIBE、SETUP、PLAY，随后取得source媒体首帧、实例化 `libav/avdec_h265`、输出1920×1080 I420 25 fps解码首帧并到达sink，证明本轮Desktop单路MT11画面已恢复，也把系统代理误路由闭环为这次黑屏的程序根因。该次A8未连接且持续失败；MT11在60.986秒因21秒无帧被watchdog重启，之后连接失败。因此它不是A8+MT11双路、长期断流重连或Android双MediaCodec验收，后者仍须目标遥控器实测。
-- **功能边界**：本次实现的是 QGC 根据活动飞行器 `Vehicle.heading` 绘制的航向罗盘条，不是思翼视频码流内的 OSD，也不表示航点方向、航线偏差或下一航段。
+- **功能边界**：底部条仍由活动飞行器 `Vehicle.heading` 表示机头航向；顶部条读取顶部MAVLink云台栏同一个 `activeVehicle.gimbalController.activeGimbal`，以 `absoluteYaw` 作为世界坐标主指向，并以 `bodyYaw` 显示 `REL` 相对机头副值。它们都是QGC遥测可视化，不是视频码流OSD，也不表示航点方向、航线偏差或下一航段。顶部条不读取A8 Mini/MT11私有SDK，不与右侧相机选择器或相机工作模式联动；云台不提供有效MAVLink姿态反馈时不伪造角度。
 
 ### 1.2 Viewer3D 三维飞行视图（已集成）
 
@@ -96,14 +96,15 @@
 - 没有兼容厂商硬解时，H.265适配器不注册，且H.264/H.265原生软件decoder rank始终保留为安全回退，避免设备直接黑屏；因此该开关表示优先兼容候选，不是对所有设备无条件保证硬解。
 - 非Android平台不受该策略影响；H.265播放支路的格式转换不修改原生 `hvc1` 录像支路。
 
-### 1.5 飞行界面底部航向罗盘条（代码已集成，待界面回归）
+### 1.5 飞行界面双罗盘条（代码已集成，待真机界面回归）
 
-- 从 `custom-example` 选择性移植底部横向航向条、中央航向数值框和固定指针，不移植右下圆形罗盘、姿态仪及其无关资源。
-- 罗盘条读取活动飞行器 `Vehicle.heading.rawValue`，显示 N、NE、E、SE、S、SW、W、NW 方位及中央当前航向角；不存在活动飞行器或航向无效时不显示。
+- 从 `custom-example` 选择性移植横向航向条、中央数值框和固定指针，不移植右下圆形罗盘、姿态仪及其无关资源。同一个 `FlyViewCompassBar.qml` 同时用于底部飞行器航向和顶部云台指向，避免复制方位滚动算法。
+- 底部条读取活动飞行器 `Vehicle.heading.rawValue`；顶部条跟随MAVLink `gimbalController.activeGimbal`，主值为 `absoluteYaw.rawValue` 并显示 `Gimbal`前缀，副值为 `bodyYaw.rawValue` 并显示 `REL`前缀。两者均显示 N、NE、E、SE、S、SW、W、NW；组件将主值归一化到 `[0°, 360°)`，`REL` 保留带符号的相对角。
 - 使用 11 个相对方位 Label 实现连续滚动和 359°/0° 跨界，替代示例的 720 个 Label，降低 Android 上每次航向更新的 QML 重算量。
-- 新增 `FlyView/showHeadingCompassBar` 持久化 Fact，默认关闭、无需重启；开关位于 Application Settings -> Fly View -> Instrument Panel。缺少保存值时使用关闭默认值，用户已经保存的选择不被升级覆盖。
-- `FlyViewCustomLayer` 通过显式 custom QRC Loader 加载罗盘条；位置和首选宽度与 custom-example 一致，固定为 `50 × defaultFontPixelWidth` 并贴近飞行界面底边，仅在整个 Fly View 本身不足以容纳时按左右基础 margin 收窄。PIP、虚拟摇杆和右下仪表的角落 inset 不再参与罗盘条宽度计算，避免单侧最大 inset 被左右重复扣除后在 86% 缩放或 PIP 拉伸时把罗盘条压成一小块；显示时仍只增加 `bottomEdgeCenterInset`。罗盘条是纯显示层，不截获其下方地图的拖动、缩放或触摸事件；关闭开关时完整透传原生 insets。
-- 普通地图主视图、视频主视图和 Viewer3D 使用同一 custom overlay；QGC 原生全屏视频模式会隐藏整个 custom overlay，因此该模式下罗盘条随之隐藏。
+- `FlyView/showHeadingCompassBar` 与新增 `FlyView/showGimbalHeadingCompassBar` 均为持久化 bool Fact，默认关闭、无需重启且切换立即生效；两个开关都位于 Application Settings -> Fly View -> Instrument Panel，界面文案分别为“显示飞行器航向罗盘条”和“显示云台指向罗盘条”。两键独立保存，新键缺失时仅使用 `false`，不覆盖旧底部开关。
+- `FlyViewCustomLayer` 通过两个显式 custom QRC Loader 复用同一罗盘组件。底部条保持 `50 × defaultFontPixelWidth` 首选宽度，仅按Fly View屏幕边界收窄，不受PIP/虚拟摇杆/右下仪表角落inset反复扣减，并只合并 `bottomEdgeCenterInset`。顶部条从 `parentToolInsets.topEdgeCenterInset + margin` 向下排列，宽度及 `x` 在左侧 `leftEdgeTopInset`、右侧 `max(rightEdgeTopInset, rightTopReserve)` 与屏幕边界构成的安全区内钳制；`FlyView.qml` 将 `_rightPanelWidth` 注入 `rightTopReserve`，右侧面板暂未可见时也保留不重叠宽度。显示时只合并 `topEdgeCenterInset`。母线低压告警位于顶部条占用区之下，不与云台指向值重叠。
+- 顶部条的最终门禁为overlay可见、用户开关打开、活动Vehicle及 `activeGimbal` 存在、`vehicleLinkManager.communicationLost=false` 且 `absoluteYaw` 为有限数；`bodyYaw` 非有限时仅不显示REL副值，不伪造相对角。这是只读MAVLink反馈层，不发送云台命令，不依赖A8/MT11私有SDK的在线状态，也不跟随右侧A8/MT11相机控制栏选中项。
+- 普通地图主视图、视频主视图和 Viewer3D 使用同一 custom overlay；QGC 原生全屏视频模式会隐藏整个 custom overlay，因此上下两条罗盘和母线告警均随之隐藏。当前仅完成代码和静态验证，不代表目标遥控器与真实MAVLink云台的角度、布局或性能已验收。
 
 ### 1.6 Android 遥控器默认界面缩放（代码已集成，待净安装验证）
 
@@ -157,10 +158,10 @@
 
 - 二次开发主体位于 `custom`，目录和命名参照 `src` 模块树；当前共 143 个文件。
 - 仅保留 `src/CMakeLists.txt`、`src/Vehicle/VehicleSetup/VehicleSummary.qml` 两处feature必需例外，`VideoManager.h/.cc` 的通用串行生命周期与退避，`VideoReceiver.h`/`GstVideoReceiver.h/.cc`/`QtMultimediaReceiver.cc` 的通用启动URI快照、OPTIONS EOF兼容、teardown与解码诊断扩展，`QGCLogging.cc` 的通用日志级别过滤修复，以及 `SimulatedCameraControl.cc` 对原生VideoManager通知信号名的修正；GIO直连策略位于 `custom/src/CustomPlugin.cc`，其余功能通过custom C++、QRC、独立custom QML模块、QML URL拦截和Android overlay接入。RTSP始终不设置 `rtspsrc.protocols`，完整使用原生Auto协商，不保留应用层传输枚举、强制TCP或TCP到Auto回退；请求兼容状态只依据通用RTSP错误、method与URI推进，不引入相机型号、产品IP或custom设置依赖。
-- General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和航向罗盘条参数使用稳定 Fact/QSettings 分组持久化。Gimbal设置组位于Fly View的Instrument Panel正下方、Viewer3D之前，不依赖云台在线状态。此前 `FlyViewSettings.qml` 外层Loader加载的组件根节点又是一个条件Loader，设置对象初始化瞬间内层 `active=false`会使 `item=null/implicitHeight=0`，并经外层 `Layout.preferredHeight/minimumHeight` 把整组静默折叠；这是“仪表板下方完全空白”的根因，不是排序或QRC缺文件。现在只保留Fly View一层Loader：父页缓存 `gimbalControlSettings`，使用 `Qt.resolvedUrl()` 加载同目录组件并在 `onLoaded` 注入设置对象；`GimbalControlSettingsGroup.qml` 根节点直接为 `ColumnLayout`，不再二次决定可见性或高度。组内仍先显示桌面并排/窄屏堆叠的A8 Mini与MT11 Zoom Step，再显示两套SDK设置。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
+- General、Fly View 和 Video 设置页以及顶部 `GimbalIndicator.qml` 均按原生文件树使用同路径 custom 覆盖；Viewer3D、Gimbal、视频链路和上下双罗盘开关使用稳定 Fact/QSettings 分组持久化。Fly View的Instrument Panel内显示“飞行器航向”和“云台指向”两个独立开关；Gimbal设置组仍位于Instrument Panel正下方、Viewer3D之前，不依赖云台在线状态。此前 `FlyViewSettings.qml` 外层Loader加载的组件根节点又是一个条件Loader，设置对象初始化瞬间内层 `active=false`会使 `item=null/implicitHeight=0`，并经外层 `Layout.preferredHeight/minimumHeight` 把整组静默折叠；这是“仪表板下方完全空白”的根因，不是排序或QRC缺文件。现在只保留Fly View一层Loader：父页缓存 `gimbalControlSettings`，使用 `Qt.resolvedUrl()` 加载同目录组件并在 `onLoaded` 注入设置对象；`GimbalControlSettingsGroup.qml` 根节点直接为 `ColumnLayout`，不再二次决定可见性或高度。组内仍先显示桌面并排/窄屏堆叠的A8 Mini与MT11 Zoom Step，再显示两套SDK设置。General 页面继续绑定原生 `appFontPointSize`，Android 缺省值由 custom metadata hook 调整。
 - Android 构建先在构建目录合并原生模板和 `custom/android` overlay，再只编译合并后的唯一 Java 源；合并时排除 `.gradle`、`build` 和 `local.properties`，并仅在生成副本中关闭 Gradle configuration cache，避免跨构建残留的AGP插桩状态阻断APK打包。
 - 与 `src/Viewer3D` 完全相同的 C++、QML、qmldir 和 shader 由构建或 QRC 直接复用，不在 custom 保存重复副本；外部 WGS84 城镇样例只是源码树手动测试资产，不参与构建或 QRC 打包。
-- 只从 `custom-example` 引入底部航向罗盘条；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
+- 只从 `custom-example` 引入横向航向罗盘的绘制基础，并在custom内复用为底部飞行器航向和顶部MAVLink云台指向两个实例；不引入其未使用的示例控件、自定义动作、圆形罗盘、姿态仪、品牌资源和全局配色，也不保存无必要的 `AppSettings.qml` 根页副本。
 - custom 翻译加载、简体中文目录和 `lupdate` 更新脚本已经接入；视频层文案保留通用 Video 1/Video 2、第二路独立receiver/留空禁用提示，以及沿用旧Fact键但显示为Android H.264/H.265硬解优先的开关。两路RTSP-over-TCP开关及其元数据说明已经从英文模板和简体中文目录同时删除；原生Auto属于程序行为与开发约束，不额外作为设置页文案。两份TS的最终统计与完成状态见第4.12节。
 - 原生 `translations/qgc_json_zh_CN.ts` 另有一处受控翻译数据修正：按元数据注释改用ASCII逗号分隔 `ChibiOS,NuttX`，并把 `apmVehicleType` 精确保持为五项 `多旋翼,直升机,固定翼,地面车辆,水下航行器`。旧译文只有四个中文逗号分隔片段，和英文五项enum不等长，导致295d中的FactMetaData enum mismatch；该修正不改变custom TS的context/source对应关系。
 
@@ -171,7 +172,7 @@
 3. Application Settings 的 General、Fly View、Video 页面和顶部工具栏 `GimbalIndicator.qml` 由项目在 custom 显式接管并保存同名覆盖；其他没有差异、也不需要项目接管的 QML 继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
 5. custom同名 QML 覆盖使用 `/Custom/qml` 前缀；新增的双视频复合类型由 `Custom.FlightDisplay`模块生成到 `/qml/Custom/FlightDisplay`；Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
-6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 航向罗盘条和链路设置。
+6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 飞行器航向罗盘和链路设置；新云台指向键缺失时单独使用 `false`，不改写旧 `FlyView/showHeadingCompassBar`。
 7. 复杂协议、坐标转换和跨模块行为使用中文注释；普通布局和赋值不增加无意义注释。
 8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。源码树和Git均不得保存 `.gradle`生成缓存；custom构建关闭configuration cache但保留普通build cache。
 9. 根目录 `translations/qgc_json_zh_CN.ts` 仅保留本次已登记的元数据枚举翻译修正；枚举项必须使用ASCII逗号并与source项数一一对应。除该项外，项目新增或覆盖文案继续进入 `custom/translations`，不得借翻译修正扩大原生目录改动范围。
@@ -382,13 +383,13 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/src/FlightDisplay/FlyView.qml` | 原生同路径Fly View的custom覆盖入口，保留任务控制器、地图、原生 Video 1 `FlyViewVideo`、WidgetLayer、引导控制和Viewer3D容器，增加通用 Video 2 与三路PIP编排。Video 1不再叠加 `visible: videoManager.hasVideo` 的custom门控，恢复原生 `FlyViewVideo` 始终存在的surface生命周期，避免启流前surface被隐藏而形成自依赖。文件显式 `import Custom.FlightDisplay as CustomFlightDisplay`，并以限定名实例化 `FlyViewSecondaryVideo`和 `DualPipView`。Map/Video 1/Video 2按 `item1/item2/item3` 接入；任一缩略框被点击后成为居中全尺寸项，原中心项精确回到被点击槽位。URL为空、重复或主视频不可用时对应项从候选中移除，正在居中的失效项回退Map；选择保存为 `MainFlyWindowView`并兼容旧 `MainFlyWindowIsMap`。任一视频全屏时统一隐藏工具栏、PIP、WidgetLayer和custom overlay。 |
+| `custom/src/FlightDisplay/FlyView.qml` | 原生同路径Fly View的custom覆盖入口，保留任务控制器、地图、原生 Video 1 `FlyViewVideo`、WidgetLayer、引导控制和Viewer3D容器，增加通用 Video 2 与三路PIP编排。Video 1不再叠加 `visible: videoManager.hasVideo` 的custom门控，恢复原生 `FlyViewVideo` 始终存在的surface生命周期，避免启流前surface被隐藏而形成自依赖。文件显式 `import Custom.FlightDisplay as CustomFlightDisplay`，并以限定名实例化 `FlyViewSecondaryVideo`和 `DualPipView`。Map/Video 1/Video 2按 `item1/item2/item3` 接入；任一缩略框被点击后成为居中全尺寸项，原中心项精确回到被点击槽位。URL为空、重复或主视频不可用时对应项从候选中移除，正在居中的失效项回退Map；选择保存为 `MainFlyWindowView`并兼容旧 `MainFlyWindowIsMap`。它还将 `_rightPanelWidth` 作为 `rightTopReserve` 传给custom overlay，供顶部云台罗盘在右侧面板的实际inset暂未建立时预留安全宽度。任一视频全屏时统一隐藏工具栏、PIP、WidgetLayer和custom overlay。 |
 | `custom/src/FlightDisplay/DualPipView.qml` | Map/Video 1/Video 2 三视图PIP状态管理器，沿用原生 `PipState` 的full/pip/window状态和原生 `PipView.qml` 的展开/隐藏、独立窗口、右上拖拽缩放交互。左下定义固定下槽与上槽；点击某槽只交换该槽和主视图，原主视图回到同一槽、另一槽保持不动。可点击层的 `z` 高于重挂内容，避免首次切换后视频/地图Item遮住点击区。本文件只管布局和状态，不创建或解码视频。 |
 | `custom/src/FlightDisplay/FlyViewSecondaryVideo.qml` | Video 2 的通用Fly View wrapper，结构对齐原生 `FlyViewVideo.qml`：持有 `PipState`，进入/退出独立PIP窗口时暂停receiver并延迟2秒重启，只在full状态接受双击全屏，并叠加Proximity Radar和Obstacle Distance。它不包含MT11 SDK或设备地址。 |
 | `custom/src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml` | Video 2 的通用解码显示surface，结构对齐原生 `FlightDisplayViewVideo.qml`。从 `DualVideoManager` 取得decoding/尺寸/全屏状态，复用Video设置的fit/grid和原生无视频背景；Loader创建objectName为 `secondaryVideoContent` 的 `QGCVideoBackground`，就绪后通过 `initVideoItem(window, videoLoader.item)` 把实际渲染Item直接交给Manager，并在 `Window.window` 变化时用 `Qt.callLater` 重试；这避免Loader跨窗口/重挂载后仅在根window搜索而找不到真实Item。启动等待期间GL Item仍保持在场景图中，由更高z值的原生无视频背景覆盖，首个解码帧到达后再显示画面，避免“因为尚未decoding而隐藏GL Item、又因为GL Item未初始化而无法decoding”的循环依赖。它不调用任何相机SDK。 |
 | `custom/src/FlightDisplay/MT11CameraControl.qml` | MT11右栏薄封装，复用 `GimbalCameraControl.qml` 的缩放、拍照、录像、本地媒体和状态布局，注入 `mt11ControlManager`、开启Target/Actual双值和变焦/热成像/变焦+热成像拼接三模式控件。它不复制A8面板或协议逻辑；对外提供 `closeTransientUi()`，以便相机切换和销毁时关闭共享面板的模式弹层。 |
-| `custom/src/FlightDisplay/FlyViewCompassBar.qml` | 罗盘条本体和绘制算法。直接读取活动飞行器 `Vehicle.heading.rawValue`，验证并归一化到 `[0°, 360°)`，使用中心附近 11 个 45°相对标签计算 N/NE/E/SE/S/SW/W/NW 的横向位置，中央显示四舍五入的整数航向并用 `compassPointer.svg` 绘制固定指针。它不读取显示开关、不保存设置、不判断是否应被加载；外层 `FlyViewCustomLayer.qml` 负责生命周期和显示条件。组件没有鼠标拦截层，因此不会吞掉下方地图手势。 |
-| `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | Fly View custom overlay 的编排层，同时管理罗盘条与燃料电池母线告警。它从 `corePlugin.flyViewCustomSettings.showHeadingCompassBar` 读取用户意愿，再结合 overlay 可见、活动飞行器存在和 heading 有效四个条件，通过明确 QRC URL加载 `FlyViewCompassBar.qml`；罗盘条采用组件的 `implicitWidth`（与示例相同为 `50 × defaultFontPixelWidth`）并保持屏幕水平居中，只按 Fly View 总宽度和基础 margin 做最终屏幕边界钳制，不再使用 PIP/摇杆/仪表的角落 inset 压缩宽度。它把“罗盘条高度+底边 margin”的完整占用深度合并进 `bottomEdgeCenterInset`，关闭时透传原生 inset。同一文件还监听 `vehicle.generator.busVoltage`，低于20.0 V置告警、超过20.4 V清除，形成回差；`mapControl` 当前只是兼容接口，未参与逻辑。 |
+| `custom/src/FlightDisplay/FlyViewCompassBar.qml` | 上下两条罗盘共用的绘制组件。`directionDegrees` 是可注入主角度，缺省仍读取活动飞行器 `Vehicle.heading.rawValue`；组件验证并归一化主值到 `[0°, 360°)`，使用中心附近 11 个 45°相对标签计算 N/NE/E/SE/S/SW/W/NW 的横向位置。`indicatorPrefix`、`secondaryDegrees`和 `secondaryPrefix` 允许顶部实例显示 `Gimbal <absoluteYaw>°  REL <带符号bodyYaw>°`；副值无效时自动省略。数值框宽度被根组件宽度钳制，文本必要时右省略，固定指针仍使用 `compassPointer.svg`。它不读取开关、不保存设置、不选择云台，也没有鼠标拦截层。 |
+| `custom/src/FlightDisplay/FlyViewCustomLayer.qml` | Fly View custom overlay的编排层，同时管理底部飞行器航向条、顶部云台指向条与燃料电池母线告警。底部Loader以 `showHeadingCompassBar + Vehicle.heading有效` 为门禁，保持屏幕水平居中、只按整个Fly View边界收窄，并合并 `bottomEdgeCenterInset`。顶部Loader以 `showGimbalHeadingCompassBar`、活动Vehicle/活动MAVLink Gimbal、链路未丢失和有限 `absoluteYaw` 为门禁，把 `absoluteYaw`/`bodyYaw` 分别绑定为主/副值。顶部宽度与x由 `leftEdgeTopInset`、`max(rightEdgeTopInset,rightTopReserve)`、top-center起点和屏幕边界共同钳制，显示时合并 `topEdgeCenterInset`；母线告警顶边再取该新inset与原定位的较大值并下移。云台条只读原生MAVLink反馈，不读取A8/MT11 SDK，不联动右侧相机栏；全屏时整个overlay隐藏。`mapControl` 当前只是兼容接口。 |
 | `custom/src/FlightDisplay/FlyViewToolStripActionList.qml` | Fly View 左侧工具条动作模型的同路径覆盖。保留检查单、起飞、降落、返航、暂停、附加动作和夹爪的原生顺序，在最前面新增仅当 `viewer3DSettings.enabled=true` 才可见的 2D/3D 切换动作；动作调用现有 `viewer3DWindow.open()/close()`，打开 3D 时用 PaperPlane 表示返回 Fly，关闭时用 custom 城市图标表示进入 3D。 |
 | `custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml` | Fly View右侧中部控件容器的同路径覆盖，始终保留 `TerrainProgress`。A8或MT11任一启用时，无需活动Vehicle即可显示私有相机栏；两者同时启用时在栏顶增加深色半透明分段胶囊 `A8 Mini/MT11`选择器，选中段用青色描边，每段以绿/灰圆点独立显示对应Manager的 `sdkResponding`。切换前先调用当前面板 `closeTransientUi()`，再注入新Manager；某一路关闭后也通过同一入口自动归一到仍可用的一路。`sdkResponding`不决定整栏可见性；只有两套私有相机都关闭且存在活动Vehicle时才回退原生 `PhotoVideoControl`。容器宽高跟随选择器与当前面板隐式尺寸，避免移动端缩放把控件压缩。 |
 | `custom/src/FlightDisplay/GeneratorBusVoltageAlert.qml` | Fly View燃料电池母线低压提示本体。读取传入Vehicle的 `generator.busVoltage`，低于20.0 V显示告警、严格高于20.4 V清除，NaN或无Fact时隐藏；双阈值回差避免临界电压反复闪烁。它只绘制告警，加载位置和活动飞行器生命周期由 `FlyViewCustomLayer.qml` 管理。 |
@@ -466,14 +467,14 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 顶部指示器点击后创建的详情页。输入为活动飞行器 `fuelStatus` Fact，按燃料类型选择 ml 或 MPa，显示剩余比例、剩余量、最大量、已消耗量、流量和温度；它只负责详情展示，不决定工具栏图标是否出现。该类型由精简的 `Custom.Widgets` QML 模块注册，创建入口在 `FuelStatusIndicator.qml`。 |
 | `custom/src/QmlControls/ProximityRadarIndicatorPage.qml` | Proximity Radar工具栏入口点击后的详情页。通过required `radarData`接收十方向Fact及5.0 m判断函数，只Repeater显示有效方向、原生值与单位，告警行文字变红；它不计算飞行器避障动作，也不保存阈值设置。 |
 | `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 声明 `Viewer3D.Models3D` QML 模块，并把 `CameraLightModel`、`Line3D`、`External3DMap`、`Viewer3DModel`、`Viewer3DVehicleItems`、`Waypoint3DModel` 六个类型映射到对应 QML。`CameraLightModel`、`Line3D`、`Waypoint3DModel` 继续由 QRC 引用原生源码，另外三个带项目差异的场景类型映射到 custom 文件。它只解决 `import Viewer3D.Models3D` 后的类型发现，不创建场景、不加载模型，也不保存设置；`QGroundControl.Viewer3D` 是 C++ 类型模块，不能与本模块名混用。 |
-| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 只定义航向罗盘条显示开关 `showHeadingCompassBar` 的 Fact 元数据：类型为 bool、缺省为 `false`、无需重启。它不绘制罗盘条，也不保存当前用户值；`FlyViewCustomSettings.cc` 根据资源名加载它，实际选择保存为 `FlyView/showHeadingCompassBar`。 |
-| `custom/src/Settings/FlyViewCustomSettings.h` | 声明 `FlyViewCustomSettings : SettingsGroup`，并通过 `DEFINE_SETTINGFACT(showHeadingCompassBar)` 生成稳定的 `Fact*` Q_PROPERTY、延迟创建指针和访问器。该类是 C++/QML 之间的设置接口层，只表达“用户是否允许显示罗盘条”，不包含航向计算或绘制代码。 |
-| `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述 SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把用户值写入原生 `FlyView` QSettings 分组；注册 reference-only QML 类型并实现 `showHeadingCompassBar()` 的延迟 Fact 创建。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
+| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 定义两个独立罗盘开关的Fact元数据：底部 `showHeadingCompassBar` 和顶部 `showGimbalHeadingCompassBar` 均为bool、缺省 `false`、无需重启。两者分别保存为 `FlyView/showHeadingCompassBar` 和 `FlyView/showGimbalHeadingCompassBar`；新键缺失不会覆盖旧值。元数据不绘制罗盘，也不保存遥测角度。 |
+| `custom/src/Settings/FlyViewCustomSettings.h` | 声明 `FlyViewCustomSettings : SettingsGroup`，并通过 `DEFINE_SETTINGFACT(showHeadingCompassBar)` 与 `DEFINE_SETTINGFACT(showGimbalHeadingCompassBar)` 生成两个稳定 `Fact*` Q_PROPERTY、延迟创建指针和访问器。该类只表达用户显示意愿，不包含Vehicle/Gimbal选择、角度计算或绘制代码。 |
+| `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把两个用户值写入原生 `FlyView` QSettings分组；注册reference-only QML类型并分别使用 `DECLARE_SETTINGSFACT` 延迟创建两个Fact。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
 | `custom/src/Settings/VideoCustom.SettingsGroup.json` | 只定义通用第二路URL Fact `secondaryRtspUrl`：缺省 `rtsp://192.168.144.24:8554/video1`，空值禁用Video 2。元数据不含MT11型号或传输偏好语义，不创建receiver，也不把标准 `rtsp://` 改写为其他scheme。 |
 | `custom/src/Settings/VideoCustomSettings.h` | 声明 `VideoCustomSettings : SettingsGroup` 及唯一的 `secondaryRtspUrl` `Fact*` Q_PROPERTY，作为QML、QSettings、`CustomPlugin`与 `DualVideoManager` 之间的稳定通用第二路视频设置接口。 |
 | `custom/src/Settings/VideoCustomSettings.cc` | 使用 `DECLARE_SETTINGGROUP(VideoCustom, "Video")` 把 `secondaryRtspUrl` 写入原生 `[Video]` 分组。新键不存在时才读取旧 `[GimbalControl]/mt11RtspUrl`：旧值精确为历史出厂默认 `rtsp://192.168.144.25:8554/video1` 时转成 `rtsp://192.168.144.24:8554/video1`，其他自定义值和空字符串原样复制。已有新值绝不覆盖，旧键也不删除，保持升降级安全。旧版本遗留的 `[Video]/primaryRtspTcpOnly` 与 `[Video]/secondaryRtspTcpOnly` 不在本类注册或读取，也不主动迁移、覆盖或删除。 |
 | `custom/src/UI/AppSettings/GeneralSettings.qml` | Application Settings -> General 的同路径 custom 覆盖页。完整保留原生 Language、Color Scheme、GCS位置流、音频、Android SD Card、清除设置、数据路径、Units和Brand Image。UI Scaling直接绑定原生整数 `appFontPointSize`，按 `appFontPointSize / ScreenTools.platformFontPointSize × 100` 四舍五入显示，`-`/`+` 每次修改1 pt并由原生 `SettingsFact` 保存；页面本身不写缺省值。`SettingsFact` 构造期间先调用 `CustomPlugin::adjustSettingMetaData()` 把 Android raw default改为12 pt，再读取已有QSettings或该缺省值，因此未打开本页面也会生效；非Android默认仍为100%。 |
-| `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生Fly View设置并在Instrument Panel正下方以单层Loader固定加载Gimbal组，再加载Viewer3D组；父页缓存设置对象并在 `onLoaded` 注入。单层结构修复了双Loader在初始化时把隐式高度传播为0而静默折叠相机组的问题，入口不依赖云台在线。 |
+| `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生Fly View设置，在Instrument Panel中以独立Loader显示 `Show Vehicle Heading Compass Bar`/“显示飞行器航向罗盘条”和 `Show Gimbal Heading Compass Bar`/“显示云台指向罗盘条”，各自绑定对应Fact并即时生效。Instrument Panel正下方仍以单层Loader固定加载Gimbal组，再加载Viewer3D组；父页缓存设置对象并在 `onLoaded` 注入。单层结构修复双Loader初始化时的高度折叠，相机设置入口不依赖云台在线。 |
 | `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生Video Source、Connection、播放设置和Local Video Storage；当选择RTSP源时，在同一 `Connection` 组内将原生 `[Video]/rtspUrl` 标记为 `RTSP URL 1`，将 `[Video]/secondaryRtspUrl` 标记为 `RTSP URL 2`。界面不再显示传输开关；URL 2提示只说明它使用独立receiver且留空会禁用，原生Auto策略由程序行为和本说明记录。程序始终保留标准 `rtsp://` 地址且不设置 `rtspsrc.protocols`。第二路为空时不显示Video 2；URL 2与配置中的URL 1或主receiver当前实际URI相同时显示警告并由Manager禁用重复接收器。Local Video Storage继续提供共享 `localMediaStorageEnabled`，只控制A8/MT11各自本地附加支路，不关闭相机SD动作；实际双路receiver、相机命令、录像、截图和解码策略由对应Manager执行。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 由父页Loader加载的Viewer3D设置面板；依赖Loader自身item隐式尺寸和父页Layout计算高度，不再向Qt 6只读的 `implicitWidth/implicitHeight`赋值，消除附件中的 `Invalid property assignment: implicitHeight is a read-only property`。其14个Fact、模式互斥、文件导入和Clear语义不变。 |
 | `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | 根节点直接为 `ColumnLayout`，组内依次显示A8/MT11独立Zoom Step与两套SDK设置。MT11的 `mt11ZoomStep`决定1～30x tap目标和hold期间Target参考，不控制单次原生0x05的物理速度；MT11 SDK提示文案明确Host/Port还承载三种视频工作模式控制，RTSP地址仍在Video -> Connection -> RTSP URL 2中单独配置。页面不依赖设备在线，也不把SDK地址同步成RTSP URL。 |
@@ -482,7 +483,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/UI/toolbar/ProximityRadarIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入GPS之后的工具栏组件。读取活动飞行器 `distanceSensors` 的前/前右/右/后右/后/后左/左/前左/上/下十个方向，任一Fact有效即显示；任一有效距离小于固定5.0 m阈值时图标变红并以400 ms淡入淡出闪烁。点击打开详情页；无遥测时隐藏。它只做告警呈现，不发送避障指令。 |
 | `custom/src/UI/toolbar/Images/FuelIcon.svg` | Fuel 顶部指示器使用的气瓶矢量图形，只提供可缩放轮廓，不包含状态逻辑；由 `custom.qrc` 注册为 `qrc:/custom/img/FuelIcon.svg`，`FuelStatusIndicator.qml` 根据主题对其着色和显示。 |
 
-航向罗盘条的文件连接关系固定为：`FlyViewCustom.SettingsGroup.json` 定义开关元数据 -> `FlyViewCustomSettings.h/.cc` 创建、读取、保存并向 QML 暴露开关 -> `FlyViewSettings.qml` 提供用户开关 -> `FlyViewCustomLayer.qml` 将开关与活动飞行器/有效航向组合成最终显示条件 -> `FlyViewCompassBar.qml` 只负责绘制。任何一个文件都不能单独完成完整功能。
+双罗盘的文件连接关系固定为：`FlyViewCustom.SettingsGroup.json` 定义两个开关元数据 -> `FlyViewCustomSettings.h/.cc` 创建、读取、保存并向QML暴露 -> `FlyViewSettings.qml` 提供两个独立用户开关 -> `FlyView.qml` 向custom overlay注入右上安全预留 -> `FlyViewCustomLayer.qml` 分别组合Vehicle heading门禁和MAVLink activeGimbal/链路/角度门禁 -> 两个Loader复用 `FlyViewCompassBar.qml` 绘制。右侧A8/MT11相机选择器不在这条设置或遥测链中；任何单一文件都不能独立完成完整功能。
 
 ### 4.8 Viewer3D C++ 扩展
 
@@ -568,8 +569,8 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | 文件 | 详细作用 |
 |---|---|
 | `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
-| `custom/translations/custom.ts` | 英文源字符串模板。保留 `GimbalZoomControl` 的Target/Actual，删除已不再存在的逐档0x18超时字符串，同步改写MT11 step longDesc，并纳入三模式控件的ZOOM/IR/MIX、Zoom/Thermal/Zoom + Thermal、Unknown mode和Select等新source；当前19个context、153条message和144个唯一source，153条均unfinished，`lrelease` exit 0。 |
-| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录，与英文模板保持相同的19个context、153条message和144个唯一source，context/source pair集合一致；153条均finished，unfinished和空译文为0，`lrelease` exit 0。保留“目标/实际”并加入精确30x短按端点、全域原生连续hold、150 ms handoff以及“变焦/热成像/变焦 + 热成像/拼接”模式文案；完整QGC/真机验收仍未因此扩大。 |
+| `custom/translations/custom.ts` | 英文源字符串模板。保留 `GimbalZoomControl` 的Target/Actual和MT11三模式source，并新增 `FlyViewCustomLayer` 的Gimbal/REL与 `FlyViewSettings` 的Vehicle/Gimbal双罗盘开关source；当前20个context、156条message和147个唯一source，156条均unfinished，`lrelease` exit 0。 |
+| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录，与英文模板保持相同的20个context、156条message和147个唯一source，context/source pair集合一致；156条均finished，unfinished和空译文为0，`lrelease` exit 0。新文案精确为“显示飞行器航向罗盘条”、“显示云台指向罗盘条”、“云台”与“相对”；翻译完成不代表完整QGC或真机布局已验收。 |
 | `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 | `translations/qgc_json_zh_CN.ts` | 原生JSON元数据简体中文目录的受控数据修正。`ChibiOS,NuttX`和 `apmVehicleType` 五项都使用ASCII逗号，后者精确翻译为 `多旋翼,直升机,固定翼,地面车辆,水下航行器`，使译文拆分数与source一致并消除FactMetaData enum mismatch；不改变Fact值、固件筛选或custom翻译统计。 |
 
@@ -643,7 +644,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `src/Utilities/QGCLogging.cc` | 自定义消息处理器按收到的 `QtMsgType` 调用 `QLoggingCategory::isEnabled(type)`。旧实现无论消息级别都检查 `isDebugEnabled()`，当 `qgc.*.debug=false` 时会错误吞掉同类别的info、warning和critical；修复不改变各类别自身的过滤规则。当前RTSP resource error会把紧接着重复的相同签名降为debug，签名首次出现或发生变化时仍为warning；其他GStreamer error保持critical。因此关闭debug仍能看到首次/变化后的RTSP结构化warning和全部非资源型关键错误。 |
 | `src/Camera/SimulatedCameraControl.cc` | 把构造函数中错误连接的 `&VideoManager::hasVideo` getter改为真实通知信号 `&VideoManager::hasVideoChanged`。该修复消除295d启动时三条 `QObject::connect: signal not found in VideoManager`，使模拟相机信息在视频可用状态变化时正常更新；不改变真实A8/MT11 receiver、RTSP或解码状态机。 |
 
-除上述十个已登记文件外，当前二次开发功能没有其他 `src` 差异。两路URL、默认策略、设置UI、GIO默认直连、receiver识别及第二路编排仍位于 `custom`；核心只提供与产品无关的原生receiver串行生命周期、退避、启动URI快照、原生Auto RTSP source、OPTIONS兼容及诊断，不知道A8/MT11或任何产品地址。顶部云台栏自动接管、底部航向罗盘条、Android H.264/H.265优先策略与 USB 飞控连接修复都完全位于 `custom`；根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现。
+除上述十个已登记文件外，当前二次开发功能没有其他 `src` 差异。两路URL、默认策略、设置UI、GIO默认直连、receiver识别及第二路编排仍位于 `custom`；核心只提供与产品无关的原生receiver串行生命周期、退避、启动URI快照、原生Auto RTSP source、OPTIONS兼容及诊断，不知道A8/MT11或任何产品地址。顶部云台栏自动接管、底部飞行器航向与顶部MAVLink云台指向双罗盘、Android H.264/H.265优先策略与 USB 飞控连接修复都完全位于 `custom`；云台罗盘不读取A8/MT11私有SDK。根目录 `android/src` 保持原样，Android APK 通过构建目录 overlay 使用 custom Java 实现。
 
 ## 7. Viewer3D 参数
 
@@ -686,22 +687,26 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 
 该方案按项目原则在 custom 保存 `GeneralSettings.qml` 同路径覆盖页，但不在页面初始化时写默认值。默认值仍由 custom C++ metadata hook 提前注入；页面只负责展示和修改原生 Fact，因此完整保留 QGC 原生整数点数选择及持久化机制。
 
-### 8.2 底部航向罗盘条
+### 8.2 飞行器航向与云台指向双罗盘条
 
 | Fact | 类型/默认值 | 说明 |
 |---|---|---|
-| `showHeadingCompassBar` | bool / `false` | 显示飞行界面底部中央的航向罗盘条；保存于 `FlyView` QSettings 分组，切换后立即生效，无需重启。 |
+| `showHeadingCompassBar` | bool / `false` | 显示飞行界面底部中央的飞行器航向罗盘；保存为 `FlyView/showHeadingCompassBar`，切换后立即生效，无需重启。 |
+| `showGimbalHeadingCompassBar` | bool / `false` | 显示飞行界面顶部的MAVLink活动云台指向罗盘；保存为 `FlyView/showGimbalHeadingCompassBar`，切换后立即生效，无需重启。 |
 
 使用流程：
 
 1. 打开 Application Settings -> Fly View -> Instrument Panel。
-2. 该开关首次默认关闭；测试时使用 `Show Heading Compass Bar` 手动开启，简体中文界面对应“显示航向罗盘条”。
-3. 返回 Fly View 并连接飞控。只有活动飞行器的 `heading` 有效时才显示罗盘条，未连接飞控不会以 0° 伪造航向。
-4. 中央数值和固定三角指针表示当前机头航向，N/NE/E/SE/S/SW/W/NW 方位随航向连续移动；该数据不包含航点方向和航线偏差。
+2. 两个开关首次均默认关闭；`Show Vehicle Heading Compass Bar` 在简体中文界面显示为“显示飞行器航向罗盘条”，`Show Gimbal Heading Compass Bar` 显示为“显示云台指向罗盘条”。两者可单独或同时开启。
+3. 底部条只需活动Vehicle的 `heading` 为有限数；无Vehicle或角度无效时不以0°/N伪造航向。中央数值和固定三角指针表示当前机头航向。
+4. 顶部条跟随顶部MAVLink云台栏选中的 `gimbalController.activeGimbal`。主值 `Gimbal n°` 是 `absoluteYaw.rawValue` 归一化后的世界方位，`REL ±n°` 是 `bodyYaw.rawValue` 相对机头角；链路丢失、无活动云台或absoluteYaw无效时整条隐藏，仅bodyYaw无效时保留主值并省略REL。
+5. 切换顶部栏的MAVLink activeGimbal时，顶部条随之切换；切换右侧A8 Mini/MT11相机控制栏不得改变罗盘数据源。该功能不读取两套私有SDK，也不根据已发送的控制命令猜测云台角度。
 
-实现从 `custom-example/FlyViewCustomLayer.qml` 中选择性提取横向航向条。示例通过 720 个 `QGCLabel` 切换可见性模拟滚动，本实现使用以当前 45° 区间为基准的 11 个相对方位 Label，保持 359°/0° 连续过渡并降低 Android QML 更新开销；标签精简只改变绘制数量，不负责组件宽度。罗盘条通过 `FlyViewCustomLayer` 的 Loader 显式加载并贴近 Fly View 底边，首选宽度直接使用组件与示例一致的 `50 × defaultFontPixelWidth`。此前外层取 `max(leftEdgeBottomInset, rightEdgeBottomInset)` 后从左右各扣一次，PIP 或仪表任一侧变宽都会受到双倍扣减，极端时宽度变为 0；当前只用 Fly View 总宽度减去两侧基础 margin 作为屏幕边界，角落 inset 的变化不会再挤压罗盘条。这样在 86% 缩放和 PIP 从最小到最大拖动时仍保持示例宽度；极端放大的角落控件可能与罗盘条发生视觉层叠，这是优先保证航向可读性的明确取舍。显示时只扩展 `bottomEdgeCenterInset`，关闭时恢复原生 inset。组件不放置 `DeadMouseArea`，因此不会吞掉其覆盖区域的地图拖动、滚轮缩放、PIP 调整或 Android 触摸手势。
+实现从 `custom-example/FlyViewCustomLayer.qml` 中选择性提取横向航向条。示例通过720个 `QGCLabel` 切换可见性模拟滚动，本实现使用以当前45°区间为基准的11个相对方位Label，保持359°/0°连续过渡并降低Android QML更新开销。底部实例保持 `50 × defaultFontPixelWidth` 首选宽度，仅在整个Fly View不足时按屏幕margin收窄，不再被PIP/摇杆/右下仪表的单侧inset从左右重复扣减；显示时只扩展 `bottomEdgeCenterInset`。顶部实例从原生 `topEdgeCenterInset + toolsMargin` 下方开始，安全左边界为 `leftEdgeTopInset + toolsMargin`，安全右边界为 `max(rightEdgeTopInset,rightTopReserve) + toolsMargin`；宽度在该区间收窄，x在居中位置与左右边界之间钳制，显示时只扩展 `topEdgeCenterInset`。燃料电池母线告警使用原定位与“新top inset + 2个默认字高”的较大值，确保在云台条下方。两条都不放置 `DeadMouseArea`，不吞掉地图拖动、滚轮缩放、PIP调整或Android触摸手势。
 
-custom同路径 `FlyView.qml` 延续原生全屏语义：Video 1或Video 2全屏时都隐藏工具栏、三视图PIP、WidgetLayer和custom overlay，所以罗盘条与母线告警均不显示；退出全屏后恢复。普通Map/Video 1/Video 2居中切换和Viewer3D不受影响。
+custom同路径 `FlyView.qml` 延续原生全屏语义：Video 1或Video 2全屏时都隐藏工具栏、三视图PIP、WidgetLayer和custom overlay，所以上下双罗盘与母线告警均不显示；退出全屏后按各自开关和遥测门禁恢复。普通Map/Video 1/Video 2居中切换和Viewer3D不改变云台数据源。顶部条尚需在目标遥控器与真实MAVLink云台上验证角度、activeGimbal切换、遥测断链和横竖屏布局，不能由QML静态检查扩大为真机通过。
+
+当前QGC原生 `Gimbal`/Fact没有暴露最后一帧 `GIMBAL_DEVICE_ATTITUDE_STATUS` 的接收时间，因此本实现只能使用整机 `vehicleLinkManager.communicationLost` 作为链路门禁。如果飞控链路仍正常、但仅云台姿态消息单独停止，顶部原生云台栏和本罗盘都会保留最后角度；该值不能被当作独立的新鲜度证明。不能用 `Fact.rawValueChanged` 在QML中可靠补计时，因为云台静止且连续上报相同角度时Fact不会产生值变化信号。若产品后续要求独立的超时隐藏或 `STALE` 标识，应在Gimbal遥测接收层暴露姿态时间戳/有效状态后统一供顶部栏与罗盘使用，而不是根据控制命令或角度变化猜测。
 
 ### 8.3 Gimbal 与视频参数
 
@@ -926,7 +931,7 @@ QGCApplication
         -> count非零或无效时完全不修改现有通信链路
         -> 仅在count=0时创建默认local：本地14550 -> 192.168.144.125:14550
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
-     -> FlyViewCustomSettings（FlyView/showHeadingCompassBar）
+     -> FlyViewCustomSettings（FlyView/showHeadingCompassBar + showGimbalHeadingCompassBar）
       -> GimbalControlSettings / GimbalControlManager
          -> enabled时立即启动后台2秒探测，不依赖activeVehicle或QML可见
          -> localMediaStorageEnabled默认true且即时生效，独立于思翼SD卡/SDK状态
@@ -1047,7 +1052,8 @@ Application Settings / Fly View
   -> 原生 AppSettings.qml 请求 FlyViewSettings.qml
   -> CustomOverrideInterceptor 映射到 custom FlyViewSettings.qml
   -> Instrument Panel
-     -> showHeadingCompassBar（即时生效）
+     -> showHeadingCompassBar（飞行器航向，默认false，即时生效）
+     -> showGimbalHeadingCompassBar（云台指向，默认false，即时生效）
   -> GimbalControlSettingsGroup.qml
      -> Zoom Step（A8 Mini / MT11桌面并排、窄屏堆叠）
      -> SIYI A8 Mini SDK
@@ -1113,10 +1119,16 @@ Fly View
         -> 回退原生 PhotoVideoControl
   -> custom FlyViewCustomLayer.qml
      -> showHeadingCompassBar && Vehicle.heading 有效
-        -> 显式 Loader 加载 FlyViewCompassBar.qml
-        -> 11 个相对方位 Label + 当前航向数值 + 固定指针
-        -> 示例首选宽度 + Fly View 屏幕边界钳制，不受角落 inset 挤压
-        -> 合并 bottomEdgeCenterInset
+         -> 显式 Loader 加载 FlyViewCompassBar.qml
+         -> 11 个相对方位 Label + 当前航向数值 + 固定指针
+         -> 示例首选宽度 + Fly View 屏幕边界钳制，不受角落 inset 挤压
+         -> 合并 bottomEdgeCenterInset
+     -> showGimbalHeadingCompassBar && activeVehicle/activeGimbal && !communicationLost && finite absoluteYaw
+        -> 复用 FlyViewCompassBar.qml
+        -> absoluteYaw 主值（Gimbal）+ bodyYaw 副值（REL，无效时省略）
+        -> leftEdgeTopInset / max(rightEdgeTopInset,rightTopReserve) / topEdgeCenterInset 安全区钳制
+        -> 合并 topEdgeCenterInset，母线告警继续下移避让
+        -> 跟随顶部MAVLink activeGimbal，不联动A8/MT11相机选择
      -> 燃料电池母线低电压告警
 ```
 
@@ -1232,10 +1244,10 @@ Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移�
 23. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
 24. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
 25. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
-26. 清除 `FlyView/showHeadingCompassBar` 保存键后启动，`Show Heading Compass Bar` 必须默认关闭；手动开启后在航向有效时立即显示，关闭后立即隐藏，重启QGC保持用户选择；没有活动飞行器或 `heading` 为NaN时不显示伪造的0°/N。
-27. 使用模拟或真机航向覆盖 N、NE、E、SE、S、SW、W、NW，并重点检查 359° -> 0° -> 1° 连续过渡，中央数值、固定指针和移动方位必须一致。
-28. 在地图主窗口、视频主窗口、地图/视频 PIP 互换、虚拟摇杆、右下仪表盘、Viewer3D、横竖屏和小屏布局下检查罗盘条底边位置、宽度及 `bottomEdgeCenterInset`；重点在目标遥控器 86% 缩放下把左下 PIP 从 10% 连续拖到 75%，以及改变右下仪表宽度，罗盘条必须保持示例的首选宽度，不能缩成点、短条或消失。常规尺寸下检查无不必要遮挡；极端放大的角落控件允许与罗盘条视觉层叠，但 PIP 调整和罗盘条区域的地图拖动、缩放必须仍然有效；全屏视频模式按原生语义隐藏。
-29. Android H.265 连续播放测试期间同时保持罗盘条开启并改变航向，确认 11 个方位 Label 的更新不造成新增卡顿或持续帧率下降。
+26. 分别清除 `FlyView/showHeadingCompassBar` 和 `FlyView/showGimbalHeadingCompassBar` 后启动，两个开关必须均默认关闭；用户可独立开启/关闭任一条且界面立即响应，重启QGC后各自保持选择。用旧版只保存 `showHeadingCompassBar=true` 的设置升级时，底部条必须继续打开，新顶部条仍为false，不得覆盖旧键。设置页文案必须明确区分“飞行器航向”与“云台指向”。
+27. 底部条使用模拟或真机Vehicle heading覆盖 N/NE/E/SE/S/SW/W/NW及359° -> 0° -> 1°；中央数值、固定指针和移动方位必须一致，无活动Vehicle或heading=NaN时不显示伪造0°/N。顶部条必须使用真实或可控MAVLink `GIMBAL_DEVICE_ATTITUDE_STATUS`验收：中央 `Gimbal`主值与顶部栏 `Az`/`absoluteYaw`一致，`REL`与 `bodyYaw`符号和数值一致，主值在-1°/0°/359°边界连续归一。
+28. 顶部条必须通过门禁矩阵：开关打开但无Vehicle、无activeGimbal、`vehicleLinkManager.communicationLost=true`或absoluteYaw非有限时隐藏；仅bodyYaw非有限时仍显示absoluteYaw但不显示REL。多云台环境从顶部MAVLink栏切换activeGimbal，主/副值必须随之切换；右侧A8/MT11相机选择、私有SDK断网、视频工作模式及RTSP有无不得改变该数据源。Yaw Lock与Yaw Follow都要对比实际姿态反馈，不能只核对已发送命令。另需记录当前已知边界：保持飞控链路正常而单独停止 `GIMBAL_DEVICE_ATTITUDE_STATUS` 时，原生Gimbal没有子流时间戳，顶部栏与罗盘会保持最后值；不得把该场景误报为仍在实时更新。
+29. 在地图主窗口、Video 1/Video 2主窗口、三路PIP互换、虚拟摇杆、右下仪表、Viewer3D、横竖屏、小屏和目标遥控器86%缩放下分别验收底部 `bottomEdgeCenterInset` 和顶部 `topEdgeCenterInset`。底部条在PIP 10%→75%拖拽和右下仪表宽度变化时不得缩成点/短条；顶部条必须在左上工具、右上面板和 `rightTopReserve` 安全区内钳制，不越界、不被截断，母线低压告警必须在其下方而不重叠。两条区域的地图拖动/缩放和PIP调整必须仍有效；Video 1/Video 2全屏时上下两条与告警都按overlay语义隐藏，退出后恢复。Android H.265连续播放期间同时改变Vehicle heading和Gimbal yaw，不得产生可见新增卡顿或持续帧率下降。
 30. 在采用 14 pt 平台基准的目标 Android 遥控器上清除应用数据或净安装 APK，首次进入 Application Settings -> General 时 UI Scaling 应显示 86%，运行中的 `appFontPointSize` Fact 应为整数 12 pt。
 31. 在 Android 上使用原生 `-`/`+` 修改整数点数并重启 QGC、覆盖安装保留数据的新 APK，必须保持用户值而不是恢复 86%；执行“清除全部设置”后才恢复 12 pt 缺省值。分别净安装 Ubuntu、Windows、macOS/iOS 构建，默认应保持原生 100%。
 32. 物理宽度小于 120 mm 的极小 Android 设备单独确认平台基准和页面显示值；其 11 pt 基准无法用整数点数精确表示 86%，不得把固定 12 pt 一概描述为所有 Android 屏幕的 86%。
@@ -1361,13 +1373,13 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 同分辨率断流重连应立即发起0x18查询，不能等2秒后才接受第一次操作；该查询不再打印应用逐包日志，需通过抓包或重新建立的倍率状态验证。紧邻应用退出出现的 `PhotoVideoControl.qml`中 `cameraManager/currentCameraInstance`空对象警告来自QGC原生相机面板销毁时序，不参与custom缩放状态机，也不是本次锁定原因。
 
-`FlyViewCompassBar.qml` 同样不加入原生 FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 使用 `qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml` 显式加载。若设置开关存在但界面不显示，先检查 Application Messages 中的 `Fly View compass bar failed to load`，再确认 `custom.qrc` 已重新编译、存在活动飞行器且 `Vehicle.heading` 不是 NaN。
+`FlyViewCompassBar.qml` 不加入原生FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 为上下两个Loader使用同一 `qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml` 显式加载。两条都不显示时，先检查 `Fly View compass bar failed to load` 或 `Fly View gimbal compass bar failed to load`，再确认custom.qrc已重新编译。底部条还要求活动Vehicle且 `Vehicle.heading` 为有限数；顶部条则要求活动Vehicle/活动MAVLink Gimbal、链路未丢失且 `absoluteYaw` 为有限数。A8/MT11 SDK在线不会解锁该门禁；云台条被右侧面板挤压或母线告警重叠时，核对 `leftEdgeTopInset/rightEdgeTopInset/topEdgeCenterInset`、`rightTopReserve` 和目标屏幕缩放。若云台角度停住但飞控其他遥测仍正常，先在MAVLink Inspector或抓包中确认 `GIMBAL_DEVICE_ATTITUDE_STATUS` 是否仍持续到达；原生Gimbal当前没有该子流的新鲜度时间戳，所以仅云台姿态断流不会触发本条隐藏。
 
 常用静态检查：
 
 ```powershell
 rg --files custom
-rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|ZoomStepPolicy|Mt11ZoomPolicy|A8MiniZoomPolicy|Mt11Protocol|Mt11Sdk|Mt11ControlManager|setVideoMode|videoModeKnown|videoModePending|Overlay\.overlay|VideoCustomSettings|secondaryRtspUrl|DualVideoManager|duplicateSource|BeforeSynchronizingStage|FlyViewSecondaryVideo|FlightDisplayViewSecondaryVideo|DualPipView|thermal|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
+rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|showGimbalHeadingCompassBar|absoluteYaw|rightTopReserve|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|ZoomStepPolicy|Mt11ZoomPolicy|A8MiniZoomPolicy|Mt11Protocol|Mt11Sdk|Mt11ControlManager|setVideoMode|videoModeKnown|videoModePending|Overlay\.overlay|VideoCustomSettings|secondaryRtspUrl|DualVideoManager|duplicateSource|BeforeSynchronizingStage|FlyViewSecondaryVideo|FlightDisplayViewSecondaryVideo|DualPipView|thermal|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
@@ -1384,7 +1396,7 @@ cmake --build <desktop-build> --target CustomFlightDisplayModule_qmllint
 ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest)$' --output-on-failure
 ```
 
-截至2026-08-23，`Mt11ProtocolTest`为11 passed、0 failed，`SiyiProtocolTest`为42 passed、0 failed；`Mt11Sdk.cc`独立编译、Manager moc和diff-check均通过。MT11现以Target/Actual双值区分合法目标参考和0x18实测位置；tap在1～30x按step发送0x0F，最后不足一步直接到精确30x。hold在全域只启动一次原生0x05，以相机原生速度持续平滑运动；100 ms轮询0x18更新Actual并使Target沿方向单调对齐合法参考，step不再调节物理速度，也不再逐档0x0F或pulse停启。tap pending转hold使用stop→150 ms方向handoff，仍按住时最多一份方向副本；release/cancel或物理端点立即stop并只有一份150 ms安全副本，60秒watchdog按实测进展重置，165.1端点允许反向hold恢复。MT11三模式控制已改为 `setVideoMode(0/2/3)` 和 `videoModeKnown/videoMode/videoModePending`，0x11发送 `[0,2]`/`[2,0]`/`[3,2]`，仅匹配的0x10/0x11回包确认，2.5秒超时重查；工作模式与倍率generation以main为权威，sub归一化不中断运动。A8/MT11右栏已统一深色青色圆角视觉，增加带独立在线点的分段胶囊选择器；MT11三模式Overlay Popup具备左侧优先、边界钳制、窄屏上下回退和完整关闭生命周期，共享缩放手势未改变。附件136条unmatched ACK debug（0x05 125、0x18 11）已停止逐包输出，严格丢弃和重要warning仍保留。Viewer3D设置组已删除对Qt 6只读隐式尺寸的赋值。两份custom TS现均为19个context、153条message和144个唯一source；英文153条unfinished，中文153条finished、0条unfinished、0条空译文，context/source pair集合一致，两份lrelease均exit 0。上述结果仍不代表Manager的100/150 ms Timer、模式2.5秒Timer、完整QGC Qt 6构建或MT11真机连续运动/模式画面通过。RTSP原生Auto/GIO直连、Android硬解优先、双PIP、本地媒体和其他既有状态保持前文结论不变。
+截至2026-08-24，`Mt11ProtocolTest`为11 passed、0 failed，`SiyiProtocolTest`为42 passed、0 failed；`Mt11Sdk.cc`独立编译、Manager moc和diff-check均通过。MT11现以Target/Actual双值区分合法目标参考和0x18实测位置；tap在1～30x按step发送0x0F，最后不足一步直接到精确30x；hold全域只启动一次原生0x05，100 ms轮询0x18更新Actual/Target，step不调节物理速度。tap pending转hold使用stop→150 ms方向handoff，release/cancel或物理端点立即stop并只保留一份150 ms安全副本，165.1端点允许反向hold恢复。MT11三模式以 `setVideoMode(0/2/3)` 和 `videoModeKnown/videoMode/videoModePending` 管理，0x11发送 `[0,2]`/`[2,0]`/`[3,2]`，仅匹配的0x10/0x11回包确认，2.5秒超时重查，main为模式权威且sub归一化不中断运动。A8/MT11右栏已统一视觉，MT11三模式Overlay Popup完成边界钳制、窄屏回退和关闭生命周期；逐包unmatched ACK debug已停止输出，重要warning仍保留。新顶部云台指向罗盘复用 `FlyViewCompassBar.qml`，以MAVLink activeGimbal的 `absoluteYaw` 为主值、`bodyYaw` 为REL副值，并完成独立默认false开关、通信/有限数门禁、顶部安全inset、`rightTopReserve`和母线告警避让；它不依赖A8/MT11私有SDK且不联动右侧相机控制栏。两份custom TS现均为20个context、156条message和147个唯一source；英文156条unfinished，中文156条finished、0条unfinished、0条空译文，context/source pair集合一致，两份lrelease均exit 0。上述结果仍不代表完整QGC Qt 6/Android构建、MT11真机连续运动/模式画面，或真实MAVLink云台的absolute/relative yaw、多云台切换、断链门禁与横竖屏布局已验收。RTSP原生Auto/GIO直连、Android硬解优先、双PIP、本地媒体和其他既有状态保持前文结论不变。
 
 11:58历史附件的确定结论是：它来自Desktop而非Android；物理上只连接MT11，但应用仍同时运行未连接A8主receiver和MT11副receiver。MT11当时共9次start，完整失败都停在OPTIONS，DESCRIBE/SETUP/PLAY及媒体/decoder/sink首帧为0；每轮第二条OPTIONS是GStreamer `udp-reconnect`内部重发。该附件还暴露Video 2退避被主路通知绕过，但没有记录实际socket peer，不能把EOF直接归因于MT11。基本头部/skip-OPTIONS、副路deadline门禁、teardown flag延长及GIO direct resolver均在其后加入；“尚无真机成功日志”只适用于11:58当时。295d随后已证明本分支Desktop URL 2从标准OPTIONS走通SETUP/PLAY、source、decoder和sink首帧。
 

@@ -18,4 +18,5 @@ public:
     DEFINE_SETTING_NAME_GROUP()
 
     DEFINE_SETTINGFACT(showHeadingCompassBar)
+    DEFINE_SETTINGFACT(showGimbalHeadingCompassBar)
 };

@@ -8,6 +8,13 @@
             "longDesc": "Show a horizontal heading compass bar at the bottom center of Fly View.",
             "type": "bool",
             "default": false
+        },
+        {
+            "name": "showGimbalHeadingCompassBar",
+            "shortDesc": "Show gimbal heading compass bar",
+            "longDesc": "Show the active MAVLink gimbal direction at the top center of Fly View.",
+            "type": "bool",
+            "default": false
         }
     ]
 }

@@ -92,8 +92,26 @@
 <context>
     <name>FlyViewSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="233"/>
-        <source>Show Heading Compass Bar</source>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="238"/>
+        <source>Show Vehicle Heading Compass Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FlyViewSettings.qml" line="252"/>
+        <source>Show Gimbal Heading Compass Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FlyViewCustomLayer</name>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="101"/>
+        <source>Gimbal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="102"/>
+        <source>REL</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
