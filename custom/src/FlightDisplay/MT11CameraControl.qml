@@ -2,7 +2,7 @@
  *
  * UniPod MT11 camera control wrapper.
  * Reuses the A8 Mini control panel and injects the MT11 manager while adding
- * the SDK-acknowledged visible/thermal mode switch.
+ * the SDK-acknowledged zoom, thermal and combined-stream mode selector.
  *
  ****************************************************************************/
 
@@ -19,6 +19,15 @@ Item {
     implicitHeight: controlLoader.item ? controlLoader.item.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
+
+    function closeTransientUi() {
+        if (controlLoader.item
+                && typeof controlLoader.item.closeTransientUi === "function") {
+            controlLoader.item.closeTransientUi()
+        }
+    }
+
+    Component.onDestruction: closeTransientUi()
 
     Loader {
         id: controlLoader

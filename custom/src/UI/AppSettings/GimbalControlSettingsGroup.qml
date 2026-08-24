@@ -101,7 +101,7 @@ ColumnLayout {
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video > Connection > RTSP URL 2.")
+            text: qsTr("MT11 SDK Host and Port control zoom, photo, recording and the three video work modes. Configure its video address under Video > Connection > RTSP URL 2.")
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize
             opacity: 0.72

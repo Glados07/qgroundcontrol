@@ -89,18 +89,36 @@ QByteArray Mt11Protocol::requestVideoModePacket()
     return _encode(CommandVideoMode, {});
 }
 
+QByteArray Mt11Protocol::setVideoModePacket(VideoWorkMode mode)
+{
+    quint8 mainStream = VideoSourceZoom;
+    quint8 subStream = VideoSourceThermal;
+    switch (mode) {
+    case VideoWorkModeZoom:
+        break;
+    case VideoWorkModeThermal:
+        mainStream = VideoSourceThermal;
+        subStream = VideoSourceZoom;
+        break;
+    case VideoWorkModeZoomAndThermal:
+        mainStream = VideoSourceZoomAndThermal;
+        break;
+    case VideoWorkModeUnknown:
+    default:
+        return {};
+    }
+
+    QByteArray payload;
+    payload.append(static_cast<char>(mainStream));
+    payload.append(static_cast<char>(subStream));
+    return _encode(CommandSetVideoMode, payload);
+}
+
 QByteArray Mt11Protocol::setThermalModePacket(bool thermalOnMainStream)
 {
-    // MT11 supports the two complementary single-image combinations used by
-    // this UI: main zoom/sub thermal and main thermal/sub zoom.
-    QByteArray payload;
-    payload.append(static_cast<char>(thermalOnMainStream
-                                         ? VideoSourceThermal
-                                         : VideoSourceZoom));
-    payload.append(static_cast<char>(thermalOnMainStream
-                                         ? VideoSourceZoom
-                                         : VideoSourceThermal));
-    return _encode(CommandSetVideoMode, payload);
+    return setVideoModePacket(thermalOnMainStream
+                                  ? VideoWorkModeThermal
+                                  : VideoWorkModeZoom);
 }
 
 Mt11Protocol::DecodedPacket Mt11Protocol::decodePacket(
@@ -289,6 +307,28 @@ bool Mt11Protocol::parseVideoModePayload(const QByteArray& payload,
     mode->mainStream = mainStream;
     mode->subStream = subStream;
     return true;
+}
+
+Mt11Protocol::VideoWorkMode Mt11Protocol::videoWorkMode(
+    quint8 mainStream,
+    quint8 subStream)
+{
+    // Command 0x10 can report the wider generic set of legal sub streams, and
+    // some MT11 firmware revisions normalize it differently in their 0x11
+    // response. main_stream remains the authoritative work-mode selector.
+    if (!isValidSubStream(subStream)) {
+        return VideoWorkModeUnknown;
+    }
+    if (mainStream == VideoSourceZoom) {
+        return VideoWorkModeZoom;
+    }
+    if (mainStream == VideoSourceThermal) {
+        return VideoWorkModeThermal;
+    }
+    if (mainStream == VideoSourceZoomAndThermal) {
+        return VideoWorkModeZoomAndThermal;
+    }
+    return VideoWorkModeUnknown;
 }
 
 QByteArray Mt11Protocol::_photoAndRecordPacket(quint8 functionType)

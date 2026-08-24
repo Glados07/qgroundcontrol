@@ -23,6 +23,11 @@ Item {
     property real controlSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
+    property color accentColor: "#65d9f4"
+    property color buttonColor: "#321f2b36"
+    property color buttonHoverColor: "#4a334653"
+    property color buttonPressedColor: "#e8f2f7fa"
+    property real buttonCornerRadius: Math.min(10, controlSize * 0.22)
 
     readonly property int gestureIdle: 0
     readonly property int gesturePressed: 1
@@ -131,10 +136,12 @@ Item {
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
             Layout.alignment: Qt.AlignHCenter
-            radius: width / 2
-            color: zoomOutMouseArea.pressed ? "#f2ffffff" : (zoomOutMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
-            border.color: zoomOutMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
-            border.width: 1
+            radius: root.buttonCornerRadius
+            color: zoomOutMouseArea.pressed
+                   ? root.buttonPressedColor
+                   : (zoomOutMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
+            border.color: zoomOutMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.width: zoomOutMouseArea.containsMouse ? 2 : 1
             enabled: root.canSend
                      && (zoomOutMouseArea.gestureState !== root.gestureIdle
                          || root.canZoomOut)
@@ -255,8 +262,8 @@ Item {
                                     * (root.showActualZoom ? 1.08 : 0.78)
             Layout.alignment: Qt.AlignHCenter
             radius: height / 2
-            color: "#e8ffffff"
-            border.color: "#80ffffff"
+            color: "#d5192630"
+            border.color: root.online && root.zoomKnown ? "#6965d9f4" : "#506f7d86"
             border.width: 1
 
             QGCLabel {
@@ -266,7 +273,7 @@ Item {
                 text: root.online && root.zoomKnown
                       ? root.zoomValue.toFixed(1) + "x"
                       : "--"
-                color: "#101820"
+                color: root.online && root.zoomKnown ? root.accentColor : "#9dabb3b9"
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize
             }
@@ -286,7 +293,7 @@ Item {
                           + (root.online && root.zoomKnown
                              ? root.zoomValue.toFixed(1) + "x"
                              : "--")
-                    color: "#101820"
+                    color: root.online && root.zoomKnown ? root.accentColor : "#9dabb3b9"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize * 0.82
                 }
@@ -299,7 +306,7 @@ Item {
                           + (root.online && root.actualZoomKnown
                              ? root.actualZoomValue.toFixed(1) + "x"
                              : "--")
-                    color: "#40505d"
+                    color: "#ced9dfe3"
                     font.pointSize: ScreenTools.smallFontPointSize * 0.74
                 }
             }
@@ -313,10 +320,12 @@ Item {
             Layout.preferredWidth: root.controlSize
             Layout.preferredHeight: root.controlSize
             Layout.alignment: Qt.AlignHCenter
-            radius: width / 2
-            color: zoomInMouseArea.pressed ? "#f2ffffff" : (zoomInMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
-            border.color: zoomInMouseArea.containsMouse ? "#d8ffffff" : "#78ffffff"
-            border.width: 1
+            radius: root.buttonCornerRadius
+            color: zoomInMouseArea.pressed
+                   ? root.buttonPressedColor
+                   : (zoomInMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
+            border.color: zoomInMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.width: zoomInMouseArea.containsMouse ? 2 : 1
             enabled: root.canSend
                      && (zoomInMouseArea.gestureState !== root.gestureIdle
                          || root.canZoomIn)

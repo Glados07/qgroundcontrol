@@ -7,6 +7,8 @@
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as QtControls
+import QtQuick.Window
 
 import QGroundControl
 import QGroundControl.Controls
@@ -30,6 +32,11 @@ Rectangle {
                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.48
     readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.45
+    readonly property color accentColor: "#65d9f4"
+    readonly property color panelColor: online ? "#e0121a24" : "#d018202a"
+    readonly property color buttonColor: "#321f2b36"
+    readonly property color buttonHoverColor: "#4a334653"
+    readonly property color buttonPressedColor: "#e8f2f7fa"
     readonly property bool recordingSessionActive: Boolean(manager && manager.recordingSessionActive)
     readonly property bool recordingSessionCapturing: Boolean(manager && manager.recordingSessionCapturing)
     readonly property bool recordingSessionPending: Boolean(manager
@@ -44,28 +51,79 @@ Rectangle {
                                                            || manager.localMediaError.length > 0
                                                            || (manager.lastError.length > 0
                                                                && !recordingSessionCapturing)))
-    readonly property bool thermalModeKnown: Boolean(thermalControlsVisible
-                                                       && manager
-                                                       && manager.thermalModeKnown)
-    readonly property bool thermalModeEnabled: Boolean(thermalModeKnown
-                                                         && manager.thermalModeEnabled)
-    readonly property bool thermalCommandPending: Boolean(thermalControlsVisible
-                                                            && manager
-                                                            && manager.thermalCommandPending)
+    readonly property bool videoModeKnown: Boolean(thermalControlsVisible
+                                                     && manager
+                                                     && manager.videoModeKnown)
+    readonly property int videoMode: videoModeKnown ? Number(manager.videoMode) : -1
+    readonly property bool videoModePending: Boolean(thermalControlsVisible
+                                                      && manager
+                                                      && manager.videoModePending)
 
     property int recordingSeconds: 0
+    readonly property bool videoModeMenuOpen: videoModeMenu.visible
 
     implicitWidth: controlColumn.implicitWidth + panelPadding * 2
     implicitHeight: controlColumn.implicitHeight + panelPadding * 2
     width: implicitWidth
     height: implicitHeight
-    radius: Math.min(10, ScreenTools.defaultFontPixelHeight * 0.55)
-    color: online ? "#b0101822" : "#a018202a"
+    radius: Math.min(14, ScreenTools.defaultFontPixelHeight * 0.7)
+    color: panelColor
     border.color: mediaErrorVisible
                   ? qgcPal.colorRed
-                  : (online ? "#78ffffff" : "#708493a3")
+                  : (online ? "#567b93a6" : "#50677480")
     border.width: 1
     visible: available
+
+    function videoModeCode(mode) {
+        if (mode === 0) {
+            return qsTr("ZOOM")
+        }
+        if (mode === 2) {
+            return qsTr("IR")
+        }
+        if (mode === 3) {
+            return qsTr("MIX")
+        }
+        return "?"
+    }
+
+    function videoModeName(mode) {
+        if (mode === 0) {
+            return qsTr("Zoom")
+        }
+        if (mode === 2) {
+            return qsTr("Thermal")
+        }
+        if (mode === 3) {
+            return qsTr("Zoom + Thermal")
+        }
+        return qsTr("Unknown mode")
+    }
+
+    function requestVideoMode(mode) {
+        if (!manager || !online || videoModePending || mode === videoMode) {
+            closeTransientUi()
+            return
+        }
+
+        const accepted = manager.setVideoMode(mode)
+        if (accepted !== false) {
+            closeTransientUi()
+        }
+    }
+
+    function openVideoModeMenu() {
+        if (!thermalControlsVisible || !online || videoModePending) {
+            return
+        }
+
+        videoModeMenu.reposition()
+        videoModeMenu.open()
+    }
+
+    function closeTransientUi() {
+        videoModeMenu.close()
+    }
 
     function recordingTimeText() {
         const hours = Math.floor(recordingSeconds / 3600)
@@ -75,6 +133,32 @@ Rectangle {
         const ss = (seconds < 10 ? "0" : "") + seconds
         return hours > 0 ? hours + ":" + mm + ":" + ss : mm + ":" + ss
     }
+
+    onVisibleChanged: {
+        if (!visible) {
+            closeTransientUi()
+        }
+    }
+
+    onOnlineChanged: {
+        if (!online) {
+            closeTransientUi()
+        }
+    }
+
+    onManagerChanged: closeTransientUi()
+    onThermalControlsVisibleChanged: {
+        if (!thermalControlsVisible) {
+            closeTransientUi()
+        }
+    }
+    onVideoModePendingChanged: {
+        if (videoModePending) {
+            closeTransientUi()
+        }
+    }
+
+    Component.onDestruction: closeTransientUi()
 
     QGCPalette {
         id: qgcPal
@@ -132,6 +216,245 @@ Rectangle {
         }
     }
 
+    Connections {
+        target: Qt.application
+
+        function onStateChanged() {
+            if (Qt.application.state !== Qt.ApplicationActive) {
+                root.closeTransientUi()
+            }
+        }
+    }
+
+    Connections {
+        id: windowVisibilityConnections
+
+        target: root.Window.window
+        ignoreUnknownSignals: true
+
+        function onVisibleChanged() {
+            if (!windowVisibilityConnections.target
+                    || !windowVisibilityConnections.target.visible) {
+                root.closeTransientUi()
+            }
+        }
+    }
+
+    QtControls.Popup {
+        id: videoModeMenu
+
+        readonly property real menuPadding: Math.max(5, root.panelPadding * 0.8)
+        readonly property real edgeMargin: Math.max(8, root.panelPadding * 1.2)
+        readonly property real popupGap: root.itemSpacing * 1.5
+        property real lastClosedAtMs: -1000
+
+        parent: QtControls.Overlay.overlay
+        width: Math.max(root.actionSize * 4.25,
+                        ScreenTools.defaultFontPixelWidth * 21)
+        height: root.actionSize * 3 + root.itemSpacing * 2 + menuPadding * 2
+        padding: menuPadding
+        z: 100
+        modal: false
+        focus: true
+        dim: false
+        closePolicy: QtControls.Popup.CloseOnEscape | QtControls.Popup.CloseOnPressOutside
+
+        function bounded(value, minimum, maximum) {
+            return Math.max(minimum, Math.min(maximum, value))
+        }
+
+        function reposition() {
+            if (!parent || !modeButton) {
+                return
+            }
+
+            const buttonPosition = modeButton.mapToItem(parent, 0, 0)
+            const maximumX = Math.max(edgeMargin, parent.width - width - edgeMargin)
+            const maximumY = Math.max(edgeMargin, parent.height - height - edgeMargin)
+            const leftX = buttonPosition.x - width - popupGap
+
+            if (leftX >= edgeMargin) {
+                x = bounded(leftX, edgeMargin, maximumX)
+                y = bounded(buttonPosition.y + modeButton.height / 2 - height / 2,
+                            edgeMargin, maximumY)
+                return
+            }
+
+            // Narrow portrait screens may not have enough room on the left.
+            // Align the menu with the button and prefer below, then above.
+            x = bounded(buttonPosition.x + modeButton.width - width,
+                        edgeMargin, maximumX)
+            const belowY = buttonPosition.y + modeButton.height + popupGap
+            if (belowY + height <= parent.height - edgeMargin) {
+                y = belowY
+            } else {
+                y = bounded(buttonPosition.y - height - popupGap,
+                            edgeMargin, maximumY)
+            }
+        }
+
+        onOpened: reposition()
+        onClosed: lastClosedAtMs = Date.now()
+
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 120 }
+            NumberAnimation { property: "scale"; from: 0.96; to: 1.0; duration: 120; easing.type: Easing.OutCubic }
+        }
+
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 90 }
+        }
+
+        background: Rectangle {
+            radius: Math.min(12, root.actionSize * 0.22)
+            color: "#f0141e28"
+            border.color: root.videoModePending ? "#d8ffc857" : "#7065d9f4"
+            border.width: 1
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: Math.max(0, parent.radius - 1)
+                color: "transparent"
+                border.color: "#20ffffff"
+                border.width: 1
+            }
+        }
+
+        contentItem: Column {
+            id: videoModeMenuColumn
+
+            spacing: root.itemSpacing
+
+            Repeater {
+                model: [0, 2, 3]
+
+                Rectangle {
+                    id: modeOption
+
+                    required property int modelData
+                    readonly property int modeValue: modelData
+                    readonly property bool selected: root.videoModeKnown
+                                                     && root.videoMode === modeValue
+                    readonly property bool optionEnabled: root.online
+                                                          && !root.videoModePending
+
+                    width: videoModeMenu.availableWidth
+                    height: root.actionSize
+                    radius: Math.min(9, height * 0.2)
+                    color: selected
+                           ? "#3e2a7182"
+                           : (modeOptionMouse.pressed
+                              ? root.buttonPressedColor
+                              : (modeOptionMouse.containsMouse
+                                 ? root.buttonHoverColor
+                                 : root.buttonColor))
+                    border.color: selected
+                                  ? root.accentColor
+                                  : (modeOptionMouse.containsMouse ? "#82ffffff" : "#385d6d78")
+                    border.width: selected ? 2 : 1
+                    opacity: optionEnabled ? 1.0 : 0.48
+                    scale: modeOptionMouse.pressed ? 0.98 : 1.0
+
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Behavior on scale { NumberAnimation { duration: 80 } }
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: root.itemSpacing * 1.4
+                        anchors.rightMargin: root.actionSize * 0.52
+                        spacing: root.itemSpacing * 1.35
+
+                        Rectangle {
+                            id: modeIconFrame
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.actionSize * 0.72
+                            height: width * 0.62
+                            radius: Math.max(4, height * 0.22)
+                            color: modeOption.selected ? "#2665d9f4" : "#24101822"
+                            border.color: modeOption.selected ? root.accentColor : "#8dc9d6de"
+                            border.width: 1
+
+                            QGCColoredImage {
+                                anchors.centerIn: parent
+                                width: parent.height * 0.56
+                                height: width
+                                source: modeOption.modeValue === 0
+                                        ? "qrc:/InstrumentValueIcons/camera.svg"
+                                        : (modeOption.modeValue === 2
+                                           ? "qrc:/InstrumentValueIcons/thermometer.svg"
+                                           : "qrc:/InstrumentValueIcons/layers.svg")
+                                sourceSize.height: height
+                                fillMode: Image.PreserveAspectFit
+                                color: modeOptionMouse.pressed && !modeOption.selected
+                                       ? "#16212a"
+                                       : (modeOption.selected ? root.accentColor : "white")
+                            }
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(0,
+                                            parent.width - modeIconFrame.width - parent.spacing)
+                            spacing: 0
+
+                            QGCLabel {
+                                width: parent.width
+                                text: root.videoModeName(modeOption.modeValue)
+                                elide: Text.ElideRight
+                                color: modeOptionMouse.pressed && !modeOption.selected
+                                       ? "#16212a"
+                                       : "white"
+                                font.bold: modeOption.selected
+                                font.pointSize: ScreenTools.smallFontPointSize
+                            }
+
+                            QGCLabel {
+                                width: parent.width
+                                text: modeOption.selected ? qsTr("Current") : qsTr("Select")
+                                elide: Text.ElideRight
+                                color: modeOption.selected ? root.accentColor : "#a7bec9d2"
+                                font.pointSize: ScreenTools.smallFontPointSize * 0.72
+                            }
+                        }
+                    }
+
+                    QGCLabel {
+                        anchors.right: parent.right
+                        anchors.rightMargin: root.itemSpacing * 1.4
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: modeOption.selected
+                        text: "\u2713"
+                        color: root.accentColor
+                        font.bold: true
+                        font.pixelSize: root.actionSize * 0.32
+                    }
+
+                    MouseArea {
+                        id: modeOptionMouse
+
+                        anchors.fill: parent
+                        enabled: modeOption.optionEnabled
+                        hoverEnabled: true
+                        preventStealing: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.requestVideoMode(modeOption.modeValue)
+                    }
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: videoModeMenu.parent
+        enabled: videoModeMenu.visible
+        ignoreUnknownSignals: true
+
+        function onWidthChanged() { videoModeMenu.reposition() }
+        function onHeightChanged() { videoModeMenu.reposition() }
+    }
+
     ColumnLayout {
         id: controlColumn
 
@@ -146,6 +469,11 @@ Rectangle {
             showActualZoom: root.showActualZoom
             controlSize: root.actionSize
             controlSpacing: root.itemSpacing
+            accentColor: root.accentColor
+            buttonColor: root.buttonColor
+            buttonHoverColor: root.buttonHoverColor
+            buttonPressedColor: root.buttonPressedColor
+            buttonCornerRadius: Math.min(10, root.actionSize * 0.22)
             Layout.alignment: Qt.AlignHCenter
         }
 
@@ -155,62 +483,107 @@ Rectangle {
             Layout.leftMargin: root.itemSpacing
             Layout.rightMargin: root.itemSpacing
             Layout.alignment: Qt.AlignHCenter
-            color: "#56ffffff"
+            color: "#5265d9f4"
         }
 
         Rectangle {
-            id: thermalButton
+            id: modeButton
 
-            readonly property string statusText: root.thermalCommandPending
-                                                     ? qsTr("...")
-                                                     : (!root.thermalModeKnown
-                                                        ? qsTr("?")
-                                                        : (root.thermalModeEnabled
-                                                           ? qsTr("IR")
-                                                           : qsTr("RGB")))
+            readonly property string statusText: root.videoModePending
+                                                     ? "..."
+                                                     : root.videoModeCode(root.videoMode)
 
             visible: root.thermalControlsVisible
             Layout.preferredWidth: root.actionSize
             Layout.preferredHeight: root.actionSize
             Layout.alignment: Qt.AlignHCenter
-            radius: width / 2
-            color: root.thermalModeEnabled
-                   ? (thermalMouseArea.pressed ? "#e0a34d1f" : "#c8783014")
-                   : (thermalMouseArea.pressed
-                      ? "#f0ffffff"
-                      : (thermalMouseArea.containsMouse ? "#32ffffff" : "#1cffffff"))
-            border.color: root.thermalCommandPending
+            radius: Math.min(10, width * 0.22)
+            color: modeMouseArea.pressed
+                   ? root.buttonPressedColor
+                   : (root.videoModeMenuOpen
+                      ? "#442a7182"
+                      : (modeMouseArea.containsMouse
+                         ? root.buttonHoverColor
+                         : root.buttonColor))
+            border.color: root.videoModePending
                           ? "#ffffc857"
-                          : (root.thermalModeEnabled
-                             ? "#ffffa45b"
-                             : (thermalMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"))
-            border.width: 2
-            // The displayed mode changes only when the manager receives and
-            // publishes the matching SDK acknowledgement.
-            enabled: root.available && root.thermalModeKnown && !root.thermalCommandPending
-            opacity: enabled ? 1.0 : 0.55
-            scale: thermalMouseArea.pressed ? 0.94 : 1.0
+                          : (root.videoModeMenuOpen
+                             ? root.accentColor
+                             : (modeMouseArea.containsMouse ? "#d8ffffff" : "#7696a8b4"))
+            border.width: root.videoModeMenuOpen ? 2 : 1
+            enabled: root.online && !root.videoModePending
+            opacity: enabled ? 1.0 : 0.5
+            scale: modeMouseArea.pressed ? 0.94 : 1.0
 
-            Behavior on color { ColorAnimation { duration: 120 } }
-            Behavior on scale { NumberAnimation { duration: 90 } }
+            Behavior on color { ColorAnimation { duration: 110 } }
+            Behavior on scale { NumberAnimation { duration: 85 } }
+
+            QGCColoredImage {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: parent.height * 0.16
+                width: parent.width * 0.38
+                height: width
+                source: "qrc:/InstrumentValueIcons/view-carousel.svg"
+                sourceSize.height: height
+                fillMode: Image.PreserveAspectFit
+                color: modeMouseArea.pressed ? "#15212a" : "white"
+            }
 
             QGCLabel {
-                anchors.centerIn: parent
-                text: thermalButton.statusText
-                color: thermalMouseArea.pressed && !root.thermalModeEnabled ? "#101820" : "white"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: parent.height * 0.08
+                text: modeButton.statusText
+                color: modeMouseArea.pressed ? "#15212a" : root.accentColor
                 font.bold: true
-                font.pointSize: ScreenTools.smallFontPointSize
+                font.pointSize: ScreenTools.smallFontPointSize * 0.58
+            }
+
+            QGCLabel {
+                anchors.left: parent.left
+                anchors.leftMargin: parent.width * 0.06
+                anchors.verticalCenter: parent.verticalCenter
+                text: "\u25c0"
+                color: modeMouseArea.pressed
+                       ? "#15212a"
+                       : (root.videoModeMenuOpen ? root.accentColor : "#b8ffffff")
+                font.pixelSize: root.actionSize * 0.14
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Math.max(3, parent.width * 0.08)
+                width: Math.max(5, parent.width * 0.12)
+                height: width
+                radius: width / 2
+                color: root.videoModePending
+                       ? "#ffc857"
+                       : (root.videoModeKnown ? root.accentColor : "#8e9aa3")
+                border.color: "#b8ffffff"
+                border.width: 1
             }
 
             MouseArea {
-                id: thermalMouseArea
+                id: modeMouseArea
 
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
                 preventStealing: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.manager.toggleThermalMode()
+                property bool menuWasOpenOnPress: false
+
+                onPressed: menuWasOpenOnPress = root.videoModeMenuOpen
+                onClicked: {
+                    if (menuWasOpenOnPress
+                            || Date.now() - videoModeMenu.lastClosedAtMs < 160) {
+                        root.closeTransientUi()
+                    } else {
+                        root.openVideoModeMenu()
+                    }
+                }
             }
         }
 
@@ -220,10 +593,12 @@ Rectangle {
             Layout.preferredWidth: root.actionSize
             Layout.preferredHeight: root.actionSize
             Layout.alignment: Qt.AlignHCenter
-            radius: width / 2
-            color: photoMouseArea.pressed ? "#f0ffffff" : (photoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")
-            border.color: photoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"
-            border.width: 2
+            radius: Math.min(10, width * 0.22)
+            color: photoMouseArea.pressed
+                   ? root.buttonPressedColor
+                   : (photoMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
+            border.color: photoMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.width: photoMouseArea.containsMouse ? 2 : 1
             // UDP 命令发送能力不依赖最近一次状态探测，避免偶发回包超时锁死拍照。
             enabled: root.available
             opacity: enabled ? 1.0 : 0.45
@@ -245,7 +620,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 anchors.margins: -2
-                radius: width / 2
+                radius: Math.min(12, width * 0.24)
                 color: "transparent"
                 border.color: qgcPal.colorGreen
                 border.width: 3
@@ -289,18 +664,20 @@ Rectangle {
                                    : root.actionSize
             Layout.preferredHeight: root.actionSize
             Layout.alignment: Qt.AlignHCenter
-            radius: height / 2
+            radius: statusText.length > 0 ? height / 2 : Math.min(10, height * 0.22)
             color: root.recordingSessionFailed
                    ? (videoMouseArea.pressed ? "#e06d3514" : "#c85b2d12")
                    : (root.recordingSessionVisualActive
                       ? (videoMouseArea.pressed ? "#e0a31f34" : "#c8a31f34")
-                      : (videoMouseArea.pressed ? "#f0ffffff" : (videoMouseArea.containsMouse ? "#32ffffff" : "#1cffffff")))
+                      : (videoMouseArea.pressed
+                         ? root.buttonPressedColor
+                         : (videoMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)))
             border.color: root.recordingSessionFailed
                           ? "#ffffc857"
                           : (root.recordingSessionVisualActive
                              ? "#ffff6b78"
-                             : (videoMouseArea.containsMouse ? "#f0ffffff" : "#a8ffffff"))
-            border.width: 2
+                             : (videoMouseArea.containsMouse ? root.accentColor : "#7696a8b4"))
+            border.width: videoMouseArea.containsMouse || root.recordingSessionVisualActive ? 2 : 1
             // The manager coordinates the independent SD and local recording branches.
             enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)
             opacity: enabled ? 1.0 : 0.45

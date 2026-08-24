@@ -183,8 +183,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     _recordingStatusDelayTimer.setInterval(400);
     _recordingCommandTimer.setSingleShot(true);
     _recordingCommandTimer.setInterval(2500);
-    _thermalCommandTimer.setSingleShot(true);
-    _thermalCommandTimer.setInterval(2500);
+    _videoModeCommandTimer.setSingleShot(true);
+    _videoModeCommandTimer.setInterval(2500);
     _photoCommandTimer.setSingleShot(true);
     _photoCommandTimer.setInterval(2000);
     _localPhotoTimer.setSingleShot(true);
@@ -269,8 +269,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_requestRecordingStatusAfterDelay);
     connect(&_recordingCommandTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_handleRecordingCommandTimeout);
-    connect(&_thermalCommandTimer, &QTimer::timeout,
-            this, &Mt11ControlManager::_handleThermalCommandTimeout);
+    connect(&_videoModeCommandTimer, &QTimer::timeout,
+            this, &Mt11ControlManager::_handleVideoModeCommandTimeout);
     connect(&_photoCommandTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_handlePhotoCommandTimeout);
     connect(&_localPhotoTimer, &QTimer::timeout,
@@ -327,7 +327,7 @@ Mt11ControlManager::~Mt11ControlManager()
     _continuousZoomStopRetryTimer.stop();
     _recordingStatusDelayTimer.stop();
     _recordingCommandTimer.stop();
-    _thermalCommandTimer.stop();
+    _videoModeCommandTimer.stop();
     _photoCommandTimer.stop();
     _zoomCommandPending = false;
     _continuousZoomActive = false;
@@ -637,17 +637,17 @@ bool Mt11ControlManager::requestCameraStatus()
     return _sdk->requestCameraSystemStatus();
 }
 
-bool Mt11ControlManager::toggleThermalMode()
+bool Mt11ControlManager::setVideoMode(int mode)
 {
-    if (!_cameraCommandAvailable() || _thermalCommandPending) {
+    if (mode != VideoModeZoom && mode != VideoModeThermal
+        && mode != VideoModeZoomAndThermal) {
         return false;
     }
-    if (!_thermalModeKnown) {
-        _configureSdkEndpoint();
-        if (!_sdkResponseTimer.isActive()) {
-            _sdkResponseTimer.start();
-        }
-        return _sdk->requestVideoMode();
+    if (!_cameraCommandAvailable() || _videoModePending) {
+        return false;
+    }
+    if (_videoModeKnown && _videoMode == mode) {
+        return true;
     }
 
     if (_continuousZoomActive && !stopZoom()) {
@@ -674,17 +674,36 @@ bool Mt11ControlManager::toggleThermalMode()
             return false;
         }
     }
-    _thermalCommandTarget = !_thermalModeEnabled;
+    _videoModeCommandTarget = mode;
     _configureSdkEndpoint();
-    if (!_sdk->setThermalMode(_thermalCommandTarget)) {
+    if (!_sdk->setVideoMode(
+            static_cast<Mt11Protocol::VideoWorkMode>(mode))) {
         return false;
     }
-    _setThermalCommandPending(true);
+    _setVideoModePending(true);
     // 0x16 describes the current main lens. Do not expose capability or
     // position from the previous lens while the switch is pending.
     _invalidateZoomState();
-    _thermalCommandTimer.start();
+    _videoModeCommandTimer.start();
     return true;
+}
+
+bool Mt11ControlManager::toggleThermalMode()
+{
+    if (!_cameraCommandAvailable() || _videoModePending) {
+        return false;
+    }
+    if (!_videoModeKnown) {
+        _configureSdkEndpoint();
+        if (!_sdkResponseTimer.isActive()) {
+            _sdkResponseTimer.start();
+        }
+        return _sdk->requestVideoMode();
+    }
+
+    return setVideoMode(_videoMode == VideoModeThermal
+                            ? VideoModeZoom
+                            : VideoModeThermal);
 }
 
 void Mt11ControlManager::setVideoItem(QQuickItem* videoItem)
@@ -916,7 +935,7 @@ void Mt11ControlManager::_settingsChanged()
     _continuousZoomStopRetryTimer.stop();
     _recordingStatusDelayTimer.stop();
     _recordingCommandTimer.stop();
-    _thermalCommandTimer.stop();
+    _videoModeCommandTimer.stop();
     _photoCommandTimer.stop();
     _setSdkResponding(false);
     _invalidateZoomState();
@@ -924,8 +943,8 @@ void Mt11ControlManager::_settingsChanged()
     _setRecording(false);
     _setRecordingCommandPending(false);
     _setPhotoCommandPending(false);
-    _setThermalModeKnown(false);
-    _setThermalCommandPending(false);
+    _setVideoModeKnown(false);
+    _setVideoModePending(false);
     // A pure enable/disable change can keep the same UDP endpoint. Explicitly
     // retire all old request generations so their late ACKs cannot repopulate
     // state after this reset or be mistaken for the first poll after re-enable.
@@ -983,14 +1002,14 @@ void Mt11ControlManager::_pollSdk()
     // Do not accept capabilities from the previous main lens while a video
     // mode change is still unconfirmed. The confirming 0x10/0x11 feedback
     // triggers a fresh 0x16/0x18 pair immediately.
-    if (!_thermalCommandPending) {
+    if (!_videoModePending) {
         (void) _sdk->requestMaximumZoom();
         if (!_continuousZoomActive) {
             (void) _sdk->requestCurrentZoom();
         }
     }
     (void) _sdk->requestCameraSystemStatus();
-    if (!_thermalCommandPending) {
+    if (!_videoModePending) {
         (void) _sdk->requestVideoMode();
     }
 }
@@ -1011,7 +1030,7 @@ void Mt11ControlManager::_markSdkNotResponding()
 
 void Mt11ControlManager::_handleManualZoom(double zoomLevel)
 {
-    if (!enabled() || _thermalCommandPending) return;
+    if (!enabled() || _videoModePending) return;
     Q_UNUSED(zoomLevel);
     // Production sequence is fixed at zero and command 0x05 identifies only
     // the command type. During tap/hold handoff, a delayed stop ACK can consume
@@ -1040,7 +1059,7 @@ void Mt11ControlManager::_handleAbsoluteZoomFeedback(bool accepted)
 
 void Mt11ControlManager::_handleMaximumZoom(double maximumZoom)
 {
-    if (!enabled() || _thermalCommandPending) return;
+    if (!enabled() || _videoModePending) return;
     _setMaximumZoom(maximumZoom);
     _setMaximumZoomKnown(true);
     _maximumZoomFreshnessTimer.start();
@@ -1052,7 +1071,7 @@ void Mt11ControlManager::_handleMaximumZoom(double maximumZoom)
 
 void Mt11ControlManager::_handleCurrentZoom(double zoomLevel)
 {
-    if (!enabled() || _thermalCommandPending) return;
+    if (!enabled() || _videoModePending) return;
     _observeZoomFeedback(zoomLevel);
     if (_postHoldZoomFeedbackPending
         && _measuredZoomKnown
@@ -1148,16 +1167,23 @@ void Mt11ControlManager::_handleFunctionFeedback(quint8 infoType)
 void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
 {
     if (!enabled()) return;
-    Q_UNUSED(subStream);
-    const bool thermal = mainStream == Mt11Protocol::VideoSourceThermal;
-    // The maximum/current zoom feedback belongs to the exact main lens, not
-    // merely to the coarse RGB-versus-thermal UI state. Zoom, wide and
-    // composite sources can all be non-thermal yet have different limits.
-    const bool modeChanged = _thermalModeKnown
+    const Mt11Protocol::VideoWorkMode reportedMode =
+        Mt11Protocol::videoWorkMode(mainStream, subStream);
+    const bool supportedMode =
+        reportedMode != Mt11Protocol::VideoWorkModeUnknown;
+    const int reportedModeValue = static_cast<int>(reportedMode);
+    // Maximum/current zoom feedback belongs to main_stream. Firmware can
+    // normalize sub_stream between otherwise equivalent 0x10/0x11 replies;
+    // that secondary-layout detail must not retire zoom state or stop motion.
+    const bool mainSourceChanged = _mainVideoSource != 0xff
         && mainStream != _mainVideoSource;
-    const bool commandConfirmed = _thermalCommandPending
-        && thermal == _thermalCommandTarget;
-    const bool refreshZoomState = modeChanged || commandConfirmed;
+    // Neither sending 0x11 nor receiving a different valid layout updates the
+    // requested state optimistically. A 0x10/0x11 response confirms the work
+    // mode through main_stream. sub_stream is retained as reported state for
+    // diagnostics and future layout use, but does not own the zoom generation.
+    const bool commandConfirmed = _videoModePending && supportedMode
+        && reportedModeValue == _videoModeCommandTarget;
+    const bool refreshZoomState = mainSourceChanged || commandConfirmed;
 
     if (refreshZoomState) {
         if (_continuousZoomActive) {
@@ -1179,19 +1205,31 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
             // switch path flushes this movement before sending 0x11.
             _setZoomCommandPending(false);
         }
-        // Retire any 0x16/0x18 requests issued for the prior main lens before
-        // opening a fresh request generation below.
-        _sdk->clearPendingRequests();
+        // Retire requests issued for the prior main lens before opening a
+        // fresh generation. A late, non-confirming 0x10 can arrive while our
+        // 0x11 is still pending; keep that transport window so its later ACK
+        // is not discarded and converted into a false mode timeout.
+        if (!_videoModePending || commandConfirmed) {
+            _sdk->clearPendingRequests();
+        }
         _invalidateZoomState();
     }
     _mainVideoSource = mainStream;
-    _setThermalModeKnown(true);
-    _setThermalModeEnabled(thermal);
-    if (commandConfirmed) {
-        _thermalCommandTimer.stop();
-        _setThermalCommandPending(false);
+    _subVideoSource = subStream;
+    if (supportedMode) {
+        _setVideoMode(reportedModeValue);
+        _setVideoModeKnown(true);
+    } else {
+        // The wire protocol can describe additional layouts, but the MT11
+        // work-mode control intentionally supports only the three documented
+        // UI modes. Preserve the last display value and mark it unconfirmed.
+        _setVideoModeKnown(false);
     }
-    if (refreshZoomState && !_thermalCommandPending) {
+    if (commandConfirmed) {
+        _videoModeCommandTimer.stop();
+        _setVideoModePending(false);
+    }
+    if (refreshZoomState && !_videoModePending) {
         _requestZoomState();
     }
 }
@@ -1270,10 +1308,10 @@ void Mt11ControlManager::_handleRecordingCommandTimeout()
     _setLastError(tr("Timed out confirming the MT11 recording state."));
 }
 
-void Mt11ControlManager::_handleThermalCommandTimeout()
+void Mt11ControlManager::_handleVideoModeCommandTimeout()
 {
-    _setThermalCommandPending(false);
-    _setThermalModeKnown(false);
+    _setVideoModePending(false);
+    _setVideoModeKnown(false);
     if (_continuousZoomActive) {
         (void) stopZoom();
     }
@@ -1553,7 +1591,7 @@ bool Mt11ControlManager::_sendZoomStep(int direction)
 void Mt11ControlManager::_pollPendingAbsoluteZoom()
 {
     if (!_zoomCommandPending || !enabled() || !_sdk
-        || _continuousZoomActive || _thermalCommandPending) {
+        || _continuousZoomActive || _videoModePending) {
         _absoluteZoomPollTimer.stop();
         return;
     }
@@ -1572,7 +1610,7 @@ void Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout()
     _absoluteZoomPollTimer.stop();
     _setZoomCommandPending(false);
     _setLastError(tr("Timed out confirming the MT11 zoom target."));
-    if (enabled() && !_thermalCommandPending) {
+    if (enabled() && !_videoModePending) {
         (void) requestCurrentZoom();
     }
 }
@@ -1644,7 +1682,7 @@ void Mt11ControlManager::_pollContinuousZoom()
         || _continuousZoomPhase
             != ContinuousZoomPhase::ManualContinuous
         || !enabled() || !_sdk
-        || _thermalCommandPending) {
+        || _videoModePending) {
         return;
     }
     _configureSdkEndpoint();
@@ -1665,7 +1703,7 @@ void Mt11ControlManager::_retryContinuousZoomStop()
     }
     _configureSdkEndpoint();
     (void) _sdk->sendManualZoom(0);
-    if (!_thermalCommandPending) {
+    if (!_videoModePending) {
         if (!_sdkResponseTimer.isActive()) {
             _sdkResponseTimer.start();
         }
@@ -1710,7 +1748,7 @@ void Mt11ControlManager::_invalidateZoomState()
 
 void Mt11ControlManager::_requestZoomState()
 {
-    if (!enabled() || !_sdk || _thermalCommandPending) {
+    if (!enabled() || !_sdk || _videoModePending) {
         return;
     }
     _configureSdkEndpoint();
@@ -1838,24 +1876,33 @@ void Mt11ControlManager::_setPhotoCommandPending(bool pending)
     emit photoCommandPendingChanged();
 }
 
-void Mt11ControlManager::_setThermalModeKnown(bool known)
+void Mt11ControlManager::_setVideoModeKnown(bool known)
 {
-    if (_thermalModeKnown == known) return;
-    _thermalModeKnown = known;
+    if (_videoModeKnown == known) return;
+    _videoModeKnown = known;
+    emit videoModeKnownChanged();
     emit thermalModeKnownChanged();
+    emit zoomAvailabilityChanged();
 }
 
-void Mt11ControlManager::_setThermalModeEnabled(bool enabled)
+void Mt11ControlManager::_setVideoMode(int mode)
 {
-    if (_thermalModeEnabled == enabled) return;
-    _thermalModeEnabled = enabled;
-    emit thermalModeEnabledChanged();
+    Q_ASSERT(mode == VideoModeZoom || mode == VideoModeThermal
+             || mode == VideoModeZoomAndThermal);
+    if (_videoMode == mode) return;
+    const bool wasThermal = thermalModeEnabled();
+    _videoMode = mode;
+    emit videoModeChanged();
+    if (wasThermal != thermalModeEnabled()) {
+        emit thermalModeEnabledChanged();
+    }
 }
 
-void Mt11ControlManager::_setThermalCommandPending(bool pending)
+void Mt11ControlManager::_setVideoModePending(bool pending)
 {
-    if (_thermalCommandPending == pending) return;
-    _thermalCommandPending = pending;
+    if (_videoModePending == pending) return;
+    _videoModePending = pending;
+    emit videoModePendingChanged();
     emit thermalCommandPendingChanged();
     emit zoomAvailabilityChanged();
 }

@@ -222,12 +222,12 @@
 <context>
     <name>GimbalZoomControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="285"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="292"/>
         <source>Target</source>
         <translation>目标</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="298"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="305"/>
         <source>Actual</source>
         <translation>实际</translation>
     </message>
@@ -235,39 +235,64 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="277"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="79"/>
+        <source>ZOOM</source>
+        <translation>变焦</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="82"/>
+        <source>IR</source>
+        <translation>热像</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="85"/>
+        <source>MIX</source>
+        <translation>拼接</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="92"/>
+        <source>Zoom</source>
+        <translation>变焦</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="95"/>
+        <source>Thermal</source>
+        <translation>热成像</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
+        <source>Zoom + Thermal</source>
+        <translation>变焦 + 热成像</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="100"/>
+        <source>Unknown mode</source>
+        <translation>未知模式</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
+        <source>Current</source>
+        <translation>当前模式</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
+        <source>Select</source>
+        <translation>选择</translation>
+    </message>
+    <message>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="656"/>
         <source>FAILED</source>
         <translation>失败</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="417"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="798"/>
         <source>SD</source>
         <translation>SD</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="474"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="855"/>
         <source>LOCAL</source>
         <translation>本地</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="161"/>
-        <source>...</source>
-        <translation>...</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="163"/>
-        <source>?</source>
-        <translation>?</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="165"/>
-        <source>IR</source>
-        <translation>红外</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="166"/>
-        <source>RGB</source>
-        <translation>RGB</translation>
     </message>
 </context>
 <context>
@@ -490,12 +515,12 @@
 <context>
     <name>FlyViewTopRightColumnLayout</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="76"/>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="173"/>
         <source>A8 Mini</source>
         <translation>A8 Mini</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="86"/>
+        <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="173"/>
         <source>MT11</source>
         <translation>MT11</translation>
     </message>
@@ -503,62 +528,62 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
         <source>SIYI A8 Mini Gimbal Camera</source>
         <translation>SIYI A8 Mini云台相机</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="36"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
         <source>Private SDK camera controls.</source>
         <translation>专有SDK相机控制。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="40"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="92"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="58"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
         <source>Enabled</source>
         <translation>启用</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="46"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="64"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="90"/>
         <source>SDK Host</source>
         <translation>SDK主机地址</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="97"/>
         <source>SDK Port</source>
         <translation>SDK端口</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="62"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="27"/>
         <source>Zoom Step</source>
         <translation>变焦步长</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="72"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="37"/>
         <source>A8 Mini</source>
         <translation>A8 Mini</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="44"/>
         <source>MT11</source>
         <translation>MT11</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="88"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
         <source>UniPod MT11 Gimbal Camera</source>
         <translation>UniPod MT11云台相机</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="89"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="80"/>
         <source>Independent SDK camera controls.</source>
         <translation>独立SDK相机控制。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="113"/>
-        <source>MT11 SDK Host and Port control zoom, photo, recording and thermal mode. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
-        <translation>MT11 SDK主机地址和端口用于控制变焦、拍照、录像及热成像模式。请在“视频 &gt; 连接 &gt; RTSP地址2”中配置其视频地址。</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
+        <source>MT11 SDK Host and Port control zoom, photo, recording and the three video work modes. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
+        <translation>MT11 SDK主机地址和端口用于控制变焦、拍照、录像及三种视频工作模式。请在“视频 &gt; 连接 &gt; RTSP地址2”中配置其视频地址。</translation>
     </message>
 </context>
 <context>

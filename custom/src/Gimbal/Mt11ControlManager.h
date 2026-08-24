@@ -52,6 +52,10 @@ class Mt11ControlManager : public QObject
     Q_PROPERTY(bool videoRecordingAvailable READ videoRecordingAvailable NOTIFY recordingSessionStateChanged)
     Q_PROPERTY(int photoCount READ photoCount NOTIFY photoCountChanged)
     Q_PROPERTY(int localPhotoCount READ localPhotoCount NOTIFY localPhotoCountChanged)
+    Q_PROPERTY(bool videoModeKnown READ videoModeKnown NOTIFY videoModeKnownChanged)
+    Q_PROPERTY(int videoMode READ videoMode NOTIFY videoModeChanged)
+    Q_PROPERTY(bool videoModePending READ videoModePending NOTIFY videoModePendingChanged)
+    // Compatibility properties retained for the former binary mode control.
     Q_PROPERTY(bool thermalModeKnown READ thermalModeKnown NOTIFY thermalModeKnownChanged)
     Q_PROPERTY(bool thermalModeEnabled READ thermalModeEnabled NOTIFY thermalModeEnabledChanged)
     Q_PROPERTY(bool thermalCommandPending READ thermalCommandPending NOTIFY thermalCommandPendingChanged)
@@ -59,6 +63,13 @@ class Mt11ControlManager : public QObject
     Q_PROPERTY(QString localMediaError READ localMediaError NOTIFY localMediaErrorChanged)
 
 public:
+    enum VideoMode {
+        VideoModeZoom = 0,
+        VideoModeThermal = 2,
+        VideoModeZoomAndThermal = 3,
+    };
+    Q_ENUM(VideoMode)
+
     explicit Mt11ControlManager(GimbalControlSettings* settings,
                                 QObject* parent = nullptr);
     ~Mt11ControlManager() override;
@@ -81,7 +92,7 @@ public:
     bool zoomControlsUnlocked() const {
         return enabled() && _sdkResponding && _maximumZoomKnown
             && _measuredZoomKnown && _zoomStatusKnown
-            && !_thermalCommandPending;
+            && !_videoModePending;
     }
     bool zoomCommandPending() const { return _zoomCommandPending; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
@@ -100,9 +111,14 @@ public:
     bool videoRecordingAvailable() const;
     int photoCount() const { return _photoCount; }
     int localPhotoCount() const { return _localPhotoCount; }
-    bool thermalModeKnown() const { return _thermalModeKnown; }
-    bool thermalModeEnabled() const { return _thermalModeEnabled; }
-    bool thermalCommandPending() const { return _thermalCommandPending; }
+    bool videoModeKnown() const { return _videoModeKnown; }
+    int videoMode() const { return _videoMode; }
+    bool videoModePending() const { return _videoModePending; }
+    bool thermalModeKnown() const { return videoModeKnown(); }
+    bool thermalModeEnabled() const {
+        return _videoMode == VideoModeThermal;
+    }
+    bool thermalCommandPending() const { return videoModePending(); }
     QString lastError() const { return _lastError; }
     QString localMediaError() const { return _localMediaError; }
 
@@ -118,6 +134,8 @@ public:
     Q_INVOKABLE bool toggleVideoRecording();
     Q_INVOKABLE bool requestCurrentZoom();
     Q_INVOKABLE bool requestCameraStatus();
+    Q_INVOKABLE bool setVideoMode(int mode);
+    // Compatibility action retained for the former binary mode control.
     Q_INVOKABLE bool toggleThermalMode();
 
     void setVideoItem(QQuickItem* videoItem);
@@ -147,6 +165,9 @@ signals:
     void recordingSessionStateChanged();
     void photoCountChanged();
     void localPhotoCountChanged();
+    void videoModeKnownChanged();
+    void videoModeChanged();
+    void videoModePendingChanged();
     void thermalModeKnownChanged();
     void thermalModeEnabledChanged();
     void thermalCommandPendingChanged();
@@ -176,7 +197,7 @@ private slots:
     void _handleReceiverRecordingChanged(bool active);
     void _handleReceiverStopRecordingComplete(int status);
     void _handleRecordingCommandTimeout();
-    void _handleThermalCommandTimeout();
+    void _handleVideoModeCommandTimeout();
     void _handlePhotoCommandTimeout();
     void _handleLocalPhotoTimeout();
     void _handleLocalRecordingStartTimeout();
@@ -219,9 +240,9 @@ private:
     void _setRecording(bool recording);
     void _setRecordingCommandPending(bool pending);
     void _setPhotoCommandPending(bool pending);
-    void _setThermalModeKnown(bool known);
-    void _setThermalModeEnabled(bool enabled);
-    void _setThermalCommandPending(bool pending);
+    void _setVideoModeKnown(bool known);
+    void _setVideoMode(int mode);
+    void _setVideoModePending(bool pending);
     void _setLastError(const QString& message);
     void _setLocalMediaError(const QString& message);
     void _notifyRecordingSessionStateChanged();
@@ -259,7 +280,7 @@ private:
     QTimer _continuousZoomStopRetryTimer;
     QTimer _recordingStatusDelayTimer;
     QTimer _recordingCommandTimer;
-    QTimer _thermalCommandTimer;
+    QTimer _videoModeCommandTimer;
     QTimer _photoCommandTimer;
     QTimer _localPhotoTimer;
     QTimer _localRecordingStartTimer;
@@ -292,11 +313,12 @@ private:
     bool _photoCommandPending = false;
     int _photoCount = 0;
     int _localPhotoCount = 0;
-    bool _thermalModeKnown = false;
-    bool _thermalModeEnabled = false;
-    bool _thermalCommandPending = false;
-    bool _thermalCommandTarget = false;
+    bool _videoModeKnown = false;
+    int _videoMode = VideoModeZoom;
+    bool _videoModePending = false;
+    int _videoModeCommandTarget = VideoModeZoom;
     quint8 _mainVideoSource = 0xff;
+    quint8 _subVideoSource = 0xff;
     QPointer<QQuickItem> _videoItem;
     QPointer<VideoReceiver> _videoReceiver;
     QPointer<QObject> _localPhotoGrabLifetime;

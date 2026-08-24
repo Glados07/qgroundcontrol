@@ -42,6 +42,15 @@ public:
         VideoSourceNone = 6,
     };
 
+    // The MT11 camera-control UI exposes the three video layouts documented
+    // for command 0x11. Their numeric values intentionally match main_stream.
+    enum VideoWorkMode : qint8 {
+        VideoWorkModeUnknown = -1,
+        VideoWorkModeZoom = VideoSourceZoom,
+        VideoWorkModeThermal = VideoSourceThermal,
+        VideoWorkModeZoomAndThermal = VideoSourceZoomAndThermal,
+    };
+
     struct DecodedPacket {
         bool valid = false;
         quint8 control = 0;
@@ -76,6 +85,8 @@ public:
     static QByteArray takePhotoPacket();
     static QByteArray toggleVideoRecordingPacket();
     static QByteArray requestVideoModePacket();
+    static QByteArray setVideoModePacket(VideoWorkMode mode);
+    // Compatibility wrapper for the former two-state UI.
     static QByteArray setThermalModePacket(bool thermalOnMainStream);
 
     static DecodedPacket decodePacket(const QByteArray& packet);
@@ -97,6 +108,8 @@ public:
                                              quint8* infoType);
     static bool parseVideoModePayload(const QByteArray& payload,
                                       VideoMode* mode);
+    static VideoWorkMode videoWorkMode(quint8 mainStream,
+                                       quint8 subStream);
 
 private:
     static QByteArray _photoAndRecordPacket(quint8 functionType);

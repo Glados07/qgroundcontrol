@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "Mt11Protocol.h"
+
 #include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QHash>
@@ -37,6 +39,8 @@ public:
     bool takePhoto();
     bool toggleVideoRecording();
     bool requestVideoMode();
+    bool setVideoMode(Mt11Protocol::VideoWorkMode mode);
+    // Compatibility wrapper for callers which still expose a binary switch.
     bool setThermalMode(bool enabled);
 
 signals:

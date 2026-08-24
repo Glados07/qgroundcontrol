@@ -153,10 +153,20 @@ bool Mt11Sdk::requestVideoMode()
                        Mt11Protocol::CommandVideoMode);
 }
 
+bool Mt11Sdk::setVideoMode(Mt11Protocol::VideoWorkMode mode)
+{
+    const QByteArray packet = Mt11Protocol::setVideoModePacket(mode);
+    if (packet.isEmpty()) {
+        return false;
+    }
+    return _sendPacket(packet, Mt11Protocol::CommandSetVideoMode);
+}
+
 bool Mt11Sdk::setThermalMode(bool enabled)
 {
-    return _sendPacket(Mt11Protocol::setThermalModePacket(enabled),
-                       Mt11Protocol::CommandSetVideoMode);
+    return setVideoMode(enabled
+                            ? Mt11Protocol::VideoWorkModeThermal
+                            : Mt11Protocol::VideoWorkModeZoom);
 }
 
 void Mt11Sdk::_readPendingDatagrams()

@@ -18,7 +18,7 @@ class Mt11ProtocolTest : public QObject
 
 private slots:
     void documentedCommandFrames();
-    void thermalFrames();
+    void videoModeFrames();
     void strictFrameDecoding();
     void multiFrameDatagramIsAtomic();
     void zoomPayloads();
@@ -61,12 +61,25 @@ void Mt11ProtocolTest::documentedCommandFrames()
              QByteArrayLiteral("55660100000000187c47"));
 }
 
-void Mt11ProtocolTest::thermalFrames()
+void Mt11ProtocolTest::videoModeFrames()
 {
     QCOMPARE(Mt11Protocol::requestVideoModePacket().toHex(),
              QByteArrayLiteral("556601000000001074c6"));
-    // Main zoom + sub thermal and the inverse are the two documented MT11
-    // combinations used for the RGB/thermal switch.
+    // Exact 0x11 examples from the SDK: main zoom/sub thermal, main
+    // thermal/sub zoom, and main zoom+thermal composite/sub thermal.
+    QCOMPARE(Mt11Protocol::setVideoModePacket(
+                 Mt11Protocol::VideoWorkModeZoom).toHex(),
+             QByteArrayLiteral("5566010200000011000270f5"));
+    QCOMPARE(Mt11Protocol::setVideoModePacket(
+                 Mt11Protocol::VideoWorkModeThermal).toHex(),
+             QByteArrayLiteral("5566010200000011020050b3"));
+    QCOMPARE(Mt11Protocol::setVideoModePacket(
+                 Mt11Protocol::VideoWorkModeZoomAndThermal).toHex(),
+             QByteArrayLiteral("5566010200000011030223a0"));
+    QVERIFY(Mt11Protocol::setVideoModePacket(
+                Mt11Protocol::VideoWorkModeUnknown).isEmpty());
+
+    // The legacy two-state wrapper remains wire-compatible.
     QCOMPARE(Mt11Protocol::setThermalModePacket(false).toHex(),
              QByteArrayLiteral("5566010200000011000270f5"));
     QCOMPARE(Mt11Protocol::setThermalModePacket(true).toHex(),
@@ -563,13 +576,57 @@ void Mt11ProtocolTest::videoModePayloads()
     QCOMPARE(mode.mainStream, quint8(Mt11Protocol::VideoSourceZoom));
     QCOMPARE(mode.subStream, quint8(Mt11Protocol::VideoSourceThermal));
     QVERIFY(!mode.thermalOnMainStream());
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoom);
 
     QVERIFY(Mt11Protocol::parseVideoModePayload(
         QByteArray::fromHex("0200"), &mode));
     QVERIFY(mode.thermalOnMainStream());
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeThermal);
     QVERIFY(Mt11Protocol::parseVideoModePayload(
         QByteArray::fromHex("0302"), &mode));
     QVERIFY(!mode.thermalOnMainStream());
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoomAndThermal);
+
+    // Firmware may normalize sub_stream to either documented legal value;
+    // main_stream remains the work-mode selector in the response.
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0000"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoom);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0202"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeThermal);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0300"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoomAndThermal);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0001"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoom);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0006"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeZoom);
+
+    // Command 0x10 also supports generic wide/composite sources. They remain
+    // parseable for compatibility but do not map onto the three-button UI.
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0102"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeUnknown);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0400"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeUnknown);
+    QVERIFY(Mt11Protocol::parseVideoModePayload(
+        QByteArray::fromHex("0506"), &mode));
+    QCOMPARE(Mt11Protocol::videoWorkMode(mode.mainStream, mode.subStream),
+             Mt11Protocol::VideoWorkModeUnknown);
     QVERIFY(!Mt11Protocol::parseVideoModePayload(
         QByteArray::fromHex("0600"), &mode));
     QVERIFY(!Mt11Protocol::parseVideoModePayload(
