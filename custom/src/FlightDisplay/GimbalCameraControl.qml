@@ -33,10 +33,15 @@ Rectangle {
     readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.48
     readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.45
     readonly property color accentColor: "#65d9f4"
-    readonly property color panelColor: online ? "#b83b4b58" : "#aa303c47"
+    readonly property color panelColor: online ? "#783b4b58" : "#66303c47"
+    readonly property color panelBorderColor: "#a065d9f4"
+    readonly property color innerBorderColor: "#2865d9f4"
+    readonly property color controlBorderColor: "#8065d9f4"
+    readonly property color popupColor: "#b02c3945"
     readonly property color buttonColor: "#321f2b36"
     readonly property color buttonHoverColor: "#4a334653"
     readonly property color buttonPressedColor: "#e8f2f7fa"
+    readonly property real modeIconSize: actionSize * 0.40
     readonly property bool recordingSessionActive: Boolean(manager && manager.recordingSessionActive)
     readonly property bool recordingSessionCapturing: Boolean(manager && manager.recordingSessionCapturing)
     readonly property bool recordingSessionPending: Boolean(manager
@@ -63,7 +68,7 @@ Rectangle {
     height: implicitHeight
     radius: Math.min(14, ScreenTools.defaultFontPixelHeight * 0.7)
     color: panelColor
-    border.color: online ? "#708fa4b3" : "#6077828b"
+    border.color: panelBorderColor
     border.width: 1
     visible: available
 
@@ -165,7 +170,7 @@ Rectangle {
         anchors.margins: 1
         radius: Math.max(0, root.radius - 1)
         color: "transparent"
-        border.color: "#20ffffff"
+        border.color: root.innerBorderColor
         border.width: 1
     }
 
@@ -242,8 +247,7 @@ Rectangle {
         property real lastClosedAtMs: -1000
 
         parent: QtControls.Overlay.overlay
-        width: Math.max(root.actionSize * 4.25,
-                        ScreenTools.defaultFontPixelWidth * 21)
+        width: root.actionSize + menuPadding * 2
         height: root.actionSize * 3 + root.itemSpacing * 2 + menuPadding * 2
         padding: menuPadding
         z: 100
@@ -300,8 +304,8 @@ Rectangle {
 
         background: Rectangle {
             radius: Math.min(12, root.actionSize * 0.22)
-            color: "#f0141e28"
-            border.color: root.videoModePending ? "#d8ffc857" : "#7065d9f4"
+            color: root.popupColor
+            border.color: root.videoModePending ? "#d8ffc857" : root.panelBorderColor
             border.width: 1
 
             Rectangle {
@@ -309,7 +313,7 @@ Rectangle {
                 anchors.margins: 1
                 radius: Math.max(0, parent.radius - 1)
                 color: "transparent"
-                border.color: "#20ffffff"
+                border.color: root.innerBorderColor
                 border.width: 1
             }
         }
@@ -344,7 +348,9 @@ Rectangle {
                                  : root.buttonColor))
                     border.color: selected
                                   ? root.accentColor
-                                  : (modeOptionMouse.containsMouse ? "#82ffffff" : "#385d6d78")
+                                  : (modeOptionMouse.containsMouse
+                                     ? root.accentColor
+                                     : root.controlBorderColor)
                     border.width: selected ? 2 : 1
                     opacity: optionEnabled ? 1.0 : 0.48
                     scale: modeOptionMouse.pressed ? 0.98 : 1.0
@@ -352,77 +358,51 @@ Rectangle {
                     Behavior on color { ColorAnimation { duration: 100 } }
                     Behavior on scale { NumberAnimation { duration: 80 } }
 
-                    Row {
-                        anchors.fill: parent
-                        anchors.leftMargin: root.itemSpacing * 1.4
-                        anchors.rightMargin: root.actionSize * 0.52
-                        spacing: root.itemSpacing * 1.35
-
-                        Rectangle {
-                            id: modeIconFrame
-
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: root.actionSize * 0.72
-                            height: width * 0.62
-                            radius: Math.max(4, height * 0.22)
-                            color: modeOption.selected ? "#2665d9f4" : "#24101822"
-                            border.color: modeOption.selected ? root.accentColor : "#8dc9d6de"
-                            border.width: 1
-
-                            QGCColoredImage {
-                                anchors.centerIn: parent
-                                width: parent.height * 0.56
-                                height: width
-                                source: modeOption.modeValue === 0
-                                        ? "qrc:/InstrumentValueIcons/camera.svg"
-                                        : (modeOption.modeValue === 2
-                                           ? "qrc:/InstrumentValueIcons/thermometer.svg"
-                                           : "qrc:/InstrumentValueIcons/layers.svg")
-                                sourceSize.height: height
-                                fillMode: Image.PreserveAspectFit
-                                color: modeOptionMouse.pressed && !modeOption.selected
-                                       ? "#16212a"
-                                       : (modeOption.selected ? root.accentColor : "white")
-                            }
-                        }
-
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.max(0,
-                                            parent.width - modeIconFrame.width - parent.spacing)
-                            spacing: 0
-
-                            QGCLabel {
-                                width: parent.width
-                                text: root.videoModeName(modeOption.modeValue)
-                                elide: Text.ElideRight
-                                color: modeOptionMouse.pressed && !modeOption.selected
-                                       ? "#16212a"
-                                       : "white"
-                                font.bold: modeOption.selected
-                                font.pointSize: ScreenTools.smallFontPointSize
-                            }
-
-                            QGCLabel {
-                                width: parent.width
-                                text: modeOption.selected ? qsTr("Current") : qsTr("Select")
-                                elide: Text.ElideRight
-                                color: modeOption.selected ? root.accentColor : "#a7bec9d2"
-                                font.pointSize: ScreenTools.smallFontPointSize * 0.72
-                            }
-                        }
+                    QGCColoredImage {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: parent.height * 0.16
+                        width: root.modeIconSize
+                        height: width
+                        source: modeOption.modeValue === 0
+                                ? "qrc:/InstrumentValueIcons/camera.svg"
+                                : (modeOption.modeValue === 2
+                                   ? "qrc:/InstrumentValueIcons/thermometer.svg"
+                                   : "qrc:/InstrumentValueIcons/layers.svg")
+                        sourceSize.height: height
+                        fillMode: Image.PreserveAspectFit
+                        color: modeOptionMouse.pressed && !modeOption.selected
+                               ? "#16212a"
+                               : (modeOption.selected ? root.accentColor : "white")
                     }
 
                     QGCLabel {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: parent.height * 0.08
+                        text: root.videoModeCode(modeOption.modeValue)
+                        color: modeOptionMouse.pressed && !modeOption.selected
+                               ? "#16212a"
+                               : (modeOption.selected ? root.accentColor : "white")
+                        font.bold: true
+                        font.pointSize: ScreenTools.smallFontPointSize * 0.58
+                    }
+
+                    QGCLabel {
+                        anchors.top: parent.top
                         anchors.right: parent.right
-                        anchors.rightMargin: root.itemSpacing * 1.4
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.topMargin: parent.height * 0.04
+                        anchors.rightMargin: parent.width * 0.08
                         visible: modeOption.selected
                         text: "\u2713"
                         color: root.accentColor
                         font.bold: true
-                        font.pixelSize: root.actionSize * 0.32
+                        font.pixelSize: root.actionSize * 0.22
                     }
+
+                    QtControls.ToolTip.visible: modeOptionMouse.containsMouse
+                    QtControls.ToolTip.delay: 350
+                    QtControls.ToolTip.text: root.videoModeName(modeOption.modeValue)
 
                     MouseArea {
                         id: modeOptionMouse
@@ -466,6 +446,7 @@ Rectangle {
             buttonColor: root.buttonColor
             buttonHoverColor: root.buttonHoverColor
             buttonPressedColor: root.buttonPressedColor
+            buttonBorderColor: root.controlBorderColor
             buttonCornerRadius: Math.min(10, root.actionSize * 0.22)
             Layout.alignment: Qt.AlignHCenter
         }
@@ -502,7 +483,9 @@ Rectangle {
                           ? "#ffffc857"
                           : (root.videoModeMenuOpen
                              ? root.accentColor
-                             : (modeMouseArea.containsMouse ? "#d8ffffff" : "#7696a8b4"))
+                             : (modeMouseArea.containsMouse
+                                ? root.accentColor
+                                : root.controlBorderColor))
             border.width: root.videoModeMenuOpen ? 2 : 1
             enabled: root.online && !root.videoModePending
             opacity: enabled ? 1.0 : 0.5
@@ -515,7 +498,7 @@ Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
                 anchors.topMargin: parent.height * 0.16
-                width: parent.width * 0.38
+                width: root.modeIconSize
                 height: width
                 source: "qrc:/InstrumentValueIcons/view-carousel.svg"
                 sourceSize.height: height
@@ -590,7 +573,8 @@ Rectangle {
             color: photoMouseArea.pressed
                    ? root.buttonPressedColor
                    : (photoMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
-            border.color: photoMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.color: photoMouseArea.containsMouse
+                          ? root.accentColor : root.controlBorderColor
             border.width: photoMouseArea.containsMouse ? 2 : 1
             // UDP 命令发送能力不依赖最近一次状态探测，避免偶发回包超时锁死拍照。
             enabled: root.available
@@ -669,7 +653,9 @@ Rectangle {
                           ? "#ffffc857"
                           : (root.recordingSessionVisualActive
                              ? "#ffff6b78"
-                             : (videoMouseArea.containsMouse ? root.accentColor : "#7696a8b4"))
+                             : (videoMouseArea.containsMouse
+                                ? root.accentColor
+                                : root.controlBorderColor))
             border.width: videoMouseArea.containsMouse || root.recordingSessionVisualActive ? 2 : 1
             // The manager coordinates the independent SD and local recording branches.
             enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)

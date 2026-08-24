@@ -223,7 +223,6 @@ private:
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
     void _startPendingContinuousZoom();
-    void _advanceContinuousZoomPace();
     void _pollContinuousZoom();
     void _retryContinuousZoomStop();
     void _finishContinuousZoomState();
@@ -275,8 +274,7 @@ private:
     QTimer _zoomStatusFreshnessTimer;
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
-    QTimer _continuousZoomStartTimer;
-    QTimer _continuousZoomPaceTimer;
+    QTimer _continuousZoomDirectionRetryTimer;
     QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
     QTimer _continuousZoomStopRetryTimer;
@@ -307,7 +305,6 @@ private:
     ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
-    bool _continuousZoomDriveRunning = false;
     QElapsedTimer _continuousZoomMotionElapsed;
     int _continuousZoomEndpointFeedbackCount = 0;
     bool _continuousZoomNonEndpointObserved = false;

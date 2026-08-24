@@ -45,12 +45,10 @@ constexpr int kZoomFeedbackFreshnessMs = 6500;
 constexpr int kAbsoluteZoomPollMs = 250;
 constexpr int kAbsoluteZoomConfirmationTimeoutMs = 10000;
 constexpr int kAbsoluteZoomTargetConfirmations = 2;
-constexpr int kContinuousZoomHandoffDelayMs = 150;
-// Command 0x05 exposes direction only, not a speed field. Use one fixed,
-// step-independent run/pause cadence to reduce average held speed while
-// keeping transitions sparse enough for ordered UDP processing.
-constexpr int kContinuousZoomRunMs = 360;
-constexpr int kContinuousZoomPauseMs = 240;
+constexpr int kContinuousZoomDirectionRetryMs = 150;
+// Command 0x05 exposes direction only, not a speed field. Keep one native
+// direction active for the complete hold: periodic stop/start pulses make the
+// optical controller refocus and turn continuous zoom into a staircase.
 constexpr int kContinuousZoomEndpointArmMs = 300;
 constexpr int kContinuousZoomUnprovenEndpointTimeoutMs = 900;
 constexpr int kContinuousZoomEndpointConfirmations = 2;
@@ -181,11 +179,10 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     _absoluteZoomConfirmationTimer.setSingleShot(true);
     _absoluteZoomConfirmationTimer.setInterval(
         kAbsoluteZoomConfirmationTimeoutMs);
-    _continuousZoomStartTimer.setSingleShot(true);
-    _continuousZoomStartTimer.setInterval(kContinuousZoomHandoffDelayMs);
-    _continuousZoomStartTimer.setTimerType(Qt::PreciseTimer);
-    _continuousZoomPaceTimer.setSingleShot(true);
-    _continuousZoomPaceTimer.setTimerType(Qt::PreciseTimer);
+    _continuousZoomDirectionRetryTimer.setSingleShot(true);
+    _continuousZoomDirectionRetryTimer.setInterval(
+        kContinuousZoomDirectionRetryMs);
+    _continuousZoomDirectionRetryTimer.setTimerType(Qt::PreciseTimer);
     _continuousZoomPollTimer.setInterval(kContinuousZoomPollMs);
     _continuousZoomWatchdog.setSingleShot(true);
     _continuousZoomWatchdog.setInterval(60000);
@@ -264,10 +261,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_pollPendingAbsoluteZoom);
     connect(&_absoluteZoomConfirmationTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout);
-    connect(&_continuousZoomStartTimer, &QTimer::timeout,
+    connect(&_continuousZoomDirectionRetryTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_startPendingContinuousZoom);
-    connect(&_continuousZoomPaceTimer, &QTimer::timeout,
-            this, &Mt11ControlManager::_advanceContinuousZoomPace);
     connect(&_continuousZoomPollTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_pollContinuousZoom);
     connect(&_continuousZoomWatchdog, &QTimer::timeout, this, [this]() {
@@ -335,8 +330,7 @@ Mt11ControlManager::~Mt11ControlManager()
     _zoomStatusFreshnessTimer.stop();
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
-    _continuousZoomStartTimer.stop();
-    _continuousZoomPaceTimer.stop();
+    _continuousZoomDirectionRetryTimer.stop();
     _continuousZoomPollTimer.stop();
     _continuousZoomWatchdog.stop();
     _continuousZoomStopRetryTimer.stop();
@@ -350,7 +344,6 @@ Mt11ControlManager::~Mt11ControlManager()
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
-    _continuousZoomDriveRunning = false;
     _continuousZoomMotionElapsed.invalidate();
     _continuousZoomEndpointFeedbackCount = 0;
     _continuousZoomNonEndpointObserved = false;
@@ -552,14 +545,13 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
-    _continuousZoomDriveRunning = false;
     _continuousZoomMotionElapsed.invalidate();
     _continuousZoomEndpointFeedbackCount = 0;
     _continuousZoomNonEndpointObserved = false;
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
     // Both timers are inactivity guards. Authoritative 0x18 progress refreshes
-    // them while the manager-owned paced 0x05 hold remains active.
+    // them while the native 0x05 hold remains active.
     _zoomStatusFreshnessTimer.start();
     _continuousZoomWatchdog.start();
     _setLastError({});
@@ -567,10 +559,12 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     if (_zoomCommandPending || pendingSafetyStop) {
         // A held gesture can take ownership from either an in-flight 0x0f
         // controller or a preceding hold whose delayed safety stop was still
-        // queued when this request arrived. A pending absolute command still
-        // needs an explicit stop; the old safety copy was synchronously
-        // flushed above. In both cases wait one handoff interval before the
-        // direction packet so old stop processing cannot consume the start.
+        // queued when this request arrived. The old safety copy is flushed
+        // synchronously above and an absolute controller is stopped here.
+        // Send the first direction immediately so a release during the next
+        // 150 ms is not accepted as a hold which never moved. One bounded
+        // direction copy covers firmware which is still leaving the previous
+        // controller; release/cancel always retires that copy before stopping.
         if (_zoomCommandPending) {
             _configureSdkEndpoint();
             if (!_sdk || !_sdk->sendManualZoom(0)) {
@@ -581,7 +575,11 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
         }
         _continuousZoomPhase = ContinuousZoomPhase::ManualHandoff;
         _continuousZoomDirectionRetryRequired = true;
-        _continuousZoomStartTimer.start();
+        _startPendingContinuousZoom();
+        if (!_continuousZoomActive || !_continuousZoomDirectionSent) {
+            _finishContinuousZoomState();
+            return false;
+        }
         return true;
     }
 
@@ -1010,7 +1008,7 @@ void Mt11ControlManager::_zoomStepChanged()
 {
     emit zoomStepChanged();
     // Rebind the published target to the new grid only from a settled camera
-    // position. Stop any paced held movement first, then publish the nearest
+    // position. Stop any native held movement first, then publish the nearest
     // legal value under the new step.
     if (_continuousZoomActive) {
         (void) stopZoom();
@@ -1555,7 +1553,7 @@ void Mt11ControlManager::_observeZoomFeedback(double zoomLevel)
     if (_continuousZoomActive) {
         if (measurementChanged) {
             // This is an inactivity watchdog, not a total gesture-duration
-            // limit. A paced 0x05 gesture may legitimately span the complete
+            // limit. A native 0x05 gesture may legitimately span the complete
             // 1x-to-maximum traversal.
             _continuousZoomWatchdog.start();
         }
@@ -1587,17 +1585,17 @@ void Mt11ControlManager::_observeZoomFeedback(double zoomLevel)
                 if (endpointEligible
                     && _continuousZoomEndpointFeedbackCount
                         >= kContinuousZoomEndpointConfirmations) {
-                    // The fixed pacing is independent of the target step. Two
-                    // endpoint samples prevent one delayed 0x18 datagram from
-                    // moving the target or terminating the newly accepted
-                    // hold generation.
+                    // The native direction-only hold is independent of the
+                    // target step. Two endpoint samples prevent one delayed
+                    // 0x18 datagram from moving the target or terminating the
+                    // newly accepted hold generation.
                     _alignDisplayToMeasured(motionDirection);
                     (void) stopZoom();
                 }
             } else {
                 _continuousZoomEndpointFeedbackCount = 0;
                 _continuousZoomNonEndpointObserved = true;
-                // During a paced direction-only hold there is no discrete
+                // During a native direction-only hold there is no discrete
                 // command target. Publish the nearest legal value in the
                 // motion direction for each unambiguous non-endpoint sample.
                 _alignDisplayToMeasured(motionDirection);
@@ -1749,10 +1747,6 @@ void Mt11ControlManager::_startPendingContinuousZoom()
         // transport error or re-entrant release can never schedule a third
         // start packet for this gesture.
         _continuousZoomDirectionRetryRequired = false;
-        if (!_continuousZoomDriveRunning) {
-            // A delayed copy must never punch through the 240 ms pause.
-            return;
-        }
         _configureSdkEndpoint();
         if (!_sdk->sendManualZoom(
                 static_cast<qint8>(_continuousZoomDirection))) {
@@ -1777,62 +1771,18 @@ void Mt11ControlManager::_startPendingContinuousZoom()
 
     _continuousZoomPhase = ContinuousZoomPhase::ManualContinuous;
     _continuousZoomDirectionSent = true;
-    _continuousZoomDirectionRetryRequired = true;
-    _continuousZoomDriveRunning = true;
     _continuousZoomMotionElapsed.restart();
     _continuousZoomEndpointFeedbackCount = 0;
     _continuousZoomNonEndpointObserved =
         !_zoomBoundaryReached(_continuousZoomDirection);
-    _continuousZoomPaceTimer.start(kContinuousZoomRunMs);
     _continuousZoomPollTimer.start();
     _pollContinuousZoom();
     if (_continuousZoomDirectionRetryRequired) {
-        // Each initial or resumed run gets one bounded, idempotent direction
-        // copy. The drive-running guard prevents a delayed copy from crossing
-        // into pause; _finishContinuousZoomState() cancels it on release.
-        _continuousZoomStartTimer.start();
+        // A tap-to-hold or safety-stop handoff gets one bounded direction
+        // copy. Ordinary holds send exactly one direction command; repeating
+        // it throughout the gesture can restart the MT11 zoom controller.
+        _continuousZoomDirectionRetryTimer.start();
     }
-}
-
-void Mt11ControlManager::_advanceContinuousZoomPace()
-{
-    if (!_continuousZoomActive
-        || _continuousZoomPhase
-            != ContinuousZoomPhase::ManualContinuous
-        || !_continuousZoomDirectionSent
-        || (_continuousZoomDirection != -1
-            && _continuousZoomDirection != 1)
-        || !enabled() || !_sdk || _videoModePending) {
-        return;
-    }
-
-    _configureSdkEndpoint();
-    if (_continuousZoomDriveRunning) {
-        // This is an internal pacing stop, not the end of the held gesture.
-        // Keep continuousZoomActive true so QML retains ownership until the
-        // pointer is actually released, canceled or reaches an endpoint.
-        _continuousZoomStartTimer.stop();
-        _continuousZoomDirectionRetryRequired = false;
-        const bool stopped = _sdk->sendManualZoom(0);
-        const bool safetyStop = stopped && _sdk->sendManualZoom(0);
-        if (!stopped || !safetyStop) {
-            (void) stopZoom();
-            return;
-        }
-        _continuousZoomDriveRunning = false;
-        _continuousZoomPaceTimer.start(kContinuousZoomPauseMs);
-        return;
-    }
-
-    if (!_sdk->sendManualZoom(
-            static_cast<qint8>(_continuousZoomDirection))) {
-        (void) stopZoom();
-        return;
-    }
-    _continuousZoomDriveRunning = true;
-    _continuousZoomDirectionRetryRequired = true;
-    _continuousZoomStartTimer.start();
-    _continuousZoomPaceTimer.start(kContinuousZoomRunMs);
 }
 
 void Mt11ControlManager::_pollContinuousZoom()
@@ -1848,9 +1798,9 @@ void Mt11ControlManager::_pollContinuousZoom()
     if (!_sdkResponseTimer.isActive()) {
         _sdkResponseTimer.start();
     }
-    // 0x18 is the sole authoritative measurement while the direction-only
-    // 0x05 hold is paced independently of the configured tap step. It updates
-    // the display target and detects physical endpoints without owning pace.
+    // 0x18 is the sole authoritative measurement while the one direction-only
+    // 0x05 command remains active. It updates the display target and detects
+    // physical endpoints without interrupting the native continuous motion.
     (void) _sdk->requestCurrentZoom();
 }
 
@@ -1873,8 +1823,7 @@ void Mt11ControlManager::_retryContinuousZoomStop()
 
 void Mt11ControlManager::_finishContinuousZoomState()
 {
-    _continuousZoomStartTimer.stop();
-    _continuousZoomPaceTimer.stop();
+    _continuousZoomDirectionRetryTimer.stop();
     _continuousZoomPollTimer.stop();
     _continuousZoomWatchdog.stop();
     if (!_continuousZoomActive && _continuousZoomDirection == 0) {
@@ -1885,7 +1834,6 @@ void Mt11ControlManager::_finishContinuousZoomState()
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
-    _continuousZoomDriveRunning = false;
     _continuousZoomMotionElapsed.invalidate();
     _continuousZoomEndpointFeedbackCount = 0;
     _continuousZoomNonEndpointObserved = false;

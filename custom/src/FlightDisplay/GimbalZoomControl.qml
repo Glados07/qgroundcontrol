@@ -27,6 +27,7 @@ Item {
     property color buttonColor: "#321f2b36"
     property color buttonHoverColor: "#4a334653"
     property color buttonPressedColor: "#e8f2f7fa"
+    property color buttonBorderColor: "#8065d9f4"
     property real buttonCornerRadius: Math.min(10, controlSize * 0.22)
 
     readonly property int gestureIdle: 0
@@ -140,7 +141,8 @@ Item {
             color: zoomOutMouseArea.pressed
                    ? root.buttonPressedColor
                    : (zoomOutMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
-            border.color: zoomOutMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.color: zoomOutMouseArea.containsMouse
+                          ? root.accentColor : root.buttonBorderColor
             border.width: zoomOutMouseArea.containsMouse ? 2 : 1
             enabled: root.canSend
                      && (zoomOutMouseArea.gestureState !== root.gestureIdle
@@ -262,8 +264,9 @@ Item {
                                     * (root.showActualZoom ? 1.08 : 0.78)
             Layout.alignment: Qt.AlignHCenter
             radius: height / 2
-            color: "#d5192630"
-            border.color: root.online && root.zoomKnown ? "#6965d9f4" : "#506f7d86"
+            color: "#66192630"
+            border.color: root.online && root.zoomKnown
+                          ? root.buttonBorderColor : "#5065d9f4"
             border.width: 1
 
             QGCLabel {
@@ -324,7 +327,8 @@ Item {
             color: zoomInMouseArea.pressed
                    ? root.buttonPressedColor
                    : (zoomInMouseArea.containsMouse ? root.buttonHoverColor : root.buttonColor)
-            border.color: zoomInMouseArea.containsMouse ? root.accentColor : "#7696a8b4"
+            border.color: zoomInMouseArea.containsMouse
+                          ? root.accentColor : root.buttonBorderColor
             border.width: zoomInMouseArea.containsMouse ? 2 : 1
             enabled: root.canSend
                      && (zoomInMouseArea.gestureState !== root.gestureIdle

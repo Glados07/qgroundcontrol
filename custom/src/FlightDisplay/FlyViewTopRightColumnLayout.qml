@@ -99,8 +99,8 @@ ColumnLayout {
             Layout.preferredHeight: root._cameraSelectorHeight
                                     + cameraSelector.innerMargin * 2
             radius: height / 2
-            color: "#b83b4b58"
-            border.color: "#708fa4b3"
+            color: "#783b4b58"
+            border.color: "#a065d9f4"
             border.width: 1
 
             readonly property real innerMargin: Math.max(
@@ -113,7 +113,7 @@ ColumnLayout {
                 anchors.margins: 1
                 radius: Math.max(0, parent.radius - 1)
                 color: "transparent"
-                border.color: "#1effffff"
+                border.color: "#2865d9f4"
                 border.width: 1
             }
 
@@ -147,7 +147,7 @@ ColumnLayout {
                                   : (cameraTabMouse.containsMouse ? "#30364854" : "transparent"))
                         border.color: selected
                                       ? root._cameraAccentColor
-                                      : (cameraTabMouse.containsMouse ? "#7597a9b5" : "transparent")
+                                      : (cameraTabMouse.containsMouse ? "#8065d9f4" : "transparent")
                         border.width: selected ? 2 : 1
                         scale: cameraTabMouse.pressed ? 0.97 : 1.0
 

@@ -240,12 +240,12 @@
 <context>
     <name>GimbalZoomControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="292"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="295"/>
         <source>Target</source>
         <translation>目标</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="305"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="308"/>
         <source>Actual</source>
         <translation>实际</translation>
     </message>
@@ -253,62 +253,52 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="79"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="77"/>
         <source>ZOOM</source>
         <translation>变焦</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="82"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="80"/>
         <source>IR</source>
         <translation>热像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="85"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="83"/>
         <source>MIX</source>
         <translation>拼接</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="92"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="90"/>
         <source>Zoom</source>
         <translation>变焦</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="95"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="93"/>
         <source>Thermal</source>
         <translation>热成像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="96"/>
         <source>Zoom + Thermal</source>
         <translation>变焦 + 热成像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="100"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
         <source>Unknown mode</source>
         <translation>未知模式</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
-        <source>Current</source>
-        <translation>当前模式</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
-        <source>Select</source>
-        <translation>选择</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="656"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="633"/>
         <source>FAILED</source>
         <translation>失败</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="798"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="777"/>
         <source>SD</source>
         <translation>SD</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="855"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="834"/>
         <source>LOCAL</source>
         <translation>本地</translation>
     </message>
@@ -546,62 +536,52 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
-        <source>SIYI A8 Mini Gimbal Camera</source>
-        <translation>SIYI A8 Mini云台相机</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
-        <source>Private SDK camera controls.</source>
-        <translation>专有SDK相机控制。</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="58"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
-        <source>Enabled</source>
-        <translation>启用</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="64"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="90"/>
-        <source>SDK Host</source>
-        <translation>SDK主机地址</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="97"/>
-        <source>SDK Port</source>
-        <translation>SDK端口</translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="27"/>
+        <source>Gimbal Camera</source>
+        <translation>云台相机</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
         <source>Zoom Step</source>
         <translation>变焦步长</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="37"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="47"/>
         <source>A8 Mini</source>
         <translation>A8 Mini</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="44"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
         <source>MT11</source>
         <translation>MT11</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
-        <source>UniPod MT11 Gimbal Camera</source>
-        <translation>UniPod MT11云台相机</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="67"/>
+        <source>SIYI A8 Mini Gimbal Camera</source>
+        <translation>SIYI A8 Mini云台相机</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="74"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
+        <source>Enabled</source>
+        <translation>启用</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="80"/>
-        <source>Independent SDK camera controls.</source>
-        <translation>独立SDK相机控制。</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
+        <source>SDK Host</source>
+        <translation>SDK主机地址</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
-        <source>MT11 SDK Host and Port control zoom, photo, recording and the three video work modes. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
-        <translation>MT11 SDK主机地址和端口用于控制变焦、拍照、录像及三种视频工作模式。请在“视频 &gt; 连接 &gt; RTSP地址2”中配置其视频地址。</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="87"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="119"/>
+        <source>SDK Port</source>
+        <translation>SDK端口</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
+        <source>UniPod MT11 Gimbal Camera</source>
+        <translation>UniPod MT11云台相机</translation>
     </message>
 </context>
 <context>
@@ -842,8 +822,8 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Each absolute target remains pending until two consecutive matching 0x18 samples have consumed the final request window. Holding for 420 ms starts direction-only 0x05 control over the full 1.0x-to-device-maximum range. Because the SDK has no zoom-rate field, the manager uses a fixed, step-independent 360 ms run / 240 ms pause cadence to reduce held-motion speed until release, cancellation or a physical endpoint. Each run has at most one bounded direction copy after 150 ms while the drive is still running, and each internal stop has one immediate bounded duplicate before the pause. The configured step affects tap targets and the displayed target grid only; changing it does not change held-motion speed. During a hold, authoritative 0x18 feedback is requested every 100 ms and the control bar shows only the monotonic legal target value. Endpoint stopping is armed 300 ms after motion begins. A hold which began from a disputed endpoint sample must first observe a non-endpoint sample; a 900 ms fail-safe still permits a true endpoint to stop. Every endpoint stop requires two consecutive endpoint samples, so one delayed 0x18 packet cannot consume a new hold. A new hold can take over either a pending tap or the preceding hold's settle window without losing the first gesture: any queued safety stop is serialized before the new direction and a required handoff waits 150 ms. Release and cancellation cancel future starts, send an immediate stop and one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
-        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法目标；快速连点从上一个已显示目标继续。当到30.0x的剩余区间不足一个配置步长时，短按会直接使用精确的30.0x作为最后目标，例如步长2.0x时序列为1.0/3.0/.../29.0/30.0。每个绝对目标必须由连续两份匹配的0x18样本确认，并消费最后一个请求窗口后才结束pending。长按420毫秒后，在1.0x至设备上限的全范围内启动仅含方向的0x05控制。SDK没有变倍速度字段，因此Manager固定采用与步长无关的360毫秒运行/240毫秒暂停节奏来降低长按速度，直到释放、取消或到达物理端点。每个运行段在驱动仍运行时最多于150毫秒后补发一份有界方向命令，每次内部停止在暂停前立即补发一份有界副本。配置步长只影响短按目标和显示目标网格，改为2.0x不会提高长按物理速度。长按期间每100毫秒请求一次权威0x18反馈，相机控制栏只显示单调的合法目标倍率。运动开始300毫秒后才启用端点停止；如果长按从有争议的端点样本开始，必须先观察到非端点样本，900毫秒失效保护仍允许真实端点停止。每次端点停止都要求连续两份端点反馈，因此单个迟到0x18包不会吞掉新长按。新长按可以接管未完成的短按或上一轮长按的结算窗口而不丢失第一次手势：先串行处理任何待发安全停止，需要交接时等待150毫秒。释放和取消会取消所有未来启动、立即停止并发送一份有界安全副本。30.0x以上双向禁用短按，只允许长按。默认步长为1.0x。</translation>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Each absolute target remains pending until two consecutive matching 0x18 samples have consumed the final request window. Holding for 420 ms sends one native direction-only 0x05 start command over the full 1.0x-to-device-maximum range. Because the SDK has no zoom-rate field, the manager does not emulate a slower rate with periodic stop/start pulses: those stops refocus or restart the optical controller and make motion stair-stepped. An ordinary hold sends no repeated direction commands; only a tap-to-hold or queued safety-stop handoff may send one bounded direction copy after 150 ms. The configured step affects tap targets and the displayed target grid only; changing it does not change native held-motion speed. During a hold, authoritative 0x18 feedback is requested every 100 ms and the control bar shows only the monotonic legal target value. Endpoint stopping is armed 300 ms after motion begins. A hold which began from a disputed endpoint sample must first observe a non-endpoint sample; a 900 ms fail-safe still permits a true endpoint to stop. Every endpoint stop requires two consecutive endpoint samples, so one delayed 0x18 packet cannot consume a new hold. A new hold can take over either a pending tap or the preceding hold's settle window without losing the first gesture: any queued safety stop is serialized first, the new direction is sent immediately, and its bounded copy is sent after 150 ms only while the same hold remains active. Release and cancellation cancel future starts, send an immediate stop and one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <translation>实测倍率位于协议规定的1.0x至30.0x绝对命令范围内时，每次短按都会前进到以最小倍率为锚点的下一个合法目标；快速连点从上一个已显示目标继续。当到30.0x的剩余区间不足一个配置步长时，短按会直接使用精确的30.0x作为最后目标，例如步长2.0x时序列为1.0/3.0/.../29.0/30.0。每个绝对目标必须由连续两份匹配的0x18样本确认，并消费最后一个请求窗口后才结束pending。长按420毫秒后，在1.0x至设备上限的全范围内只发送一次原生0x05方向启动命令。SDK没有变倍速度字段，因此Manager不再通过周期性停止/重启来伪造慢速：这些停止会触发对焦或重启光学控制器，使运动变成阶梯顿挫。普通长按不重复发送方向命令；只有接管短按或待发安全停止时，才可能在150毫秒后补发一份有界方向副本。配置步长只影响短按目标和显示目标网格，改为2.0x不会改变原生长按物理速度。长按期间每100毫秒请求一次权威0x18反馈，相机控制栏只显示单调的合法目标倍率。运动开始300毫秒后才启用端点停止；如果长按从有争议的端点样本开始，必须先观察到非端点样本，900毫秒失效保护仍允许真实端点停止。每次端点停止都要求连续两份端点反馈，因此单个迟到0x18包不会吞掉新长按。新长按可以接管未完成的短按或上一轮长按的结算窗口而不丢失第一次手势：先串行处理任何待发安全停止，第一份新方向立即发送，并且仅在同一次长按仍活动时于150毫秒后补发有界副本。释放和取消会取消所有未来启动、立即停止并发送一份有界安全副本。30.0x以上双向禁用短按，只允许长按。默认步长为1.0x。</translation>
     </message>
 </context>
 <context>

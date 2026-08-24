@@ -24,87 +24,102 @@ ColumnLayout {
 
     SettingsGroupLayout {
         Layout.fillWidth: true
-        heading: qsTr("Zoom Step")
+        heading: qsTr("Gimbal Camera")
 
-        GridLayout {
+        ColumnLayout {
             Layout.fillWidth: true
-            columns: ScreenTools.isMobile ? 1 : 2
-            columnSpacing: ScreenTools.defaultFontPixelWidth * 2
-            rowSpacing: ScreenTools.defaultFontPixelHeight / 2
+            spacing: ScreenTools.defaultFontPixelHeight / 2
+
+            QGCLabel {
+                Layout.fillWidth: true
+                text: qsTr("Zoom Step")
+                font.bold: true
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: ScreenTools.isMobile ? 1 : 2
+                columnSpacing: ScreenTools.defaultFontPixelWidth * 2
+                rowSpacing: ScreenTools.defaultFontPixelHeight / 2
+
+                LabelledFactTextField {
+                    Layout.fillWidth: true
+                    label: qsTr("A8 Mini")
+                    fact: root.gimbalControlSettings.zoomStep
+                    enabled: root.gimbalControlSettings.enabled.rawValue
+                }
+
+                LabelledFactTextField {
+                    Layout.fillWidth: true
+                    label: qsTr("MT11")
+                    fact: root.gimbalControlSettings.mt11ZoomStep
+                    enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+                }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: ScreenTools.defaultFontPixelHeight / 2
+
+            QGCLabel {
+                Layout.fillWidth: true
+                text: qsTr("SIYI A8 Mini Gimbal Camera")
+                wrapMode: Text.WordWrap
+                font.bold: true
+            }
+
+            FactCheckBoxSlider {
+                Layout.fillWidth: true
+                text: qsTr("Enabled")
+                fact: root.gimbalControlSettings.enabled
+            }
 
             LabelledFactTextField {
                 Layout.fillWidth: true
-                label: qsTr("A8 Mini")
-                fact: root.gimbalControlSettings.zoomStep
+                label: qsTr("SDK Host")
+                fact: root.gimbalControlSettings.sdkHost
                 enabled: root.gimbalControlSettings.enabled.rawValue
             }
 
             LabelledFactTextField {
                 Layout.fillWidth: true
-                label: qsTr("MT11")
-                fact: root.gimbalControlSettings.mt11ZoomStep
-                enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+                label: qsTr("SDK Port")
+                fact: root.gimbalControlSettings.sdkPort
+                enabled: root.gimbalControlSettings.enabled.rawValue
             }
         }
-    }
 
-    SettingsGroupLayout {
-        Layout.fillWidth: true
-        heading: qsTr("SIYI A8 Mini Gimbal Camera")
-        headingDescription: qsTr("Private SDK camera controls.")
-
-        FactCheckBoxSlider {
+        ColumnLayout {
             Layout.fillWidth: true
-            text: qsTr("Enabled")
-            fact: root.gimbalControlSettings.enabled
-        }
+            spacing: ScreenTools.defaultFontPixelHeight / 2
 
-        LabelledFactTextField {
-            Layout.fillWidth: true
-            label: qsTr("SDK Host")
-            fact: root.gimbalControlSettings.sdkHost
-            enabled: root.gimbalControlSettings.enabled.rawValue
-        }
+            QGCLabel {
+                Layout.fillWidth: true
+                text: qsTr("UniPod MT11 Gimbal Camera")
+                wrapMode: Text.WordWrap
+                font.bold: true
+            }
 
-        LabelledFactTextField {
-            Layout.fillWidth: true
-            label: qsTr("SDK Port")
-            fact: root.gimbalControlSettings.sdkPort
-            enabled: root.gimbalControlSettings.enabled.rawValue
-        }
-    }
+            FactCheckBoxSlider {
+                Layout.fillWidth: true
+                text: qsTr("Enabled")
+                fact: root.gimbalControlSettings.mt11Enabled
+            }
 
-    SettingsGroupLayout {
-        Layout.fillWidth: true
-        heading: qsTr("UniPod MT11 Gimbal Camera")
-        headingDescription: qsTr("Independent SDK camera controls.")
+            LabelledFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("SDK Host")
+                fact: root.gimbalControlSettings.mt11SdkHost
+                enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+            }
 
-        FactCheckBoxSlider {
-            Layout.fillWidth: true
-            text: qsTr("Enabled")
-            fact: root.gimbalControlSettings.mt11Enabled
-        }
-
-        LabelledFactTextField {
-            Layout.fillWidth: true
-            label: qsTr("SDK Host")
-            fact: root.gimbalControlSettings.mt11SdkHost
-            enabled: root.gimbalControlSettings.mt11Enabled.rawValue
-        }
-
-        LabelledFactTextField {
-            Layout.fillWidth: true
-            label: qsTr("SDK Port")
-            fact: root.gimbalControlSettings.mt11SdkPort
-            enabled: root.gimbalControlSettings.mt11Enabled.rawValue
-        }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("MT11 SDK Host and Port control zoom, photo, recording and the three video work modes. Configure its video address under Video > Connection > RTSP URL 2.")
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            opacity: 0.72
+            LabelledFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("SDK Port")
+                fact: root.gimbalControlSettings.mt11SdkPort
+                enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+            }
         }
     }
 }

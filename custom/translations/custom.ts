@@ -240,12 +240,12 @@
 <context>
     <name>GimbalZoomControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="292"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="295"/>
         <source>Target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="305"/>
+        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="308"/>
         <source>Actual</source>
         <translation type="unfinished"></translation>
     </message>
@@ -253,62 +253,52 @@
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="79"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="77"/>
         <source>ZOOM</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="82"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="80"/>
         <source>IR</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="85"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="83"/>
         <source>MIX</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="92"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="90"/>
         <source>Zoom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="95"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="93"/>
         <source>Thermal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="96"/>
         <source>Zoom + Thermal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="100"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
         <source>Unknown mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
-        <source>Current</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="415"/>
-        <source>Select</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="656"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="633"/>
         <source>FAILED</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="798"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="777"/>
         <source>SD</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="855"/>
+        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="834"/>
         <source>LOCAL</source>
         <translation type="unfinished"></translation>
     </message>
@@ -546,61 +536,51 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="53"/>
-        <source>SIYI A8 Mini Gimbal Camera</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
-        <source>Private SDK camera controls.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="58"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
-        <source>Enabled</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="64"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="90"/>
-        <source>SDK Host</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="97"/>
-        <source>SDK Port</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="27"/>
+        <source>Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
         <source>Zoom Step</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="37"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="47"/>
         <source>A8 Mini</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="44"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
         <source>MT11</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="79"/>
-        <source>UniPod MT11 Gimbal Camera</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="67"/>
+        <source>SIYI A8 Mini Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="74"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
+        <source>Enabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="80"/>
-        <source>Independent SDK camera controls.</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
+        <source>SDK Host</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
-        <source>MT11 SDK Host and Port control zoom, photo, recording and the three video work modes. Configure its video address under Video &gt; Connection &gt; RTSP URL 2.</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="87"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="119"/>
+        <source>SDK Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
+        <source>UniPod MT11 Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -842,7 +822,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Each absolute target remains pending until two consecutive matching 0x18 samples have consumed the final request window. Holding for 420 ms starts direction-only 0x05 control over the full 1.0x-to-device-maximum range. Because the SDK has no zoom-rate field, the manager uses a fixed, step-independent 360 ms run / 240 ms pause cadence to reduce held-motion speed until release, cancellation or a physical endpoint. Each run has at most one bounded direction copy after 150 ms while the drive is still running, and each internal stop has one immediate bounded duplicate before the pause. The configured step affects tap targets and the displayed target grid only; changing it does not change held-motion speed. During a hold, authoritative 0x18 feedback is requested every 100 ms and the control bar shows only the monotonic legal target value. Endpoint stopping is armed 300 ms after motion begins. A hold which began from a disputed endpoint sample must first observe a non-endpoint sample; a 900 ms fail-safe still permits a true endpoint to stop. Every endpoint stop requires two consecutive endpoint samples, so one delayed 0x18 packet cannot consume a new hold. A new hold can take over either a pending tap or the preceding hold's settle window without losing the first gesture: any queued safety stop is serialized before the new direction and a required handoff waits 150 ms. Release and cancellation cancel future starts, send an immediate stop and one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
+        <source>Each tap moves to the next minimum-anchored legal target while the measured zoom is within the documented 1.0x to 30.0x absolute-command range. Rapid taps continue from the last displayed target. When the remaining interval is shorter than the configured step, the exact 30.0x boundary is used as the final tap target; for example, a 2.0x step uses 1.0/3.0/.../29.0/30.0. Each absolute target remains pending until two consecutive matching 0x18 samples have consumed the final request window. Holding for 420 ms sends one native direction-only 0x05 start command over the full 1.0x-to-device-maximum range. Because the SDK has no zoom-rate field, the manager does not emulate a slower rate with periodic stop/start pulses: those stops refocus or restart the optical controller and make motion stair-stepped. An ordinary hold sends no repeated direction commands; only a tap-to-hold or queued safety-stop handoff may send one bounded direction copy after 150 ms. The configured step affects tap targets and the displayed target grid only; changing it does not change native held-motion speed. During a hold, authoritative 0x18 feedback is requested every 100 ms and the control bar shows only the monotonic legal target value. Endpoint stopping is armed 300 ms after motion begins. A hold which began from a disputed endpoint sample must first observe a non-endpoint sample; a 900 ms fail-safe still permits a true endpoint to stop. Every endpoint stop requires two consecutive endpoint samples, so one delayed 0x18 packet cannot consume a new hold. A new hold can take over either a pending tap or the preceding hold's settle window without losing the first gesture: any queued safety stop is serialized first, the new direction is sent immediately, and its bounded copy is sent after 150 ms only while the same hold remains active. Release and cancellation cancel future starts, send an immediate stop and one bounded safety copy. Above 30.0x, tap control is disabled in both directions and only press-and-hold is available. The default step is 1.0x.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
