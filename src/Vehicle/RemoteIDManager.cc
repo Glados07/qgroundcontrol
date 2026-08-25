@@ -35,7 +35,7 @@ RemoteIDManager::RemoteIDManager(Vehicle* vehicle)
     , _armStatusGood        (false)
     , _commsGood            (false)
     , _gcsGPSGood           (false)
-    , _basicIDGood          (true)
+    , _basicIDGood          (false)
     , _GCSBasicIDValid      (false)
     , _operatorIDGood       (false)
     , _emergencyDeclared    (false)
@@ -152,10 +152,12 @@ void RemoteIDManager::_handleArmStatus(mavlink_message_t& message)
     if (armStatus.status == MAV_ODID_ARM_STATUS_PRE_ARM_FAIL_GENERIC) {
         _armStatusGood = false;
         _armStatusError = QString::fromLocal8Bit(armStatus.error);
-        // Check if the error is because of missing basic id
-        if (armStatus.error == QString("missing basic_id message")) {
-            _basicIDGood = false;
-            qCDebug(RemoteIDManagerLog) << "Arm status error, basic_id is not set in RID device nor in GCS!";
+
+        const bool basicIDGood = !_armStatusError.contains(QStringLiteral("BASIC_ID_MISSING")) &&
+                                 !_armStatusError.contains(QStringLiteral("BASIC_ID_1_INVALID")) &&
+                                 _armStatusError != QStringLiteral("missing basic_id message");
+        if (_basicIDGood != basicIDGood) {
+            _basicIDGood = basicIDGood;
             emit basicIDGoodChanged();
         }
         emit armStatusGoodChanged();
