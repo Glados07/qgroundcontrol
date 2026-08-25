@@ -80,7 +80,7 @@
     "type":         "uint8",
     "enumStrings":  "None,SerialNumber (ANSI/CTA-2063),CAA,UTM (RFC4122),Specific",
     "enumValues":   "0,1,2,3,4",
-    "default":      2
+    "default":      0
 },
 {
     "name":         "basicIDTypeChina",

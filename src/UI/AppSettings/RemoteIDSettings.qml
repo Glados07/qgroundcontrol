@@ -432,6 +432,7 @@ SettingsPage {
             SettingsGroupLayout {
                 heading:                qsTr("Self ID")
                 headingDescription:     qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
+                visible:                !isChinaRegion
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
 

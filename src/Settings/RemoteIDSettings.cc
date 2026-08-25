@@ -13,7 +13,24 @@
 
 DECLARE_SETTINGGROUP(RemoteID, "RemoteID")
 {
-    qmlRegisterUncreatableType<RemoteIDSettings>("QGroundControl.SettingsManager", 1, 0, "RemoteIDSettings", "Reference only"); \
+    qmlRegisterUncreatableType<RemoteIDSettings>("QGroundControl.SettingsManager", 1, 0, "RemoteIDSettings", "Reference only");
+
+    // Basic ID identifies the current aircraft and must be entered again for each
+    // QGC session. Leave sendBasicID untouched so Broadcast retains its setting.
+    basicIDType()->setRawValue(0);
+    basicIDTypeChina()->setRawValue(0);
+    basicIDUaType()->setRawValue(0);
+    basicID()->setRawValue(QString());
+
+    constexpr int chinaRegion = 2;
+    const auto disableSelfIDForChina = [this, chinaRegion]() {
+        if (region()->rawValue().toInt() == chinaRegion) {
+            sendSelfID()->setRawValue(false);
+        }
+    };
+    connect(region(), &Fact::rawValueChanged, this, disableSelfIDForChina);
+    connect(sendSelfID(), &Fact::rawValueChanged, this, disableSelfIDForChina);
+    disableSelfIDForChina();
 }
 
 DECLARE_SETTINGSFACT(RemoteIDSettings,  operatorID)

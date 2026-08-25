@@ -227,7 +227,7 @@ ToolIndicatorPage {
                 anchors.left:   parent.left
                 anchors.right:  parent.right
                 height:         emergencyDeclareLabel.height + emergencyButton.height + (_margins * 4)
-                visible:        commsFlag
+                visible:        commsFlag && _regionOperation !== RemoteIDIndicatorPage.China
 
                 QGCLabel {
                     id:                     emergencyDeclareLabel
@@ -344,6 +344,7 @@ ToolIndicatorPage {
                 SettingsGroupLayout {
                     heading:                qsTr("Self ID")
                     headingDescription:     qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
+                    visible:                !isChinaRegion
                     Layout.fillWidth:       true
                     Layout.preferredWidth:  textLabelWidth + textFieldWidth
 

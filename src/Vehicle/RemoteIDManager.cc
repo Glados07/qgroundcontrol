@@ -177,7 +177,8 @@ void RemoteIDManager::_sendMessages()
 
     // We only send selfID if the pilot wants it or in case of a declared emergency. If an emergency is cleared
     // we also keep sending the message, to be sure the non emergency state makes it up to the vehicle
-    if (_settings->sendSelfID()->rawValue().toBool() || _emergencyDeclared || _enforceSendingSelfID) {
+    if ((_settings->region()->rawValue().toInt() != Region::China) &&
+        (_settings->sendSelfID()->rawValue().toBool() || _emergencyDeclared || _enforceSendingSelfID)) {
         _sendSelfIDMsg();
     }
 
