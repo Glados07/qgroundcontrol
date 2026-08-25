@@ -59,6 +59,9 @@ SettingsPage {
     property bool isFAARegion:          regionFact.rawValue === RemoteIDSettings.RegionOperation.FAA
     property bool isChinaRegion:        regionFact.rawValue === RemoteIDSettings.RegionOperation.China
     property bool ridSettingsAvailable: _activeVehicle && _activeRID && commsGood
+    property bool basicIDSet:           _remoteIDManager ? _remoteIDManager.basicIDGood : false
+    property bool basicIDSendActive:    _remoteIDManager ? _remoteIDManager.basicIDSendActive : false
+    property bool basicIDInputLocked:   basicIDSet || basicIDSendActive
     property real textFieldWidth:       ScreenTools.defaultFontPixelWidth * 24
     property real textLabelWidth:       ScreenTools.defaultFontPixelWidth * 30
 
@@ -87,6 +90,67 @@ SettingsPage {
     property string gpsUdpPort:         "UDP Port"
 
     QGCPalette { id: qgcPal }
+
+    Connections {
+        target: _remoteIDManager
+
+        function onBasicIDSetupSucceeded() {
+            mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Setup successful"))
+        }
+
+        function onBasicIDSetupFailed() {
+            mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Setup failed"))
+        }
+    }
+
+    Component {
+        id: basicIDConfirmationDialogComponent
+
+        QGCPopupDialog {
+            id:         basicIDConfirmationDialog
+            title:      qsTr("Confirm Basic ID Setup")
+            buttons:    0
+
+            ColumnLayout {
+                spacing: ScreenTools.defaultDialogControlSpacing
+
+                QGCLabel {
+                    text:                   qsTr("Warning: Basic ID can only be set once and cannot be changed afterward!\nDo you want to set the Basic ID?")
+                    wrapMode:               Text.WordWrap
+                    Layout.preferredWidth:  Math.max(mainWindow.width / (ScreenTools.isMobile ? 2 : 3), basicIDConfirmationDialog.headerMinWidth)
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+
+                    QGCButton {
+                        text:       qsTr("Cancel")
+                        onClicked:  basicIDConfirmationDialog.close()
+                    }
+
+                    QGCButton {
+                        text:       qsTr("Confirm")
+                        primary:    true
+                        onClicked: {
+                            basicIDConfirmationDialog.close()
+                            if (!_remoteIDManager || !_remoteIDManager.startBasicIDSetup()) {
+                                mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Setup failed"))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function confirmAndSendBasicID() {
+        if (!_remoteIDManager || !_remoteIDManager.basicIDConfigurationValid) {
+            mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Invalid configuration"))
+            return
+        }
+
+        basicIDConfirmationDialogComponent.createObject(mainWindow).open()
+    }
 
     // Function to get the corresponding Self ID label depending on the Self ID Type selected
     function getSelfIdLabelText() {
@@ -294,30 +358,19 @@ SettingsPage {
 
             SettingsGroupLayout {
                 heading:                qsTr("Basic ID")
-                headingDescription:     qsTr("If Basic ID is already set on the RID device, this will be registered as Basic ID 2")
+                headingDescription:     qsTr("Basic ID can only be set once and cannot be changed")
                 visible:                ridSettingsAvailable
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
                 outerBorderColor:       _activeRID ? (_remoteIDManager.basicIDGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
-
-
-                FactCheckBoxSlider {
-                    id:                 sendBasicIDSlider
-                    text:               qsTr("Broadcast")
-                    fact:               _fact
-                    visible:            _fact.visible
-                    Layout.fillWidth:   true
-
-                    property Fact _fact: remoteIDSettings.sendBasicID
-                }
 
                 LabelledFactComboBox {
                     id:                 basicIDTypeCombo
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible && !isChinaRegion
-                    enabled:            sendBasicIDSlider._fact.rawValue
+                    visible:            _fact.visible && !isChinaRegion && !basicIDSet
+                    enabled:            !basicIDInputLocked
                     Layout.fillWidth:   true
 
                     property Fact _fact: remoteIDSettings.basicIDType
@@ -328,8 +381,8 @@ SettingsPage {
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible && isChinaRegion
-                    enabled:            sendBasicIDSlider._fact.rawValue
+                    visible:            _fact.visible && isChinaRegion && !basicIDSet
+                    enabled:            !basicIDInputLocked
                     Layout.fillWidth:   true
 
                     property Fact _fact: remoteIDSettings.basicIDTypeChina
@@ -339,8 +392,8 @@ SettingsPage {
                     label:              _fact.shortDescription
                     fact:               _fact
                     indexModel:         false
-                    visible:            _fact.visible
-                    enabled:            sendBasicIDSlider._fact.rawValue
+                    visible:            _fact.visible && !basicIDSet
+                    enabled:            !basicIDInputLocked
                     Layout.fillWidth:   true
 
                     property Fact _fact: remoteIDSettings.basicIDUaType
@@ -349,13 +402,28 @@ SettingsPage {
                 LabelledFactTextField {
                     label:                      _fact.shortDescription
                     fact:                       _fact
-                    visible:                    _fact.visible
-                    enabled:            sendBasicIDSlider._fact.rawValue
+                    visible:                    _fact.visible && !basicIDSet
+                    enabled:                    !basicIDInputLocked
                     textField.maximumLength:    20
                     Layout.fillWidth:           true
                     textFieldPreferredWidth:    textFieldWidth
 
                     property Fact _fact: remoteIDSettings.basicID
+                }
+
+                QGCButton {
+                    text:               basicIDSendActive ? qsTr("Sending...") : qsTr("Confirm and Send")
+                    visible:            !basicIDSet
+                    enabled:            !basicIDSendActive
+                    Layout.fillWidth:   true
+                    onClicked:          confirmAndSendBasicID()
+                }
+
+                QGCLabel {
+                    text:               qsTr("Basic ID is set and cannot be changed")
+                    visible:            basicIDSet
+                    Layout.fillWidth:   true
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
 

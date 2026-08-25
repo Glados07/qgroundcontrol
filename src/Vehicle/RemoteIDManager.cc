@@ -23,6 +23,7 @@ QGC_LOGGING_CATEGORY(RemoteIDManagerLog, "RemoteIDManagerLog")
 #define MAVLINK_UNKNOWN_LAT 0
 #define MAVLINK_UNKNOWN_LON 0
 #define SENDING_RATE_MSEC 1000
+#define BASIC_ID_SETUP_TIMEOUT_MSEC 5000
 #define ALLOWED_GPS_DELAY 5000
 #define RID_TIMEOUT 2500 // Messages should be arriving at 1 Hz, so we set a 2 second timeout
 
@@ -37,6 +38,7 @@ RemoteIDManager::RemoteIDManager(Vehicle* vehicle)
     , _gcsGPSGood           (false)
     , _basicIDGood          (false)
     , _GCSBasicIDValid      (false)
+    , _basicIDSendActive    (false)
     , _operatorIDGood       (false)
     , _emergencyDeclared    (false)
     , _targetSystem         (0) // By default 0 means broadcast
@@ -54,6 +56,10 @@ RemoteIDManager::RemoteIDManager(Vehicle* vehicle)
     _sendMessagesTimer.setInterval(SENDING_RATE_MSEC);
     connect(&_sendMessagesTimer, &QTimer::timeout, this, &RemoteIDManager::_sendMessages);
 
+    _basicIDSetupTimer.setSingleShot(true);
+    _basicIDSetupTimer.setInterval(BASIC_ID_SETUP_TIMEOUT_MSEC);
+    connect(&_basicIDSetupTimer, &QTimer::timeout, this, &RemoteIDManager::_basicIDSetupTimeout);
+
     // GCS GPS position updates to track the health of the GPS data
     connect(QGCPositionManager::instance(), &QGCPositionManager::positionInfoUpdated, this, &RemoteIDManager::_updateLastGCSPositionInfo);
 
@@ -62,6 +68,7 @@ RemoteIDManager::RemoteIDManager(Vehicle* vehicle)
     connect(_settings->basicIDType(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
     connect(_settings->basicIDTypeChina(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
     connect(_settings->basicIDUaType(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
+    connect(_settings->region(), &Fact::rawValueChanged, this, &RemoteIDManager::_checkGCSBasicID);
 
     // Assign vehicle sysid and compid. GCS must target these messages to autopilot, and autopilot will redirect them to RID device
     _targetSystem = _vehicle->id();
@@ -89,6 +96,9 @@ void RemoteIDManager::mavlinkMessageReceived(mavlink_message_t& message )
 // This slot will be called if we stop receiving heartbeats for more than RID_TIMEOUT seconds
 void RemoteIDManager::_odidTimeout()
 {
+    if (_basicIDSendActive) {
+        _finishBasicIDSetup(false);
+    }
     _commsGood = false;
     _sendMessagesTimer.stop(); // We stop sending messages if the communication with the RID device is down
     emit commsGoodChanged();
@@ -164,6 +174,10 @@ void RemoteIDManager::_handleArmStatus(mavlink_message_t& message)
         emit armStatusErrorChanged();
         qCDebug(RemoteIDManagerLog) << "Arm status error:" << _armStatusError;
     }
+
+    if (_basicIDGood && _basicIDSendActive) {
+        _finishBasicIDSetup(true);
+    }
 }
 
 // Function that sends messages periodically
@@ -172,8 +186,7 @@ void RemoteIDManager::_sendMessages()
     // We always try to send System
     _sendSystem();
 
-    // only send it if the information is correct and the tickbox in settings is set
-    if (_GCSBasicIDValid && _settings->sendBasicID()->rawValue().toBool()) {
+    if (_GCSBasicIDValid && _basicIDSendActive) {
         _sendBasicID();
     }
 
@@ -397,13 +410,52 @@ void RemoteIDManager::_sendBasicID()
 
 void RemoteIDManager::_checkGCSBasicID()
 {
-    QString basicID = _settings->basicID()->rawValue().toString();
+    const QString basicID = _settings->basicID()->rawValue().toString();
 
     const int idType = (_settings->region()->rawValue().toInt() == Region::China) ? _settings->basicIDTypeChina()->rawValue().toInt() : _settings->basicIDType()->rawValue().toInt();
-    if (!basicID.isEmpty() && (idType >= 0) && (_settings->basicIDUaType()->rawValue().toInt() >= 0)) {
-        _GCSBasicIDValid = true;
+    const bool basicIDValid = !basicID.isEmpty() && (idType > 0) && (_settings->basicIDUaType()->rawValue().toInt() > 0);
+    if (_GCSBasicIDValid != basicIDValid) {
+        _GCSBasicIDValid = basicIDValid;
+        emit basicIDConfigurationValidChanged();
+
+        if (_basicIDSendActive && !_GCSBasicIDValid) {
+            _finishBasicIDSetup(false);
+        }
+    }
+}
+
+bool RemoteIDManager::startBasicIDSetup()
+{
+    if (!_commsGood || _basicIDGood || !_GCSBasicIDValid || _basicIDSendActive) {
+        return false;
+    }
+
+    _basicIDSendActive = true;
+    emit basicIDSendActiveChanged();
+    _basicIDSetupTimer.start();
+    _sendBasicID();
+    return true;
+}
+
+void RemoteIDManager::_basicIDSetupTimeout()
+{
+    _finishBasicIDSetup(false);
+}
+
+void RemoteIDManager::_finishBasicIDSetup(bool success)
+{
+    if (!_basicIDSendActive) {
+        return;
+    }
+
+    _basicIDSetupTimer.stop();
+    _basicIDSendActive = false;
+    emit basicIDSendActiveChanged();
+
+    if (success) {
+        emit basicIDSetupSucceeded();
     } else {
-        _GCSBasicIDValid = false;
+        emit basicIDSetupFailed();
     }
 }
 

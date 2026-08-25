@@ -36,12 +36,15 @@ public:
     Q_PROPERTY(bool    commsGood            READ commsGood          NOTIFY commsGoodChanged)
     Q_PROPERTY(bool    gcsGPSGood           READ gcsGPSGood         NOTIFY gcsGPSGoodChanged)
     Q_PROPERTY(bool    basicIDGood          READ basicIDGood        NOTIFY basicIDGoodChanged)
+    Q_PROPERTY(bool    basicIDConfigurationValid READ basicIDConfigurationValid NOTIFY basicIDConfigurationValidChanged)
+    Q_PROPERTY(bool    basicIDSendActive    READ basicIDSendActive  NOTIFY basicIDSendActiveChanged)
     Q_PROPERTY(bool    emergencyDeclared    READ emergencyDeclared  NOTIFY emergencyDeclaredChanged)
     Q_PROPERTY(bool    operatorIDGood       READ operatorIDGood     NOTIFY operatorIDGoodChanged)
 
 
     Q_INVOKABLE void checkOperatorID(const QString& operatorID);
     Q_INVOKABLE void setOperatorID();
+    Q_INVOKABLE bool startBasicIDSetup();
 
     // Declare emergency
     Q_INVOKABLE void setEmergency(bool declare);
@@ -52,6 +55,8 @@ public:
     bool    commsGood           (void) const { return _commsGood; }
     bool    gcsGPSGood          (void) const { return _gcsGPSGood; }
     bool    basicIDGood         (void) const { return _basicIDGood; }
+    bool    basicIDConfigurationValid(void) const { return _GCSBasicIDValid; }
+    bool    basicIDSendActive   (void) const { return _basicIDSendActive; }
     bool    emergencyDeclared   (void) const { return _emergencyDeclared;}
     bool    operatorIDGood      (void) const { return _operatorIDGood; }
 
@@ -76,6 +81,10 @@ signals:
     void commsGoodChanged();
     void gcsGPSGoodChanged();
     void basicIDGoodChanged();
+    void basicIDConfigurationValidChanged();
+    void basicIDSendActiveChanged();
+    void basicIDSetupSucceeded();
+    void basicIDSetupFailed();
     void emergencyDeclaredChanged();
     void operatorIDGoodChanged();
 
@@ -84,6 +93,7 @@ private slots:
     void _sendMessages();
     void _updateLastGCSPositionInfo(QGeoPositionInfo update);
     void _checkGCSBasicID();
+    void _basicIDSetupTimeout();
 
 private:
     void _handleArmStatus(mavlink_message_t& message);
@@ -101,6 +111,7 @@ private:
 
     // Basic ID
     void        _sendBasicID();
+    void        _finishBasicIDSetup(bool success);
 
     bool _isEUOperatorIDValid(const QString& operatorID) const;
     bool _isChinaOperatorIDValid(const QString& operatorID) const;
@@ -117,6 +128,7 @@ private:
     bool    _gcsGPSGood;
     bool    _basicIDGood;
     bool    _GCSBasicIDValid;
+    bool    _basicIDSendActive;
     bool    _operatorIDGood;
 
     bool        _emergencyDeclared;
@@ -132,4 +144,5 @@ private:
     // Timers
     QTimer _odidTimeoutTimer;
     QTimer _sendMessagesTimer;
+    QTimer _basicIDSetupTimer;
 };
