@@ -207,7 +207,6 @@ private slots:
 private:
     enum class ContinuousZoomPhase {
         Idle,
-        ManualHandoff,
         ManualContinuous,
     };
 
@@ -274,8 +273,7 @@ private:
     QTimer _zoomStatusFreshnessTimer;
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
-    QTimer _continuousZoomHandoffGraceTimer;
-    QTimer _continuousZoomHandoffTimer;
+    QTimer _continuousZoomTakeoverProtectionTimer;
     QTimer _continuousZoomDirectionRetryTimer;
     QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
@@ -308,12 +306,22 @@ private:
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
     int _continuousZoomDirectionRetriesRemaining = 0;
-    int _continuousZoomDirectionAttemptsSent = 0;
-    double _continuousZoomDirectionProgressSample = kMinimumZoom;
-    int _continuousZoomDirectionProgressCount = 0;
+    bool _continuousZoomEndpointTakeoverVerificationRequired = false;
+    double _continuousZoomEndpointTakeoverProgressSample = kMinimumZoom;
+    int _continuousZoomEndpointTakeoverProgressCount = 0;
     QElapsedTimer _continuousZoomMotionElapsed;
     int _continuousZoomEndpointFeedbackCount = 0;
     bool _continuousZoomNonEndpointObserved = false;
+    // At a confirmed physical endpoint the motor cannot move farther, so the
+    // manager can finish the UI gesture without sending 0x05(0). Remember the
+    // direction until a new zoom command overrides it or lifecycle teardown
+    // explicitly neutralizes the camera.
+    int _continuousZoomEndpointLatchedDirection = 0;
+    // A release can race the second endpoint confirmation. Preserve one
+    // already-armed endpoint sample only as a short-lived retry hint for the
+    // next reverse hold; unlike the latched direction, it never suppresses the
+    // release stop and therefore cannot leave a moving lens uncontrolled.
+    int _continuousZoomReleasedEndpointCandidateDirection = 0;
     bool _postHoldZoomFeedbackPending = false;
     int _postHoldBoundaryCandidate = 0;
     int _postHoldBoundaryFeedbackCount = 0;

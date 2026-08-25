@@ -1,10 +1,12 @@
 /****************************************************************************
  *
  * Shared A8 Mini and MT11 zoom control. A short release asks the selected
- * manager for one exact step. Holding for 420 ms starts the manager-owned
- * held sequence; release, cancellation, hiding and application suspension all
- * ask the manager to stop. Device-specific protocols, feedback bounds, ranges
- * and pacing remain in their managers.
+ * manager for one exact step. Where both gestures are available, holding for
+ * 420 ms starts the manager-owned sequence. In a hold-only range the sequence
+ * starts on press, so the user is not charged a meaningless tap/hold delay.
+ * Release, cancellation, hiding and application suspension all ask the
+ * manager to stop. Device-specific protocols, bounds and pacing remain in
+ * their managers.
  *
  ****************************************************************************/
 
@@ -67,6 +69,19 @@ Item {
         if (shouldStop && manager) {
             manager.cancelZoom()
         }
+    }
+
+    function beginHeldZoom(mouseArea, direction, pressDurationMs) {
+        // Consume before calling the manager so a synchronous availability
+        // change cannot turn this gesture into a tap on release.
+        mouseArea.gestureState = gestureConsumed
+        if (manager
+                && manager.startZoomWithPressDuration(
+                    direction, Math.max(0, pressDurationMs))) {
+            mouseArea.gestureState = gestureHolding
+            return true
+        }
+        return false
     }
 
     onOnlineChanged: {
@@ -193,6 +208,12 @@ Item {
                 onPressed: {
                     pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
+                    // When this direction has no tap action to disambiguate,
+                    // start its native hold on press. This covers MT11's
+                    // hold-only range and an immediately reversible endpoint.
+                    if (!root.canTapZoomOut && root.canHoldZoomOut) {
+                        root.beginHeldZoom(zoomOutMouseArea, -1, 0)
+                    }
                 }
                 onPressAndHold: {
                     if (gestureState !== root.gesturePressed) {
@@ -203,16 +224,11 @@ Item {
                         return
                     }
 
-                    // Consume before calling the manager so a synchronous
-                    // availability change cannot turn this hold into a tap.
-                    gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))
-                    if (root.manager
-                            && root.manager.startZoomWithPressDuration(
-                                -1, totalPressDurationMs)) {
-                        gestureState = root.gestureHolding
-                    }
+                    root.beginHeldZoom(zoomOutMouseArea,
+                                       -1,
+                                       totalPressDurationMs)
                 }
                 onReleased: function(mouse) {
                     const completedState = gestureState
@@ -379,6 +395,9 @@ Item {
                 onPressed: {
                     pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
+                    if (!root.canTapZoomIn && root.canHoldZoomIn) {
+                        root.beginHeldZoom(zoomInMouseArea, 1, 0)
+                    }
                 }
                 onPressAndHold: {
                     if (gestureState !== root.gesturePressed) {
@@ -389,16 +408,11 @@ Item {
                         return
                     }
 
-                    // Consume before calling the manager so release cannot
-                    // append a short-step command to continuous zoom.
-                    gestureState = root.gestureConsumed
                     const totalPressDurationMs = Math.max(
                         420, Math.round(Date.now() - pressStartedAtMs))
-                    if (root.manager
-                            && root.manager.startZoomWithPressDuration(
-                                1, totalPressDurationMs)) {
-                        gestureState = root.gestureHolding
-                    }
+                    root.beginHeldZoom(zoomInMouseArea,
+                                       1,
+                                       totalPressDurationMs)
                 }
                 onReleased: function(mouse) {
                     const completedState = gestureState
