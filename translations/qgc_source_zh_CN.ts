@@ -15041,8 +15041,8 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="181"/>
-      <source>NOT CONNECTED</source>
-      <translation>未连接</translation>
+      <source>RID NOT CONNECTED</source>
+      <translation>远程ID未连接</translation>
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="199"/>
@@ -15071,8 +15071,8 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="290"/>
-      <source>If Basic ID is already set on the RID device, this will be registered as Basic ID 2</source>
-      <translation>如果RID设备上已设置了基本ID，则此项将注册为基本ID 2</translation>
+      <source>Basic ID can only be set once and cannot be changed</source>
+      <translation>基本ID只能设置一次且无法更改</translation>
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="298"/>
@@ -15102,8 +15102,8 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="609"/>
-      <source>Provide Information</source>
-      <translation>提供信息</translation>
+      <source>Provide Information%1</source>
+      <translation>提供信息%1</translation>
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="539"/>
@@ -15144,6 +15144,80 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="415"/>
       <source>Self ID</source>
       <translation>自身ID</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="98"/>
+      <source>Setup successful</source>
+      <translation>设置成功</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="102"/>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="137"/>
+      <source>Setup failed</source>
+      <translation>设置失败</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="111"/>
+      <source>Confirm Basic ID Setup</source>
+      <translation>确认设置基本ID</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="118"/>
+      <source>Warning: Basic ID can only be set once and cannot be changed afterward!
+Do you want to set the Basic ID?</source>
+      <translation>警告：基本ID只能设置一次，之后将无法更改！
+是否确认设置基本ID？</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="127"/>
+      <source>Cancel</source>
+      <translation>取消</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="132"/>
+      <source>Confirm</source>
+      <translation>确认</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="148"/>
+      <source>Invalid configuration</source>
+      <translation>配置无效</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="415"/>
+      <source>Sending...</source>
+      <translation>正在发送...</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="415"/>
+      <source>Confirm and Send</source>
+      <translation>确认并发送</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="423"/>
+      <source>Basic ID is set and cannot be changed</source>
+      <translation>基本ID已设置，无法更改</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="694"/>
+      <source>China Vehicle Info</source>
+      <translation>中国飞行器信息</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="367"/>
+      <source>Vehicle Not Connected</source>
+      <translation>飞行器未连接</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="450"/>
+      <source> (EU Required)</source>
+      <translation>（欧盟要求）</translation>
+    </message>
+    <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="450"/>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="710"/>
+      <source> (China Required)</source>
+      <translation>（中国要求）</translation>
     </message>
   </context>
   <context>

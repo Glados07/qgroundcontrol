@@ -350,7 +350,7 @@ SettingsPage {
                 LabelledLabel {
                     id :                armStatusLabel
                     label:              qsTr("Arm Status Error")
-                    labelText:          _remoteIDManager?_remoteIDManager.armStatusError:"Vehicle Not Connected"
+                    labelText:          _remoteIDManager ? _remoteIDManager.armStatusError : qsTr("Vehicle Not Connected")
                     visible:            labelText !== ""
                     Layout.fillWidth:   true
                 }
@@ -433,7 +433,7 @@ SettingsPage {
                 Layout.fillWidth:   true
 
                 FactCheckBoxSlider {
-                    text:               qsTr("Broadcast%1").arg(isEURegion ? " (EU Required)" : (isChinaRegion ? " (China Required)" : ""))
+                    text:               qsTr("Broadcast%1").arg(isEURegion ? qsTr(" (EU Required)") : (isChinaRegion ? qsTr(" (China Required)") : ""))
                     fact:               sendOperatorIdFact
                     visible:            sendOperatorIdFact.visible
                     enabled:            isFAARegion
@@ -697,7 +697,7 @@ SettingsPage {
 
                 QGCCheckBoxSlider {
                     id:                 euProvideInfoSlider
-                    text:               qsTr("Provide Information%1").arg(isChinaRegion ? " (China Required)" : "")
+                    text:               qsTr("Provide Information%1").arg(isChinaRegion ? qsTr(" (China Required)") : "")
                     checked:            _fact.rawValue === RemoteIDSettings.ClassificationType.EU
                     visible:            _fact.visible
                     enabled:            !isChinaRegion
