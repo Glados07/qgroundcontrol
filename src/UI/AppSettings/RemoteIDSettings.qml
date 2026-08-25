@@ -435,7 +435,7 @@ SettingsPage {
                 FactCheckBoxSlider {
                     text:               qsTr("Broadcast%1").arg(isEURegion ? qsTr(" (EU Required)") : (isChinaRegion ? qsTr(" (China Required)") : ""))
                     fact:               sendOperatorIdFact
-                    visible:            sendOperatorIdFact.visible
+                    visible:            sendOperatorIdFact.visible && !isChinaRegion
                     enabled:            isFAARegion
                     Layout.fillWidth:   true
 
@@ -699,7 +699,7 @@ SettingsPage {
                     id:                 euProvideInfoSlider
                     text:               qsTr("Provide Information%1").arg(isChinaRegion ? qsTr(" (China Required)") : "")
                     checked:            _fact.rawValue === RemoteIDSettings.ClassificationType.EU
-                    visible:            _fact.visible
+                    visible:            _fact.visible && !isChinaRegion
                     enabled:            !isChinaRegion
                     Layout.fillWidth:   true
                     onClicked:          _fact.rawValue = !_fact.rawValue

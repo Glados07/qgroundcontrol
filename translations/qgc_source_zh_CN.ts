@@ -15201,7 +15201,7 @@ Do you want to set the Basic ID?</source>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="694"/>
       <source>China Vehicle Info</source>
-      <translation>中国飞行器信息</translation>
+      <translation>飞行器运行信息</translation>
     </message>
     <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="367"/>
