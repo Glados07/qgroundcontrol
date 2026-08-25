@@ -217,7 +217,7 @@ private:
     bool _zoomTapAvailable(int direction) const;
     bool _zoomHoldAvailable(int direction) const;
     bool _zoomBoundaryReached(int direction) const;
-    bool _flushContinuousZoomStopRetry();
+    void _retireContinuousZoomStopRetry();
     void _observeZoomFeedback(double zoomLevel);
     void _alignDisplayToMeasured(int preferredDirection = 0);
     void _pollPendingAbsoluteZoom();
@@ -274,6 +274,8 @@ private:
     QTimer _zoomStatusFreshnessTimer;
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
+    QTimer _continuousZoomHandoffGraceTimer;
+    QTimer _continuousZoomHandoffTimer;
     QTimer _continuousZoomDirectionRetryTimer;
     QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
@@ -305,6 +307,10 @@ private:
     ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
+    int _continuousZoomDirectionRetriesRemaining = 0;
+    int _continuousZoomDirectionAttemptsSent = 0;
+    double _continuousZoomDirectionProgressSample = kMinimumZoom;
+    int _continuousZoomDirectionProgressCount = 0;
     QElapsedTimer _continuousZoomMotionElapsed;
     int _continuousZoomEndpointFeedbackCount = 0;
     bool _continuousZoomNonEndpointObserved = false;
