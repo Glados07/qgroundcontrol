@@ -58,6 +58,7 @@ SettingsPage {
     property bool isEURegion:           regionFact.rawValue === RemoteIDSettings.RegionOperation.EU
     property bool isFAARegion:          regionFact.rawValue === RemoteIDSettings.RegionOperation.FAA
     property bool isChinaRegion:        regionFact.rawValue === RemoteIDSettings.RegionOperation.China
+    property bool ridSettingsAvailable: _activeVehicle && _activeRID && commsGood
     property real textFieldWidth:       ScreenTools.defaultFontPixelWidth * 24
     property real textLabelWidth:       ScreenTools.defaultFontPixelWidth * 30
 
@@ -180,7 +181,7 @@ SettingsPage {
 
                         QGCLabel {
                             anchors.fill:           parent
-                            text:                   _activeRID && _remoteIDManager.commsGood ? qsTr("RID COMMS") : qsTr("NOT CONNECTED")
+                            text:                   _activeRID && _remoteIDManager.commsGood ? qsTr("RID COMMS") : qsTr("RID NOT CONNECTED")
                             wrapMode:               Text.WordWrap
                             horizontalAlignment:    Text.AlignHCenter
                             verticalAlignment:      Text.AlignVCenter
@@ -281,7 +282,7 @@ SettingsPage {
             }
             SettingsGroupLayout {
                 outerBorderColor: _activeRID ? (_remoteIDManager.armStatusGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
-                visible:            armStatusLabel.labelText !== ""
+                visible:            ridSettingsAvailable && armStatusLabel.labelText !== ""
                 LabelledLabel {
                     id :                armStatusLabel
                     label:              qsTr("Arm Status Error")
@@ -294,6 +295,7 @@ SettingsPage {
             SettingsGroupLayout {
                 heading:                qsTr("Basic ID")
                 headingDescription:     qsTr("If Basic ID is already set on the RID device, this will be registered as Basic ID 2")
+                visible:                ridSettingsAvailable
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
                 outerBorderColor:       _activeRID ? (_remoteIDManager.basicIDGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
@@ -359,6 +361,7 @@ SettingsPage {
 
             SettingsGroupLayout {
                 heading:            qsTr("Operator ID")
+                visible:            ridSettingsAvailable
                 Layout.fillWidth:   true
 
                 FactCheckBoxSlider {
@@ -432,7 +435,7 @@ SettingsPage {
             SettingsGroupLayout {
                 heading:                qsTr("Self ID")
                 headingDescription:     qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
-                visible:                !isChinaRegion
+                visible:                ridSettingsAvailable && !isChinaRegion
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
 
@@ -500,6 +503,7 @@ SettingsPage {
             Layout.alignment:   Qt.AlignTop
             SettingsGroupLayout {
                 heading:            qsTr("GroundStation Location")
+                visible:            ridSettingsAvailable
                 Layout.fillWidth:   true
                 outerBorderColor : _activeRID ? (_remoteIDManager.gcsGPSGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
                 LabelledFactComboBox {
@@ -620,7 +624,7 @@ SettingsPage {
 
             SettingsGroupLayout {
                 heading:            isEURegion ? qsTr("EU Vehicle Info") : qsTr("China Vehicle Info")
-                visible:            isEURegion || isChinaRegion
+                visible:            ridSettingsAvailable && (isEURegion || isChinaRegion)
                 Layout.fillWidth:   true
 
                 QGCCheckBoxSlider {
