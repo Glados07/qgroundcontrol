@@ -28,9 +28,10 @@ constexpr const char *kAdapterFactoryName = "qgcandroidh265hwdec";
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 
-// Stay above native Force Software (PRIMARY+1), but below a vendor decoder
-// which accepts QGC's hvc1 caps directly (PRIMARY+3 in the policy).
-constexpr guint kAdapterRank = GST_RANK_PRIMARY + 2;
+// Restore the A8 Mini compatibility path as the unambiguous Android H.265
+// preference. The wide gap keeps vendor factories with unusually high native
+// ranks from bypassing hvc1 -> Annex-B/AU normalization.
+constexpr guint kAdapterRank = GST_RANK_PRIMARY + 100;
 constexpr const char *kByteStreamCaps =
     "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au";
 
@@ -307,7 +308,7 @@ GstPadProbeReturn logDecoderInputCaps(GstPad *, GstPadProbeInfo *info, gpointer 
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
         << "Android H.265 adapter selected actual decoder"
         << pluginAndFactoryName(factory)
-        << "hardware"
+        << "vendor MediaCodec candidate"
         << "negotiated sink caps" << (capsText ? capsText : "unknown");
 
     g_free(capsText);
@@ -516,14 +517,14 @@ static void gst_qgc_android_h265_hardware_decoder_init(
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
             << "Unable to instantiate vendor decoder"
             << s_hardwareDecoderFactoryName
-            << "; decodebin3 will retain its external software fallback";
+            << "; decodebin3 may retry another externally ranked hardware path";
         return;
     }
     if (!linkDecoder(self, hardwareDecoder)) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
             << "Unable to link vendor decoder"
             << s_hardwareDecoderFactoryName
-            << "; decodebin3 will retain its external software fallback";
+            << "; decodebin3 may retry another externally ranked hardware path";
         return;
     }
 
@@ -537,7 +538,7 @@ static void gst_qgc_android_h265_hardware_decoder_init(
         << "Android H.265 adapter instance created; requested"
         << s_hardwareDecoderFactoryName
         << "actual" << pluginAndFactoryName(gst_element_get_factory(self->decoder))
-        << "hardware";
+        << "vendor MediaCodec candidate";
 }
 
 #endif

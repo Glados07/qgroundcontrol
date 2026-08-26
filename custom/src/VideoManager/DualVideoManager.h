@@ -86,6 +86,8 @@ private:
     void _ensureReceiver();
     void _scheduleRenderInitialization(QQuickWindow *window);
     void _armDecodeStartupWatchdog();
+    void _resetVideoPipelineGeneration();
+    bool _matchesVideoPipelineGeneration(const QString &uri, quint64 generation) const;
     void _applyDesiredState();
     void _requestStop();
     void _scheduleRestart();
@@ -116,10 +118,19 @@ private:
     QString _primaryActiveUri;
     QSet<QString> _primaryReleasingUris;
     QSize _videoSize;
+    QString _videoPipelineUri;
+    QString _selectedDecoderPlugin;
+    QString _selectedDecoderFactory;
+    quint64 _videoPipelineGeneration = 0;
+    quint64 _lastVideoPipelineGeneration = 0;
+    int _videoCodec = 0;
     bool _enabled = false;
     bool _duplicateSource = false;
     bool _renderReady = false;
     bool _streaming = false;
+    bool _sourceFrameReceived = false;
+    bool _decoderFrameReceived = false;
+    bool _sinkFrameReceived = false;
     bool _decoding = false;
     bool _fullScreen = false;
     bool _paused = false;

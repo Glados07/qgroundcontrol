@@ -19,6 +19,7 @@
 #include <QtCore/QUrl>
 
 #include <algorithm>
+#include <limits>
 
 QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 
@@ -27,8 +28,13 @@ constexpr const char *kSecondaryVideoObjectName = "secondaryVideoContent";
 constexpr int kRestartDelayMs = 1000;
 constexpr int kMaximumRestartDelayMs = 15000;
 constexpr int kPrimaryActiveUriClearDelayMs = 1000;
+#if defined(QGC_GST_STREAMING)
+constexpr quint64 kCoreMinimumRtspTimeoutSeconds = 8;
+constexpr quint64 kDecoderRecoveryMarginMs = 3000;
+#else
 constexpr int kMinimumDecodeStartupTimeoutMs = 10000;
 constexpr int kMaximumDecodeStartupTimeoutMs = 30000;
+#endif
 constexpr uint32_t kFallbackRtspTimeoutSeconds = 5;
 
 bool sameStreamUri(const QString &left, const QString &right)
@@ -591,6 +597,15 @@ void DualVideoManager::_ensureReceiver()
                         << guardedReceiver->uri()
                         << "statusCode" << static_cast<int>(status);
                 }
+                if (status != VideoReceiver::STATUS_OK
+                    && status != VideoReceiver::STATUS_INVALID_STATE) {
+                    // A bus error raised synchronously by set_state() can be
+                    // delivered after this failed start completion. The core
+                    // has already discarded that pipeline and will not emit a
+                    // stop completion, so retire its generation here to keep
+                    // the stale error from latching _stopping forever.
+                    guardedThis->_resetVideoPipelineGeneration();
+                }
                 if (status == VideoReceiver::STATUS_OK) {
                     guardedReceiver->setStarted(true);
                     if (guardedThis->_restartRequested
@@ -647,7 +662,14 @@ void DualVideoManager::_ensureReceiver()
                     qCWarning(DualVideoManagerLog)
                         << "Secondary video decoding start failed"
                         << guardedReceiver->uri()
-                        << "statusCode" << static_cast<int>(status);
+                        << "generation"
+                        << guardedThis->_videoPipelineGeneration
+                        << "statusCode" << static_cast<int>(status)
+                        << "codec" << guardedThis->_videoCodec
+                        << "decoderPlugin"
+                        << guardedThis->_selectedDecoderPlugin
+                        << "decoderFactory"
+                        << guardedThis->_selectedDecoderFactory;
                 }
                 if (status == VideoReceiver::STATUS_OK
                     || status == VideoReceiver::STATUS_INVALID_STATE) {
@@ -659,6 +681,21 @@ void DualVideoManager::_ensureReceiver()
                 // started=true, decoding=false forever. Serialize a complete
                 // stop/restart so the next attempt gets a fresh Gst pipeline.
                 guardedThis->_decodeStartupTimer.stop();
+                qCWarning(DualVideoManagerLog)
+                    << "Secondary decoding branch will be rebuilt without changing decoder ranks"
+                    << guardedReceiver->uri()
+                    << "generation"
+                    << guardedThis->_videoPipelineGeneration
+                    << "codec" << guardedThis->_videoCodec
+                    << "decoderPlugin"
+                    << guardedThis->_selectedDecoderPlugin
+                    << "decoderFactory"
+                    << guardedThis->_selectedDecoderFactory
+                    << "sourceFrame"
+                    << guardedThis->_sourceFrameReceived
+                    << "decoderFrame"
+                    << guardedThis->_decoderFrameReceived
+                    << "sinkFrame" << guardedThis->_sinkFrameReceived;
                 guardedThis->_consecutiveDecodeFailures = qMin(
                     guardedThis->_consecutiveDecodeFailures + 1,
                     4);
@@ -678,6 +715,7 @@ void DualVideoManager::_ensureReceiver()
                 guardedThis->_decodeStartupTimer.stop();
                 guardedThis->_starting = false;
                 guardedThis->_stopping = false;
+                guardedThis->_resetVideoPipelineGeneration();
                 const bool restartRequested = guardedThis->_restartRequested;
                 guardedThis->_restartRequested = false;
                 if (guardedThis->_releaseAfterStop) {
@@ -711,6 +749,181 @@ void DualVideoManager::_ensureReceiver()
                     || status != VideoReceiver::STATUS_INVALID_URL) {
                     guardedThis->_scheduleRestart();
                 }
+            });
+
+    connect(receiver,
+            &VideoReceiver::videoPipelineGenerationStarted,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || uri != guardedReceiver->uri()
+                    || generation == 0
+                    || generation <= guardedThis->_lastVideoPipelineGeneration) {
+                    return;
+                }
+
+                guardedThis->_resetVideoPipelineGeneration();
+                guardedThis->_videoPipelineUri = uri;
+                guardedThis->_videoPipelineGeneration = generation;
+                guardedThis->_lastVideoPipelineGeneration = generation;
+                qCDebug(DualVideoManagerLog)
+                    << "Secondary video pipeline generation started"
+                    << uri << "generation" << generation;
+            });
+
+    connect(receiver,
+            &VideoReceiver::sourceFrameReceived,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation,
+                                           int codec) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || !guardedThis->_matchesVideoPipelineGeneration(
+                        uri,
+                        generation)) {
+                    return;
+                }
+
+                guardedThis->_sourceFrameReceived = true;
+                if (codec != VideoReceiver::VIDEO_CODEC_UNKNOWN) {
+                    guardedThis->_videoCodec = codec;
+                }
+                guardedThis->_armDecodeStartupWatchdog();
+            });
+
+    connect(receiver,
+            &VideoReceiver::videoDecoderSelected,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation,
+                                           int codec,
+                                           const QString &plugin,
+                                           const QString &factory) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || !guardedThis->_matchesVideoPipelineGeneration(
+                        uri,
+                        generation)) {
+                    return;
+                }
+
+                if (codec != VideoReceiver::VIDEO_CODEC_UNKNOWN) {
+                    guardedThis->_videoCodec = codec;
+                }
+                guardedThis->_selectedDecoderPlugin = plugin;
+                guardedThis->_selectedDecoderFactory = factory;
+                guardedThis->_armDecodeStartupWatchdog();
+            });
+
+    connect(receiver,
+            &VideoReceiver::decoderFrameReceived,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation,
+                                           const QString &plugin,
+                                           const QString &factory) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || !guardedThis->_matchesVideoPipelineGeneration(
+                        uri,
+                        generation)) {
+                    return;
+                }
+
+                guardedThis->_decoderFrameReceived = true;
+                if (!plugin.isEmpty()) {
+                    guardedThis->_selectedDecoderPlugin = plugin;
+                }
+                if (!factory.isEmpty()) {
+                    guardedThis->_selectedDecoderFactory = factory;
+                }
+            });
+
+    connect(receiver,
+            &VideoReceiver::sinkFrameReceived,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || !guardedThis->_matchesVideoPipelineGeneration(
+                        uri,
+                        generation)) {
+                    return;
+                }
+
+                guardedThis->_sinkFrameReceived = true;
+                guardedThis->_decodeStartupTimer.stop();
+                guardedThis->_consecutiveDecodeFailures = 0;
+            });
+
+    connect(receiver,
+            &VideoReceiver::onVideoPipelineError,
+            this,
+            [guardedThis, guardedReceiver](const QString &uri,
+                                           quint64 generation,
+                                           const QString &errorPlugin,
+                                           const QString &errorFactory,
+                                           bool rtspSourceError,
+                                           bool decoderBranchError,
+                                           int codec,
+                                           const QString &decoderPlugin,
+                                           const QString &decoderFactory,
+                                           bool sourceFrameReceived,
+                                           bool decoderFrameReceived,
+                                           bool sinkFrameReceived) {
+                if (!guardedThis || !guardedReceiver
+                    || guardedThis->_receiver != guardedReceiver
+                    || !guardedThis->_matchesVideoPipelineGeneration(
+                        uri,
+                        generation)) {
+                    return;
+                }
+
+                guardedThis->_sourceFrameReceived |= sourceFrameReceived;
+                guardedThis->_decoderFrameReceived |= decoderFrameReceived;
+                guardedThis->_sinkFrameReceived |= sinkFrameReceived;
+                if (codec != VideoReceiver::VIDEO_CODEC_UNKNOWN) {
+                    guardedThis->_videoCodec = codec;
+                }
+                if (!decoderPlugin.isEmpty()) {
+                    guardedThis->_selectedDecoderPlugin = decoderPlugin;
+                }
+                if (!decoderFactory.isEmpty()) {
+                    guardedThis->_selectedDecoderFactory = decoderFactory;
+                }
+
+                guardedThis->_decodeStartupTimer.stop();
+                if (guardedThis->_stopping) {
+                    return;
+                }
+
+                // The core receiver stops every current-generation bus error.
+                // Block watchdog/start paths until that stop completion even
+                // while keeping the configured process-wide ranks intact.
+                guardedThis->_stopping = true;
+                qCWarning(DualVideoManagerLog)
+                    << "Secondary video pipeline stopped; configured decoder ranks remain unchanged"
+                    << uri << "generation" << generation
+                    << "codec" << guardedThis->_videoCodec
+                    << "decoderPlugin"
+                    << guardedThis->_selectedDecoderPlugin
+                    << "decoderFactory"
+                    << guardedThis->_selectedDecoderFactory
+                    << "errorPlugin" << errorPlugin
+                    << "errorFactory" << errorFactory
+                    << "rtspSourceError" << rtspSourceError
+                    << "sourceFrame"
+                    << guardedThis->_sourceFrameReceived
+                    << "decoderFrame"
+                    << guardedThis->_decoderFrameReceived
+                    << "sinkFrame" << guardedThis->_sinkFrameReceived
+                    << "decoderBranchError" << decoderBranchError;
+                // GstVideoReceiver stops itself after this signal. The
+                // existing onStopComplete path applies bounded restart.
             });
 
     connect(receiver,
@@ -752,12 +965,14 @@ void DualVideoManager::_ensureReceiver()
                 }
                 guardedThis->_decoding = decoding;
                 emit guardedThis->decodingChanged();
+#if !defined(QGC_GST_STREAMING)
                 if (decoding) {
                     guardedThis->_consecutiveDecodeFailures = 0;
                     guardedThis->_decodeStartupTimer.stop();
                 } else {
                     guardedThis->_armDecodeStartupWatchdog();
                 }
+#endif
             });
 
     connect(receiver,
@@ -810,6 +1025,23 @@ void DualVideoManager::_scheduleRenderInitialization(QQuickWindow *window)
 
 void DualVideoManager::_armDecodeStartupWatchdog()
 {
+#if defined(QGC_GST_STREAMING)
+    if (!_receiver || !_receiver->started() || !_streaming
+        || _videoPipelineGeneration == 0 || !_sourceFrameReceived
+        || _sinkFrameReceived || _stopping || _releaseAfterStop) {
+        _decodeStartupTimer.stop();
+        return;
+    }
+
+    const quint64 effectiveSourceTimeoutSeconds = qMax(
+        static_cast<quint64>(_rtspTimeout()),
+        kCoreMinimumRtspTimeoutSeconds);
+    const quint64 requestedMs = effectiveSourceTimeoutSeconds * 1000u
+        + kDecoderRecoveryMarginMs;
+    const int timeoutMs = static_cast<int>(qMin(
+        requestedMs,
+        static_cast<quint64>(std::numeric_limits<int>::max())));
+#else
     if (!_receiver || !_receiver->started() || !_streaming || _decoding
         || _stopping || _releaseAfterStop) {
         _decodeStartupTimer.stop();
@@ -821,18 +1053,60 @@ void DualVideoManager::_armDecodeStartupWatchdog()
         kMinimumDecodeStartupTimeoutMs,
         requestedMs,
         kMaximumDecodeStartupTimeoutMs));
+#endif
     _decodeStartupTimer.start(timeoutMs);
+}
+
+void DualVideoManager::_resetVideoPipelineGeneration()
+{
+    _decodeStartupTimer.stop();
+    _videoPipelineUri.clear();
+    _selectedDecoderPlugin.clear();
+    _selectedDecoderFactory.clear();
+    _videoPipelineGeneration = 0;
+    _videoCodec = VideoReceiver::VIDEO_CODEC_UNKNOWN;
+    _sourceFrameReceived = false;
+    _decoderFrameReceived = false;
+    _sinkFrameReceived = false;
+}
+
+bool DualVideoManager::_matchesVideoPipelineGeneration(
+    const QString &uri,
+    quint64 generation) const
+{
+    return generation != 0 && generation == _videoPipelineGeneration
+        && uri == _videoPipelineUri;
 }
 
 void DualVideoManager::_handleDecodeStartupTimeout()
 {
-    if (!_receiver || !_receiver->started() || !_streaming || _decoding) {
+#if defined(QGC_GST_STREAMING)
+    if (!_receiver || !_receiver->started() || !_streaming
+        || _videoPipelineGeneration == 0 || !_sourceFrameReceived
+        || _sinkFrameReceived || _stopping || _releaseAfterStop) {
+        return;
+    }
+
+    qCWarning(DualVideoManagerLog)
+        << "Secondary RTSP source produced media but no sink frame; restarting without changing decoder ranks"
+        << _videoPipelineUri
+        << "generation" << _videoPipelineGeneration
+        << "codec" << _videoCodec
+        << "decoderPlugin" << _selectedDecoderPlugin
+        << "decoderFactory" << _selectedDecoderFactory
+        << "sourceFrame" << _sourceFrameReceived
+        << "decoderFrame" << _decoderFrameReceived
+        << "sinkFrame" << _sinkFrameReceived;
+#else
+    if (!_receiver || !_receiver->started() || !_streaming || _decoding
+        || _stopping || _releaseAfterStop) {
         return;
     }
 
     qCWarning(DualVideoManagerLog)
         << "Secondary RTSP is streaming but produced no decoded frame; restarting"
         << _uri;
+#endif
     _consecutiveDecodeFailures = qMin(_consecutiveDecodeFailures + 1, 4);
     _restartRequested = true;
     _requestStop();
@@ -879,6 +1153,7 @@ void DualVideoManager::_applyDesiredState()
         return;
     }
 
+    _resetVideoPipelineGeneration();
     _starting = true;
     const uint32_t requestedTimeout = _rtspTimeout();
     _receiver->start(requestedTimeout);
@@ -891,6 +1166,7 @@ void DualVideoManager::_requestStop()
     }
 
     if (!_receiver->started() && !_starting) {
+        _resetVideoPipelineGeneration();
         if (_releaseAfterStop) {
             _releaseAfterStop = false;
             _releaseReceiver();
@@ -907,6 +1183,7 @@ void DualVideoManager::_requestStop()
     }
 
     _stopping = true;
+    _resetVideoPipelineGeneration();
     _receiver->stop();
 }
 
@@ -914,6 +1191,8 @@ void DualVideoManager::_releaseReceiver()
 {
     VideoReceiver *const receiver = _receiver.data();
     if (!receiver) {
+        _resetVideoPipelineGeneration();
+        _lastVideoPipelineGeneration = 0;
         return;
     }
 
@@ -941,6 +1220,8 @@ void DualVideoManager::_releaseReceiver()
     _renderReady = false;
     _restartRequested = false;
     _consecutiveDecodeFailures = 0;
+    _resetVideoPipelineGeneration();
+    _lastVideoPipelineGeneration = 0;
 
     // GstVideoReceiver's destructor drains its worker before the final sink
     // reference is released. The QML Loader remains active until the

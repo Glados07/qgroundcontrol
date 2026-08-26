@@ -395,17 +395,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
-        <source>Prefer hardware decoding for Android H.264/H.265</source>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="143"/>
+        <source>Require hardware decoding for Android H.264/H.265</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="162"/>
-        <source>Enabled by default to prioritize low-latency vendor MediaCodec decoding for H.264 and H.265. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="149"/>
+        <source>Compatible vendor MediaCodec hardware decoding is required by default. H.265 prioritizes the hvc1-to-Annex-B/AU adapter and keeps direct-hvc1 vendor hardware decoders as secondary candidates. A first-frame failure restarts the receiver continuously with capped backoff without changing decoder ranks or switching to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="150"/>
         <source>Restart QGC after changing this option.</source>
         <translation type="unfinished"></translation>
     </message>

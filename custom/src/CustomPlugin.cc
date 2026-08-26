@@ -18,6 +18,7 @@
 #include "Settings/FlyViewCustomSettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderRecovery.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
 #include "VideoManager/DualVideoManager.h"
@@ -433,6 +434,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     if (isMainVideoReceiver) {
         _ensureDualVideoManager();
         _dualVideoManager->setPrimaryVideoReceiver(receiver);
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+        AndroidVideoDecoderRecovery::install(receiver);
+#endif
     }
     GimbalControlManager *manager =
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;

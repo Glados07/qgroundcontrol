@@ -80,7 +80,8 @@ private slots:
 private:
     void _start(uint32_t timeout,
                 const QString &startUri,
-                bool lowLatencyMode);
+                bool lowLatencyMode,
+                quint64 generation);
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);
@@ -90,8 +91,8 @@ private:
     bool _addDecoder(GstElement *src);
     bool _ensureVideoSinkInPipeline();
     bool _addVideoSink(GstPad *pad);
-    void _noteTeeFrame();
-    void _noteVideoSinkFrame();
+    void _noteTeeFrame(const QString &uri, quint64 generation, int codec);
+    void _noteVideoSinkFrame(const QString &uri, quint64 generation);
     void _noteEndOfStream();
     bool _advanceRtspOptionsCompatibility(const char *reason);
     /// -Unlink the branch from the src pad
@@ -104,6 +105,14 @@ private:
     void _dispatchSignal(Task emitter);
     QString _pipelineUri() const;
     void _setPipelineUri(const QString &uri);
+    void _resetPipelineDiagnostics();
+    void _setDiagnosticDecoderRoot(GstElement *decoder,
+                                   const QString &uri,
+                                   quint64 generation);
+    void _clearDiagnosticDecoder();
+    GstElement *_snapshotDiagnosticDecoder(quint64 generation,
+                                           QString &plugin,
+                                           QString &factory) const;
 
     static gboolean _onBusMessage(GstBus *bus, GstMessage *message, gpointer user_data);
     static gboolean _onRtspBeforeSend(GstElement *source, GstRTSPMessage *message, gpointer data);
@@ -139,9 +148,18 @@ private:
     bool _stopCompletionPending = false;
     mutable QMutex _activePipelineUriMutex;
     QString _activePipelineUri;
+    std::atomic<quint64> _pipelineGenerationCounter{0};
+    std::atomic<quint64> _activePipelineGeneration{0};
     std::atomic_bool _rtspTeardownPending{false};
     std::atomic_int _lastRtspMethod{0};
+    std::atomic_int _actualVideoCodec{VIDEO_CODEC_UNKNOWN};
     std::atomic_bool _sourceFrameReceived{false};
+    std::atomic_bool _decoderFrameReceived{false};
+    std::atomic_bool _sinkFrameReceived{false};
+    mutable QMutex _decoderDiagnosticsMutex;
+    GstElement *_diagnosticDecoderRoot = nullptr;
+    QString _diagnosticDecoderPlugin;
+    QString _diagnosticDecoderFactory;
     // Keep one visible warning for each distinct recoverable RTSP failure
     // during an outage. Repeated retries remain available through debug logs.
     std::atomic_int _lastReportedRtspResourceError{-1};

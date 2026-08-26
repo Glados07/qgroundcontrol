@@ -67,12 +67,49 @@ public:
     Q_ENUM(STATUS)
     static bool isValidStatus(STATUS status) { return ((status >= STATUS_MIN) && (status <= STATUS_MAX)); }
 
+    enum VIDEO_CODEC {
+        VIDEO_CODEC_UNKNOWN = 0,
+        VIDEO_CODEC_H264,
+        VIDEO_CODEC_H265,
+    };
+    Q_ENUM(VIDEO_CODEC)
+
 signals:
     // Emitted when a concrete receiver start generation has frozen its URI.
     // The URI property may change while an asynchronous start is still in
     // flight, so lifecycle observers must not infer the active URI from the
     // mutable property in onStartComplete.
     void onStartAttempt(const QString &uri);
+    // Low-frequency, generation-scoped diagnostics. A URI can be restarted
+    // without changing, so consumers must use generation to reject facts from
+    // an older pipeline.
+    void videoPipelineGenerationStarted(const QString &uri, quint64 generation);
+    void sourceFrameReceived(const QString &uri, quint64 generation, int codec);
+    void videoDecoderSelected(const QString &uri,
+                              quint64 generation,
+                              int codec,
+                              const QString &plugin,
+                              const QString &factory);
+    void decoderFrameReceived(const QString &uri,
+                              quint64 generation,
+                              const QString &plugin,
+                              const QString &factory);
+    void sinkFrameReceived(const QString &uri, quint64 generation);
+    // Emitted before a GStreamer bus error stops the active pipeline. The
+    // facts and decoder identity describe the indicated generation, not a
+    // future retry of the same URI.
+    void onVideoPipelineError(const QString &uri,
+                              quint64 generation,
+                              const QString &errorPlugin,
+                              const QString &errorFactory,
+                              bool rtspSourceError,
+                              bool decoderBranchError,
+                              int videoCodec,
+                              const QString &decoderPlugin,
+                              const QString &decoderFactory,
+                              bool sourceFrameReceived,
+                              bool decoderFrameReceived,
+                              bool sinkFrameReceived);
     void timeout();
     void streamingChanged(bool active);
     void decodingChanged(bool active);
@@ -128,7 +165,6 @@ protected:
     qint64 _lastSourceFrameTime = 0;
     qint64 _lastVideoFrameTime = 0;
     QTimer _watchdogTimer;
-    uint32_t _signalDepth = 0;
     uint32_t _timeout = 0;
     QString _recordingOutput;
 

@@ -81,8 +81,8 @@
         },
         {
             "name": "forceAndroidH265HardwareDecoder",
-            "shortDesc": "Prefer Android H.264/H.265 hardware decoders",
-            "longDesc": "On Android, prioritize compatible vendor MediaCodec H.264 and H.265 decoders. H.265 also uses a low-latency hvc1-to-byte-stream adapter when required. Software decoder ranks remain available for fallback. Restart QGC after changing this option.",
+            "shortDesc": "Require Android H.264/H.265 hardware decoders",
+            "longDesc": "Android requires compatible vendor MediaCodec hardware decoding for H.264 and H.265 by default. For H.265, QGC prioritizes the hvc1-to-Annex-B/AU adapter and keeps compatible direct-hvc1 vendor hardware decoders as secondary candidates. A first-frame failure restarts the receiver continuously with capped backoff; QGC does not change decoder ranks or switch automatically to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this option only for diagnosis to restore native QGC/GStreamer automatic decoder selection. Restart QGC after changing this option.",
             "type": "bool",
             "default": true,
             "qgcRebootRequired": true

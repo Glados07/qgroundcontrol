@@ -395,17 +395,17 @@
         <translation>如需手动编辑视频源，请关闭此选项。更改后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="156"/>
-        <source>Prefer hardware decoding for Android H.264/H.265</source>
-        <translation>优先使用Android H.264/H.265硬件解码</translation>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="143"/>
+        <source>Require hardware decoding for Android H.264/H.265</source>
+        <translation>Android H.264/H.265必须使用硬件解码</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="162"/>
-        <source>Enabled by default to prioritize low-latency vendor MediaCodec decoding for H.264 and H.265. If a device cannot open two MediaCodec decoder instances, turn this off for troubleshooting.</source>
-        <translation>默认开启，以优先使用低延迟的厂商MediaCodec解码H.264和H.265。如果设备无法同时创建两个MediaCodec解码实例，可关闭此选项进行排障。</translation>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="149"/>
+        <source>Compatible vendor MediaCodec hardware decoding is required by default. H.265 prioritizes the hvc1-to-Annex-B/AU adapter and keeps direct-hvc1 vendor hardware decoders as secondary candidates. A first-frame failure restarts the receiver continuously with capped backoff without changing decoder ranks or switching to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
+        <translation>默认必须使用兼容的厂商MediaCodec硬件解码。H.265优先使用hvc1转Annex-B/AU适配器，并将direct-hvc1厂商硬解保留为次级候选。首帧失败会按封顶退避持续完整重建，不改变decoder rank，也不会切换到avdec_h265；没有兼容硬件路径时明确解码失败。仅在诊断时关闭此项，以恢复QGC/GStreamer原生自动选择。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="163"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="150"/>
         <source>Restart QGC after changing this option.</source>
         <translation>更改此选项后请重启QGC。</translation>
     </message>
