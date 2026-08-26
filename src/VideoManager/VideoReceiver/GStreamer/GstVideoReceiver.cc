@@ -461,8 +461,22 @@ void GstVideoReceiver::startDecoding(void *sink)
         return;
     }
 
+    // qml6glsink must enter READY/PAUSED before decodebin creates an Android
+    // MediaCodec path. Adding the GL sink only after the decoder exposes its
+    // dynamic src pad is too late: the decoder has already negotiated without
+    // the Qt GL context and a second hardware-decoded stream can remain black.
+    if (!_ensureVideoSinkInPipeline()) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to prepare video sink before decoder negotiation"
+            << _pipelineUri();
+        _shutdownDecodingBranch();
+        _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_FAIL); });
+        return;
+    }
+
     if (!_addDecoder(_decoderValve)) {
         qCCritical(GstVideoReceiverLog) << "_addDecoder() failed" << _pipelineUri();
+        _shutdownDecodingBranch();
         _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_FAIL); });
         return;
     }
@@ -1036,8 +1050,17 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-new-source-pad");
 
+    if (!_ensureVideoSinkInPipeline()) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to prepare video sink before decoder negotiation"
+            << _pipelineUri();
+        _shutdownDecodingBranch();
+        return;
+    }
+
     if (!_addDecoder(_decoderValve)) {
         qCCritical(GstVideoReceiverLog) << "_addDecoder() failed";
+        _shutdownDecodingBranch();
         return;
     }
 
@@ -1125,24 +1148,79 @@ bool GstVideoReceiver::_addDecoder(GstElement *src)
     return true;
 }
 
+bool GstVideoReceiver::_ensureVideoSinkInPipeline()
+{
+    if (!_videoSink || !_pipeline || !_widget) {
+        return false;
+    }
+
+    GstObject *parent = gst_element_get_parent(_videoSink);
+    if (parent) {
+        const bool alreadyInThisPipeline = parent == GST_OBJECT(_pipeline);
+        gst_object_unref(parent);
+        return alreadyInThisPipeline;
+    }
+
+    // Reinforce the render target before the sink changes state. This is
+    // intentionally done on every fresh pipeline because the QML item can be
+    // replaced after a Fly View/window lifecycle transition.
+    g_object_set(_videoSink,
+                 "widget", _widget,
+                 "sync", (_buffer >= 0),
+                 nullptr);
+
+    // Preserve the receiver-owned reference while the pipeline takes its own.
+    (void) gst_object_ref(_videoSink);
+    if (!gst_bin_add(GST_BIN(_pipeline), _videoSink)) {
+        gst_object_unref(_videoSink);
+        return false;
+    }
+
+    // PAUSED (not just READY) initializes qml6glsink's Qt GL context and starts
+    // downstream caps negotiation before decodebin3 selects/configures
+    // MediaCodec. This follows the current upstream QGC receiver ordering.
+    const GstStateChangeReturn stateChange =
+        gst_element_set_state(_videoSink, GST_STATE_PAUSED);
+    if (stateChange == GST_STATE_CHANGE_FAILURE) {
+        (void) gst_element_set_state(_videoSink, GST_STATE_NULL);
+        (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
+        return false;
+    }
+
+    return true;
+}
+
 bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 {
     GstCaps *caps = gst_pad_query_caps(pad, nullptr);
 
-    (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
-    (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
-
-    if (!gst_element_link(_decoder, _videoSink)) {
-        (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
-        qCCritical(GstVideoReceiverLog) << "Unable to link video sink";
+    if (!_ensureVideoSinkInPipeline()) {
+        qCCritical(GstVideoReceiverLog) << "Unable to prepare video sink";
         gst_clear_caps(&caps);
         return false;
     }
 
-    g_object_set(_videoSink,
-                 "widget", _widget,
-                 "sync", (_buffer >= 0),
-                 NULL);
+    GstPad *sinkPad = gst_element_get_static_pad(_videoSink, "sink");
+    const GstPadLinkReturn linkResult = sinkPad
+        ? gst_pad_link(pad, sinkPad)
+        : GST_PAD_LINK_WRONG_HIERARCHY;
+    gst_clear_object(&sinkPad);
+    if (linkResult != GST_PAD_LINK_OK) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to link decoder pad to video sink"
+            << "result" << static_cast<int>(linkResult)
+            << _pipelineUri();
+        // The sink was inserted before decoder negotiation. Detach it on a
+        // link failure so a later receiver restart begins from a clean state.
+        (void) gst_element_set_state(_videoSink, GST_STATE_NULL);
+        GstObject *parent = gst_element_get_parent(_videoSink);
+        if (parent) {
+            (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
+            gst_clear_object(&parent);
+        }
+        gst_clear_caps(&caps);
+        return false;
+    }
 
     (void) gst_element_sync_state_with_parent(_videoSink);
 
