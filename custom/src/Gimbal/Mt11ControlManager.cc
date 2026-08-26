@@ -45,25 +45,18 @@ constexpr int kZoomFeedbackFreshnessMs = 6500;
 constexpr int kAbsoluteZoomPollMs = 250;
 constexpr int kAbsoluteZoomConfirmationTimeoutMs = 10000;
 constexpr int kAbsoluteZoomTargetConfirmations = 2;
-// A direction which immediately supersedes another zoom controller is sent
-// without a preceding stop or artificial delay. Residual 0x18 movement can
-// belong to the old controller, so a complete bounded series of the same
-// direction protects that UDP transition without treating feedback as its ACK.
-constexpr int kContinuousZoomTakeoverProtectionMs = 3000;
+// Command 0x05 exposes direction only and has no generational ownership ACK.
+// Keep sending the same direction for the complete held gesture;
+// 0x18 position feedback must never make QGC abandon a press which the older
+// 0x0f/autofocus controller may still be blocking or may later override.
 constexpr int kContinuousZoomDirectionRetryMs = 450;
-constexpr int kContinuousZoomDirectionRetryLimit = 6;
-// A physical-endpoint reversal is the one takeover for which predecessor
-// motion has the opposite direction. Keep the held gesture alive across the
-// observed 20-30 second firmware busy case. After the first retry establishes
-// a clean baseline, two authoritative samples in the requested direction can
-// cancel the remaining copies.
-constexpr int kContinuousZoomEndpointTakeoverRetryLimit = 80;
-constexpr int kContinuousZoomEndpointTakeoverProgressConfirmations = 2;
 // Command 0x05 exposes direction only, not a speed field. Keep one native
 // direction active for the complete hold: periodic stop/start pulses make the
 // optical controller refocus and turn continuous zoom into a staircase.
-constexpr int kContinuousZoomEndpointArmMs = 300;
-constexpr int kContinuousZoomUnprovenEndpointTimeoutMs = 900;
+// A command-only ACK and 0x18 response have no usable generation. Do not let
+// packets from the preceding request window qualify an endpoint release.
+constexpr int kContinuousZoomEndpointArmMs = 1600;
+constexpr int kContinuousZoomDirectedProgressConfirmations = 2;
 constexpr int kContinuousZoomEndpointConfirmations = 2;
 constexpr int kContinuousZoomPollMs = 100;
 constexpr int kContinuousZoomStopRetryMs = 150;
@@ -192,9 +185,6 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     _absoluteZoomConfirmationTimer.setSingleShot(true);
     _absoluteZoomConfirmationTimer.setInterval(
         kAbsoluteZoomConfirmationTimeoutMs);
-    _continuousZoomTakeoverProtectionTimer.setSingleShot(true);
-    _continuousZoomTakeoverProtectionTimer.setInterval(
-        kContinuousZoomTakeoverProtectionMs);
     _continuousZoomDirectionRetryTimer.setSingleShot(true);
     _continuousZoomDirectionRetryTimer.setInterval(
         kContinuousZoomDirectionRetryMs);
@@ -255,14 +245,33 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     connect(&_sdkResponseTimer, &QTimer::timeout,
             this, &Mt11ControlManager::_markSdkNotResponding);
     connect(&_maximumZoomFreshnessTimer, &QTimer::timeout, this, [this]() {
+        const bool protectedTakeoverActive =
+            _continuousZoomActive
+            && _continuousZoomDirectionRetryRequired;
+        if (protectedTakeoverActive) {
+            // Once a physical press has put its first direction on the wire,
+            // only release/lifecycle/safety guards may abandon it. The SDK
+            // can remain silent while the preceding 0x0f/AF cycle is busy.
+            _maximumZoomFreshnessTimer.start();
+            return;
+        }
         if (_continuousZoomActive) {
-            (void) stopZoom();
+            (void) cancelZoom();
         }
         _setMaximumZoomKnown(false);
     });
     connect(&_zoomStatusFreshnessTimer, &QTimer::timeout, this, [this]() {
+        const bool protectedTakeoverActive =
+            _continuousZoomActive
+            && _continuousZoomDirectionRetryRequired;
+        if (protectedTakeoverActive) {
+            // Keep the accepted press alive across a controller/AF busy
+            // interval. Its 60-second no-progress watchdog is the final guard.
+            _zoomStatusFreshnessTimer.start();
+            return;
+        }
         if (_continuousZoomActive) {
-            (void) stopZoom();
+            (void) cancelZoom();
         }
         // An absolute command owns its separate 10-second confirmation
         // generation. Expiring the old/current feedback must not cancel that
@@ -283,7 +292,7 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_pollContinuousZoom);
     connect(&_continuousZoomWatchdog, &QTimer::timeout, this, [this]() {
         if (_continuousZoomActive) {
-            (void) stopZoom();
+            (void) cancelZoom();
             _setLastError(
                 tr("MT11 continuous zoom stopped after the safety timeout."));
         }
@@ -335,7 +344,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
 
 Mt11ControlManager::~Mt11ControlManager()
 {
-    const bool stopZoomRequired = _zoomCommandPending || _continuousZoomActive
+    const bool stopZoomRequired = _zoomCommandPending
+        || _absoluteZoomTakeoverHintValid || _continuousZoomActive
         || _continuousZoomEndpointLatchedDirection != 0
         || _continuousZoomStopRetryTimer.isActive();
     // shutdownLocalMedia(true) can run a bounded nested event loop. Retire the
@@ -347,7 +357,6 @@ Mt11ControlManager::~Mt11ControlManager()
     _zoomStatusFreshnessTimer.stop();
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
-    _continuousZoomTakeoverProtectionTimer.stop();
     _continuousZoomDirectionRetryTimer.stop();
     _continuousZoomPollTimer.stop();
     _continuousZoomWatchdog.stop();
@@ -362,15 +371,15 @@ Mt11ControlManager::~Mt11ControlManager()
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
-    _continuousZoomDirectionRetriesRemaining = 0;
-    _continuousZoomEndpointTakeoverVerificationRequired = false;
-    _continuousZoomEndpointTakeoverProgressSample = kMinimumZoom;
-    _continuousZoomEndpointTakeoverProgressCount = 0;
+    _clearAbsoluteZoomTakeoverHint();
     _continuousZoomMotionElapsed.invalidate();
+    _continuousZoomMotionReference = kMinimumZoom;
+    _continuousZoomLastFeedback = kMinimumZoom;
+    _continuousZoomProgressWatermark = kMinimumZoom;
+    _continuousZoomDirectedProgressCount = 0;
     _continuousZoomEndpointFeedbackCount = 0;
-    _continuousZoomNonEndpointObserved = false;
+    _continuousZoomRequestedMotionObserved = false;
     _continuousZoomEndpointLatchedDirection = 0;
-    _continuousZoomReleasedEndpointCandidateDirection = 0;
     _postHoldBoundaryCandidate = 0;
     _postHoldBoundaryFeedbackCount = 0;
     if (_sdk) {
@@ -512,10 +521,16 @@ bool Mt11ControlManager::setZoom(double zoomLevel)
     if (!_sdk->sendAbsoluteZoom(target)) {
         return false;
     }
+    // Give this just-issued operation a complete response/freshness window.
+    // A successful local UDP write is not treated as an endpoint response;
+    // the six-second SDK watchdog still expires unless a real packet arrives.
+    _sdkResponseTimer.start();
+    _maximumZoomFreshnessTimer.start();
+    _zoomStatusFreshnessTimer.start();
     // An absolute target supersedes a direction which was left latched only
     // because the lens had already reached a confirmed physical endpoint.
     _continuousZoomEndpointLatchedDirection = 0;
-    _continuousZoomReleasedEndpointCandidateDirection = 0;
+    _setAbsoluteZoomTakeoverHint(target);
     _pendingAbsoluteZoomTarget = target;
     _absoluteZoomTargetFeedbackCount = 0;
     _setZoomCommandPending(true);
@@ -525,7 +540,6 @@ bool Mt11ControlManager::setZoom(double zoomLevel)
     _setZoomStatusKnown(true);
     _absoluteZoomPollTimer.start();
     _absoluteZoomConfirmationTimer.start();
-    _continuousZoomTakeoverProtectionTimer.start();
     _setLastError({});
     return true;
 }
@@ -541,42 +555,15 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     Q_UNUSED(pressDurationMs);
     const int normalizedDirection = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
     const bool pendingAbsoluteZoom = _zoomCommandPending;
+    const double motionReference = pendingAbsoluteZoom
+        ? _pendingAbsoluteZoomTarget
+        : (_absoluteZoomTakeoverHintValid
+               ? _absoluteZoomTakeoverHintTarget : _measuredZoom);
     const bool pendingSafetyStop =
         _continuousZoomStopRetryTimer.isActive();
     const bool pendingPostHoldSettle = _postHoldZoomFeedbackPending;
-    const bool endpointControllerLatched =
-        _continuousZoomEndpointLatchedDirection != 0;
-    const bool recentControllerTransition =
-        _continuousZoomTakeoverProtectionTimer.isActive();
-    // A user can release at the physical endpoint before the second endpoint
-    // sample completes the automatic latch. The required release stop may
-    // then leave some firmware busy in autofocus for considerably longer than
-    // the ordinary takeover window. Recognize a new direction which starts at
-    // its opposite physical endpoint as the same endpoint-reversal case. The
-    // first direction is still sent immediately; this only selects the longer
-    // direction-only verification window if the camera does not move yet. An
-    // in-flight absolute command stays on the ordinary fixed-copy path because
-    // its residual same-direction motion cannot prove manual takeover.
-    const bool startsAtOppositeEndpoint =
-        !pendingAbsoluteZoom
-        && _zoomBoundaryReached(-normalizedDirection);
-    const bool releasedEndpointReversal =
-        recentControllerTransition
-        && _continuousZoomReleasedEndpointCandidateDirection
-            == -normalizedDirection;
-    const bool endpointReversal =
-        _continuousZoomEndpointLatchedDirection == -normalizedDirection
-        || startsAtOppositeEndpoint
-        || releasedEndpointReversal;
     const bool supersedesPostHoldSettle = pendingPostHoldSettle
         || pendingSafetyStop;
-    const bool requiresProtectedAcquisition = pendingAbsoluteZoom
-        || pendingSafetyStop
-        || pendingPostHoldSettle
-        || endpointControllerLatched
-        || startsAtOppositeEndpoint
-        || releasedEndpointReversal
-        || recentControllerTransition;
     if (!_cameraCommandAvailable() || !zoomControlsUnlocked()
         || normalizedDirection == 0 || _continuousZoomActive
         || (normalizedDirection > 0 && !zoomInHoldAvailable())
@@ -590,9 +577,10 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     // and an extra stop is not part of this new gesture.
     _retireContinuousZoomStopRetry();
 
-    // A new explicit hold owns the lens immediately. Do not wait for a
-    // post-release sample: a pointer press which began during that wait cannot
-    // be replayed by QML. Tap remains gated until settled feedback arrives.
+    // A new explicit hold owns QGC's local gesture state immediately and asks
+    // the device to hand over the lens. Do not wait for a post-release sample:
+    // a pointer press which began during that wait cannot be replayed by QML.
+    // Tap remains gated until settled feedback arrives.
     if (supersedesPostHoldSettle) {
         _postHoldZoomFeedbackPending = false;
         _postHoldBoundaryCandidate = 0;
@@ -606,24 +594,21 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     if (pendingAbsoluteZoom) {
         _setZoomCommandPending(false);
     }
-    // This transition is now owned by an active acquisition generation. The
-    // timer never delays a command; it only preserves retry eligibility until
-    // QML has resolved tap versus hold.
-    _continuousZoomTakeoverProtectionTimer.stop();
-
     _continuousZoomActive = true;
     _continuousZoomDirection = normalizedDirection;
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
-    _continuousZoomDirectionRetryRequired = requiresProtectedAcquisition;
-    _continuousZoomDirectionRetriesRemaining = 0;
-    _continuousZoomEndpointTakeoverVerificationRequired =
-        endpointReversal;
-    _continuousZoomEndpointTakeoverProgressSample = _measuredZoom;
-    _continuousZoomEndpointTakeoverProgressCount = 0;
+    // MT11 does not provide a generation or ownership ACK for 0x05. Keep the
+    // same direction alive for this complete physical press; 0x18 remains a
+    // position/endpoint signal and cannot retire this keepalive.
+    _continuousZoomDirectionRetryRequired = true;
     _continuousZoomMotionElapsed.invalidate();
+    _continuousZoomMotionReference = motionReference;
+    _continuousZoomLastFeedback = _measuredZoom;
+    _continuousZoomProgressWatermark = _measuredZoom;
+    _continuousZoomDirectedProgressCount = 0;
     _continuousZoomEndpointFeedbackCount = 0;
-    _continuousZoomNonEndpointObserved = false;
+    _continuousZoomRequestedMotionObserved = false;
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
     // Both timers are inactivity guards. Authoritative 0x18 progress refreshes
@@ -633,8 +618,8 @@ bool Mt11ControlManager::startZoomWithPressDuration(int direction,
     _setLastError({});
 
     // Always put the first direction on the wire in this call. Protected
-    // transitions may add bounded direction-only copies, but never add a stop
-    // or an artificial handoff delay ahead of the user's requested motion.
+    // transitions may add direction-only keepalives, but never add a stop or
+    // an artificial handoff delay ahead of the user's requested motion.
     _continuousZoomPhase = ContinuousZoomPhase::ManualContinuous;
     _startPendingContinuousZoom();
     if (!_continuousZoomActive || !_continuousZoomDirectionSent) {
@@ -653,20 +638,17 @@ bool Mt11ControlManager::stopZoom()
         if (_continuousZoomEndpointLatchedDirection == 0) {
             return false;
         }
-        // QML consumes an automatically completed endpoint gesture before
-        // release, so it never reaches this branch. A direct public stop or
-        // cancel is instead an explicit request to neutralize the direction
-        // which was intentionally left latched for immediate reversal.
+        // A normal release at a reliably confirmed endpoint can leave the
+        // harmless outward direction latched to avoid an autofocus cycle. A
+        // later explicit stop/cancel neutralizes it before lifecycle teardown.
         _configureSdkEndpoint();
         const bool sent = _sdk->sendManualZoom(0);
         if (!sent) {
             return false;
         }
         _continuousZoomEndpointLatchedDirection = 0;
-        _continuousZoomReleasedEndpointCandidateDirection = 0;
         if (enabled()) {
             _continuousZoomStopRetryTimer.start();
-            _continuousZoomTakeoverProtectionTimer.start();
             emit zoomAvailabilityChanged();
         }
         return true;
@@ -674,25 +656,30 @@ bool Mt11ControlManager::stopZoom()
     // Release cancels every pending direction copy before the stop is sent.
     // Motion therefore cannot restart after the pointer leaves.
     const int releasedDirection = _continuousZoomDirection;
-    const bool releasedAtEndpointCandidate =
+    const bool releasedAtConfirmedEndpoint =
         _continuousZoomDirectionSent
-        && _continuousZoomNonEndpointObserved
-        && _continuousZoomEndpointFeedbackCount > 0
+        && _continuousZoomEndpointLatchedDirection == releasedDirection
         && _zoomBoundaryReached(releasedDirection);
-    _continuousZoomReleasedEndpointCandidateDirection =
-        releasedAtEndpointCandidate ? releasedDirection : 0;
-    _postHoldZoomFeedbackPending = true;
+    _postHoldZoomFeedbackPending = !releasedAtConfirmedEndpoint;
     _postHoldBoundaryCandidate = 0;
     _postHoldBoundaryFeedbackCount = 0;
+    if (!releasedAtConfirmedEndpoint) {
+        _continuousZoomEndpointLatchedDirection = 0;
+    }
     _finishContinuousZoomState();
     _setZoomCommandPending(false);
+    if (releasedAtConfirmedEndpoint) {
+        // Do not send 0x05(0): on MT11 it starts the stop/focus cycle which can
+        // block an immediate reverse command at 165x. The physical endpoint
+        // cannot move farther; the next reverse 0x05 overrides this latch.
+        return true;
+    }
     _configureSdkEndpoint();
     const bool sent = _sdk->sendManualZoom(0);
     if (enabled()) {
         // UDP write success does not prove device receipt. Send exactly one
         // delayed safety copy, then query 0x18 for the settled position.
         _continuousZoomStopRetryTimer.start();
-        _continuousZoomTakeoverProtectionTimer.start();
         emit zoomAvailabilityChanged();
     }
     return sent;
@@ -700,6 +687,11 @@ bool Mt11ControlManager::stopZoom()
 
 bool Mt11ControlManager::cancelZoom()
 {
+    if (_continuousZoomActive) {
+        // Cancellation is a lifecycle/safety operation, not a normal pointer
+        // release. It must send stop even if endpoint evidence was collected.
+        _continuousZoomEndpointLatchedDirection = 0;
+    }
     return stopZoom();
 }
 
@@ -767,11 +759,11 @@ bool Mt11ControlManager::setVideoMode(int mode)
 
     if ((_continuousZoomActive
          || _continuousZoomEndpointLatchedDirection != 0)
-        && !stopZoom()) {
+        && !cancelZoom()) {
         _setLastError(tr("Failed to stop MT11 zoom before changing the video mode."));
         return false;
     }
-    if (_zoomCommandPending) {
+    if (_zoomCommandPending || _absoluteZoomTakeoverHintValid) {
         _configureSdkEndpoint();
         const bool stopped = _sdk->sendManualZoom(0);
         _setZoomCommandPending(false);
@@ -1005,6 +997,7 @@ void Mt11ControlManager::_settingsChanged()
     const bool hadRecordingSession = recordingSessionActive();
 
     const bool stopSequencePending = _zoomCommandPending
+        || _absoluteZoomTakeoverHintValid
         || _continuousZoomActive
         || _continuousZoomEndpointLatchedDirection != 0
         || _continuousZoomStopRetryTimer.isActive();
@@ -1089,16 +1082,19 @@ void Mt11ControlManager::_zoomStepChanged()
     // position. Stop any native held movement first, then publish the nearest
     // legal value under the new step.
     if (_continuousZoomActive) {
-        (void) stopZoom();
+        (void) cancelZoom();
     }
     if (_continuousZoomStopRetryTimer.isActive()) {
         _retireContinuousZoomStopRetry();
     }
-    if (_zoomCommandPending && _sdk) {
+    if ((_zoomCommandPending || _absoluteZoomTakeoverHintValid) && _sdk) {
         _configureSdkEndpoint();
         _setZoomCommandPending(false);
-        (void) _sdk->sendManualZoom(0);
-        (void) _sdk->sendManualZoom(0);
+        const bool firstStopSent = _sdk->sendManualZoom(0);
+        const bool secondStopSent = _sdk->sendManualZoom(0);
+        if (firstStopSent && secondStopSent) {
+            _clearAbsoluteZoomTakeoverHint();
+        }
     }
     if (_measuredZoomKnown) {
         _alignDisplayToMeasured();
@@ -1135,14 +1131,24 @@ void Mt11ControlManager::_pollSdk()
 void Mt11ControlManager::_markSdkNotResponding()
 {
     if (_continuousZoomActive) {
-        (void) stopZoom();
-    } else if (_zoomCommandPending && _sdk) {
+        // Do not consume a still-held physical press merely because MT11 is
+        // silent while 0x0f/autofocus owns the lens. Direction keepalives and
+        // 0x18 polling continue until release, lifecycle cancellation or the
+        // 60-second no-progress guard; any later valid packet restores online.
+        _setSdkResponding(false);
+        _setLastError(tr("No response from the MT11 SDK endpoint."));
+        return;
+    }
+    if (_zoomCommandPending && _sdk) {
         _setZoomCommandPending(false);
         (void) _sdk->sendManualZoom(0);
         (void) _sdk->sendManualZoom(0);
     }
     _setSdkResponding(false);
-    _invalidateZoomState();
+    // Losing feedback on the same endpoint does not prove that its absolute
+    // controller released the lens. Preserve the takeover requirement across
+    // reconnect so the first recovered hold cannot fall back to one packet.
+    _invalidateZoomState(true);
     _setLastError(tr("No response from the MT11 SDK endpoint."));
 }
 
@@ -1337,7 +1343,7 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
             // A locally started continuous movement must still receive one
             // immediate safety stop even when another controller changed the
             // main source first.
-            (void) stopZoom();
+            (void) cancelZoom();
         }
         if (_continuousZoomStopRetryTimer.isActive()) {
             // The main lens has already changed. Cancel the old generation's
@@ -1384,8 +1390,14 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
 void Mt11ControlManager::_handleCommunicationError(const QString& message)
 {
     if (_continuousZoomActive) {
-        (void) stopZoom();
-    } else if (_zoomCommandPending && _sdk) {
+        // A single local UDP write failure is not a reason to consume the
+        // current physical press. The direction Timer retries it; the SDK
+        // response watchdog marks reachability and the no-progress guard owns
+        // the final active-gesture failure decision.
+        _setLastError(message);
+        return;
+    }
+    if (_zoomCommandPending && _sdk) {
         // Clear first so a synchronous write error from the stop copies cannot
         // recurse into another stop sequence.
         _setZoomCommandPending(false);
@@ -1393,7 +1405,9 @@ void Mt11ControlManager::_handleCommunicationError(const QString& message)
         (void) _sdk->sendManualZoom(0);
     }
     _setSdkResponding(false);
-    _invalidateZoomState();
+    // A local send/receive error leaves the same physical controller in an
+    // unknown state. Preserve its last absolute target for recovered holds.
+    _invalidateZoomState(true);
     _setLastError(message);
 }
 
@@ -1460,7 +1474,7 @@ void Mt11ControlManager::_handleVideoModeCommandTimeout()
     _setVideoModePending(false);
     _setVideoModeKnown(false);
     if (_continuousZoomActive) {
-        (void) stopZoom();
+        (void) cancelZoom();
     }
     _sdk->clearPendingRequests();
     _invalidateZoomState();
@@ -1563,18 +1577,24 @@ bool Mt11ControlManager::_zoomHoldAvailable(int direction) const
     // 0x18 sample is still sitting at the 1x boundary. A preceding hold's
     // settle/retry window intentionally does not disable this control: the
     // new hold serializes that old stop before sending its own direction.
-    const bool targetCanStillMove =
-        _zoomCommandPending || _postHoldZoomFeedbackPending;
+    const bool targetCanStillMove = _zoomCommandPending
+        || _absoluteZoomTakeoverHintValid
+        || _postHoldZoomFeedbackPending;
+    // A delayed 0x18 can temporarily move measured/current back to the old
+    // physical boundary after 0x0f confirmation. Prefer the persisted
+    // absolute target when deciding whether the same captured press can move.
+    const double movementReference = _absoluteZoomTakeoverHintValid
+        ? _absoluteZoomTakeoverHintTarget : _currentZoom;
     if (direction > 0) {
         return _measuredZoom
                    < _maximumZoom - kZoomTolerance
             || (targetCanStillMove
-                && _currentZoom
+                && movementReference
                     < _maximumZoom - kZoomTolerance);
     }
     return _measuredZoom > kMinimumZoom + kZoomTolerance
         || (targetCanStillMove
-            && _currentZoom > kMinimumZoom + kZoomTolerance);
+            && movementReference > kMinimumZoom + kZoomTolerance);
 }
 
 bool Mt11ControlManager::_zoomBoundaryReached(int direction) const
@@ -1629,59 +1649,61 @@ void Mt11ControlManager::_observeZoomFeedback(double zoomLevel)
     _zoomStatusFreshnessTimer.start();
 
     if (_continuousZoomActive) {
-        if (measurementChanged) {
-            // This is an inactivity watchdog, not a total gesture-duration
-            // limit. A native 0x05 gesture may legitimately span the complete
-            // 1x-to-maximum traversal.
-            _continuousZoomWatchdog.start();
-        }
         const int motionDirection = _continuousZoomDirection;
-        if (_continuousZoomEndpointTakeoverVerificationRequired
-            && _continuousZoomDirectionSent
-            // Arm directed-motion proof only after the first retry copy has
-            // reset the baseline. Pre-copy 0x18 samples can still belong to
-            // the controller which approached or stopped at this endpoint.
-            && _continuousZoomDirectionRetriesRemaining
-                < kContinuousZoomEndpointTakeoverRetryLimit
-            && (motionDirection == -1 || motionDirection == 1)) {
-            const double directedProgress = motionDirection
-                * (measured
-                   - _continuousZoomEndpointTakeoverProgressSample);
-            if (directedProgress > kZoomTolerance) {
-                ++_continuousZoomEndpointTakeoverProgressCount;
-            } else if (directedProgress < -kZoomTolerance) {
-                // Residual samples from the preceding endpoint approach move
-                // opposite to this reversal and cannot confirm takeover.
-                _continuousZoomEndpointTakeoverProgressCount = 0;
-            }
-            _continuousZoomEndpointTakeoverProgressSample = measured;
-            if (_continuousZoomEndpointTakeoverProgressCount
-                >= kContinuousZoomEndpointTakeoverProgressConfirmations) {
-                _continuousZoomDirectionRetryTimer.stop();
-                _continuousZoomDirectionRetryRequired = false;
-                _continuousZoomDirectionRetriesRemaining = 0;
-                _continuousZoomEndpointTakeoverVerificationRequired = false;
-            }
-        }
         const bool movementStarted =
             _continuousZoomPhase
                 == ContinuousZoomPhase::ManualContinuous
             && _continuousZoomDirectionSent;
         if (movementStarted) {
+            const double directedDelta = motionDirection
+                * (measured - _continuousZoomLastFeedback);
+            const double directedWatermarkProgress = motionDirection
+                * (measured - _continuousZoomProgressWatermark);
+            if (directedWatermarkProgress > kZoomTolerance) {
+                // This is a requested-direction inactivity watchdog, not a
+                // total duration limit. Advance a monotonic direction
+                // watermark so reverse/out-of-order oscillation cannot keep
+                // an ignored 0x05 gesture alive indefinitely.
+                _continuousZoomProgressWatermark = measured;
+                _continuousZoomWatchdog.start();
+            }
             const bool endpointArmed =
                 _continuousZoomMotionElapsed.isValid()
                 && _continuousZoomMotionElapsed.elapsed()
                     >= kContinuousZoomEndpointArmMs;
-            const bool unprovenEndpointTimedOut =
-                _continuousZoomMotionElapsed.isValid()
-                && _continuousZoomMotionElapsed.elapsed()
-                    >= kContinuousZoomUnprovenEndpointTimeoutMs;
+            if (!endpointArmed) {
+                // Drain the previous 1.5-second command window before any
+                // position sample can qualify endpoint release behavior.
+                _continuousZoomLastFeedback = measured;
+                _continuousZoomDirectedProgressCount = 0;
+                _continuousZoomRequestedMotionObserved = false;
+                _continuousZoomEndpointFeedbackCount = 0;
+                _continuousZoomEndpointLatchedDirection = 0;
+            } else {
+                if (directedDelta > kZoomTolerance) {
+                    ++_continuousZoomDirectedProgressCount;
+                } else if (directedDelta < -kZoomTolerance) {
+                    // Opposite travel is predecessor/out-of-order feedback or
+                    // another controller, never proof for this held direction.
+                    _continuousZoomDirectedProgressCount = 0;
+                    _continuousZoomRequestedMotionObserved = false;
+                    _continuousZoomEndpointFeedbackCount = 0;
+                    _continuousZoomEndpointLatchedDirection = 0;
+                }
+                _continuousZoomLastFeedback = measured;
+                if (_continuousZoomDirectedProgressCount
+                        >= kContinuousZoomDirectedProgressConfirmations
+                    && motionDirection
+                        * (measured - _continuousZoomMotionReference)
+                        > kZoomTolerance) {
+                    _continuousZoomRequestedMotionObserved = true;
+                }
+            }
             const bool atEndpoint =
                 _zoomBoundaryReached(motionDirection);
             if (atEndpoint) {
                 const bool endpointEligible = endpointArmed
-                    && (_continuousZoomNonEndpointObserved
-                        || unprovenEndpointTimedOut);
+                    && _continuousZoomRequestedMotionObserved;
                 if (endpointEligible) {
                     ++_continuousZoomEndpointFeedbackCount;
                 } else {
@@ -1691,33 +1713,23 @@ void Mt11ControlManager::_observeZoomFeedback(double zoomLevel)
                     && _continuousZoomEndpointFeedbackCount
                         >= kContinuousZoomEndpointConfirmations) {
                     // The native direction-only hold is independent of the
-                    // target step. Two endpoint samples prevent one delayed
-                    // 0x18 datagram from moving the target or terminating the
-                    // newly accepted hold generation.
+                    // target step. Progress after the old request window plus
+                    // two endpoint samples prevents a single delayed 0x18
+                    // datagram from changing release behavior.
                     _alignDisplayToMeasured(motionDirection);
-                    if (_continuousZoomNonEndpointObserved) {
-                        // The lens demonstrably travelled in this generation
-                        // and is now physically blocked at its endpoint. End
-                        // only the QGC gesture; 0x05(0) is specified for user
-                        // release and would delay an immediate reverse press.
-                        _postHoldZoomFeedbackPending = false;
-                        _postHoldBoundaryCandidate = 0;
-                        _postHoldBoundaryFeedbackCount = 0;
-                        _continuousZoomEndpointLatchedDirection =
-                            motionDirection;
-                        _continuousZoomReleasedEndpointCandidateDirection = 0;
-                        _finishContinuousZoomState();
-                    } else {
-                        // Two endpoint samples without any non-endpoint sample
-                        // cannot prove that this generation ever acquired the
-                        // lens. Keep the existing safety stop for that rare,
-                        // disputed-start fail-safe path.
-                        (void) stopZoom();
-                    }
+                    // Never end a gesture while the finger is still down:
+                    // 0x18 has no generation and cannot own this press. Merely
+                    // remember that normal release may omit 0x05(0), avoiding
+                    // a focus cycle before an immediate reverse press.
+                    _postHoldZoomFeedbackPending = false;
+                    _postHoldBoundaryCandidate = 0;
+                    _postHoldBoundaryFeedbackCount = 0;
+                    _continuousZoomEndpointLatchedDirection =
+                        motionDirection;
                 }
             } else {
                 _continuousZoomEndpointFeedbackCount = 0;
-                _continuousZoomNonEndpointObserved = true;
+                _continuousZoomEndpointLatchedDirection = 0;
                 // During a native direction-only hold there is no discrete
                 // command target. Publish the nearest legal value in the
                 // motion direction for each unambiguous non-endpoint sample.
@@ -1850,6 +1862,19 @@ void Mt11ControlManager::_handleAbsoluteZoomConfirmationTimeout()
     }
 }
 
+void Mt11ControlManager::_setAbsoluteZoomTakeoverHint(double target)
+{
+    _absoluteZoomTakeoverHintValid = qIsFinite(target);
+    _absoluteZoomTakeoverHintTarget = _absoluteZoomTakeoverHintValid
+        ? target : kMinimumZoom;
+}
+
+void Mt11ControlManager::_clearAbsoluteZoomTakeoverHint()
+{
+    _absoluteZoomTakeoverHintValid = false;
+    _absoluteZoomTakeoverHintTarget = kMinimumZoom;
+}
+
 void Mt11ControlManager::_startPendingContinuousZoom()
 {
     if (!_continuousZoomActive
@@ -1861,36 +1886,23 @@ void Mt11ControlManager::_startPendingContinuousZoom()
     }
 
     if (_continuousZoomDirectionSent) {
-        if (!_continuousZoomDirectionRetryRequired
-            || _continuousZoomDirectionRetriesRemaining <= 0) {
+        if (!_continuousZoomDirectionRetryRequired) {
             _continuousZoomDirectionRetryRequired = false;
             return;
         }
-        // Ordinary transition feedback can still belong to the superseded
-        // controller, so it cannot safely acknowledge a same-direction manual
-        // takeover. Endpoint reversal has a separate opposite-direction proof
-        // and a longer ceiling; both paths are canceled by release/endpoint.
-        const bool firstEndpointVerificationCopy =
-            _continuousZoomEndpointTakeoverVerificationRequired
-            && _continuousZoomDirectionRetriesRemaining
-                == kContinuousZoomEndpointTakeoverRetryLimit;
-        --_continuousZoomDirectionRetriesRemaining;
+        // The same physical press keeps requesting direction until release,
+        // lifecycle teardown or a safety guard. Endpoint evidence can affect
+        // release handling, but never terminates a still-pressed gesture.
         _configureSdkEndpoint();
         if (!_sdk->sendManualZoom(
                 static_cast<qint8>(_continuousZoomDirection))) {
-            (void) stopZoom();
+            if (_continuousZoomActive
+                && _continuousZoomDirectionRetryRequired) {
+                _continuousZoomDirectionRetryTimer.start();
+            }
             return;
         }
-        if (firstEndpointVerificationCopy) {
-            // The first retry is the earliest point at which predecessor
-            // feedback can no longer cancel the long endpoint-recovery path.
-            // Establish its proof baseline from the latest authoritative
-            // sample, then require two subsequent requested-direction changes.
-            _continuousZoomEndpointTakeoverProgressSample = _measuredZoom;
-            _continuousZoomEndpointTakeoverProgressCount = 0;
-        }
-        if (_continuousZoomDirectionRetriesRemaining > 0
-            && _continuousZoomActive
+        if (_continuousZoomActive
             && _continuousZoomDirectionRetryRequired) {
             _continuousZoomDirectionRetryTimer.start();
         } else {
@@ -1902,44 +1914,42 @@ void Mt11ControlManager::_startPendingContinuousZoom()
     _configureSdkEndpoint();
     if (!_sdk->sendManualZoom(
             static_cast<qint8>(_continuousZoomDirection))) {
-        // A failed direct start must retire the QML gesture and refresh the
-        // measured position without scheduling any later direction packet.
-        _postHoldZoomFeedbackPending = true;
-        _postHoldBoundaryCandidate = 0;
-        _postHoldBoundaryFeedbackCount = 0;
+        // Return false to QML, but keep the same captured press eligible for
+        // its 100 ms acquisition retry. Do not issue a nested feedback query:
+        // another local write error there would incorrectly mark this one
+        // transient start failure as a hard endpoint loss.
         _finishContinuousZoomState();
-        (void) requestCurrentZoom();
         return;
     }
 
     _continuousZoomPhase = ContinuousZoomPhase::ManualContinuous;
     _continuousZoomDirectionSent = true;
-    // The successfully transmitted direction now owns the zoom controller.
+    // Start a complete response window only for the first direction. Later
+    // keepalives must not hide a disconnected endpoint by refreshing the SDK
+    // watchdog without receiving a valid packet.
+    _sdkResponseTimer.start();
+    _maximumZoomFreshnessTimer.start();
+    _zoomStatusFreshnessTimer.start();
+    // The newer gesture supersedes an endpoint-latched direction locally.
     _continuousZoomEndpointLatchedDirection = 0;
-    _continuousZoomReleasedEndpointCandidateDirection = 0;
     _continuousZoomMotionElapsed.restart();
+    _continuousZoomLastFeedback = _measuredZoom;
+    _continuousZoomProgressWatermark = _measuredZoom;
+    _continuousZoomDirectedProgressCount = 0;
     _continuousZoomEndpointFeedbackCount = 0;
-    // Count only an authoritative 0x18 sample received after this command as
-    // proof of travel. The pre-command sample can be stale or out of order.
-    _continuousZoomNonEndpointObserved = false;
-    if (_continuousZoomDirectionRetryRequired) {
-        // Initialize before requesting 0x18 so even a synchronous test double
-        // cannot arm endpoint progress proof ahead of the first retry copy.
-        _continuousZoomDirectionRetriesRemaining =
-            _continuousZoomEndpointTakeoverVerificationRequired
-                ? kContinuousZoomEndpointTakeoverRetryLimit
-                : kContinuousZoomDirectionRetryLimit;
-    }
+    _continuousZoomRequestedMotionObserved = false;
+    // The captured motion reference now owns this gesture. The persistent
+    // 0x0f hint was needed to keep the first hold available; retaining it
+    // beyond a successful direction write could falsely enable a later hold
+    // at a different physical endpoint.
+    _clearAbsoluteZoomTakeoverHint();
     _continuousZoomPollTimer.start();
     _pollContinuousZoom();
     if (_continuousZoomActive
         && _continuousZoomDirectionSent
-        && _continuousZoomDirectionRetryRequired
-        && _continuousZoomDirectionRetriesRemaining > 0) {
-        // Only controller takeover uses this bounded acquisition window.
-        // Copies contain direction only (never stop). They are bounded and do
-        // not change the native held speed; release or endpoint completion
-        // cancels every remaining copy synchronously.
+        && _continuousZoomDirectionRetryRequired) {
+        // Copies contain direction only (never stop) and do not change the
+        // configured step. Release/cancellation cancels them first.
         _continuousZoomDirectionRetryTimer.start();
     }
 }
@@ -1971,7 +1981,6 @@ void Mt11ControlManager::_retryContinuousZoomStop()
     }
     _configureSdkEndpoint();
     (void) _sdk->sendManualZoom(0);
-    _continuousZoomTakeoverProtectionTimer.start();
     if (!_videoModePending) {
         if (!_sdkResponseTimer.isActive()) {
             _sdkResponseTimer.start();
@@ -1994,31 +2003,38 @@ void Mt11ControlManager::_finishContinuousZoomState()
     _continuousZoomPhase = ContinuousZoomPhase::Idle;
     _continuousZoomDirectionSent = false;
     _continuousZoomDirectionRetryRequired = false;
-    _continuousZoomDirectionRetriesRemaining = 0;
-    _continuousZoomEndpointTakeoverVerificationRequired = false;
-    _continuousZoomEndpointTakeoverProgressSample = kMinimumZoom;
-    _continuousZoomEndpointTakeoverProgressCount = 0;
     _continuousZoomMotionElapsed.invalidate();
+    _continuousZoomMotionReference = kMinimumZoom;
+    _continuousZoomLastFeedback = kMinimumZoom;
+    _continuousZoomProgressWatermark = kMinimumZoom;
+    _continuousZoomDirectedProgressCount = 0;
     _continuousZoomEndpointFeedbackCount = 0;
-    _continuousZoomNonEndpointObserved = false;
+    _continuousZoomRequestedMotionObserved = false;
     emit continuousZoomActiveChanged();
     emit zoomAvailabilityChanged();
 }
 
-void Mt11ControlManager::_invalidateZoomState()
+void Mt11ControlManager::_invalidateZoomState(
+    bool preserveAbsoluteTakeoverHint)
 {
     _maximumZoomFreshnessTimer.stop();
     _zoomStatusFreshnessTimer.stop();
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
-    _continuousZoomTakeoverProtectionTimer.stop();
     // Invalidation retires every not-yet-issued direction command as well as
     // feedback state. Callers normally finish an active hold first, but this
     // stop keeps a delayed direction copy from surviving an error or lens reset.
     _continuousZoomDirectionRetryTimer.stop();
-    _continuousZoomEndpointTakeoverVerificationRequired = false;
-    _continuousZoomEndpointTakeoverProgressSample = kMinimumZoom;
-    _continuousZoomEndpointTakeoverProgressCount = 0;
+    _continuousZoomMotionElapsed.invalidate();
+    _continuousZoomMotionReference = kMinimumZoom;
+    _continuousZoomLastFeedback = kMinimumZoom;
+    _continuousZoomProgressWatermark = kMinimumZoom;
+    _continuousZoomDirectedProgressCount = 0;
+    _continuousZoomEndpointFeedbackCount = 0;
+    _continuousZoomRequestedMotionObserved = false;
+    if (!preserveAbsoluteTakeoverHint) {
+        _clearAbsoluteZoomTakeoverHint();
+    }
     _postHoldZoomFeedbackPending = false;
     _postHoldBoundaryCandidate = 0;
     _postHoldBoundaryFeedbackCount = 0;
@@ -2030,11 +2046,7 @@ void Mt11ControlManager::_invalidateZoomState()
     _setZoomStatusKnown(false);
     _setZoomCommandPending(false);
     _setMaximumZoom(kAbsoluteCommandMaximumZoom);
-    // _setZoomCommandPending(false) normally opens a takeover-protection
-    // window. A full state invalidation must not preserve that generation.
-    _continuousZoomTakeoverProtectionTimer.stop();
     _continuousZoomEndpointLatchedDirection = 0;
-    _continuousZoomReleasedEndpointCandidateDirection = 0;
 }
 
 void Mt11ControlManager::_requestZoomState()
@@ -2133,10 +2145,8 @@ void Mt11ControlManager::_setZoomCommandPending(bool pending)
         _absoluteZoomTargetFeedbackCount = 0;
         _absoluteZoomPollTimer.stop();
         _absoluteZoomConfirmationTimer.stop();
-        // The 0x0f pending flag can clear while QML is still inside its 420 ms
-        // tap/hold discriminator. Preserve only direction-copy eligibility;
-        // the next hold still sends its first direction synchronously.
-        _continuousZoomTakeoverProtectionTimer.start();
+        // A matching 0x18 retires only local confirmation. The persistent
+        // absolute target hint remains available to the next held gesture.
     }
     emit zoomAvailabilityChanged();
 }

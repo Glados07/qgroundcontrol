@@ -221,11 +221,13 @@ private:
     void _alignDisplayToMeasured(int preferredDirection = 0);
     void _pollPendingAbsoluteZoom();
     void _handleAbsoluteZoomConfirmationTimeout();
+    void _setAbsoluteZoomTakeoverHint(double target);
+    void _clearAbsoluteZoomTakeoverHint();
     void _startPendingContinuousZoom();
     void _pollContinuousZoom();
     void _retryContinuousZoomStop();
     void _finishContinuousZoomState();
-    void _invalidateZoomState();
+    void _invalidateZoomState(bool preserveAbsoluteTakeoverHint = false);
     void _requestZoomState();
     bool _sendCameraRecordingToggle(bool targetRecording);
     void _requestRecordingStatusAfterDelay();
@@ -273,7 +275,6 @@ private:
     QTimer _zoomStatusFreshnessTimer;
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
-    QTimer _continuousZoomTakeoverProtectionTimer;
     QTimer _continuousZoomDirectionRetryTimer;
     QTimer _continuousZoomPollTimer;
     QTimer _continuousZoomWatchdog;
@@ -300,28 +301,28 @@ private:
     bool _zoomCommandPending = false;
     double _pendingAbsoluteZoomTarget = kMinimumZoom;
     int _absoluteZoomTargetFeedbackCount = 0;
+    // A confirmed 0x18 target does not prove that the firmware has released
+    // the 0x0f controller/autofocus cycle. Retain this hint until the first
+    // native 0x05 direction is written and the active gesture takes over, or
+    // until the whole zoom state is invalidated.
+    bool _absoluteZoomTakeoverHintValid = false;
+    double _absoluteZoomTakeoverHintTarget = kMinimumZoom;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
     ContinuousZoomPhase _continuousZoomPhase = ContinuousZoomPhase::Idle;
     bool _continuousZoomDirectionSent = false;
     bool _continuousZoomDirectionRetryRequired = false;
-    int _continuousZoomDirectionRetriesRemaining = 0;
-    bool _continuousZoomEndpointTakeoverVerificationRequired = false;
-    double _continuousZoomEndpointTakeoverProgressSample = kMinimumZoom;
-    int _continuousZoomEndpointTakeoverProgressCount = 0;
     QElapsedTimer _continuousZoomMotionElapsed;
+    double _continuousZoomMotionReference = kMinimumZoom;
+    double _continuousZoomLastFeedback = kMinimumZoom;
+    double _continuousZoomProgressWatermark = kMinimumZoom;
+    int _continuousZoomDirectedProgressCount = 0;
     int _continuousZoomEndpointFeedbackCount = 0;
-    bool _continuousZoomNonEndpointObserved = false;
-    // At a confirmed physical endpoint the motor cannot move farther, so the
-    // manager can finish the UI gesture without sending 0x05(0). Remember the
-    // direction until a new zoom command overrides it or lifecycle teardown
-    // explicitly neutralizes the camera.
+    bool _continuousZoomRequestedMotionObserved = false;
+    // Reliable endpoint evidence never ends a still-pressed gesture. It only
+    // allows a normal pointer release to omit the autofocus-triggering stop;
+    // cancellation/lifecycle teardown still explicitly neutralizes it.
     int _continuousZoomEndpointLatchedDirection = 0;
-    // A release can race the second endpoint confirmation. Preserve one
-    // already-armed endpoint sample only as a short-lived retry hint for the
-    // next reverse hold; unlike the latched direction, it never suppresses the
-    // release stop and therefore cannot leave a moving lens uncontrolled.
-    int _continuousZoomReleasedEndpointCandidateDirection = 0;
     bool _postHoldZoomFeedbackPending = false;
     int _postHoldBoundaryCandidate = 0;
     int _postHoldBoundaryFeedbackCount = 0;

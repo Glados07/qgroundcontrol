@@ -1,12 +1,12 @@
 /****************************************************************************
  *
  * Shared A8 Mini and MT11 zoom control. A short release asks the selected
- * manager for one exact step. Where both gestures are available, holding for
- * 420 ms starts the manager-owned sequence. In a hold-only range the sequence
- * starts on press, so the user is not charged a meaningless tap/hold delay.
- * Release, cancellation, hiding and application suspension all ask the
- * manager to stop. Device-specific protocols, bounds and pacing remain in
- * their managers.
+ * manager for one exact step. An explicit 420 ms timer starts the manager-
+ * owned hold sequence in both shared and hold-only ranges; a shorter release
+ * in a hold-only range intentionally sends no zoom command. A held press can
+ * retry a transiently unavailable start, but release, cancellation, manager
+ * switching, hiding and application suspension cancel it. Device-specific
+ * protocols, bounds and pacing remain in their managers.
  *
  ****************************************************************************/
 
@@ -31,12 +31,20 @@ Item {
     property color buttonPressedColor: "#e8f2f7fa"
     property color buttonBorderColor: "#8065d9f4"
     property real buttonCornerRadius: Math.min(10, controlSize * 0.22)
+    property var _previousManager: null
 
     readonly property int gestureIdle: 0
     readonly property int gesturePressed: 1
     readonly property int gestureHolding: 2
     readonly property int gestureConsumed: 3
+    readonly property int holdThresholdMs: 420
+    readonly property int holdStartRetryMs: 100
     readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
+    readonly property bool endpointReachable: Boolean(manager
+                                                       && manager.enabled
+                                                       && (manager.sdkResponding
+                                                           || manager.zoomControlsUnlocked
+                                                           || manager.continuousZoomActive))
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
     readonly property bool canSend: online
     readonly property bool canTapZoomIn: Boolean(manager && manager.zoomInTapAvailable)
@@ -56,17 +64,33 @@ Item {
     implicitWidth: zoomColumn.implicitWidth
     implicitHeight: zoomColumn.implicitHeight
 
-    function cancelZoomGesture() {
-        var shouldStop = Boolean(zoomOutMouseArea && zoomOutMouseArea.gestureState === gestureHolding)
-                         || Boolean(zoomInMouseArea && zoomInMouseArea.gestureState === gestureHolding)
-                         || Boolean(manager && manager.continuousZoomActive)
+    function cancelZoomGesture(includeCurrentManager) {
+        const cancelCurrentManager = includeCurrentManager === undefined
+                                     ? true : Boolean(includeCurrentManager)
+        const outManager = zoomOutMouseArea ? zoomOutMouseArea.managerAtPress : null
+        const inManager = zoomInMouseArea ? zoomInMouseArea.managerAtPress : null
+        const outShouldStop = Boolean(outManager
+                                      && (zoomOutMouseArea.gestureState !== gestureIdle
+                                          || outManager.continuousZoomActive))
+        const inShouldStop = Boolean(inManager
+                                     && (zoomInMouseArea.gestureState !== gestureIdle
+                                         || inManager.continuousZoomActive))
         if (zoomOutMouseArea) {
             zoomOutMouseArea.consumeGesture()
+            zoomOutMouseArea.clearPressContext()
         }
         if (zoomInMouseArea) {
             zoomInMouseArea.consumeGesture()
+            zoomInMouseArea.clearPressContext()
         }
-        if (shouldStop && manager) {
+        if (outShouldStop && outManager) {
+            outManager.cancelZoom()
+        }
+        if (inShouldStop && inManager && inManager !== outManager) {
+            inManager.cancelZoom()
+        }
+        if (cancelCurrentManager && manager
+                && manager !== outManager && manager !== inManager) {
             manager.cancelZoom()
         }
     }
@@ -75,8 +99,9 @@ Item {
         // Consume before calling the manager so a synchronous availability
         // change cannot turn this gesture into a tap on release.
         mouseArea.gestureState = gestureConsumed
-        if (manager
-                && manager.startZoomWithPressDuration(
+        const gestureManager = mouseArea.managerAtPress
+        if (gestureManager && gestureManager === manager
+                && gestureManager.startZoomWithPressDuration(
                     direction, Math.max(0, pressDurationMs))) {
             mouseArea.gestureState = gestureHolding
             return true
@@ -84,10 +109,21 @@ Item {
         return false
     }
 
-    onOnlineChanged: {
-        if (!online) {
+    onEndpointReachableChanged: {
+        if (!endpointReachable) {
             cancelZoomGesture()
         }
+    }
+    onManagerChanged: {
+        const oldManager = _previousManager
+        cancelZoomGesture(false)
+        if (oldManager && oldManager !== manager) {
+            // A reliable MT11 endpoint intentionally leaves its direction
+            // latched for the next reverse press. Neutralize that latent state
+            // when the camera selector moves away after the original press.
+            oldManager.cancelZoom()
+        }
+        _previousManager = manager
     }
     onVisibleChanged: {
         if (!visible) {
@@ -101,7 +137,11 @@ Item {
             }
         }
     }
-    Component.onDestruction: cancelZoomGesture()
+    Component.onCompleted: _previousManager = manager
+    Component.onDestruction: {
+        cancelZoomGesture()
+        _previousManager = null
+    }
 
     Connections {
         target: Qt.application
@@ -159,9 +199,8 @@ Item {
             border.color: zoomOutMouseArea.containsMouse
                           ? root.accentColor : root.buttonBorderColor
             border.width: zoomOutMouseArea.containsMouse ? 2 : 1
-            enabled: root.canSend
-                     && (zoomOutMouseArea.gestureState !== root.gestureIdle
-                         || root.canZoomOut)
+            enabled: zoomOutMouseArea.gestureState !== root.gestureIdle
+                     || (root.canSend && root.canZoomOut)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
 
@@ -184,13 +223,91 @@ Item {
                 hoverEnabled: true
                 preventStealing: true
                 cursorShape: Qt.PointingHandCursor
-                pressAndHoldInterval: 420
-
                 property int gestureState: root.gestureIdle
                 property real pressStartedAtMs: 0
+                property bool tapAvailableAtPress: false
+                property bool holdAvailableAtPress: false
+                property bool holdStartPending: false
+                property var managerAtPress: null
+
+                function clearPressContext() {
+                    zoomOutHoldThresholdTimer.stop()
+                    holdStartPending = false
+                    tapAvailableAtPress = false
+                    holdAvailableAtPress = false
+                    managerAtPress = null
+                }
 
                 function consumeGesture() {
+                    holdStartPending = false
                     gestureState = pressed ? root.gestureConsumed : root.gestureIdle
+                }
+
+                function tryStartHeldZoom() {
+                    if (!holdStartPending || !pressed) {
+                        holdStartPending = false
+                        return
+                    }
+                    if (!holdAvailableAtPress
+                            || !managerAtPress
+                            || managerAtPress !== root.manager
+                            || !root.endpointReachable) {
+                        holdStartPending = false
+                        return
+                    }
+                    // Availability and the first UDP write can change at the
+                    // one-shot pressAndHold boundary. Keep this same physical
+                    // press eligible and retry only while the same manager is
+                    // online; release/cancel/switch clears the pending start.
+                    if (!root.online
+                            || !managerAtPress.zoomOutHoldAvailable) {
+                        return
+                    }
+
+                    const totalPressDurationMs = Math.max(
+                        root.holdThresholdMs,
+                        Math.round(Date.now() - pressStartedAtMs))
+                    if (root.beginHeldZoom(zoomOutMouseArea,
+                                           -1,
+                                           totalPressDurationMs)) {
+                        holdStartPending = false
+                    } else if (!pressed || managerAtPress !== root.manager
+                               || !root.endpointReachable) {
+                        holdStartPending = false
+                    }
+                }
+
+                function beginHoldAcquisition() {
+                    if (gestureState !== root.gesturePressed || !pressed) {
+                        return
+                    }
+                    // Qt's pressAndHold signal is one-shot and can disappear
+                    // after a small Android pointer drift. Own the threshold
+                    // explicitly, then retry this same captured press if the
+                    // manager has a transient availability/write race.
+                    gestureState = root.gestureConsumed
+                    if (!holdAvailableAtPress || !managerAtPress
+                            || managerAtPress !== root.manager
+                            || !root.endpointReachable) {
+                        return
+                    }
+                    holdStartPending = true
+                    tryStartHeldZoom()
+                }
+
+                Timer {
+                    id: zoomOutHoldThresholdTimer
+
+                    interval: root.holdThresholdMs
+                    repeat: false
+                    onTriggered: zoomOutMouseArea.beginHoldAcquisition()
+                }
+
+                Timer {
+                    interval: root.holdStartRetryMs
+                    repeat: true
+                    running: zoomOutMouseArea.holdStartPending
+                    onTriggered: zoomOutMouseArea.tryStartHeldZoom()
                 }
 
                 function consumeExternalStop() {
@@ -202,64 +319,50 @@ Item {
                 function resetGestureIfReleased() {
                     if (!pressed) {
                         gestureState = root.gestureIdle
+                        clearPressContext()
                     }
                 }
 
                 onPressed: {
                     pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
-                    // When this direction has no tap action to disambiguate,
-                    // start its native hold on press. This covers MT11's
-                    // hold-only range and an immediately reversible endpoint.
-                    if (!root.canTapZoomOut && root.canHoldZoomOut) {
-                        root.beginHeldZoom(zoomOutMouseArea, -1, 0)
-                    }
-                }
-                onPressAndHold: {
-                    if (gestureState !== root.gesturePressed) {
-                        return
-                    }
-                    if (!root.canHoldZoomOut) {
-                        gestureState = root.gestureConsumed
-                        return
-                    }
-
-                    const totalPressDurationMs = Math.max(
-                        420, Math.round(Date.now() - pressStartedAtMs))
-                    root.beginHeldZoom(zoomOutMouseArea,
-                                       -1,
-                                       totalPressDurationMs)
+                    managerAtPress = root.manager
+                    // Availability can change while feedback settles. Freeze
+                    // which gestures this physical press was allowed to own.
+                    tapAvailableAtPress = root.canTapZoomOut
+                    holdAvailableAtPress = root.canHoldZoomOut
+                    zoomOutHoldThresholdTimer.restart()
                 }
                 onReleased: function(mouse) {
                     const completedState = gestureState
+                    const tapWasAvailable = tapAvailableAtPress
+                    const gestureManager = managerAtPress
+                    const heldLongEnough = Date.now() - pressStartedAtMs
+                                                   >= root.holdThresholdMs
+                    const tapStillAvailable = Boolean(
+                        gestureManager && gestureManager === root.manager
+                        && gestureManager.zoomOutTapAvailable)
                     const releasedInside = mouse.x >= 0 && mouse.x <= width
                                            && mouse.y >= 0 && mouse.y <= height
                     gestureState = root.gestureIdle
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                    clearPressContext()
+                    if (completedState === root.gestureHolding && gestureManager) {
+                        gestureManager.stopZoom()
                     } else if (completedState === root.gesturePressed
                                && releasedInside
-                               && root.canTapZoomOut
-                               && root.manager) {
-                        root.manager.zoomOut()
+                               && !heldLongEnough
+                               && tapWasAvailable
+                               && tapStillAvailable) {
+                        gestureManager.zoomOut()
                     }
                 }
                 onCanceled: {
                     const completedState = gestureState
+                    const gestureManager = managerAtPress
                     gestureState = root.gestureIdle
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.cancelZoom()
-                    }
-                }
-                onExited: {
-                    if (!pressed) {
-                        return
-                    }
-
-                    const completedState = gestureState
-                    gestureState = root.gestureConsumed
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.cancelZoom()
+                    clearPressContext()
+                    if (completedState === root.gestureHolding && gestureManager) {
+                        gestureManager.cancelZoom()
                     }
                 }
             }
@@ -346,9 +449,8 @@ Item {
             border.color: zoomInMouseArea.containsMouse
                           ? root.accentColor : root.buttonBorderColor
             border.width: zoomInMouseArea.containsMouse ? 2 : 1
-            enabled: root.canSend
-                     && (zoomInMouseArea.gestureState !== root.gestureIdle
-                         || root.canZoomIn)
+            enabled: zoomInMouseArea.gestureState !== root.gestureIdle
+                     || (root.canSend && root.canZoomIn)
             opacity: enabled ? 1.0 : 0.38
             scale: zoomInMouseArea.pressed ? 0.94 : 1.0
 
@@ -371,13 +473,83 @@ Item {
                 hoverEnabled: true
                 preventStealing: true
                 cursorShape: Qt.PointingHandCursor
-                pressAndHoldInterval: 420
-
                 property int gestureState: root.gestureIdle
                 property real pressStartedAtMs: 0
+                property bool tapAvailableAtPress: false
+                property bool holdAvailableAtPress: false
+                property bool holdStartPending: false
+                property var managerAtPress: null
+
+                function clearPressContext() {
+                    zoomInHoldThresholdTimer.stop()
+                    holdStartPending = false
+                    tapAvailableAtPress = false
+                    holdAvailableAtPress = false
+                    managerAtPress = null
+                }
 
                 function consumeGesture() {
+                    holdStartPending = false
                     gestureState = pressed ? root.gestureConsumed : root.gestureIdle
+                }
+
+                function tryStartHeldZoom() {
+                    if (!holdStartPending || !pressed) {
+                        holdStartPending = false
+                        return
+                    }
+                    if (!holdAvailableAtPress
+                            || !managerAtPress
+                            || managerAtPress !== root.manager
+                            || !root.endpointReachable) {
+                        holdStartPending = false
+                        return
+                    }
+                    if (!root.online
+                            || !managerAtPress.zoomInHoldAvailable) {
+                        return
+                    }
+
+                    const totalPressDurationMs = Math.max(
+                        root.holdThresholdMs,
+                        Math.round(Date.now() - pressStartedAtMs))
+                    if (root.beginHeldZoom(zoomInMouseArea,
+                                           1,
+                                           totalPressDurationMs)) {
+                        holdStartPending = false
+                    } else if (!pressed || managerAtPress !== root.manager
+                               || !root.endpointReachable) {
+                        holdStartPending = false
+                    }
+                }
+
+                function beginHoldAcquisition() {
+                    if (gestureState !== root.gesturePressed || !pressed) {
+                        return
+                    }
+                    gestureState = root.gestureConsumed
+                    if (!holdAvailableAtPress || !managerAtPress
+                            || managerAtPress !== root.manager
+                            || !root.endpointReachable) {
+                        return
+                    }
+                    holdStartPending = true
+                    tryStartHeldZoom()
+                }
+
+                Timer {
+                    id: zoomInHoldThresholdTimer
+
+                    interval: root.holdThresholdMs
+                    repeat: false
+                    onTriggered: zoomInMouseArea.beginHoldAcquisition()
+                }
+
+                Timer {
+                    interval: root.holdStartRetryMs
+                    repeat: true
+                    running: zoomInMouseArea.holdStartPending
+                    onTriggered: zoomInMouseArea.tryStartHeldZoom()
                 }
 
                 function consumeExternalStop() {
@@ -389,61 +561,48 @@ Item {
                 function resetGestureIfReleased() {
                     if (!pressed) {
                         gestureState = root.gestureIdle
+                        clearPressContext()
                     }
                 }
 
                 onPressed: {
                     pressStartedAtMs = Date.now()
                     gestureState = root.gesturePressed
-                    if (!root.canTapZoomIn && root.canHoldZoomIn) {
-                        root.beginHeldZoom(zoomInMouseArea, 1, 0)
-                    }
-                }
-                onPressAndHold: {
-                    if (gestureState !== root.gesturePressed) {
-                        return
-                    }
-                    if (!root.canHoldZoomIn) {
-                        gestureState = root.gestureConsumed
-                        return
-                    }
-
-                    const totalPressDurationMs = Math.max(
-                        420, Math.round(Date.now() - pressStartedAtMs))
-                    root.beginHeldZoom(zoomInMouseArea,
-                                       1,
-                                       totalPressDurationMs)
+                    managerAtPress = root.manager
+                    tapAvailableAtPress = root.canTapZoomIn
+                    holdAvailableAtPress = root.canHoldZoomIn
+                    zoomInHoldThresholdTimer.restart()
                 }
                 onReleased: function(mouse) {
                     const completedState = gestureState
+                    const tapWasAvailable = tapAvailableAtPress
+                    const gestureManager = managerAtPress
+                    const heldLongEnough = Date.now() - pressStartedAtMs
+                                                   >= root.holdThresholdMs
+                    const tapStillAvailable = Boolean(
+                        gestureManager && gestureManager === root.manager
+                        && gestureManager.zoomInTapAvailable)
                     const releasedInside = mouse.x >= 0 && mouse.x <= width
                                            && mouse.y >= 0 && mouse.y <= height
                     gestureState = root.gestureIdle
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.stopZoom()
+                    clearPressContext()
+                    if (completedState === root.gestureHolding && gestureManager) {
+                        gestureManager.stopZoom()
                     } else if (completedState === root.gesturePressed
                                && releasedInside
-                               && root.canTapZoomIn
-                               && root.manager) {
-                        root.manager.zoomIn()
+                               && !heldLongEnough
+                               && tapWasAvailable
+                               && tapStillAvailable) {
+                        gestureManager.zoomIn()
                     }
                 }
                 onCanceled: {
                     const completedState = gestureState
+                    const gestureManager = managerAtPress
                     gestureState = root.gestureIdle
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.cancelZoom()
-                    }
-                }
-                onExited: {
-                    if (!pressed) {
-                        return
-                    }
-
-                    const completedState = gestureState
-                    gestureState = root.gestureConsumed
-                    if (completedState === root.gestureHolding && root.manager) {
-                        root.manager.cancelZoom()
+                    clearPressContext()
+                    if (completedState === root.gestureHolding && gestureManager) {
+                        gestureManager.cancelZoom()
                     }
                 }
             }
