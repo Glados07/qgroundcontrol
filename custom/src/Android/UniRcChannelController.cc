@@ -262,6 +262,7 @@ bool UniRcChannelController::_openSerial()
     _serialFd = fd;
     _openedDevicePath = devicePath;
     _parser.reset();
+    _resetReceiveDiagnostics();
     _channelPolicy.reset();
     _acceptedZoomDirection = 0;
     _zoomStartRetryElapsed.invalidate();
@@ -394,11 +395,21 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
             continue;
         }
         if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            const int errorNumber = errno;
+            qCWarning(UniRcChannelLog)
+                << "UniRC serial write failed"
+                << _openedDevicePath
+                << "offset" << offset << "/" << bytes.size()
+                << "errno" << errorNumber << std::strerror(errorNumber);
             return false;
         }
 
         const int remainingMs = timeoutMs - static_cast<int>(elapsed.elapsed());
         if (remainingMs <= 0) {
+            qCWarning(UniRcChannelLog)
+                << "UniRC serial write timed out"
+                << _openedDevicePath
+                << "offset" << offset << "/" << bytes.size();
             return false;
         }
         struct pollfd descriptor {
@@ -408,7 +419,16 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
         if (pollResult < 0 && errno == EINTR) {
             continue;
         }
-        if (pollResult <= 0 || (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+        if (pollResult <= 0
+            || (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            const int errorNumber = pollResult < 0 ? errno : 0;
+            qCWarning(UniRcChannelLog)
+                << "UniRC serial write poll failed"
+                << _openedDevicePath
+                << "result" << pollResult
+                << "revents" << descriptor.revents
+                << "errno" << errorNumber
+                << (errorNumber ? std::strerror(errorNumber) : "none");
             return false;
         }
     }
@@ -424,10 +444,20 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
         return false;
     }
 
-    // The UniRC V1.0 SDK requires both enable and disable requests to be sent
-    // three consecutive times. Concatenating complete CRC-delimited frames
-    // preserves that exact wire sequence without three event-loop races.
-    return _writeAll(packet.repeated(3), kWriteTimeoutMs);
+    // The UniRC V1.0 SDK requires three consecutive complete requests. Keep
+    // them as three writes as documented so diagnostics identify the exact
+    // request which failed while preserving the same UART byte stream.
+    for (int requestIndex = 0; requestIndex < 3; ++requestIndex) {
+        if (!_writeAll(packet, kWriteTimeoutMs)) {
+            qCWarning(UniRcChannelLog)
+                << "Failed to send UniRC channel request"
+                << requestIndex + 1 << "/3"
+                << "frequencyCode" << frequencyCode
+                << "packet" << packet.toHex(' ');
+            return false;
+        }
+    }
+    return true;
 }
 
 void UniRcChannelController::_readAvailable()
@@ -465,8 +495,18 @@ void UniRcChannelController::_readAvailable()
     if (incoming.isEmpty()) {
         return;
     }
+
+    _receivedByteCount += static_cast<quint64>(incoming.size());
+    if (_receiveSample.size() < kReceiveSampleMaxBytes) {
+        _receiveSample.append(
+            incoming.left(kReceiveSampleMaxBytes - _receiveSample.size()));
+    }
     const QList<UniRcProtocol::DecodedPacket> packets = _parser.append(incoming);
+    _decodedFrameCount += static_cast<quint64>(packets.size());
     for (const UniRcProtocol::DecodedPacket &packet : packets) {
+        _lastFrameControl = packet.control;
+        _lastFrameCommand = packet.command;
+        _lastFramePayloadSize = packet.payload.size();
         _handleChannelPacket(packet);
     }
 #endif
@@ -491,26 +531,38 @@ void UniRcChannelController::_handleChannelPacket(
 
     const qint16 channel9 = channels.at(8);
     const qint16 channel10 = channels.at(9);
-    const UniRcChannelPolicy::Result result =
-        _channelPolicy.update(channel9, channel10);
-    if (!result.channelsValid) {
-        qCWarning(UniRcChannelLog)
-            << "Rejected out-of-range UniRC channels"
-            << "CH9" << channel9 << "CH10" << channel10;
-        _resetInput(false);
-        _setLastError(
-            tr("UniRC CH9/CH10 values are outside the expected 900-2100 range."));
-        return;
-    }
-
+    ++_channelFrameCount;
+    // A syntactically valid 0x42 frame proves that the UART/SDK route is
+    // alive, even when CH9/CH10 are not mapped yet. Do not let the initial
+    // watchdog overwrite that actionable mapping error with a link timeout.
+    _inputWatchdog.start(kActiveFrameTimeoutMs);
     if (_channel9 != channel9 || _channel10 != channel10) {
         _channel9 = channel9;
         _channel10 = channel10;
         emit channelsChanged();
     }
+
+    const UniRcChannelPolicy::Result result =
+        _channelPolicy.update(channel9, channel10);
+    if (!result.channelsValid) {
+        ++_invalidChannelFrameCount;
+        if (!_invalidChannelWarningActive) {
+            qCWarning(UniRcChannelLog)
+                << "Rejected out-of-range UniRC channels"
+                << "CH9" << channel9 << "CH10" << channel10;
+        }
+        _invalidChannelWarningActive = true;
+        _resetInput(false);
+        _setLastError(
+            tr("Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.")
+                .arg(channel9)
+                .arg(channel10));
+        return;
+    }
+
+    _invalidChannelWarningActive = false;
     _setChannelInputActive(true);
     _setLastError(QString());
-    _inputWatchdog.start(kActiveFrameTimeoutMs);
 
     _applyZoomDirection(result.zoomDirection,
                         result.zoomDirectionChanged);
@@ -604,9 +656,53 @@ void UniRcChannelController::_inputWatchdogExpired()
     }
 #endif
     _resetInput(false);
-    _scheduleSerialFailure(
-        tr("Timed out waiting for UniRC 0x42 channel data on %1.")
-            .arg(_openedDevicePath));
+    const QString message = _receiveTimeoutMessage();
+    qCWarning(UniRcChannelLog)
+        << "UniRC receive watchdog diagnostics"
+        << "device" << _openedDevicePath
+        << "rxBytes" << _receivedByteCount
+        << "decodedFrames" << _decodedFrameCount
+        << "channelFrames" << _channelFrameCount
+        << "invalidChannelFrames" << _invalidChannelFrameCount
+        << "lastControl" << static_cast<int>(_lastFrameControl)
+        << "lastCommand" << static_cast<int>(_lastFrameCommand)
+        << "lastPayloadBytes" << _lastFramePayloadSize
+        << "rxSample" << _receiveSample.toHex(' ');
+    _scheduleSerialFailure(message);
+}
+
+void UniRcChannelController::_resetReceiveDiagnostics()
+{
+    _receiveSample.clear();
+    _receivedByteCount = 0;
+    _decodedFrameCount = 0;
+    _channelFrameCount = 0;
+    _invalidChannelFrameCount = 0;
+    _invalidChannelWarningActive = false;
+    _lastFrameControl = 0;
+    _lastFrameCommand = 0;
+    _lastFramePayloadSize = -1;
+}
+
+QString UniRcChannelController::_receiveTimeoutMessage() const
+{
+    if (_channelFrameCount > 0) {
+        return tr("UniRC 0x42 channel data stopped on %1 after %2 frame(s).")
+            .arg(_openedDevicePath)
+            .arg(_channelFrameCount);
+    }
+    if (_receivedByteCount == 0) {
+        return tr("No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.")
+            .arg(_openedDevicePath);
+    }
+    if (_decodedFrameCount == 0) {
+        return tr("Received %1 serial byte(s) from %2, but no valid UniRC SDK frame; check UART2 routing and the 115200 serial format.")
+            .arg(_receivedByteCount)
+            .arg(_openedDevicePath);
+    }
+    return tr("Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.")
+        .arg(_decodedFrameCount)
+        .arg(_openedDevicePath);
 }
 
 void UniRcChannelController::_scheduleSerialFailure(const QString &message)

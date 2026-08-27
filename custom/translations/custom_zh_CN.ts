@@ -882,14 +882,29 @@
         <translation>UniRC云台控制依赖不可用。</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="503"/>
-        <source>UniRC CH9/CH10 values are outside the expected 900-2100 range.</source>
-        <translation>UniRC CH9/CH10数值超出预期的900至2100范围。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="554"/>
+        <source>Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.</source>
+        <translation>正在接收UniRC 0x42数据，但CH9=%1或CH10=%2超出900至2100范围；请检查通道映射。</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="599"/>
-        <source>Timed out waiting for UniRC 0x42 channel data on %1.</source>
-        <translation>等待%1上的UniRC 0x42通道数据超时。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="685"/>
+        <source>UniRC 0x42 channel data stopped on %1 after %2 frame(s).</source>
+        <translation>%1上的UniRC 0x42通道数据在收到%2帧后中断。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="690"/>
+        <source>No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.</source>
+        <translation>未从%1收到任何串口字节；请将UniGCS的SDK连接方式设为UART2，并关闭其他地面站应用。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="694"/>
+        <source>Received %1 serial byte(s) from %2, but no valid UniRC SDK frame; check UART2 routing and the 115200 serial format.</source>
+        <translation>已从%2收到%1个串口字节，但没有有效的UniRC SDK帧；请检查UART2路由和115200串口格式。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="698"/>
+        <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
+        <translation>已从%2收到%1个有效UniRC SDK帧，但没有CTRL=0、CMD=0x42、32字节的通道帧。</translation>
     </message>
 </context>
 <context>

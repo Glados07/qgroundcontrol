@@ -9,6 +9,7 @@
 #include "UniRcChannelPolicy.h"
 #include "UniRcProtocol.h"
 
+#include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
@@ -72,6 +73,8 @@ private:
     bool _sendChannelRequest(quint8 frequencyCode);
     void _scheduleSerialFailure(const QString &message);
     void _handleChannelPacket(const UniRcProtocol::DecodedPacket &packet);
+    void _resetReceiveDiagnostics();
+    QString _receiveTimeoutMessage() const;
     void _applyZoomDirection(int direction, bool directionChanged);
     void _tryStartZoom(int direction);
     void _resetInput(bool normalZoomStop);
@@ -85,6 +88,7 @@ private:
     static constexpr int kReconnectDelayMs = 3000;
     static constexpr int kZoomStartRetryMs = 250;
     static constexpr int kWriteTimeoutMs = 100;
+    static constexpr int kReceiveSampleMaxBytes = 64;
 
     QPointer<GimbalControlSettings> _settings;
     QPointer<GimbalControlManager> _gimbalControlManager;
@@ -96,11 +100,20 @@ private:
     QElapsedTimer _zoomStartRetryElapsed;
     QString _openedDevicePath;
     QString _lastError;
+    QByteArray _receiveSample;
+    quint64 _receivedByteCount = 0;
+    quint64 _decodedFrameCount = 0;
+    quint64 _channelFrameCount = 0;
+    quint64 _invalidChannelFrameCount = 0;
+    int _lastFramePayloadSize = -1;
     int _channel9 = 0;
     int _channel10 = 0;
     int _acceptedZoomDirection = 0;
+    quint8 _lastFrameControl = 0;
+    quint8 _lastFrameCommand = 0;
     bool _serialOpen = false;
     bool _channelInputActive = false;
+    bool _invalidChannelWarningActive = false;
     bool _applicationActive = false;
     bool _serialFailureScheduled = false;
     bool _shuttingDown = false;

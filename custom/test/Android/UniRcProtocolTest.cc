@@ -68,6 +68,8 @@ private slots:
 
 void UniRcProtocolTest::exact20HzRequest()
 {
+    QCOMPARE(UniRcProtocol::channelDataRequestPacket(2),
+             QByteArray::fromHex("556601010000004202b5c0"));
     QCOMPARE(UniRcProtocol::channelDataRequestPacket(),
              QByteArray::fromHex("55660101000000420552b0"));
     QCOMPARE(UniRcProtocol::channelDataRequestPacket(

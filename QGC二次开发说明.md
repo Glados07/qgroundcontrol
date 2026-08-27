@@ -36,6 +36,7 @@
 - **Android MT11旧版黑屏的提交级程序根因（分阶段）**：第一阶段是 `b2239ed65` 继承adapter 356/direct 259后，每个H.265 decodebin首代都实例化adapter；若MT11真实码流在adapter内部没有产出raw帧，decodebin不会把运行期无输出当作autoplug创建失败，旧watchdog又按相同rank重建，形成无限重走adapter、direct永远没有机会的闭环。第二阶段是后续 `ffe3ecdbb` 虽加入逐receiver显式direct，但仍有四个程序缺陷：显式MediaCodec先同步到父PLAYING、后连接压缩输入与显示输出，可能在 `set_format/configure` 时上下游尚未就绪；`gst_bin_add`、输入/输出连接及decoder/sink状态同步的失败未完整向上传递；只冻结一个direct factory且同URI无限重建同一失败候选；adapter身份只认外层factory，deep-element回调报告内部MediaCodec时可能漏掉adapter失败事实。本轮通过“先连接后同步、全部返回值检查、有序候选每个一次后回adapter、外层/内部双重identity”修正这些代码级闭环。MT11码流的CSD/profile/封装究竟在哪一层触发失败，以及新路径能否真机出帧，仍必须用新APK四阶段日志确认。
 - **本轮 MT11 高分辨率本地拍照修正**：根因是MT11旧路径直接以Video 2当前 `QQuickItem.width/height * DPR` 同时作为解码源和JPG输出尺寸，因而地图主画面下的小PIP会直接生成低像素文件。现已把Video 2真实帧CAPS/receiver尺寸与显示几何分离，旧receiver的延迟回调会按来源指针拒绝；并按MT11 SDK V0.2.3增加0x20卡录流编码参数，只有连续两份一致的 `stream_type=0` 宽高才确认输出能力，候选值和已确认值都在4.5秒无刷新后失效。CAPS、receiver、Item implicit/rendered和0x20尺寸统一限制长边≤4096、短边≤2160且总像素≤4096×2160，因而同时支持4096×2160和旋转后的2160×4096；异常新0x20会立即清除旧能力。新鲜确认的0x20宽高优先决定输出物理像素，否则使用实际协商的RTSP解码尺寸；该功能仍是解码帧离屏截图，不下载云台SD卡中的原始4K/8K照片，输出像素可按0x20放大但真实细节上限仍是当时RTSP解码帧。本轮纯Qt5测试 `Mt11ProtocolTest` 和 `GimbalPhotoCapturePolicyTest` 均为13 passed、0 failed；完整Qt 6/Android构建、不同工作模式、PIP与公共图库发布仍需目标设备验收。
 - **本轮 UniRC 10 Pro CH9/CH10控制**：Android端新增内置SDK串口2 `/dev/ttyHS0` 的POSIX读取链，按115200波特率和实现假设的8N1发送三份20 Hz的0x42请求并解析16路通道。CH9在1500±25死区外驱动A8 Mini既有0x05原生连续变倍，CH10只在1050释放后对1950按下沿触发一次共享MAVLink Gimbal Manager回中。初始、失联、异常值、应用退到后台或串口关闭均先撤销控制，CH9必须重新见中位、CH10必须重新见释放才会arm；触控与物理拨轮通过Manager所有权隔离。纯协议/策略已使用Qt 5.14兼容构建实际运行10 passed、0 failed；仍没有Qt 6整包、新APK、目标遥控器串口权限、真实通道、A8 UDP或PX4/GPS2回中实测，因此只能称为代码已集成和桌面纯逻辑测试通过，不能声称Android真机已验证。
+- **本轮 UniRC 0x42超时审计与诊断修正**：用户在 `Standard-10inch_A2` 上确认 `/dev/ttyHS0`存在、0666且SELinux为Permissive，但旧APK显示“串口已打开”后进入0x42超时。逐页核对UniRC V1.0及官网现行V1.1后，型号、UART2路径、115200、20 Hz频率码5、三次请求、CRC16、CTRL/CMD/32字节响应及CH9/CH10索引均与代码一致；不能通过盲改CRC、路径或频率解决。“串口已打开”只证明open/configure/write成功，不证明UniGCS已经把SDK路由到UART2。PDF第63页要求在UniGCS系统设置的“遥控SDK连接方式”选择UART2，第122页还说明UART2是否可选受当前数传1/2组合影响；`bluetooth:net_bt`与 `hci_attach_dev`是可疑的静态Bluetooth/HCI标签，但官方仍明确指定ttyHS0，标签本身不能证明端口错误或要求禁用蓝牙。旧代码另有一个确定性覆盖缺陷：合法0x42若携带未映射的CH9/CH10零值或其他900～2100外值，只显示短暂映射错误且不重启watchdog，随后被统一超时覆盖并关fd。当前改为合法0x42先续期链路，再校验通道；异常值只解除控制arm、显示实际CH9/CH10并保持串口。每次open还累计RX字节、合法SDK帧、合法0x42帧、异常通道帧、最后frame字段和最多64字节样本，把首帧失败明确分成零RX、收到字节但无合法帧、收到合法非目标帧；已经收到0x42后再断流则单独报告。没有旧APK原始RX或新APK分类日志，不能在“UniGCS未路由UART2”和“已收到0x42但通道未映射”之间伪造唯一现场结论。
 
 ### 1.2 Viewer3D 三维飞行视图（已集成）
 
@@ -184,12 +185,13 @@
 
 ### 1.13 UniRC 10 Pro CH9/CH10云台控制（代码已集成，待Android真机验收）
 
-- Android前台运行时直接打开UniRC SDK Serial 2字符设备，默认路径 `/dev/ttyHS0`、PDF明确波特率115200；8N1是当前实现采用的常规串口格式，PDF该处没有明确数据位/校验位/停止位，仍需真机确认。非Android构建不启动该控制器；Android也不按未验证的 `Build.MODEL` 硬编码开启，用户必须显式打开默认关闭的功能开关。设置页允许即时关闭功能或调整设备路径，并显示串口打开、等待数据、CH9/CH10实时值及错误状态。
-- 0x42请求使用 `55 66`帧头、control 0x01、小端长度/sequence、CRC16/XMODEM（poly 0x1021、init 0、CRC小端）；启用20 Hz与关闭输出都严格连续发送三份。周期回包只接受control 0、command 0x42和精确32字节payload，并按小端有符号16位解析CH1～CH16。
+- Android前台运行时直接打开UniRC SDK Serial 2字符设备，默认路径 `/dev/ttyHS0`、PDF明确波特率115200，目标型号 `Standard-10inch_A2`也与PDF列表一致；8N1是当前实现采用的常规串口格式，PDF该处没有明确数据位/校验位/停止位，仍需真机确认。非Android构建不启动该控制器；Android也不把型号匹配误当成UART2已经路由，用户必须显式打开默认关闭的功能开关。设置页允许即时关闭功能或调整设备路径，并显示串口打开、等待数据、CH9/CH10实时值及分类错误状态。
+- 0x42请求使用 `55 66`帧头、control 0x01、小端长度/sequence、CRC16/XMODEM（poly 0x1021、init 0、CRC小端）；启用20 Hz与关闭输出都按PDF语义执行三次独立完整write。周期回包只接受control 0、command 0x42和精确32字节payload，并按小端有符号16位解析CH1～CH16。
+- 每次打开fd都会清零接收诊断代次。首帧watchdog根据事实分别报告“零RX字节”“有RX但无合法SDK帧”“有合法SDK帧但没有目标0x42通道帧”；已经收到合法0x42后再停止则报告流中断。合法0x42在CH值校验前即续期watchdog；所以CH9/CH10未映射而返回0/越界值时只停止控制、解除arm并保留串口和实际值，不再被伪装成0x42超时。
 - CH9只有在初始/失联后先进入1475～1525中位死区才arm；小于1475请求缩小，大于1525请求放大，回到死区停止。CH10只有先见到≤1250释放值才arm，随后≥1750的按下沿只触发一次回中，持续按住不重复，重新释放后才允许下一次。
 - CH9复用A8 Mini现有UDP SDK和连续变倍状态机，不建立第二个相机socket。物理拨轮接管时先结束触控hold；UniRC持有连续变倍期间，触控tap/绝对目标被拒绝，触控release/cancel也不能误停拨轮。串口断流、失焦、禁用、关闭及生命周期退出只停止UniRC自己持有的变倍。
 - CH10和顶部工具栏Center共用同一个 `GimbalCenterCoordinator`，沿活动Vehicle/Gimbal Manager的控制权确认、必要的非零pitch预激活、ACK和最终 `centerGimbal()` 流程发送MAVLink；UniRC控制器不直接写GPS2，也不绕过PX4。已受理的CH10按下沿是一项一次性动作：串口随后失联、路径变化或功能禁用不会撤回该动作，应用退到后台或退出则取消尚未完成的共享回中事务。PX4到A8 Mini的GPS2/UART 115200转发属于飞控和云台侧前置配置。
-- 运行前必须在UniGCS中把SDK接口分配给Serial 2、确认Serial 2未同时分配给遥测或其他应用，并把自动回中拨轮映射到CH9、小摇杆按键映射到CH10。目标Android系统还必须允许应用UID对 `/dev/ttyHS0` 读写且SELinux放行；普通Android运行时权限和USB授权弹窗不能授予内置SoC UART访问权。
+- 运行前必须在UniGCS“系统设置 -> 遥控SDK连接方式”中选择UART2，并确认当前数传1/2组合允许UART2成为SDK选项；退出UniGCS和其他可能读取同一tty的地面站后再单独运行QGC。PDF没有明确声称遥测与SDK必然不能同时选择，因此不把表格组合规则扩大成禁止项；真正需要排除的是另一reader已经持有fd并分流字节。随后把自动回中拨轮映射到CH9、小摇杆按键映射到CH10。目标Android系统还必须允许应用UID对 `/dev/ttyHS0` 读写且SELinux放行；普通Android运行时权限和USB授权弹窗不能授予内置SoC UART访问权。
 
 ## 2. 开发边界
 
@@ -417,7 +419,7 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | `custom/src/Android/UniRcChannelPolicy.h` | 声明CH9/CH10纯状态机、合理值范围900～2100、CH9边界1475/1525和CH10释放/按下阈值1250/1750。输出只表达缩放方向是否改变及是否产生一次回中请求，不依赖QObject、串口、网络或Vehicle。 |
 | `custom/src/Android/UniRcChannelPolicy.cc` | 初始和 `linkLost()` 后解除两个输入的arm：CH9必须先见1475～1525中位，CH10必须先见≤1250释放。arm后CH9小于1475为-1、大于1525为+1、死区为0；CH10首次跨到≥1750才产生回中沿，保持按下不重复，回到释放区后才允许下一次。CH9/CH10任一超出900～2100都等价失联并输出必要的缩放停止变化。 |
 | `custom/src/Android/UniRcChannelController.h` | 声明Android内置串口桥及QML状态：串口是否打开、是否正收到通道、CH9/CH10值和最后错误；持有协议parser、纯策略、重连/首帧watchdog及UniRC缩放接管状态。非Android编译保留同一接口但不启动设备。 |
-| `custom/src/Android/UniRcChannelController.cc` | 仅在Android前台且用户显式开启开关时以POSIX `open()`打开默认 `/dev/ttyHS0`，使用termios raw 115200及当前实现假设的8N1、`QSocketNotifier`异步读和 `flock/TIOCEXCL`尽力阻止并发占用；PDF明确115200但未在该项明确8N1，后者仍须真机确认。打开后把20 Hz请求完整帧连续写三份，关闭时同样尽力写三份停止请求；首帧等待1.2秒，活动流watchdog到350 ms时先排空内核中因GUI事件循环延迟而尚未处理的数据，仍无合法0x42才取消UniRC缩放、关串口并3秒后重连。合法CH9变化调用A8 Manager的UniRC专用0x05入口，CH10按下沿调用共享回中协调器；应用后台、禁用、路径改变和退出都会停止输入并关闭fd。它故意不走Android QGC的USB-only `QSerialPort/QGCUsbSerialManager`链：`/dev/ttyHS0` 是SoC内置字符设备，不是Android USB Host枚举出的usb-serial-for-android端口。 |
+| `custom/src/Android/UniRcChannelController.cc` | 仅在Android前台且用户显式开启开关时以POSIX `open()`打开默认 `/dev/ttyHS0`，使用termios raw 115200及当前实现假设的8N1、`QSocketNotifier`异步读和 `flock/TIOCEXCL`尽力阻止并发占用；PDF明确115200但未在该项明确8N1，后者仍须真机确认。打开和关闭时分别以三次独立write发送20 Hz/停止完整请求；写失败记录offset、errno、poll result和revents。每个open代次统计RX字节、合法SDK帧、合法0x42帧、异常通道帧、最后control/command/payload及64字节样本。首帧等待1.2秒后按零RX、坏/不完整SDK帧、合法非目标帧分类；活动流watchdog到350 ms时先排空内核积压，真正停止才取消控制、关串口并3秒后重连。合法0x42先续期再校验CH值，未映射/越界只保留明确错误和实际CH值而不关串口；warning按异常状态边沿限频。合法CH9变化调用A8 Manager的UniRC专用0x05入口，CH10按下沿调用共享回中协调器；应用后台、禁用、路径改变和退出都会停止输入并关闭fd。它故意不走Android QGC的USB-only `QSerialPort/QGCUsbSerialManager`链：`/dev/ttyHS0` 是SoC内置字符设备，不是Android USB Host枚举出的usb-serial-for-android端口。 |
 | `custom/src/Gimbal/GimbalCenterCoordinator.h` | 声明顶部工具栏与UniRC CH10共用的MAVLink回中事务对象，向QML暴露busy/dispatch状态、`requestCenter()`和`cancel()`；保存活动Vehicle/Controller/Gimbal身份、控制权和两阶段ACK Timer，不读取RC串口。 |
 | `custom/src/Gimbal/GimbalCenterCoordinator.cc` | 把既有顶部Center的控制权确认、必要预激活和最终回中流程收敛为单一实现：无活动Vehicle/Gimbal时拒绝；失权时先请求Gimbal Manager控制；需要预激活时发送受限的非零pitch目标，匹配Accepted ACK并稳定400 ms后调用原生 `centerGimbal()`。切换Vehicle/Gimbal、对象销毁、失权、超时或不匹配结果都会取消，最终Accepted才清除该云台身份的预激活标记。QGC只在活动MAVLink链路发送命令1000，不直接配置或写飞控下游GPS2 UART。 |
 | `custom/test/Android/UniRcProtocolTest.cc` | 桌面纯QtTest回归，覆盖20 Hz/关闭请求精确字节、CRC和CTRL、16路小端解析、严格32字节、分片/粘包、噪声、坏CRC及伪长度重同步，以及CH9死区/首次回中arm、CH10释放到按下单沿、异常值和失联复位。已使用Qt 5.14兼容构建实际运行10 passed、0 failed；当前仍没有Qt 6项目构建目录。该测试不覆盖POSIX fd、Android DAC/SELinux、A8 UDP、MAVLink ACK或真机通道映射。 |
@@ -629,8 +631,8 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | 文件 | 详细作用 |
 |---|---|
 | `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
-| `custom/translations/custom.ts` | 英文源字符串模板。保留既有云台、双视频、双罗盘及UniRC运行状态source；运行页删除MediaCodec长说明、UniGCS静态提示和MT11 zoom longDesc后，当前为21个context、175条message和166个唯一source，175条均unfinished。Qt 5.14 `lrelease`验证exit 0并按模板语义忽略未翻译source；仍需项目Qt 6构建生成正式QM。 |
-| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录，与英文模板保持相同的21个context、175条message和166个唯一source，context/source pair集合一致；175条均finished，unfinished和空译文为0。翻译覆盖UniRC CH9/CH10实时状态、POSIX串口/依赖错误、拨轮回中提示和保留的Fact短描述；Qt 5.14 `lrelease`实际生成175条译文并exit 0。翻译完成不代表完整QGC、Android串口或真机云台已验收。 |
+| `custom/translations/custom.ts` | 英文源字符串模板。保留既有云台、双视频、双罗盘及UniRC运行状态source；新增UniRC零RX/坏帧/非目标帧/流中断和通道映射分类错误后，当前为21个context、178条message和169个唯一source，178条均unfinished。Qt 5.14 `lrelease`验证exit 0并按模板语义忽略未翻译source；仍需项目Qt 6构建生成正式QM。 |
+| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录，与英文模板保持相同的21个context、178条message和169个唯一source，context/source pair集合一致；178条均finished，unfinished和空译文为0。翻译覆盖UniRC CH9/CH10实时状态、POSIX串口/依赖错误、分类接收诊断、拨轮回中提示和保留的Fact短描述；Qt 5.14 `lrelease`实际生成178条译文并exit 0。翻译完成不代表完整QGC、Android串口或真机云台已验收。 |
 | `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 | `translations/qgc_json_zh_CN.ts` | 原生JSON元数据简体中文目录的受控数据修正。`ChibiOS,NuttX`和 `apmVehicleType` 五项都使用ASCII逗号，后者精确翻译为 `多旋翼,直升机,固定翼,地面车辆,水下航行器`，使译文拆分数与source一致并消除FactMetaData enum mismatch；不改变Fact值、固件筛选或custom翻译统计。 |
 
@@ -895,7 +897,7 @@ MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | 
 
 #### 8.4.1 设备与UniGCS前置条件
 
-1. 在UniGCS的接口分配中把 **SDK接口** 选择为 **Serial 2**；Serial 2不能同时被遥测链路、另一应用或串口调试工具占用。UniRC 10 Pro文档给出的SDK Serial 2设备为 `/dev/ttyHS0`、115200波特率；当前实现另采用8N1，但PDF该处没有明确数据位/校验位/停止位，必须以目标遥控器实测或厂商补充说明确认。
+1. 进入UniGCS的 **系统设置 -> 遥控SDK连接方式**，把SDK接口明确选择为 **UART2**；PDF第63页截图中的当前值本身是UART1，不能把截图默认状态、节点存在或QGC能open误认为已经选择UART2。PDF第122页说明SDK候选受当前数传1/2组合影响，若下拉项没有UART2，应先调整到允许UART2的组合。保存后退出UniGCS及其他可能读取该tty的地面站，只运行QGC隔离测试。UniRC 10 Pro文档给出的UART2设备为 `/dev/ttyHS0`、115200，型号 `Standard-10inch_A2`匹配；当前实现另采用8N1，但PDF没有明确数据位/校验位/停止位，必须以真机或厂商补充说明确认。
 2. 在遥控器通道映射中把自动回中拨轮映射为CH9，把小摇杆按键映射为CH10。PDF的默认映射标注为 **CH9=SE、CH10=SF**，这与用户要求的物理“拨轮/小摇杆按键”目标不必然相同，不能把默认SE/SF名称直接当成已完成映射；必须在UniGCS中重新核对并按产品控件设置。目标值为CH9最小/中位/最大约1050/1500/1950，CH10释放1050、按下1950。设置页收到数据后会显示实际CH9/CH10值，应先用该状态验证。
 3. Application Settings -> Fly View -> Gimbal Camera中的 `UniRC CH9/CH10 Gimbal Control` 为安全默认关闭，目标UniRC用户确认前置配置后必须显式开启；代码不以尚未验证的Android `Build.MODEL`名单自动启用。`SDK Serial Device` 默认 `/dev/ttyHS0`。修改路径或关闭开关会立即停止UniRC持有的缩放，尽力发送三份0x42停止输出请求并关闭fd，不要求重启QGC。
 4. A8 Mini变倍还要求SIYI控制已启用、UDP端点可达（缺省 `192.168.144.25:37260`），并满足A8 Manager既有视频会话和卡录分辨率能力门禁。CH10回中则要求QGC存在活动Vehicle、活动MAVLink Gimbal及可用Gimbal Manager链路；两项功能的前置条件彼此独立。
@@ -927,7 +929,8 @@ UniRC通道帧格式为：
 - 启用20 Hz输出使用CMD_ID 0x42、payload `05`，sequence 0完整帧为 `55 66 01 01 00 00 00 42 05 52 b0`；停止输出payload为 `00`，完整帧为 `55 66 01 01 00 00 00 42 00 f7 e0`。按照UniRC V1.0文档，启用和停止都各连续发送三份完整帧。
 - 周期通道数据只接受CTRL 0、CMD_ID 0x42及精确32字节payload；CH1～CH16按顺序解析为16个小端 `int16`，所以CH9位于payload字节16～17，CH10位于18～19。sequence不作为周期流的固定值假设。
 - parser支持串口分片、多个粘连帧和帧头前噪声；坏CRC、非法保留CTRL位、超大长度或错误payload不会进入通道策略，伪长度后存在完整合法帧时会重新同步。
-- 打开串口后首个合法通道帧最长等待1.2秒；进入活动流后350 ms没有合法帧即按失联处理，取消UniRC缩放、关闭设备并在功能仍开启时3秒后重连。应用进入后台、路径变化、禁用或退出同样执行安全收尾。
+- 打开串口后首个合法通道帧最长等待1.2秒；“串口已打开”只表示33个请求字节已被内核write接受，不证明遥控MCU已经通过UART2返回。超时时零RX直接提示核对UniGCS UART2和其他GCS；有RX但无合法frame提示路由/115200/帧CRC；有合法SDK frame但无目标0x42则报告最后control/command/payload。日志同时包含本代计数和最多64字节RX样本。
+- 合法0x42即证明本代串口SDK链路存在，先把watchdog切到350 ms再校验CH9/CH10。越界/未映射值只解除两个输入arm、停止UniRC动作并持续显示实际值，不关闭fd；后续值恢复后仍必须重新见CH9中位和CH10释放才接受动作。只有合法0x42真正停止350 ms才按失联关闭设备并在3秒后重连。应用进入后台、路径变化、禁用或退出同样执行安全收尾。
 
 #### 8.4.4 CH9/CH10安全状态机
 
@@ -935,7 +938,7 @@ UniRC通道帧格式为：
 |---|---|---|
 | CH9自动回中拨轮 | 初始、串口重开、失联或异常值后，必须先见到1475～1525；未见中位时即使开机值为1050/1950也不动作 | 小于1475调用A8 Mini缩小方向-1；大于1525调用放大方向+1；1475～1525停止。±25死区用于吸收中位抖动，不要求ADC永远精确等于1500。 |
 | CH10小摇杆按键 | 初始、串口重开、失联或异常值后，必须先见到≤1250释放值；未见释放时开机保持1950不会回中 | arm后首次达到≥1750产生一次回中沿；持续按住不重复。再次≤1250后，下一次按下才可再触发。 |
-| CH9或CH10异常 | 任一值小于900或大于2100 | 整份控制样本按失联处理；活动UniRC缩放回到0方向，两个输入解除arm。 |
+| CH9或CH10异常 | 任一值小于900或大于2100 | 该控制样本按失联处理，活动UniRC缩放回到0方向且两个输入解除arm；但合法0x42仍续期串口链路，页面显示实际值和通道映射错误，不再把它覆盖成超时或关闭fd。 |
 
 CH9不按20 Hz重复发送A8 UDP方向包。通道策略只在方向变化时启动/停止；同方向帧只刷新Manager安全watchdog。`GimbalControlManager`给连续变倍增加 `Touch` 与 `UniRc` 所有权：物理拨轮可先停止仍活动的触控hold并接管；UniRC持有期间，触控tap和绝对变倍会提示先将拨轮回中，触控release/cancel不会误发0x05停止。拨轮回中、反向、通道失联、串口关闭和生命周期退出只通过UniRC专用stop/cancel释放自己的动作。若A8已到有效倍率端点并由Manager停止，本次仍偏转的拨轮不会反复重启，必须先回中或反向形成新的方向边沿。
 
@@ -943,13 +946,14 @@ CH10不直接调用一个无状态的命令发送函数，而与顶部工具栏C
 
 #### 8.4.5 当前验证状态与真机验收
 
-已新增 `UniRcProtocolTest`，覆盖20 Hz/停止请求精确hex、CRC错误、CTRL和32字节严格门禁、16路小端解析、分片/粘包、噪声/坏帧/伪长度重同步，以及CH9死区和首次中位arm、CH10释放到按下单沿、合理值边界和失联复位；已用Qt 5.14兼容构建实际运行10 passed、0 failed。当前工作区仍没有Qt 6项目构建目录或 `compile_commands.json`，也没有生成新Android APK或连接目标UniRC、A8和PX4，因此以下结果全部仍待真机：
+已新增 `UniRcProtocolTest`，覆盖4 Hz/20 Hz/停止请求精确hex、CRC错误、CTRL和32字节严格门禁、16路小端解析、分片/粘包、噪声/坏帧/伪长度重同步，以及CH9死区和首次中位arm、CH10释放到按下单沿、合理值边界和失联复位。上一轮源码已用Qt 5.14兼容构建实际运行10 passed、0 failed；本轮增加4 Hz精确向量以及controller接收分类后，由于当前工作区没有Qt 6项目构建目录、`compile_commands.json`或可复用测试二进制，修改后的完整test target尚未重跑。当前也没有生成新Android APK或连接目标UniRC、A8和PX4，因此以下结果全部仍待真机：
 
-1. UniGCS正确分配Serial 2后，应用是否具备 `/dev/ttyHS0` 的DAC/SELinux权限、能否独占打开并持续收到20 Hz合法0x42。
-2. CH9从中位到两端及回中是否显示正确值、方向是否符合“小于1500缩小/大于1500放大”，A8 UDP抓包是否只出现必要的0x05开始/停止且触控所有权不串扰。
-3. 拔掉/停用SDK流、切后台、关闭开关、修改路径和串口被占用时，350 ms watchdog、停止动作和3秒重连是否符合预期，断流期间不得保持镜头运动。
-4. CH10每次释放到按下只产生一次共享回中事务；无Vehicle/无activeGimbal时不发送；存在PX4/GPS2/A8链时需要同时记录MAVLink命令1000 ACK、PX4下游串口输出和最终物理回中，不能只看QGC日志中的“request accepted”。
-5. 顶部Center与CH10交替、RC夺权、多Vehicle/多云台、按键长按和快速重复时，共享协调器不得并发、串目标或绕过8.3.3的控制权/预激活门禁。
+1. 先在UniGCS“系统设置 -> 遥控SDK连接方式”选UART2并保存；若列表无UART2，先按PDF第122页调整当前数传1/2组合。强制退出UniGCS和另一地面站后单独运行QGC，确认能持续收到20 Hz合法0x42。
+2. 分别触发并保存四类新日志：零RX字节、有RX但无合法SDK帧、有合法SDK帧但无目标0x42、先收到0x42后断流。另将CH9/CH10取消映射，确认页面持续显示实际越界值和映射错误、串口不被关闭，且warning不按20 Hz刷屏。
+3. CH9从中位到两端及回中是否显示正确值、方向是否符合“小于1500缩小/大于1500放大”，A8 UDP抓包是否只出现必要的0x05开始/停止且触控所有权不串扰。
+4. 拔掉/停用SDK流、切后台、关闭开关、修改路径和串口被占用时，350 ms watchdog、停止动作和3秒重连是否符合预期，断流期间不得保持镜头运动。
+5. CH10每次释放到按下只产生一次共享回中事务；无Vehicle/无activeGimbal时不发送；存在PX4/GPS2/A8链时需要同时记录MAVLink命令1000 ACK、PX4下游串口输出和最终物理回中，不能只看QGC日志中的“request accepted”。
+6. 顶部Center与CH10交替、RC夺权、多Vehicle/多云台、按键长按和快速重复时，共享协调器不得并发、串目标或绕过8.3.3的控制权/预激活门禁。
 
 ## 9. Android USB 飞控连接
 
@@ -1577,7 +1581,7 @@ ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|
 
 以下带“截至日期”的段落是对应版本当时的历史验证记录；若其中的旧longDesc、旧翻译数量、旧手势或旧解码路由与前述当前实现冲突，均以前述当前实现和最后一组本轮验证为准。当前版已经删除三个Fact longDesc，且不再采用单一direct factory长期保持的旧路由。
 
-截至2026-08-27，UniRC协议/策略测试目标和用例源码已经加入，20 Hz请求 `55660101000000420552b0` 的CRC由独立计算复核，并已使用Qt 5.14兼容构建实际运行 `UniRcProtocolTest`：10 passed、0 failed；相关JSON和两份TS XML可解析，context/source集合一致。删除运行页大段说明后，英中TS均为21个context、175条message和166个唯一source；英文175条unfinished，中文175条finished。英文/中文Qt 5.14 `lrelease`均exit 0且中文生成175条译文。当前机器仍没有Qt 6项目构建目录，也没有Android APK、目标遥控器或adb/串口会话。POSIX设备访问、PDF未明确的8N1假设、20 Hz持续帧、350 ms失联、A8原生0x05运动、触控/拨轮ownership、共享MAVLink回中、PX4 GPS2 UART和物理云台结果全部必须按8.4.5与第35项完成真机验证。
+截至2026-08-27本次0x42超时审计，UniRC V1.0文档与官网现行V1.1均已交叉核对：`Standard-10inch_A2`、UART2 `/dev/ttyHS0`、115200、频率码5、三次请求、CRC16/XMODEM、CTRL/CMD/payload与CH9/CH10索引都与实现一致。4 Hz请求 `556601010000004202b5c0`也已加入精确向量测试。上一轮 `UniRcProtocolTest`曾实际运行10 passed、0 failed；本轮修改后因工作区无可复用项目构建目录/测试二进制，未伪称重跑完整test target。controller头文件Qt 5.14 `moc`、英中TS的Qt 5.14 `lrelease`和 `git diff --check`均exit 0；两份TS XML均可解析，均为21个context、178条message、169个唯一source，context/source pair集合一致，英文178条unfinished，中文0条unfinished、0条空译文。当前机器仍没有Qt 6/Android构建目录、新APK、目标遥控器或adb/串口会话。因此旧APK现场的唯一物理原因仍不能从统一超时文字中反推；必须用新APK的RX/frame/通道分类日志按8.4.5收敛。
 
 截至2026-08-25，本轮MT11 tap↔hold即时响应修正的静态验证为：Gimbal JSON和两份TS XML均可解析且longDesc source完全一致，Manager头文件Qt moc exit 0，`GimbalZoomControl.qml` Qt 5.14 qmllint exit 0，英文/中文lrelease均exit 0，`git diff --check` exit 0且只有行尾转换提示。已逐项静态审查Manager身份与能力快照、显式420 ms阈值Timer、同按压100 ms启动重试、Android轻微移出不吞手势、30x以上短按零命令、首方向同步发送、所有hold整次按住450 ms方向保活、活动hold跨0x16/0x18失效/SDK静默/单次写失败、1600 ms旧窗口排空、两次同向进展与 `motionReference`门禁、连续两份端点只锁存普通release策略、普通release与cancel/生命周期分流、60秒watchdog仅由请求方向有效倍率进展续期且反向/乱序/容差内抖动不续期、绝对目标availability、post-stop settled候选、析构、状态失效及错误退出路径；旧 `pressAndHold`单次失败路径、handoff Timer、反馈所有权证明、用于反向接管的released-endpoint候选、普通六份和端点80份固定窗口均无残留。`_postHoldBoundaryCandidate/_postHoldBoundaryFeedbackCount`是仍保留的停止后settled确认，不属于已删除项。当前机器没有Qt 6构建目录或 `compile_commands.json`，现有 `Mt11ProtocolTest`也不覆盖Manager/QML的Timer状态机，因此仍需Qt 6完整构建、Android触控和MT11真机抓包验证。现行算法以本段和2026-08-25根因条目为准；下面“截至2026-08-24”段落仅保留为历史记录，其固定份数、反馈早退、前置stop及旧手势方案均已被当前实现取代。
 

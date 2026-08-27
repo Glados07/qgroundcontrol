@@ -882,13 +882,28 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="503"/>
-        <source>UniRC CH9/CH10 values are outside the expected 900-2100 range.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="554"/>
+        <source>Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="599"/>
-        <source>Timed out waiting for UniRC 0x42 channel data on %1.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="685"/>
+        <source>UniRC 0x42 channel data stopped on %1 after %2 frame(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="690"/>
+        <source>No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="694"/>
+        <source>Received %1 serial byte(s) from %2, but no valid UniRC SDK frame; check UART2 routing and the 115200 serial format.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="698"/>
+        <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
