@@ -129,6 +129,7 @@ private:
     bool _renderReady = false;
     bool _streaming = false;
     bool _sourceFrameReceived = false;
+    bool _adapterSelected = false;
     bool _decoderFrameReceived = false;
     bool _sinkFrameReceived = false;
     bool _decoding = false;

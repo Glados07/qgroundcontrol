@@ -51,7 +51,8 @@ private:
                               bool sinkFrameReceived);
     void _handleStopComplete();
     void _armFirstFrameWatchdog();
-    void _restartAfterDecoderFailure(const char *reason);
+    void _restartAfterDecoderFailure(const char *reason,
+                                     bool allowDirectHardwareRetry);
     int _firstFrameTimeoutMs() const;
 
     QPointer<VideoReceiver> _receiver;
@@ -65,6 +66,7 @@ private:
     bool _decodingRequested = false;
     bool _streaming = false;
     bool _sourceFrameReceived = false;
+    bool _adapterSelected = false;
     bool _decoderFrameReceived = false;
     bool _sinkFrameReceived = false;
     bool _stopping = false;

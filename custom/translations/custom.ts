@@ -375,77 +375,77 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="137"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="134"/>
         <source>Video Stream Integration</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="135"/>
         <source>Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="142"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="139"/>
         <source>Use MAVLink automatic video stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="145"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="143"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="153"/>
         <source>Require hardware decoding for Android H.264/H.265</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="149"/>
-        <source>Compatible vendor MediaCodec hardware decoding is required by default. H.265 prioritizes the hvc1-to-Annex-B/AU adapter and keeps direct-hvc1 vendor hardware decoders as secondary candidates. A first-frame failure restarts the receiver continuously with capped backoff without changing decoder ranks or switching to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="159"/>
+        <source>Compatible vendor MediaCodec hardware decoding is required by default. Each new H.265 receiver/URI route starts with the hvc1-to-Annex-B/AU adapter. The next generation locks that receiver and URI to a compatible direct-hvc1 vendor MediaCodec only after either (1) H.265 source media has arrived, the adapter has been instantiated, and the first-frame watchdog expires with no decoder output or sink frame, or (2) that same generation identifies H.265 and the adapter, then reports a decoder-branch bus error with no RTSP-source error, decoder output, or sink frame. The decoder-branch case may occur before the first source buffer when MediaCodec rejects CAPS/CSD. The direct route remains sticky until the URI changes. Start failures, RTSP/source errors, non-decoder-branch bus errors, sink-branch errors, and decoder output without a sink frame do not switch routes. Decoder ranks remain unchanged and QGC never switches to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="150"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
         <source>Restart QGC after changing this option.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="211"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="214"/>
         <source>Save photos and videos locally</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="217"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="220"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="47"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="51"/>
         <source>Video Source</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="52"/>
         <source>Mavlink camera stream is automatically configured</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="53"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="57"/>
         <source>Source</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="62"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="69"/>
         <source>Connection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="64"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
         <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
         <source>RTSP URL 1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -455,22 +455,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
         <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
         <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="119"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
         <source>TCP URL</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="128"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="121"/>
         <source>UDP URL</source>
         <translation type="unfinished"></translation>
     </message>
@@ -500,22 +500,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="207"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="210"/>
         <source>Local Video Storage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="225"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="228"/>
         <source>Record File Format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="232"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="235"/>
         <source>Auto-Delete Saved Recordings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="239"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="242"/>
         <source>Max Storage Usage</source>
         <translation type="unfinished"></translation>
     </message>

@@ -21,9 +21,11 @@
 #include "GStreamerHelpers.h"
 #include "QGCLoggingCategory.h"
 
+#include <QtCore/QByteArray>
 #include <QtCore/QDateTime>
 #include <QtCore/QDebug>
 #include <QtCore/QUrl>
+#include <QtCore/QVariant>
 #include <QtQuick/QQuickItem>
 
 #include <gst/gst.h>
@@ -34,9 +36,12 @@ QGC_LOGGING_CATEGORY(GstVideoReceiverLog, "qgc.videomanager.videoreceiver.gstrea
 namespace {
 constexpr uint32_t kMinimumRtspTimeoutSeconds = 8;
 constexpr guint64 kRtspTeardownTimeoutNanoseconds = GST_SECOND;
+constexpr const char *kExplicitH265DecoderFactoryProperty =
+    "customAndroidH265DecoderFactory";
 
 struct ObjectPipelineContext {
     QString uri;
+    QString explicitH265DecoderFactory;
     quint64 generation = 0;
 };
 
@@ -56,6 +61,20 @@ GQuark pipelineContextQuark()
     return quark;
 }
 
+GQuark explicitDecoderQuark()
+{
+    static const GQuark quark =
+        g_quark_from_static_string("qgc-explicit-h265-decoder");
+    return quark;
+}
+
+bool isExplicitDecoder(GstElement *element)
+{
+    return element
+        && GPOINTER_TO_INT(g_object_get_qdata(
+               G_OBJECT(element), explicitDecoderQuark())) != 0;
+}
+
 void destroyObjectPipelineContext(gpointer data)
 {
     delete static_cast<ObjectPipelineContext *>(data);
@@ -73,7 +92,8 @@ void destroyDecoderOutputProbeContext(gpointer data)
 
 void setObjectPipelineContext(GObject *object,
                               const QString &uri,
-                              quint64 generation)
+                              quint64 generation,
+                              const QString &explicitH265DecoderFactory = {})
 {
     if (!object) {
         return;
@@ -81,6 +101,7 @@ void setObjectPipelineContext(GObject *object,
 
     auto *const context = new ObjectPipelineContext;
     context->uri = uri;
+    context->explicitH265DecoderFactory = explicitH265DecoderFactory;
     context->generation = generation;
     g_object_set_qdata_full(object,
                             pipelineContextQuark(),
@@ -134,6 +155,33 @@ VideoReceiver::VIDEO_CODEC videoCodecFromCaps(const GstCaps *caps)
     return VideoReceiver::VIDEO_CODEC_UNKNOWN;
 }
 
+bool capsAreHvc1CompatibleH265(const GstCaps *caps)
+{
+    if (!caps || gst_caps_is_any(caps) || gst_caps_is_empty(caps)
+        || gst_caps_get_size(caps) == 0) {
+        return false;
+    }
+
+    for (guint index = 0; index < gst_caps_get_size(caps); ++index) {
+        const GstStructure *const structure =
+            gst_caps_get_structure(caps, index);
+        if (!structure
+            || g_strcmp0(gst_structure_get_name(structure),
+                         "video/x-h265") != 0) {
+            return false;
+        }
+    }
+
+    GstCaps *const hvc1Caps = gst_caps_from_string(
+        "video/x-h265,stream-format=(string)hvc1");
+    const bool compatible = hvc1Caps
+        && gst_caps_can_intersect(caps, hvc1Caps);
+    if (hvc1Caps) {
+        gst_caps_unref(hvc1Caps);
+    }
+    return compatible;
+}
+
 void elementFactoryIdentity(GstElementFactory *factory,
                             QString &pluginName,
                             QString &factoryName)
@@ -184,6 +232,8 @@ void GstVideoReceiver::start(uint32_t timeout)
 {
     const QString startUri = _uri;
     const bool lowLatencyMode = lowLatency();
+    const QString explicitH265DecoderFactory =
+        property(kExplicitH265DecoderFactoryProperty).toString().trimmed();
     quint64 generation = 0;
     while (generation == 0) {
         generation = _pipelineGenerationCounter.fetch_add(1) + 1;
@@ -197,21 +247,36 @@ void GstVideoReceiver::start(uint32_t timeout)
         // Freeze all GUI-owned configuration before crossing to the private
         // worker. Fact changes may update the receiver while this generation
         // is still queued; the worker must never read a concurrently-mutated
-        // implicitly-shared QString or silently start a different URI.
+        // implicitly-shared QString, dynamic property, or silently start a
+        // different URI/decoder route.
         _worker->dispatch(
-            [this, timeout, startUri, lowLatencyMode, generation]() {
-                _start(timeout, startUri, lowLatencyMode, generation);
+            [this,
+             timeout,
+             startUri,
+             lowLatencyMode,
+             generation,
+             explicitH265DecoderFactory]() {
+                _start(timeout,
+                       startUri,
+                       lowLatencyMode,
+                       generation,
+                       explicitH265DecoderFactory);
             });
         return;
     }
 
-    _start(timeout, startUri, lowLatencyMode, generation);
+    _start(timeout,
+           startUri,
+           lowLatencyMode,
+           generation,
+           explicitH265DecoderFactory);
 }
 
 void GstVideoReceiver::_start(uint32_t timeout,
                               const QString &startUri,
                               bool lowLatencyMode,
-                              quint64 generation)
+                              quint64 generation,
+                              const QString &explicitH265DecoderFactory)
 {
     if (_pipeline) {
         qCDebug(GstVideoReceiverLog) << "Already running!" << startUri;
@@ -347,7 +412,10 @@ void GstVideoReceiver::_start(uint32_t timeout,
             break;
         }
 
-        setObjectPipelineContext(G_OBJECT(_pipeline), startUri, generation);
+        setObjectPipelineContext(G_OBJECT(_pipeline),
+                                 startUri,
+                                 generation,
+                                 explicitH265DecoderFactory);
 
         g_object_set(_pipeline,
                      "message-forward", TRUE,
@@ -1103,7 +1171,77 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
 
 GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
 {
-    Q_UNUSED(caps); Q_UNUSED(videoSink)
+    Q_UNUSED(videoSink);
+
+    // The QObject dynamic property belongs to the receiver's GUI thread. Its
+    // value was frozen in start() and copied into this immutable generation's
+    // pipeline context before GStreamer entered PLAYING, so decoder callbacks
+    // never read QObject dynamic-property storage across threads.
+    const ObjectPipelineContext *const pipelineContext = _pipeline
+        ? objectPipelineContext(G_OBJECT(_pipeline))
+        : nullptr;
+    const QString explicitH265Factory = pipelineContext
+        ? pipelineContext->explicitH265DecoderFactory
+        : QString();
+    const bool capsUnknown = !caps || gst_caps_is_any(caps)
+        || gst_caps_is_empty(caps);
+    const bool compatibleHvc1Caps = capsAreHvc1CompatibleH265(caps);
+    const bool currentGenerationConfirmedH265 =
+        _actualVideoCodec.load() == VIDEO_CODEC_H265;
+    // A source-pad hint normally supplies the negotiated hvc1 caps. If a
+    // late startDecoding() sees only ANY on the still-closed valve, the tee's
+    // current-generation CAPS milestone is an equally scoped H.265 proof;
+    // parsebin's autoplug query already constrains that stream to hvc1.
+    const bool confirmedH265Route = compatibleHvc1Caps
+        || (capsUnknown && currentGenerationConfirmedH265);
+
+    if (confirmedH265Route && !explicitH265Factory.isEmpty()) {
+        _actualVideoCodec.store(VIDEO_CODEC_H265);
+        const QByteArray factoryName = explicitH265Factory.toUtf8();
+        GstElement *const decoder =
+            gst_element_factory_make(factoryName.constData(), nullptr);
+        gchar *const capsText = caps ? gst_caps_to_string(caps) : nullptr;
+
+        if (!decoder) {
+            qCCritical(GstVideoReceiverLog)
+                << "Explicit H.265 decoder factory could not be created"
+                << "receiver" << this
+                << "name" << name()
+                << "uri" << _pipelineUri()
+                << "factory" << explicitH265Factory
+                << "caps" << (capsText ? capsText : "unknown");
+        } else {
+            g_object_set_qdata(G_OBJECT(decoder),
+                               explicitDecoderQuark(),
+                               GINT_TO_POINTER(1));
+            qCInfo(GstVideoReceiverLog)
+                << "Using receiver-specific explicit H.265 decoder factory"
+                << "receiver" << this
+                << "name" << name()
+                << "uri" << _pipelineUri()
+                << "factory" << explicitH265Factory
+                << "caps" << (capsText ? capsText : "unknown");
+        }
+
+        g_free(capsText);
+        return decoder;
+    }
+
+    if (!explicitH265Factory.isEmpty()) {
+        gchar *const capsText = caps ? gst_caps_to_string(caps) : nullptr;
+        qCCritical(GstVideoReceiverLog)
+            << "Refusing receiver-specific explicit H.265 decoder factory "
+               "because this generation is not confirmed as hvc1-compatible H.265"
+            << "receiver" << this
+            << "name" << name()
+            << "uri" << _pipelineUri()
+            << "factory" << explicitH265Factory
+            << "currentGenerationCodec" << _actualVideoCodec.load()
+            << "hvc1CompatibleCaps" << compatibleHvc1Caps
+            << "caps" << (capsText ? capsText : "unknown");
+        g_free(capsText);
+        return nullptr;
+    }
 
     GstElement *decoder = gst_element_factory_make("decodebin3", nullptr);
     if (!decoder) {
@@ -1221,7 +1359,21 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
         return;
     }
 
-    if (!_addDecoder(_decoderValve)) {
+    // The parsebin pad owns the most specific negotiated codec caps at this
+    // point. Pass them through instead of depending on sticky CAPS having
+    // already propagated across the newly-linked tee/valve branch.
+    GstCaps *sourceCaps = gst_pad_get_current_caps(pad);
+    if (!sourceCaps) {
+        sourceCaps = gst_pad_query_caps(pad, nullptr);
+    }
+    const int sourceCodec = videoCodecFromCaps(sourceCaps);
+    if (sourceCodec != VIDEO_CODEC_UNKNOWN) {
+        _actualVideoCodec.store(sourceCodec);
+    }
+
+    const bool decoderAdded = _addDecoder(_decoderValve, sourceCaps);
+    gst_clear_caps(&sourceCaps);
+    if (!decoderAdded) {
         qCCritical(GstVideoReceiverLog) << "_addDecoder() failed";
         _shutdownDecodingBranch();
         return;
@@ -1245,7 +1397,7 @@ void GstVideoReceiver::_onNewDecoderPad(GstPad *pad)
     }
 }
 
-bool GstVideoReceiver::_addDecoder(GstElement *src)
+bool GstVideoReceiver::_addDecoder(GstElement *src, GstCaps *capsHint)
 {
     GstPad *srcpad = gst_element_get_static_pad(src, "src");
     if (!srcpad) {
@@ -1253,16 +1405,26 @@ bool GstVideoReceiver::_addDecoder(GstElement *src)
         return false;
     }
 
-    GstCaps *caps = gst_pad_query_caps(srcpad, nullptr);
+    // The dynamic parsebin pad can provide a generation-scoped negotiated
+    // hint before sticky CAPS reach this valve. Late startDecoding() calls do
+    // not have that pad, so retain the native current/query fallback.
+    GstCaps *caps = capsHint ? gst_caps_ref(capsHint) : nullptr;
     if (!caps) {
-        qCCritical(GstVideoReceiverLog) << "gst_pad_query_caps() failed";
+        caps = gst_pad_get_current_caps(srcpad);
+    }
+    if (!caps) {
+        caps = gst_pad_query_caps(srcpad, nullptr);
+    }
+    if (!caps) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to obtain current or query caps for the decoder branch";
         gst_clear_object(&srcpad);
         return false;
     }
 
     gst_clear_object(&srcpad);
 
-    _decoder = _makeDecoder();
+    _decoder = _makeDecoder(caps, _videoSink);
     if (!_decoder) {
         qCCritical(GstVideoReceiverLog) << "_makeDecoder() failed";
         gst_clear_caps(&caps);
@@ -1272,6 +1434,9 @@ bool GstVideoReceiver::_addDecoder(GstElement *src)
     const quint64 generation = _activePipelineGeneration.load();
     const QString streamUri = _pipelineUri();
     _setDiagnosticDecoderRoot(_decoder, streamUri, generation);
+    if (isExplicitDecoder(_decoder)) {
+        _observeExplicitDecoder(_decoder, streamUri, generation);
+    }
 
     (void) gst_object_ref(_decoder);
 
@@ -1671,6 +1836,113 @@ void GstVideoReceiver::_setDiagnosticDecoderRoot(GstElement *decoder,
     gst_clear_object(&oldRoot);
     _decoderFrameReceived.store(false);
     _sinkFrameReceived.store(false);
+}
+
+void GstVideoReceiver::_observeExplicitDecoder(GstElement *decoder,
+                                               const QString &uri,
+                                               quint64 generation)
+{
+    if (!decoder || !isExplicitDecoder(decoder) || generation == 0
+        || generation != _activePipelineGeneration.load()) {
+        return;
+    }
+
+    GstElementFactory *const elementFactory =
+        gst_element_get_factory(decoder);
+    const gchar *const klass = elementFactory
+        ? gst_element_factory_get_metadata(elementFactory,
+                                           GST_ELEMENT_METADATA_KLASS)
+        : nullptr;
+    // The explicitly-selected root is the decoder contract even if a vendor
+    // factory publishes incomplete klass metadata.
+    if (!elementFactory) {
+        return;
+    }
+
+    QString pluginName;
+    QString factoryName;
+    elementFactoryIdentity(elementFactory, pluginName, factoryName);
+    {
+        QMutexLocker lock(&_decoderDiagnosticsMutex);
+        if (!_diagnosticDecoderRoot
+            || GST_OBJECT(_diagnosticDecoderRoot)
+                != GST_OBJECT(decoder)) {
+            return;
+        }
+        _diagnosticDecoderPlugin = pluginName;
+        _diagnosticDecoderFactory = factoryName;
+    }
+
+    const int codec = _actualVideoCodec.load();
+    _dispatchSignal(
+        [this, uri, generation, codec, pluginName, factoryName]() {
+            emit videoDecoderSelected(uri,
+                                      generation,
+                                      codec,
+                                      pluginName,
+                                      factoryName);
+        });
+
+    // Selection only proves which factory was instantiated. The src-pad
+    // probe below independently proves that decoded frames leave it.
+    qCInfo(GstVideoReceiverLog)
+        << "Decoder element instantiated"
+        << "receiver" << this
+        << "name" << name()
+        << "uri" << uri
+        << "generation" << generation
+        << "codec" << codec
+        << "selection" << "receiver-specific explicit factory"
+        << "plugin" << pluginName
+        << "factory" << factoryName
+        << "class" << QString::fromUtf8(klass ? klass : "unknown")
+        << "instance" << decoder;
+
+    GstPad *const srcPad = gst_element_get_static_pad(decoder, "src");
+    if (srcPad) {
+        _installDecoderOutputProbe(srcPad,
+                                   uri,
+                                   generation,
+                                   pluginName,
+                                   factoryName);
+        gst_object_unref(srcPad);
+    }
+}
+
+void GstVideoReceiver::_installDecoderOutputProbe(GstPad *srcPad,
+                                                  const QString &uri,
+                                                  quint64 generation,
+                                                  const QString &plugin,
+                                                  const QString &factory)
+{
+    if (!srcPad || generation == 0
+        || generation != _activePipelineGeneration.load()) {
+        return;
+    }
+
+    auto *const probeContext = new DecoderOutputProbeContext;
+    probeContext->receiver = this;
+    probeContext->uri = uri;
+    probeContext->generation = generation;
+    probeContext->plugin = plugin;
+    probeContext->factory = factory;
+    const gulong probeId = gst_pad_add_probe(
+        srcPad,
+        GST_PAD_PROBE_TYPE_BUFFER,
+        _onDecoderOutput,
+        probeContext,
+        destroyDecoderOutputProbeContext);
+    if (probeId == 0) {
+        delete probeContext;
+        qCWarning(GstVideoReceiverLog)
+            << "Unable to install decoder output diagnostics probe"
+            << "receiver" << this
+            << "name" << name()
+            << "uri" << uri
+            << "generation" << generation
+            << "plugin" << plugin
+            << "factory" << factory;
+    }
 }
 
 void GstVideoReceiver::_clearDiagnosticDecoder()
@@ -2168,6 +2440,30 @@ void GstVideoReceiver::_onNewPad(GstElement *element, GstPad *pad, gpointer data
     if (element == self->_source) {
         self->_onNewSourcePad(pad);
     } else if (element == self->_decoder) {
+        if (isExplicitDecoder(element)) {
+            const ObjectPipelineContext *const pipelineContext =
+                objectPipelineContext(G_OBJECT(element));
+            QString pluginName;
+            QString factoryName;
+            bool currentDecoderRoot = false;
+            {
+                QMutexLocker lock(&self->_decoderDiagnosticsMutex);
+                currentDecoderRoot = self->_diagnosticDecoderRoot
+                    && GST_OBJECT(self->_diagnosticDecoderRoot)
+                        == GST_OBJECT(element);
+                pluginName = self->_diagnosticDecoderPlugin;
+                factoryName = self->_diagnosticDecoderFactory;
+            }
+
+            if (pipelineContext && currentDecoderRoot) {
+                self->_installDecoderOutputProbe(
+                    pad,
+                    pipelineContext->uri,
+                    pipelineContext->generation,
+                    pluginName,
+                    factoryName);
+            }
+        }
         self->_onNewDecoderPad(pad);
     } else {
         qCDebug(GstVideoReceiverLog) << "Unexpected call!";

@@ -375,77 +375,77 @@
 <context>
     <name>VideoSettings</name>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="137"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="134"/>
         <source>Video Stream Integration</source>
         <translation>视频流集成</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="135"/>
         <source>Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.</source>
         <translation>控制MAVLink视频源选择和Android H.264/H.265硬件解码。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="142"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="139"/>
         <source>Use MAVLink automatic video stream</source>
         <translation>使用MAVLink自动视频流</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="148"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="145"/>
         <source>Keep this option off to edit the video source manually. Restart QGC after changing it.</source>
         <translation>如需手动编辑视频源，请关闭此选项。更改后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="143"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="153"/>
         <source>Require hardware decoding for Android H.264/H.265</source>
         <translation>Android H.264/H.265必须使用硬件解码</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="149"/>
-        <source>Compatible vendor MediaCodec hardware decoding is required by default. H.265 prioritizes the hvc1-to-Annex-B/AU adapter and keeps direct-hvc1 vendor hardware decoders as secondary candidates. A first-frame failure restarts the receiver continuously with capped backoff without changing decoder ranks or switching to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
-        <translation>默认必须使用兼容的厂商MediaCodec硬件解码。H.265优先使用hvc1转Annex-B/AU适配器，并将direct-hvc1厂商硬解保留为次级候选。首帧失败会按封顶退避持续完整重建，不改变decoder rank，也不会切换到avdec_h265；没有兼容硬件路径时明确解码失败。仅在诊断时关闭此项，以恢复QGC/GStreamer原生自动选择。</translation>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="159"/>
+        <source>Compatible vendor MediaCodec hardware decoding is required by default. Each new H.265 receiver/URI route starts with the hvc1-to-Annex-B/AU adapter. The next generation locks that receiver and URI to a compatible direct-hvc1 vendor MediaCodec only after either (1) H.265 source media has arrived, the adapter has been instantiated, and the first-frame watchdog expires with no decoder output or sink frame, or (2) that same generation identifies H.265 and the adapter, then reports a decoder-branch bus error with no RTSP-source error, decoder output, or sink frame. The decoder-branch case may occur before the first source buffer when MediaCodec rejects CAPS/CSD. The direct route remains sticky until the URI changes. Start failures, RTSP/source errors, non-decoder-branch bus errors, sink-branch errors, and decoder output without a sink frame do not switch routes. Decoder ranks remain unchanged and QGC never switches to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
+        <translation>默认必须使用兼容的厂商MediaCodec硬件解码。每个新的H.265 receiver/URI路由首代都使用hvc1转Annex-B/AU适配器。下一代只有在以下任一条件成立后才会把该receiver与URI锁定到兼容的direct-hvc1厂商MediaCodec：(1) H.265 source媒体已到、adapter已实例化，且首帧watchdog在decoder无输出且sink无帧时超时；(2) 同一代已识别H.265和adapter，出现decoder分支bus错误，同时不存在RTSP source错误、decoder输出或sink帧。第二种情况可发生在source首buffer记录前，例如MediaCodec在CAPS/CSD阶段拒绝配置。direct路由保持到URI改变后复位。启动失败、RTSP/source错误、非decoder分支bus错误、sink分支错误以及decoder已有输出但sink无帧都不会切换路由。decoder rank保持不变，且绝不切换到avdec_h265；没有兼容硬件路径时明确解码失败。仅在诊断时关闭此项，以恢复QGC/GStreamer原生自动选择。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="150"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
         <source>Restart QGC after changing this option.</source>
         <translation>更改此选项后请重启QGC。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="211"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="214"/>
         <source>Save photos and videos locally</source>
         <translation>在本地保存照片和视频</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="217"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="220"/>
         <source>Camera photo and recording actions also save media to this device, independently of gimbal SD card storage.</source>
         <translation>执行相机拍照和录像时，也会将媒体保存到本设备，且不依赖云台SD卡存储。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="47"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="51"/>
         <source>Video Source</source>
         <translation>视频来源</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="48"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="52"/>
         <source>Mavlink camera stream is automatically configured</source>
         <translation>MAVLink摄像头流已自动配置</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="53"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="57"/>
         <source>Source</source>
         <translation>来源</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="62"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="69"/>
         <source>Connection</source>
         <translation>连接</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="64"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
         <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
         <translation>视频1和视频2为通用RTSP输入；相机SDK控制需单独配置。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
         <source>RTSP URL 1</source>
         <translation>RTSP地址1</translation>
     </message>
@@ -455,22 +455,22 @@
         <translation>RTSP地址2</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="100"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
         <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
         <translation>RTSP地址2使用独立接收器，留空可禁用第二个视频窗口。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="109"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
         <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
         <translation>RTSP 地址2与已配置或当前生效的视频1流相同。为避免重复拉取同一视频流，第二路接收器已禁用。</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="119"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
         <source>TCP URL</source>
         <translation>TCP地址</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="128"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="121"/>
         <source>UDP URL</source>
         <translation>UDP地址</translation>
     </message>
@@ -500,22 +500,22 @@
         <translation>视频解码优先级</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="207"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="210"/>
         <source>Local Video Storage</source>
         <translation>本地视频存储</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="225"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="228"/>
         <source>Record File Format</source>
         <translation>录像文件格式</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="232"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="235"/>
         <source>Auto-Delete Saved Recordings</source>
         <translation>自动删除已保存录像</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="239"/>
+        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="242"/>
         <source>Max Storage Usage</source>
         <translation>最大存储使用量</translation>
     </message>

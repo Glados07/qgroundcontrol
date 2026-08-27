@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <QtCore/QString>
+
 class AndroidVideoDecoderPolicy
 {
 public:
@@ -14,4 +16,9 @@ public:
     /// candidates. This must run after GStreamer initialization and before
     /// decodebin3 creates either video pipeline.
     static void apply(bool forceHardwareDecoding);
+
+    /// Preferred vendor androidmedia decoder which accepts H.265 hvc1
+    /// directly. The value is selected before policy ranks are overwritten,
+    /// using original rank descending and factory name ascending.
+    static QString preferredDirectHvc1DecoderFactoryName();
 };

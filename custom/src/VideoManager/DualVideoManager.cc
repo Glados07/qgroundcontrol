@@ -11,6 +11,8 @@
 #include "QGCLoggingCategory.h"
 #include "Settings/VideoCustomSettings.h"
 #include "SettingsManager.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderFallback.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidH265HardwareDecoderAdapter.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoSettings.h"
 
@@ -506,6 +508,9 @@ void DualVideoManager::_ensureReceiver()
     receiver->setName(QString::fromLatin1(kSecondaryVideoObjectName));
     receiver->setWidget(videoItem);
     receiver->setUri(_uri);
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    AndroidH265DecoderFallback::install(receiver);
+#endif
 
     if (VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings()) {
         receiver->setLowLatency(videoSettings->lowLatencyMode()->rawValue().toBool());
@@ -815,6 +820,16 @@ void DualVideoManager::_ensureReceiver()
                 }
                 guardedThis->_selectedDecoderPlugin = plugin;
                 guardedThis->_selectedDecoderFactory = factory;
+                const bool adapterSelected =
+                    factory == QString::fromLatin1(
+                                   AndroidH265HardwareDecoderAdapter::elementFactoryName());
+                guardedThis->_adapterSelected |= adapterSelected;
+                if (adapterSelected
+                    && guardedThis->_videoCodec
+                        == VideoReceiver::VIDEO_CODEC_UNKNOWN) {
+                    guardedThis->_videoCodec =
+                        VideoReceiver::VIDEO_CODEC_H265;
+                }
                 guardedThis->_armDecodeStartupWatchdog();
             });
 
@@ -895,15 +910,40 @@ void DualVideoManager::_ensureReceiver()
                 if (!decoderFactory.isEmpty()) {
                     guardedThis->_selectedDecoderFactory = decoderFactory;
                 }
+                guardedThis->_adapterSelected |=
+                    decoderFactory == QString::fromLatin1(
+                                          AndroidH265HardwareDecoderAdapter::elementFactoryName())
+                    || errorFactory == QString::fromLatin1(
+                                           AndroidH265HardwareDecoderAdapter::elementFactoryName());
+                if (guardedThis->_adapterSelected
+                    && guardedThis->_videoCodec
+                        == VideoReceiver::VIDEO_CODEC_UNKNOWN) {
+                    guardedThis->_videoCodec =
+                        VideoReceiver::VIDEO_CODEC_H265;
+                }
 
                 guardedThis->_decodeStartupTimer.stop();
                 if (guardedThis->_stopping) {
                     return;
                 }
 
+                const bool directRetryPrepared =
+                    !rtspSourceError && decoderBranchError
+                    && AndroidH265DecoderFallback::prepareDirectRetry(
+                        guardedReceiver.data(),
+                        uri,
+                        generation,
+                        guardedThis->_videoCodec,
+                        guardedThis->_adapterSelected,
+                        guardedThis->_sourceFrameReceived,
+                        true,
+                        guardedThis->_decoderFrameReceived,
+                        guardedThis->_sinkFrameReceived,
+                        "H.265 adapter decoder-branch bus error");
+
                 // The core receiver stops every current-generation bus error.
-                // Block watchdog/start paths until that stop completion even
-                // while keeping the configured process-wide ranks intact.
+                // Freeze any proven adapter->direct route before that stop,
+                // then block watchdog/start paths until completion.
                 guardedThis->_stopping = true;
                 qCWarning(DualVideoManagerLog)
                     << "Secondary video pipeline stopped; configured decoder ranks remain unchanged"
@@ -921,7 +961,8 @@ void DualVideoManager::_ensureReceiver()
                     << "decoderFrame"
                     << guardedThis->_decoderFrameReceived
                     << "sinkFrame" << guardedThis->_sinkFrameReceived
-                    << "decoderBranchError" << decoderBranchError;
+                    << "decoderBranchError" << decoderBranchError
+                    << "directHardwareRetryPrepared" << directRetryPrepared;
                 // GstVideoReceiver stops itself after this signal. The
                 // existing onStopComplete path applies bounded restart.
             });
@@ -1066,6 +1107,7 @@ void DualVideoManager::_resetVideoPipelineGeneration()
     _videoPipelineGeneration = 0;
     _videoCodec = VideoReceiver::VIDEO_CODEC_UNKNOWN;
     _sourceFrameReceived = false;
+    _adapterSelected = false;
     _decoderFrameReceived = false;
     _sinkFrameReceived = false;
 }
@@ -1087,8 +1129,20 @@ void DualVideoManager::_handleDecodeStartupTimeout()
         return;
     }
 
+    const bool directRetryPrepared =
+        AndroidH265DecoderFallback::prepareDirectRetry(
+            _receiver.data(),
+            _videoPipelineUri,
+            _videoPipelineGeneration,
+            _videoCodec,
+            _adapterSelected,
+            _sourceFrameReceived,
+            false,
+            _decoderFrameReceived,
+            _sinkFrameReceived,
+            "first decoded frame timeout");
     qCWarning(DualVideoManagerLog)
-        << "Secondary RTSP source produced media but no sink frame; restarting without changing decoder ranks"
+        << "Secondary RTSP source produced media but no sink frame; rebuilding the receiver"
         << _videoPipelineUri
         << "generation" << _videoPipelineGeneration
         << "codec" << _videoCodec
@@ -1096,7 +1150,8 @@ void DualVideoManager::_handleDecodeStartupTimeout()
         << "decoderFactory" << _selectedDecoderFactory
         << "sourceFrame" << _sourceFrameReceived
         << "decoderFrame" << _decoderFrameReceived
-        << "sinkFrame" << _sinkFrameReceived;
+        << "sinkFrame" << _sinkFrameReceived
+        << "directHardwareRetryPrepared" << directRetryPrepared;
 #else
     if (!_receiver || !_receiver->started() || !_streaming || _decoding
         || _stopping || _releaseAfterStop) {

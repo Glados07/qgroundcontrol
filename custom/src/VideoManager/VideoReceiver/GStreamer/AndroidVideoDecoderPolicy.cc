@@ -18,6 +18,14 @@
 
 QGC_LOGGING_CATEGORY(AndroidVideoDecoderPolicyLog, "gcs.custom.video.androidvideodecoderpolicy")
 
+namespace {
+
+// Written only while apply() runs during startup, before either decodebin is
+// created, and read-only for the remainder of the process lifetime.
+QString s_preferredDirectHvc1DecoderFactoryName;
+
+} // namespace
+
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 namespace {
 
@@ -109,8 +117,13 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
                                        GstCaps *codecCaps,
                                        GstCaps *nativeStreamCaps,
                                        GstCaps *byteStreamCaps,
-                                       bool compatibleAdapterAvailable)
+                                       bool compatibleAdapterAvailable,
+                                       QString *preferredDirectFactoryName)
 {
+    if (preferredDirectFactoryName) {
+        preferredDirectFactoryName->clear();
+    }
+
     GList *const decoderFactories = gst_element_factory_list_get_elements(
         static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER |
                                                GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO),
@@ -126,12 +139,31 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
     }
 
     int directNativeVendorCount = 0;
+    bool preferredDirectFactoryFound = false;
+    guint preferredDirectFactoryOriginalRank = GST_RANK_NONE;
     for (GList *node = codecFactories; node; node = node->next) {
         GstElementFactory *const factory = GST_ELEMENT_FACTORY(node->data);
         if (!isAdapterFactory(factory)
             && isVendorMediaCodecDecoderFactory(factory)
             && factoryCanSinkCaps(factory, nativeStreamCaps)) {
             ++directNativeVendorCount;
+
+            if (preferredDirectFactoryName) {
+                GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+                const gchar *const rawFactoryName = gst_plugin_feature_get_name(feature);
+                const QString factoryName = QString::fromUtf8(rawFactoryName ? rawFactoryName : "");
+                const guint originalRank = gst_plugin_feature_get_rank(feature);
+                if (!preferredDirectFactoryFound
+                    || originalRank > preferredDirectFactoryOriginalRank
+                    || (originalRank == preferredDirectFactoryOriginalRank
+                        && QString::compare(factoryName,
+                                            *preferredDirectFactoryName,
+                                            Qt::CaseSensitive) < 0)) {
+                    preferredDirectFactoryFound = true;
+                    preferredDirectFactoryOriginalRank = originalRank;
+                    *preferredDirectFactoryName = factoryName;
+                }
+            }
         }
     }
 
@@ -201,6 +233,8 @@ QString pluginAndFactoryName(GstElementFactory *factory)
 
 void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 {
+    s_preferredDirectHvc1DecoderFactoryName.clear();
+
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
     if (!forceHardwareDecoding) {
         qCInfo(AndroidVideoDecoderPolicyLog)
@@ -241,13 +275,20 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
     }
 
     const int directH264VendorCount = rankNativeVendorMediaCodecDecoders(
-        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false);
+        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false, nullptr);
     const int directHvc1VendorCount = rankNativeVendorMediaCodecDecoders(
         "H.265",
         h265Caps,
         hvc1Caps,
         h265ByteStreamCaps,
-        adapterRegistered);
+        adapterRegistered,
+        &s_preferredDirectHvc1DecoderFactoryName);
+
+    if (!s_preferredDirectHvc1DecoderFactoryName.isEmpty()) {
+        qCInfo(AndroidVideoDecoderPolicyLog)
+            << "Selected receiver-specific H.265 direct hardware retry factory"
+            << s_preferredDirectHvc1DecoderFactoryName;
+    }
 
     if (directH264VendorCount > 0) {
         qCInfo(AndroidVideoDecoderPolicyLog)
@@ -289,4 +330,9 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 #else
     Q_UNUSED(forceHardwareDecoding)
 #endif
+}
+
+QString AndroidVideoDecoderPolicy::preferredDirectHvc1DecoderFactoryName()
+{
+    return s_preferredDirectHvc1DecoderFactoryName;
 }

@@ -81,14 +81,15 @@ private:
     void _start(uint32_t timeout,
                 const QString &startUri,
                 bool lowLatencyMode,
-                quint64 generation);
+                quint64 generation,
+                const QString &explicitH265DecoderFactory);
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);
 
     void _onNewSourcePad(GstPad *pad);
     void _onNewDecoderPad(GstPad *pad);
-    bool _addDecoder(GstElement *src);
+    bool _addDecoder(GstElement *src, GstCaps *capsHint = nullptr);
     bool _ensureVideoSinkInPipeline();
     bool _addVideoSink(GstPad *pad);
     void _noteTeeFrame(const QString &uri, quint64 generation, int codec);
@@ -109,6 +110,14 @@ private:
     void _setDiagnosticDecoderRoot(GstElement *decoder,
                                    const QString &uri,
                                    quint64 generation);
+    void _observeExplicitDecoder(GstElement *decoder,
+                                 const QString &uri,
+                                 quint64 generation);
+    void _installDecoderOutputProbe(GstPad *srcPad,
+                                    const QString &uri,
+                                    quint64 generation,
+                                    const QString &plugin,
+                                    const QString &factory);
     void _clearDiagnosticDecoder();
     GstElement *_snapshotDiagnosticDecoder(quint64 generation,
                                            QString &plugin,
