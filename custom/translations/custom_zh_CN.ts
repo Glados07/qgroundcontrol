@@ -411,16 +411,6 @@
         <translation>Android H.264/H.265必须使用硬件解码</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="159"/>
-        <source>Compatible vendor MediaCodec hardware decoding is required by default. Each new H.265 receiver/URI route starts with the hvc1-to-Annex-B/AU adapter. The next generation locks that receiver and URI to a compatible direct-hvc1 vendor MediaCodec only after either (1) H.265 source media has arrived, the adapter has been instantiated, and the first-frame watchdog expires with no decoder output or sink frame, or (2) that same generation identifies H.265 and the adapter, then reports a decoder-branch bus error with no RTSP-source error, decoder output, or sink frame. The decoder-branch case may occur before the first source buffer when MediaCodec rejects CAPS/CSD. The direct route remains sticky until the URI changes. Start failures, RTSP/source errors, non-decoder-branch bus errors, sink-branch errors, and decoder output without a sink frame do not switch routes. Decoder ranks remain unchanged and QGC never switches to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
-        <translation>默认必须使用兼容的厂商MediaCodec硬件解码。每个新的H.265 receiver/URI路由首代都使用hvc1转Annex-B/AU适配器。下一代只有在以下任一条件成立后才会把该receiver与URI锁定到兼容的direct-hvc1厂商MediaCodec：(1) H.265 source媒体已到、adapter已实例化，且首帧watchdog在decoder无输出且sink无帧时超时；(2) 同一代已识别H.265和adapter，出现decoder分支bus错误，同时不存在RTSP source错误、decoder输出或sink帧。第二种情况可发生在source首buffer记录前，例如MediaCodec在CAPS/CSD阶段拒绝配置。direct路由保持到URI改变后复位。启动失败、RTSP/source错误、非decoder分支bus错误、sink分支错误以及decoder已有输出但sink无帧都不会切换路由。decoder rank保持不变，且绝不切换到avdec_h265；没有兼容硬件路径时明确解码失败。仅在诊断时关闭此项，以恢复QGC/GStreamer原生自动选择。</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
-        <source>Restart QGC after changing this option.</source>
-        <translation>更改此选项后请重启QGC。</translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="214"/>
         <source>Save photos and videos locally</source>
         <translation>在本地保存照片和视频</translation>
@@ -629,11 +619,6 @@
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="105"/>
         <source>Waiting to open SDK serial device</source>
         <translation>正在等待打开SDK串口设备</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
-        <source>UniGCS must assign the SDK interface to Serial 2. Map the auto-centering wheel to CH9 and the small-stick press to CH10.</source>
-        <translation>UniGCS必须将SDK接口分配到串口2，并将自动回中拨轮映射到CH9、小摇杆按键映射到CH10。</translation>
     </message>
 </context>
 <context>
@@ -938,12 +923,6 @@
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
         <source>UniPod MT11 zoom step</source>
         <translation>UniPod MT11变焦步长</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
-        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target within the documented 1.0x to 30.0x absolute-command range; when less than one configured step remains, the exact 30.0x boundary is the final target. An explicit 420 ms gesture threshold starts native direction-only 0x05 zoom in both shared and hold-only ranges; a shorter release above 30.0x sends no zoom command. The pressed manager and capabilities are captured. If live hold availability or the first SDK write temporarily fails at the threshold, the same physical press retries its start every 100 ms while the same endpoint remains eligible; release, cancellation, manager switching, or an offline state before start cancels the retry. Command 0x05 has no speed field, so the configured step does not change native held speed. A successful hold sends its first direction synchronously without a preceding 0x05(0) stop or artificial delay, then repeats only that direction every 450 ms for the complete physical press. Because MT11 exposes no request generation or zoom-controller ownership acknowledgement, no 0x18 position change can terminate a still-pressed keepalive. Once the first direction succeeds, temporary 0x16/0x18 staleness, SDK silence, or an individual keepalive write failure does not consume that press; release, cancellation, lifecycle teardown, or the 60-second no-progress guard ends it. A persisted preceding 0x0f target keeps the first hold available across delayed feedback and becomes the held gesture's endpoint-motion reference. During a hold, authoritative 0x18 feedback is requested every 100 ms. Endpoint release eligibility requires draining the preceding 1.5-second request window, two requested-direction progress samples beyond the captured reference, and two consecutive endpoint samples; even then the direction keepalive continues until release. A normal release at that reliable physical endpoint omits 0x05(0), avoiding its focus cycle so the next reverse hold can override the latched direction; every other normal release and every cancellation cancels future direction copies first, sends an immediate stop, and schedules one bounded 150 ms safety copy. Above 30.0x, tap control is disabled in both directions. The default step is 1.0x.</source>
-        <translation>在协议规定的1.0x至30.0x绝对命令范围内，每次短按都会前进到以最小倍率为锚点的下一个合法目标；剩余区间不足一个配置步长时，以精确30.0x作为最后目标。短按与长按并存区以及仅长按区都由显式420毫秒手势阈值启动原生0x05方向变焦；30.0x以上不足420毫秒的短按不会发送缩放命令。按下时会快照Manager身份和控制能力；若阈值时实时长按能力或第一次SDK写入暂时失败，只要仍是同一次物理按压且同一端点仍具备启动条件，就每100毫秒重试；松手、取消、切换Manager或启动前离线都会取消重试。0x05没有速度字段，配置步长不会改变原生长按速度。长按成功启动时会同步发送第一份方向命令，前面不发送0x05(0)，也没有人为等待；随后在整次物理按住期间每450毫秒只补发同一方向。MT11没有请求代次或变倍控制器所有权确认，因此任何0x18位置变化都不能终止仍在按住的方向保活。首方向成功后，0x16/0x18暂时不新鲜、SDK暂时静默或单次保活写入失败都不会消费该按压；只有松手、取消、生命周期退出或60秒无进展保护才会结束。持久保存的前一个0x0f目标用于抵抗迟到反馈导致的首次长按禁用，并成为该长按的端点运动参考。长按期间每100毫秒请求一次权威0x18反馈。端点松手资格必须先排空前一轮1.5秒请求窗口，再取得两份请求方向进展且越过捕获参考，并连续取得两份端点样本；即使满足这些条件，方向保活也会持续到真实松手。若在该可靠物理端点正常松手，则不发送0x05(0)，避免其对焦周期阻塞下一次反向长按覆盖锁存方向；其他正常松手和所有取消都会先取消未来方向补发，再立即发送停止，并安排一份150毫秒有界安全副本。30.0x以上双向禁用短按。默认步长为1.0x。</translation>
     </message>
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].shortDesc, </extracomment>

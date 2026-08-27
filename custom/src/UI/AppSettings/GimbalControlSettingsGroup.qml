@@ -104,13 +104,6 @@ ColumnLayout {
                               ? qsTr("Serial open; waiting for channel data")
                               : qsTr("Waiting to open SDK serial device")
             }
-
-            QGCLabel {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                font.pointSize: ScreenTools.smallFontPointSize
-                text: qsTr("UniGCS must assign the SDK interface to Serial 2. Map the auto-centering wheel to CH9 and the small-stick press to CH10.")
-            }
         }
 
         ColumnLayout {

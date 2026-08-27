@@ -9,8 +9,12 @@
 #include "AndroidH265HardwareDecoderAdapter.h"
 #include "QGCLoggingCategory.h"
 
+#include <QtCore/QList>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtCore/QtGlobal>
+
+#include <algorithm>
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 #include <gst/gst.h>
@@ -22,7 +26,7 @@ namespace {
 
 // Written only while apply() runs during startup, before either decodebin is
 // created, and read-only for the remainder of the process lifetime.
-QString s_preferredDirectHvc1DecoderFactoryName;
+QStringList s_directHvc1DecoderFactoryNames;
 
 } // namespace
 
@@ -36,6 +40,12 @@ namespace {
 constexpr guint kDirectHardwareDecoderRank = GST_RANK_PRIMARY + 3;
 
 QString pluginAndFactoryName(GstElementFactory *factory);
+
+struct DirectHardwareDecoderCandidate {
+    QString factoryName;
+    guint originalRank = GST_RANK_NONE;
+    bool matchesAdapterDecoder = false;
+};
 
 bool factoryCanSinkCaps(GstElementFactory *factory, const GstCaps *caps)
 {
@@ -118,10 +128,10 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
                                        GstCaps *nativeStreamCaps,
                                        GstCaps *byteStreamCaps,
                                        bool compatibleAdapterAvailable,
-                                       QString *preferredDirectFactoryName)
+                                       QStringList *orderedDirectFactoryNames)
 {
-    if (preferredDirectFactoryName) {
-        preferredDirectFactoryName->clear();
+    if (orderedDirectFactoryNames) {
+        orderedDirectFactoryNames->clear();
     }
 
     GList *const decoderFactories = gst_element_factory_list_get_elements(
@@ -138,34 +148,48 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
         return 0;
     }
 
-    int directNativeVendorCount = 0;
-    bool preferredDirectFactoryFound = false;
-    guint preferredDirectFactoryOriginalRank = GST_RANK_NONE;
+    QList<DirectHardwareDecoderCandidate> directCandidates;
+    const QString adapterDecoderFactoryName = QString::fromUtf8(
+        AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
     for (GList *node = codecFactories; node; node = node->next) {
         GstElementFactory *const factory = GST_ELEMENT_FACTORY(node->data);
         if (!isAdapterFactory(factory)
             && isVendorMediaCodecDecoderFactory(factory)
             && factoryCanSinkCaps(factory, nativeStreamCaps)) {
-            ++directNativeVendorCount;
-
-            if (preferredDirectFactoryName) {
-                GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
-                const gchar *const rawFactoryName = gst_plugin_feature_get_name(feature);
-                const QString factoryName = QString::fromUtf8(rawFactoryName ? rawFactoryName : "");
-                const guint originalRank = gst_plugin_feature_get_rank(feature);
-                if (!preferredDirectFactoryFound
-                    || originalRank > preferredDirectFactoryOriginalRank
-                    || (originalRank == preferredDirectFactoryOriginalRank
-                        && QString::compare(factoryName,
-                                            *preferredDirectFactoryName,
-                                            Qt::CaseSensitive) < 0)) {
-                    preferredDirectFactoryFound = true;
-                    preferredDirectFactoryOriginalRank = originalRank;
-                    *preferredDirectFactoryName = factoryName;
-                }
-            }
+            GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+            const gchar *const rawFactoryName =
+                gst_plugin_feature_get_name(feature);
+            const QString factoryName = QString::fromUtf8(
+                rawFactoryName ? rawFactoryName : "");
+            directCandidates.append(DirectHardwareDecoderCandidate{
+                factoryName,
+                gst_plugin_feature_get_rank(feature),
+                !adapterDecoderFactoryName.isEmpty()
+                    && factoryName == adapterDecoderFactoryName,
+            });
         }
     }
+
+    std::sort(directCandidates.begin(),
+              directCandidates.end(),
+              [](const auto &left, const auto &right) {
+                  if (left.matchesAdapterDecoder
+                      != right.matchesAdapterDecoder) {
+                      return left.matchesAdapterDecoder;
+                  }
+                  if (left.originalRank != right.originalRank) {
+                      return left.originalRank > right.originalRank;
+                  }
+                  return left.factoryName < right.factoryName;
+              });
+    if (orderedDirectFactoryNames) {
+        for (const DirectHardwareDecoderCandidate &candidate :
+             directCandidates) {
+            orderedDirectFactoryNames->append(candidate.factoryName);
+        }
+    }
+    const int directNativeVendorCount =
+        static_cast<int>(directCandidates.size());
 
     // Enabling this product option means hardware decoding is required. A
     // device without a compatible MediaCodec path must fail explicitly; it
@@ -233,7 +257,7 @@ QString pluginAndFactoryName(GstElementFactory *factory)
 
 void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 {
-    s_preferredDirectHvc1DecoderFactoryName.clear();
+    s_directHvc1DecoderFactoryNames.clear();
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
     if (!forceHardwareDecoding) {
@@ -259,7 +283,8 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
     GstCaps *h264ByteStreamCaps = gst_caps_from_string(
         "video/x-h264,stream-format=(string)byte-stream,alignment=(string)au");
     GstCaps *h265Caps = gst_caps_from_string("video/x-h265");
-    GstCaps *hvc1Caps = gst_caps_from_string("video/x-h265,stream-format=(string)hvc1");
+    GstCaps *hvc1Caps = gst_caps_from_string(
+        "video/x-h265,stream-format=(string)hvc1,alignment=(string)au");
     GstCaps *h265ByteStreamCaps = gst_caps_from_string(
         "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au");
     if (!h264Caps || !avcCaps || !h264ByteStreamCaps
@@ -282,12 +307,12 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
         hvc1Caps,
         h265ByteStreamCaps,
         adapterRegistered,
-        &s_preferredDirectHvc1DecoderFactoryName);
+        &s_directHvc1DecoderFactoryNames);
 
-    if (!s_preferredDirectHvc1DecoderFactoryName.isEmpty()) {
+    if (!s_directHvc1DecoderFactoryNames.isEmpty()) {
         qCInfo(AndroidVideoDecoderPolicyLog)
-            << "Selected receiver-specific H.265 direct hardware retry factory"
-            << s_preferredDirectHvc1DecoderFactoryName;
+            << "Selected ordered receiver-specific H.265 direct hardware retry factories"
+            << s_directHvc1DecoderFactoryNames;
     }
 
     if (directH264VendorCount > 0) {
@@ -332,7 +357,7 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 #endif
 }
 
-QString AndroidVideoDecoderPolicy::preferredDirectHvc1DecoderFactoryName()
+QStringList AndroidVideoDecoderPolicy::directHvc1DecoderFactoryNames()
 {
-    return s_preferredDirectHvc1DecoderFactoryName;
+    return s_directHvc1DecoderFactoryNames;
 }

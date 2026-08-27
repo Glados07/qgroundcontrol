@@ -35,7 +35,6 @@ SettingsPage {
     property bool   _videoAutoStreamConfig:     _videoManager.autoStreamConfigured
     property bool   _videoSourceDisabled:       _videoSource === _videoSettings.disabledVideoSource
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
-    readonly property real _settingsContentWidth: ScreenTools.defaultFontPixelWidth * 50
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
     property var    _gimbalControlSettings:     QGroundControl.corePlugin.gimbalControlSettings
     property var    _videoCustomSettings:       QGroundControl.corePlugin.videoCustomSettings
@@ -45,9 +44,6 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        Layout.preferredWidth: _settingsContentWidth
-        Layout.maximumWidth: _settingsContentWidth
-        Layout.alignment:   Qt.AlignHCenter
         heading:            qsTr("Video Source")
         headingDescription: _videoAutoStreamConfig ? qsTr("Mavlink camera stream is automatically configured") : ""
         enabled:            !_videoAutoStreamConfig
@@ -63,9 +59,6 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        Layout.preferredWidth: _settingsContentWidth
-        Layout.maximumWidth: _settingsContentWidth
-        Layout.alignment:   Qt.AlignHCenter
         heading:            qsTr("Connection")
         headingDescription: _isRTSP
                             ? qsTr("Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.")
@@ -128,9 +121,6 @@ SettingsPage {
     // of the native Video Source and Connection groups.
     SettingsGroupLayout {
         Layout.fillWidth:       true
-        Layout.preferredWidth:  _settingsContentWidth
-        Layout.maximumWidth:    _settingsContentWidth
-        Layout.alignment:       Qt.AlignHCenter
         heading:                qsTr("Video Stream Integration")
         headingDescription: qsTr("Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.")
 
@@ -153,22 +143,10 @@ SettingsPage {
             text: qsTr("Require hardware decoding for Android H.264/H.265")
             fact: _gimbalControlSettings.forceAndroidH265HardwareDecoder
         }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("Compatible vendor MediaCodec hardware decoding is required by default. Each new H.265 receiver/URI route starts with the hvc1-to-Annex-B/AU adapter. The next generation locks that receiver and URI to a compatible direct-hvc1 vendor MediaCodec only after either (1) H.265 source media has arrived, the adapter has been instantiated, and the first-frame watchdog expires with no decoder output or sink frame, or (2) that same generation identifies H.265 and the adapter, then reports a decoder-branch bus error with no RTSP-source error, decoder output, or sink frame. The decoder-branch case may occur before the first source buffer when MediaCodec rejects CAPS/CSD. The direct route remains sticky until the URI changes. Start failures, RTSP/source errors, non-decoder-branch bus errors, sink-branch errors, and decoder output without a sink frame do not switch routes. Decoder ranks remain unchanged and QGC never switches to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.") + " "
-                  + qsTr("Restart QGC after changing this option.")
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            opacity: 0.72
-        }
     }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        Layout.preferredWidth: _settingsContentWidth
-        Layout.maximumWidth: _settingsContentWidth
-        Layout.alignment:   Qt.AlignHCenter
         heading:            qsTr("Settings")
         visible:            !_videoSourceDisabled
 
@@ -204,9 +182,6 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:       true
-        Layout.preferredWidth:  _settingsContentWidth
-        Layout.maximumWidth:    _settingsContentWidth
-        Layout.alignment:       Qt.AlignHCenter
         heading:                qsTr("Local Video Storage")
 
         FactCheckBoxSlider {

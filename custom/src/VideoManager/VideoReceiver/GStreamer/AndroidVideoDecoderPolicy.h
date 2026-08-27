@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <QtCore/QString>
+#include <QtCore/QStringList>
 
 class AndroidVideoDecoderPolicy
 {
@@ -17,8 +17,8 @@ public:
     /// decodebin3 creates either video pipeline.
     static void apply(bool forceHardwareDecoding);
 
-    /// Preferred vendor androidmedia decoder which accepts H.265 hvc1
-    /// directly. The value is selected before policy ranks are overwritten,
-    /// using original rank descending and factory name ascending.
-    static QString preferredDirectHvc1DecoderFactoryName();
+    /// Ordered vendor MediaCodec factories which accept framed H.265 hvc1.
+    /// The adapter's internal factory is first when it also supports hvc1;
+    /// remaining candidates retain their original rank/name ordering.
+    static QStringList directHvc1DecoderFactoryNames();
 };

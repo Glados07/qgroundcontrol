@@ -55,6 +55,22 @@ bool sameStreamUri(const QString &left, const QString &right)
     return leftUrl.isValid() && rightUrl.isValid() && leftUrl == rightUrl;
 }
 
+bool isAdapterFactoryForRoute(VideoReceiver *receiver,
+                              const QString &uri,
+                              const QString &factory)
+{
+    if (!AndroidH265DecoderFallback::usesAdapterRoute(receiver, uri)) {
+        return false;
+    }
+
+    const QString adapterFactory = QString::fromLatin1(
+        AndroidH265HardwareDecoderAdapter::elementFactoryName());
+    const QString internalFactory = QString::fromUtf8(
+        AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
+    return factory == adapterFactory
+        || (!internalFactory.isEmpty() && factory == internalFactory);
+}
+
 class FinishSecondaryVideoInitialization final : public QRunnable
 {
 public:
@@ -686,6 +702,18 @@ void DualVideoManager::_ensureReceiver()
                 // started=true, decoding=false forever. Serialize a complete
                 // stop/restart so the next attempt gets a fresh Gst pipeline.
                 guardedThis->_decodeStartupTimer.stop();
+                const bool hardwareRouteAdvanced =
+                    AndroidH265DecoderFallback::prepareDirectRetry(
+                        guardedReceiver.data(),
+                        guardedThis->_videoPipelineUri,
+                        guardedThis->_videoPipelineGeneration,
+                        guardedThis->_videoCodec,
+                        guardedThis->_adapterSelected,
+                        guardedThis->_sourceFrameReceived,
+                        true,
+                        guardedThis->_decoderFrameReceived,
+                        guardedThis->_sinkFrameReceived,
+                        "secondary decoder or video sink failed to start");
                 qCWarning(DualVideoManagerLog)
                     << "Secondary decoding branch will be rebuilt without changing decoder ranks"
                     << guardedReceiver->uri()
@@ -700,7 +728,8 @@ void DualVideoManager::_ensureReceiver()
                     << guardedThis->_sourceFrameReceived
                     << "decoderFrame"
                     << guardedThis->_decoderFrameReceived
-                    << "sinkFrame" << guardedThis->_sinkFrameReceived;
+                    << "sinkFrame" << guardedThis->_sinkFrameReceived
+                    << "hardwareRouteAdvanced" << hardwareRouteAdvanced;
                 guardedThis->_consecutiveDecodeFailures = qMin(
                     guardedThis->_consecutiveDecodeFailures + 1,
                     4);
@@ -820,9 +849,8 @@ void DualVideoManager::_ensureReceiver()
                 }
                 guardedThis->_selectedDecoderPlugin = plugin;
                 guardedThis->_selectedDecoderFactory = factory;
-                const bool adapterSelected =
-                    factory == QString::fromLatin1(
-                                   AndroidH265HardwareDecoderAdapter::elementFactoryName());
+                const bool adapterSelected = isAdapterFactoryForRoute(
+                    guardedReceiver.data(), uri, factory);
                 guardedThis->_adapterSelected |= adapterSelected;
                 if (adapterSelected
                     && guardedThis->_videoCodec
@@ -910,11 +938,13 @@ void DualVideoManager::_ensureReceiver()
                 if (!decoderFactory.isEmpty()) {
                     guardedThis->_selectedDecoderFactory = decoderFactory;
                 }
-                guardedThis->_adapterSelected |=
-                    decoderFactory == QString::fromLatin1(
-                                          AndroidH265HardwareDecoderAdapter::elementFactoryName())
-                    || errorFactory == QString::fromLatin1(
-                                           AndroidH265HardwareDecoderAdapter::elementFactoryName());
+                guardedThis->_adapterSelected |= isAdapterFactoryForRoute(
+                                                     guardedReceiver.data(),
+                                                     uri,
+                                                     decoderFactory)
+                    || isAdapterFactoryForRoute(guardedReceiver.data(),
+                                                uri,
+                                                errorFactory);
                 if (guardedThis->_adapterSelected
                     && guardedThis->_videoCodec
                         == VideoReceiver::VIDEO_CODEC_UNKNOWN) {
@@ -927,7 +957,7 @@ void DualVideoManager::_ensureReceiver()
                     return;
                 }
 
-                const bool directRetryPrepared =
+                const bool hardwareRouteAdvanced =
                     !rtspSourceError && decoderBranchError
                     && AndroidH265DecoderFallback::prepareDirectRetry(
                         guardedReceiver.data(),
@@ -962,7 +992,7 @@ void DualVideoManager::_ensureReceiver()
                     << guardedThis->_decoderFrameReceived
                     << "sinkFrame" << guardedThis->_sinkFrameReceived
                     << "decoderBranchError" << decoderBranchError
-                    << "directHardwareRetryPrepared" << directRetryPrepared;
+                    << "hardwareRouteAdvanced" << hardwareRouteAdvanced;
                 // GstVideoReceiver stops itself after this signal. The
                 // existing onStopComplete path applies bounded restart.
             });
@@ -1129,7 +1159,7 @@ void DualVideoManager::_handleDecodeStartupTimeout()
         return;
     }
 
-    const bool directRetryPrepared =
+    const bool hardwareRouteAdvanced =
         AndroidH265DecoderFallback::prepareDirectRetry(
             _receiver.data(),
             _videoPipelineUri,
@@ -1151,7 +1181,7 @@ void DualVideoManager::_handleDecodeStartupTimeout()
         << "sourceFrame" << _sourceFrameReceived
         << "decoderFrame" << _decoderFrameReceived
         << "sinkFrame" << _sinkFrameReceived
-        << "directHardwareRetryPrepared" << directRetryPrepared;
+        << "hardwareRouteAdvanced" << hardwareRouteAdvanced;
 #else
     if (!_receiver || !_receiver->started() || !_streaming || _decoding
         || _stopping || _releaseAfterStop) {

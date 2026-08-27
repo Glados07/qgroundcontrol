@@ -162,16 +162,6 @@ bool capsAreHvc1CompatibleH265(const GstCaps *caps)
         return false;
     }
 
-    for (guint index = 0; index < gst_caps_get_size(caps); ++index) {
-        const GstStructure *const structure =
-            gst_caps_get_structure(caps, index);
-        if (!structure
-            || g_strcmp0(gst_structure_get_name(structure),
-                         "video/x-h265") != 0) {
-            return false;
-        }
-    }
-
     GstCaps *const hvc1Caps = gst_caps_from_string(
         "video/x-h265,stream-format=(string)hvc1");
     const bool compatible = hvc1Caps
@@ -1192,8 +1182,12 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
     // late startDecoding() sees only ANY on the still-closed valve, the tee's
     // current-generation CAPS milestone is an equally scoped H.265 proof;
     // parsebin's autoplug query already constrains that stream to hvc1.
-    const bool confirmedH265Route = compatibleHvc1Caps
-        || (capsUnknown && currentGenerationConfirmedH265);
+    // The current-generation codec milestone is the stream identity. A late
+    // valve caps query may legitimately return a union containing H.264 and
+    // H.265 alternatives; requiring every structure to be H.265 would reject
+    // the frozen H.265 route even though its hvc1 branch is compatible.
+    const bool confirmedH265Route = currentGenerationConfirmedH265
+        && (capsUnknown || compatibleHvc1Caps);
 
     if (confirmedH265Route && !explicitH265Factory.isEmpty()) {
         _actualVideoCodec.store(VIDEO_CODEC_H265);
@@ -1386,15 +1380,19 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
     qCDebug(GstVideoReceiverLog) << "Decoding started" << _pipelineUri();
 }
 
-void GstVideoReceiver::_onNewDecoderPad(GstPad *pad)
+bool GstVideoReceiver::_onNewDecoderPad(GstPad *pad,
+                                        bool syncSinkWithParent)
 {
     qCDebug(GstVideoReceiverLog) << "_onNewDecoderPad" << _pipelineUri();
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-new-decoder-pad");
 
-    if (!_addVideoSink(pad)) {
+    if (!_addVideoSink(pad, syncSinkWithParent)) {
         qCCritical(GstVideoReceiverLog) << "_addVideoSink() failed";
+        return false;
     }
+
+    return true;
 }
 
 bool GstVideoReceiver::_addDecoder(GstElement *src, GstCaps *capsHint)
@@ -1433,50 +1431,105 @@ bool GstVideoReceiver::_addDecoder(GstElement *src, GstCaps *capsHint)
 
     const quint64 generation = _activePipelineGeneration.load();
     const QString streamUri = _pipelineUri();
+    const bool explicitDecoder = isExplicitDecoder(_decoder);
     _setDiagnosticDecoderRoot(_decoder, streamUri, generation);
-    if (isExplicitDecoder(_decoder)) {
+    if (explicitDecoder) {
         _observeExplicitDecoder(_decoder, streamUri, generation);
     }
 
-    (void) gst_object_ref(_decoder);
+    // Keep one receiver-owned non-floating reference independently of the
+    // pipeline. gst_bin_add() then takes its own parent reference on success,
+    // while a rejected add still leaves this reference valid for cleanup.
+    (void) gst_object_ref_sink(_decoder);
 
     gst_clear_caps(&caps);
 
-    (void) gst_bin_add(GST_BIN(_pipeline), _decoder);
-    (void) gst_element_sync_state_with_parent(_decoder);
-
-    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-decoder");
-
-    if (!gst_element_link(src, _decoder)) {
-        qCCritical(GstVideoReceiverLog) << "Unable to link decoder";
+    if (!gst_bin_add(GST_BIN(_pipeline), _decoder)) {
+        qCCritical(GstVideoReceiverLog) << "Unable to add decoder to pipeline";
         return false;
     }
 
-    GstPad *srcPad = nullptr;
-    GstIterator *it = gst_element_iterate_src_pads(_decoder);
-    GValue vpad = G_VALUE_INIT;
-    switch (gst_iterator_next(it, &vpad)) {
-        case GST_ITERATOR_OK:
-            srcPad = GST_PAD(g_value_get_object(&vpad));
-            (void) gst_object_ref(srcPad);
-            (void) g_value_reset(&vpad);
-            break;
-        case GST_ITERATOR_RESYNC:
-            gst_iterator_resync(it);
-            break;
-        default:
-            break;
-    }
-    g_value_unset(&vpad);
-    gst_iterator_free(it);
+    const auto prepareDecoderOutput = [this, explicitDecoder]() -> bool {
+        GstPad *srcPad = nullptr;
+        GstIterator *it = gst_element_iterate_src_pads(_decoder);
+        GValue vpad = G_VALUE_INIT;
+        bool iterationComplete = false;
+        while (!iterationComplete) {
+            switch (gst_iterator_next(it, &vpad)) {
+                case GST_ITERATOR_OK:
+                    srcPad = GST_PAD(g_value_get_object(&vpad));
+                    (void) gst_object_ref(srcPad);
+                    (void) g_value_reset(&vpad);
+                    iterationComplete = true;
+                    break;
+                case GST_ITERATOR_RESYNC:
+                    gst_iterator_resync(it);
+                    break;
+                default:
+                    iterationComplete = true;
+                    break;
+            }
+        }
+        g_value_unset(&vpad);
+        gst_iterator_free(it);
 
-    if (srcPad) {
-        _onNewDecoderPad(srcPad);
+        if (srcPad) {
+            const bool linked = _onNewDecoderPad(
+                srcPad, !explicitDecoder);
+            gst_object_unref(srcPad);
+            return linked;
+        }
+
+        const gulong handlerId = g_signal_connect(
+            _decoder, "pad-added", G_CALLBACK(_onNewPad), this);
+        if (handlerId == 0) {
+            qCCritical(GstVideoReceiverLog)
+                << "Unable to observe decoder output pad";
+            return false;
+        }
+        return true;
+    };
+
+    if (explicitDecoder) {
+        // Unlike decodebin3, a direct MediaCodec has static pads and can enter
+        // set_format as soon as it changes state. Match the working adapter
+        // topology: connect compressed input and the already-PAUSED GL sink
+        // before allowing MediaCodec to inherit PLAYING from the pipeline.
+        if (!gst_element_link(src, _decoder)) {
+            qCCritical(GstVideoReceiverLog)
+                << "Unable to link explicit H.265 decoder input";
+            return false;
+        }
+        if (!prepareDecoderOutput()) {
+            return false;
+        }
+        if (!gst_element_sync_state_with_parent(_decoder)) {
+            qCCritical(GstVideoReceiverLog)
+                << "Explicit H.265 decoder failed to enter the pipeline state";
+            return false;
+        }
+        if (!gst_element_sync_state_with_parent(_videoSink)) {
+            qCCritical(GstVideoReceiverLog)
+                << "Video sink failed to enter the pipeline state after explicit H.265 decoder setup";
+            return false;
+        }
     } else {
-        (void) g_signal_connect(_decoder, "pad-added", G_CALLBACK(_onNewPad), this);
+        // Preserve the established A8 Mini decodebin/adapter startup route.
+        if (!gst_element_sync_state_with_parent(_decoder)) {
+            qCCritical(GstVideoReceiverLog)
+                << "Decoder failed to enter the pipeline state";
+            return false;
+        }
+        if (!gst_element_link(src, _decoder)) {
+            qCCritical(GstVideoReceiverLog) << "Unable to link decoder";
+            return false;
+        }
+        if (!prepareDecoderOutput()) {
+            return false;
+        }
     }
 
-    gst_clear_object(&srcPad);
+    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-decoder");
     return true;
 }
 
@@ -1547,7 +1600,7 @@ bool GstVideoReceiver::_ensureVideoSinkInPipeline()
     return true;
 }
 
-bool GstVideoReceiver::_addVideoSink(GstPad *pad)
+bool GstVideoReceiver::_addVideoSink(GstPad *pad, bool syncWithParent)
 {
     GstCaps *caps = gst_pad_query_caps(pad, nullptr);
 
@@ -1579,21 +1632,41 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
         return false;
     }
 
-    (void) gst_element_sync_state_with_parent(_videoSink);
+    if (syncWithParent
+        && !gst_element_sync_state_with_parent(_videoSink)) {
+        qCCritical(GstVideoReceiverLog)
+            << "Video sink failed to enter the pipeline state"
+            << _pipelineUri();
+        gst_clear_caps(&caps);
+        return false;
+    }
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-videosink");
 
     if (_decoderValve) {
         // Extracting video size from source is more guaranteed
         GstPad *valveSrcPad = gst_element_get_static_pad(_decoderValve, "src");
-        const GstCaps *valveSrcPadCaps = gst_pad_query_caps(valveSrcPad, nullptr);
-        const GstStructure *structure = gst_caps_get_structure(valveSrcPadCaps, 0);
-        if (structure) {
-            gint width, height;
-            (void) gst_structure_get_int(structure, "width", &width);
-            (void) gst_structure_get_int(structure, "height", &height);
-            _dispatchSignal([this, width, height]() { emit videoSizeChanged(QSize(width, height)); });
+        GstCaps *valveSrcPadCaps = valveSrcPad
+            ? gst_pad_get_current_caps(valveSrcPad) : nullptr;
+        if (!valveSrcPadCaps && valveSrcPad) {
+            valveSrcPadCaps = gst_pad_query_caps(valveSrcPad, nullptr);
         }
+        const GstStructure *structure = valveSrcPadCaps
+                && !gst_caps_is_any(valveSrcPadCaps)
+                && !gst_caps_is_empty(valveSrcPadCaps)
+            ? gst_caps_get_structure(valveSrcPadCaps, 0) : nullptr;
+        if (structure) {
+            gint width = 0;
+            gint height = 0;
+            if (gst_structure_get_int(structure, "width", &width)
+                && gst_structure_get_int(structure, "height", &height)) {
+                _dispatchSignal([this, width, height]() {
+                    emit videoSizeChanged(QSize(width, height));
+                });
+            }
+        }
+        gst_clear_caps(&valveSrcPadCaps);
+        gst_clear_object(&valveSrcPad);
     } else {
         _dispatchSignal([this]() { emit videoSizeChanged(QSize()); });
     }
@@ -2061,10 +2134,28 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus *bus, GstMessage *msg, gpointer 
                                                 decoderPlugin,
                                                 decoderFactory)
             : nullptr;
-        bool decoderBranchError = decoderRoot && messageSource
+        const bool decoderDescendantError = decoderRoot && messageSource
             && (messageSource == GST_OBJECT(decoderRoot)
                 || gst_object_has_as_ancestor(
                     messageSource, GST_OBJECT(decoderRoot)));
+        // A decoder can reject CAPS/CSD while the upstream parser is pushing
+        // its first CAPS event. GStreamer then commonly posts
+        // "reason not-negotiated" from h265parse/parsebin inside sourcebin,
+        // not from the decoder element which caused negotiation to fail. Keep
+        // this classification generation- and codec-scoped so ordinary RTSP,
+        // RTP and unrelated source errors never advance a decoder route.
+        const bool sourceBranchError = pThis->_source && messageSource
+            && (messageSource == GST_OBJECT(pThis->_source)
+                || gst_object_has_as_ancestor(
+                    messageSource, GST_OBJECT(pThis->_source)));
+        bool upstreamH265NegotiationError = decoderRoot
+            && sourceBranchError && !rtspSourceError
+            && error && error->domain == GST_STREAM_ERROR
+            && videoCodec == VIDEO_CODEC_H265
+            && !decoderFrameReceived && !sinkFrameReceived
+            && debug && g_strrstr(debug, "not-negotiated");
+        bool decoderBranchError = decoderDescendantError
+            || upstreamH265NegotiationError;
         if (decoderRoot) {
             gst_object_unref(decoderRoot);
         }
@@ -2084,6 +2175,7 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus *bus, GstMessage *msg, gpointer 
             decoderPlugin.clear();
             decoderFactory.clear();
             decoderBranchError = false;
+            upstreamH265NegotiationError = false;
         }
 
         const int retryableErrorSignature = rtspSourceError
@@ -2111,6 +2203,8 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus *bus, GstMessage *msg, gpointer 
                 << "errorPlugin" << errorPlugin
                 << "errorFactory" << errorFactory
                 << "decoderBranchError" << decoderBranchError
+                << "upstreamH265NegotiationError"
+                << upstreamH265NegotiationError
                 << "videoCodec" << videoCodec
                 << "decoderPlugin" << decoderPlugin
                 << "decoderFactory" << decoderFactory
@@ -2464,7 +2558,8 @@ void GstVideoReceiver::_onNewPad(GstElement *element, GstPad *pad, gpointer data
                     factoryName);
             }
         }
-        self->_onNewDecoderPad(pad);
+        (void) self->_onNewDecoderPad(
+            pad, !isExplicitDecoder(element));
     } else {
         qCDebug(GstVideoReceiverLog) << "Unexpected call!";
     }

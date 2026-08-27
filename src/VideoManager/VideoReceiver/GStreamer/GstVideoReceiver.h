@@ -88,10 +88,10 @@ private:
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);
 
     void _onNewSourcePad(GstPad *pad);
-    void _onNewDecoderPad(GstPad *pad);
+    bool _onNewDecoderPad(GstPad *pad, bool syncSinkWithParent = true);
     bool _addDecoder(GstElement *src, GstCaps *capsHint = nullptr);
     bool _ensureVideoSinkInPipeline();
-    bool _addVideoSink(GstPad *pad);
+    bool _addVideoSink(GstPad *pad, bool syncWithParent = true);
     void _noteTeeFrame(const QString &uri, quint64 generation, int codec);
     void _noteVideoSinkFrame(const QString &uri, quint64 generation);
     void _noteEndOfStream();

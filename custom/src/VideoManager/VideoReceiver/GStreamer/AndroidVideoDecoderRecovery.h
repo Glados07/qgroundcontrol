@@ -52,7 +52,7 @@ private:
     void _handleStopComplete();
     void _armFirstFrameWatchdog();
     void _restartAfterDecoderFailure(const char *reason,
-                                     bool allowDirectHardwareRetry);
+                                     bool confirmedDecoderBranchFailure);
     int _firstFrameTimeoutMs() const;
 
     QPointer<VideoReceiver> _receiver;

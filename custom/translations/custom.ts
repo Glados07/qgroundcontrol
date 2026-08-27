@@ -411,16 +411,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="159"/>
-        <source>Compatible vendor MediaCodec hardware decoding is required by default. Each new H.265 receiver/URI route starts with the hvc1-to-Annex-B/AU adapter. The next generation locks that receiver and URI to a compatible direct-hvc1 vendor MediaCodec only after either (1) H.265 source media has arrived, the adapter has been instantiated, and the first-frame watchdog expires with no decoder output or sink frame, or (2) that same generation identifies H.265 and the adapter, then reports a decoder-branch bus error with no RTSP-source error, decoder output, or sink frame. The decoder-branch case may occur before the first source buffer when MediaCodec rejects CAPS/CSD. The direct route remains sticky until the URI changes. Start failures, RTSP/source errors, non-decoder-branch bus errors, sink-branch errors, and decoder output without a sink frame do not switch routes. Decoder ranks remain unchanged and QGC never switches to avdec_h265. If no compatible hardware path exists, decoding fails explicitly. Disable this only for diagnosis to restore native QGC/GStreamer automatic selection.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
-        <source>Restart QGC after changing this option.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="214"/>
         <source>Save photos and videos locally</source>
         <translation type="unfinished"></translation>
@@ -628,11 +618,6 @@
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="105"/>
         <source>Waiting to open SDK serial device</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
-        <source>UniGCS must assign the SDK interface to Serial 2. Map the auto-centering wheel to CH9 and the small-stick press to CH10.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -937,12 +922,6 @@
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
         <source>UniPod MT11 zoom step</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
-        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Each tap moves to the next minimum-anchored legal target within the documented 1.0x to 30.0x absolute-command range; when less than one configured step remains, the exact 30.0x boundary is the final target. An explicit 420 ms gesture threshold starts native direction-only 0x05 zoom in both shared and hold-only ranges; a shorter release above 30.0x sends no zoom command. The pressed manager and capabilities are captured. If live hold availability or the first SDK write temporarily fails at the threshold, the same physical press retries its start every 100 ms while the same endpoint remains eligible; release, cancellation, manager switching, or an offline state before start cancels the retry. Command 0x05 has no speed field, so the configured step does not change native held speed. A successful hold sends its first direction synchronously without a preceding 0x05(0) stop or artificial delay, then repeats only that direction every 450 ms for the complete physical press. Because MT11 exposes no request generation or zoom-controller ownership acknowledgement, no 0x18 position change can terminate a still-pressed keepalive. Once the first direction succeeds, temporary 0x16/0x18 staleness, SDK silence, or an individual keepalive write failure does not consume that press; release, cancellation, lifecycle teardown, or the 60-second no-progress guard ends it. A persisted preceding 0x0f target keeps the first hold available across delayed feedback and becomes the held gesture's endpoint-motion reference. During a hold, authoritative 0x18 feedback is requested every 100 ms. Endpoint release eligibility requires draining the preceding 1.5-second request window, two requested-direction progress samples beyond the captured reference, and two consecutive endpoint samples; even then the direction keepalive continues until release. A normal release at that reliable physical endpoint omits 0x05(0), avoiding its focus cycle so the next reverse hold can override the latched direction; every other normal release and every cancellation cancels future direction copies first, sends an immediate stop, and schedules one bounded 150 ms safety copy. Above 30.0x, tap control is disabled in both directions. The default step is 1.0x.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

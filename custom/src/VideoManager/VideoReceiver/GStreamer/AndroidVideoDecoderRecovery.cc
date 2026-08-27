@@ -33,6 +33,22 @@ bool isRtspUri(const QString &uri)
     return scheme.compare(QStringLiteral("rtsp"), Qt::CaseInsensitive) == 0
         || scheme.compare(QStringLiteral("rtsps"), Qt::CaseInsensitive) == 0;
 }
+
+bool isAdapterFactoryForRoute(VideoReceiver *receiver,
+                              const QString &uri,
+                              const QString &factory)
+{
+    if (!AndroidH265DecoderFallback::usesAdapterRoute(receiver, uri)) {
+        return false;
+    }
+
+    const QString adapterFactory = QString::fromLatin1(
+        AndroidH265HardwareDecoderAdapter::elementFactoryName());
+    const QString internalFactory = QString::fromUtf8(
+        AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
+    return factory == adapterFactory
+        || (!internalFactory.isEmpty() && factory == internalFactory);
+}
 }
 
 void AndroidVideoDecoderRecovery::install(VideoReceiver *receiver)
@@ -68,7 +84,7 @@ AndroidVideoDecoderRecovery::AndroidVideoDecoderRecovery(
                 }
                 _restartAfterDecoderFailure(
                     "RTSP decoding produced no first frame",
-                    true);
+                    false);
             });
     connect(receiver,
             &VideoReceiver::videoPipelineGenerationStarted,
@@ -218,7 +234,7 @@ void AndroidVideoDecoderRecovery::_handleStartDecodingComplete(int status)
 
     _restartAfterDecoderFailure(
         "RTSP decoder or video sink failed to start",
-        false);
+        true);
 }
 
 void AndroidVideoDecoderRecovery::_handleSourceFrameReceived(
@@ -253,9 +269,8 @@ void AndroidVideoDecoderRecovery::_handleDecoderSelected(
     }
     _selectedDecoderPlugin = plugin;
     _selectedDecoderFactory = factory;
-    const bool adapterSelected =
-        factory == QString::fromLatin1(
-                       AndroidH265HardwareDecoderAdapter::elementFactoryName());
+    const bool adapterSelected = isAdapterFactoryForRoute(
+        _receiver.data(), uri, factory);
     _adapterSelected |= adapterSelected;
     if (adapterSelected
         && _videoCodec
@@ -327,17 +342,16 @@ void AndroidVideoDecoderRecovery::_handlePipelineError(
     _sourceFrameReceived |= sourceFrameReceived;
     _decoderFrameReceived |= decoderFrameReceived;
     _sinkFrameReceived |= sinkFrameReceived;
-    _adapterSelected |=
-        decoderFactory == QString::fromLatin1(
-                              AndroidH265HardwareDecoderAdapter::elementFactoryName())
-        || errorFactory == QString::fromLatin1(
-                               AndroidH265HardwareDecoderAdapter::elementFactoryName());
+    _adapterSelected |= isAdapterFactoryForRoute(
+                            _receiver.data(), uri, decoderFactory)
+        || isAdapterFactoryForRoute(
+               _receiver.data(), uri, errorFactory);
     if (_adapterSelected
         && _videoCodec
             == static_cast<int>(VideoReceiver::VIDEO_CODEC_UNKNOWN)) {
         _videoCodec = static_cast<int>(VideoReceiver::VIDEO_CODEC_H265);
     }
-    const bool directRetryPrepared = !rtspSourceError && decoderBranchError
+    const bool hardwareRouteAdvanced = !rtspSourceError && decoderBranchError
         && AndroidH265DecoderFallback::prepareDirectRetry(
             _receiver.data(),
             _activeUri,
@@ -364,7 +378,7 @@ void AndroidVideoDecoderRecovery::_handlePipelineError(
         << "rtspSourceError" << rtspSourceError
         << "decoderBranchError" << decoderBranchError
         << "sinkFrameReceived" << _sinkFrameReceived
-        << "directHardwareRetryPrepared" << directRetryPrepared;
+        << "hardwareRouteAdvanced" << hardwareRouteAdvanced;
     // GstVideoReceiver emitted this signal immediately before its own stop;
     // its owner rebuilds without ever promoting a software decoder.
 }
@@ -408,7 +422,7 @@ void AndroidVideoDecoderRecovery::_armFirstFrameWatchdog()
 
 void AndroidVideoDecoderRecovery::_restartAfterDecoderFailure(
     const char *reason,
-    bool allowDirectHardwareRetry)
+    bool confirmedDecoderBranchFailure)
 {
     if (!_receiver || _stopping || !_activeGeneration || !_startAccepted
         || _sinkFrameReceived) {
@@ -421,15 +435,15 @@ void AndroidVideoDecoderRecovery::_restartAfterDecoderFailure(
 
     _firstFrameTimer.stop();
     _stopping = true;
-    const bool directRetryPrepared = allowDirectHardwareRetry
-        && AndroidH265DecoderFallback::prepareDirectRetry(
+    const bool hardwareRouteAdvanced =
+        AndroidH265DecoderFallback::prepareDirectRetry(
             _receiver.data(),
             _activeUri,
             _activeGeneration,
             _videoCodec,
             _adapterSelected,
             _sourceFrameReceived,
-            false,
+            confirmedDecoderBranchFailure,
             _decoderFrameReceived,
             _sinkFrameReceived,
             reason);
@@ -441,7 +455,7 @@ void AndroidVideoDecoderRecovery::_restartAfterDecoderFailure(
         << _selectedDecoderPlugin + QLatin1Char('/')
                + _selectedDecoderFactory
         << "decoderFrameReceived" << _decoderFrameReceived
-        << "directHardwareRetryPrepared" << directRetryPrepared
+        << "hardwareRouteAdvanced" << hardwareRouteAdvanced
         << "reason" << reason;
 
     // VideoManager owns the desired-running state. A complete receiver stop
