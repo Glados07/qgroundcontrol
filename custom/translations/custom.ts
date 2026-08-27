@@ -306,6 +306,17 @@
 <context>
     <name>GimbalControlManager</name>
     <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="781"/>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="926"/>
+        <source>Return the UniRC zoom wheel to center before using touch zoom.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Gimbal/GimbalControlManager.cc" line="1056"/>
+        <source>Another input source currently owns continuous zoom.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/GimbalControlManager.cc" line="1160"/>
         <source>Local video recording stopped unexpectedly.</source>
         <translation type="unfinished"></translation>
@@ -556,31 +567,72 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="67"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="122"/>
         <source>SIYI A8 Mini Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="74"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="106"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="78"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="129"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="161"/>
         <source>Enabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="80"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="135"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="167"/>
         <source>SDK Host</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="87"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="119"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="142"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="174"/>
         <source>SDK Port</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="154"/>
         <source>UniPod MT11 Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
+        <source>UniRC CH9/CH10 Gimbal Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
+        <source>SDK Serial Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="94"/>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="96"/>
+        <source>Controller unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="98"/>
+        <source>Receiving: CH9 %1, CH10 %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
+        <source>Serial open; waiting for channel data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="105"/>
+        <source>Waiting to open SDK serial device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="112"/>
+        <source>UniGCS must assign the SDK interface to Serial 2. Map the auto-centering wheel to CH9 and the small-stick press to CH10.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -788,6 +840,74 @@
     </message>
 </context>
 <context>
+    <name>UniRcChannelController</name>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="45"/>
+        <source>%1 %2 failed: %3 (errno %4)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="198"/>
+        <source>UniRC SDK serial device must be an absolute /dev path.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="206"/>
+        <source>UniRC SDK serial path is not a character device: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="215"/>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="227"/>
+        <source>Lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="240"/>
+        <source>Exclusive open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="282"/>
+        <source>Failed to request UniRC channel data from %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="311"/>
+        <source>Read termios for</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="329"/>
+        <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="462"/>
+        <source>Read</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="484"/>
+        <source>UniRC gimbal control dependencies are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="503"/>
+        <source>UniRC CH9/CH10 values are outside the expected 900-2100 range.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="599"/>
+        <source>Timed out waiting for UniRC 0x42 channel data on %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>GimbalControl.SettingsGroup.json</name>
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11Enabled].shortDesc, </extracomment>
@@ -823,6 +943,30 @@
         <extracomment>.QGC.MetaData.Facts[mt11ZoomStep].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
         <source>Each tap moves to the next minimum-anchored legal target within the documented 1.0x to 30.0x absolute-command range; when less than one configured step remains, the exact 30.0x boundary is the final target. An explicit 420 ms gesture threshold starts native direction-only 0x05 zoom in both shared and hold-only ranges; a shorter release above 30.0x sends no zoom command. The pressed manager and capabilities are captured. If live hold availability or the first SDK write temporarily fails at the threshold, the same physical press retries its start every 100 ms while the same endpoint remains eligible; release, cancellation, manager switching, or an offline state before start cancels the retry. Command 0x05 has no speed field, so the configured step does not change native held speed. A successful hold sends its first direction synchronously without a preceding 0x05(0) stop or artificial delay, then repeats only that direction every 450 ms for the complete physical press. Because MT11 exposes no request generation or zoom-controller ownership acknowledgement, no 0x18 position change can terminate a still-pressed keepalive. Once the first direction succeeds, temporary 0x16/0x18 staleness, SDK silence, or an individual keepalive write failure does not consume that press; release, cancellation, lifecycle teardown, or the 60-second no-progress guard ends it. A persisted preceding 0x0f target keeps the first hold available across delayed feedback and becomes the held gesture's endpoint-motion reference. During a hold, authoritative 0x18 feedback is requested every 100 ms. Endpoint release eligibility requires draining the preceding 1.5-second request window, two requested-direction progress samples beyond the captured reference, and two consecutive endpoint samples; even then the direction keepalive continues until release. A normal release at that reliable physical endpoint omits 0x05(0), avoiding its focus cycle so the next reverse hold can override the latched direction; every other normal release and every cancellation cancels future direction copies first, sends an immediate stop, and schedules one bounded 150 ms safety copy. Above 30.0x, tap control is disabled in both directions. The default step is 1.0x.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Enable UniRC CH9/CH10 gimbal control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Android opens the UniRC SDK Serial 2 interface and maps CH9 to A8 Mini continuous zoom and the CH10 press edge to the shared MAVLink Gimbal Manager center action.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkSerialPort].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniRC SDK serial device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkSerialPort].longDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>UniRC 10 Pro SDK Serial 2 device. UniGCS must assign the SDK interface to Serial 2 before QGC opens this device.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

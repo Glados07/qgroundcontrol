@@ -8,8 +8,10 @@
 
 #include "AppSettings.h"
 #include "AutoConnectSettings.h"
+#include "Android/UniRcChannelController.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
 #include "FactMetaData.h"
+#include "Gimbal/GimbalCenterCoordinator.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
@@ -126,6 +128,8 @@ void CustomPlugin::init()
 
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
+    _ensureGimbalCenterCoordinator();
+    _ensureUniRcChannelController();
     _ensureMt11ControlManager();
     _ensureVideoCustomSettings();
     _ensureDualVideoManager();
@@ -135,6 +139,12 @@ void CustomPlugin::init()
                     &QCoreApplication::aboutToQuit,
                     this,
                     [this]() {
+                        if (_gimbalCenterCoordinator) {
+                            _gimbalCenterCoordinator->cancel();
+                        }
+                        if (_uniRcChannelController) {
+                            _uniRcChannelController->shutdown();
+                        }
                         _shutdownMt11Video();
                         if (_gimbalControlManager) {
                             _gimbalControlManager->shutdownLocalMedia(true);
@@ -149,6 +159,12 @@ void CustomPlugin::init()
 
 void CustomPlugin::cleanup()
 {
+    if (_gimbalCenterCoordinator) {
+        _gimbalCenterCoordinator->cancel();
+    }
+    if (_uniRcChannelController) {
+        _uniRcChannelController->shutdown();
+    }
     _shutdownMt11Video();
     if (_gimbalControlManager) {
         _gimbalControlManager->shutdownLocalMedia(true);
@@ -225,6 +241,28 @@ GimbalControlManager *CustomPlugin::gimbalControlManagerObject()
 {
     _ensureGimbalControlManager();
     return _gimbalControlManager;
+}
+
+QObject *CustomPlugin::gimbalCenterCoordinator()
+{
+    return gimbalCenterCoordinatorObject();
+}
+
+GimbalCenterCoordinator *CustomPlugin::gimbalCenterCoordinatorObject()
+{
+    _ensureGimbalCenterCoordinator();
+    return _gimbalCenterCoordinator;
+}
+
+QObject *CustomPlugin::uniRcChannelController()
+{
+    return uniRcChannelControllerObject();
+}
+
+UniRcChannelController *CustomPlugin::uniRcChannelControllerObject()
+{
+    _ensureUniRcChannelController();
+    return _uniRcChannelController;
 }
 
 QObject *CustomPlugin::mt11ControlManager()
@@ -325,6 +363,29 @@ void CustomPlugin::_ensureGimbalControlManager()
     if (!_gimbalControlManager) {
         _gimbalControlManager = new GimbalControlManager(_gimbalControlSettings, this);
     }
+}
+
+void CustomPlugin::_ensureGimbalCenterCoordinator()
+{
+    if (!_gimbalCenterCoordinator) {
+        _gimbalCenterCoordinator = new GimbalCenterCoordinator(this);
+    }
+}
+
+void CustomPlugin::_ensureUniRcChannelController()
+{
+#ifdef Q_OS_ANDROID
+    _ensureGimbalControlSettings();
+    _ensureGimbalControlManager();
+    _ensureGimbalCenterCoordinator();
+    if (!_uniRcChannelController) {
+        _uniRcChannelController =
+            new UniRcChannelController(_gimbalControlSettings,
+                                       _gimbalControlManager,
+                                       _gimbalCenterCoordinator,
+                                       this);
+    }
+#endif
 }
 
 void CustomPlugin::_ensureMt11ControlManager()

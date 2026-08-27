@@ -21,6 +21,9 @@ ColumnLayout {
     property var gimbalControlSettings: QGroundControl.corePlugin
                                                 ? QGroundControl.corePlugin.gimbalControlSettings
                                                 : null
+    property var uniRcChannelController: QGroundControl.corePlugin
+                                                ? QGroundControl.corePlugin.uniRcChannelController
+                                                : null
 
     SettingsGroupLayout {
         Layout.fillWidth: true
@@ -55,6 +58,58 @@ ColumnLayout {
                     fact: root.gimbalControlSettings.mt11ZoomStep
                     enabled: root.gimbalControlSettings.mt11Enabled.rawValue
                 }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: ScreenTools.defaultFontPixelHeight / 2
+            visible: Qt.platform.os === "android"
+
+            QGCLabel {
+                Layout.fillWidth: true
+                text: qsTr("UniRC CH9/CH10 Gimbal Control")
+                wrapMode: Text.WordWrap
+                font.bold: true
+            }
+
+            FactCheckBoxSlider {
+                Layout.fillWidth: true
+                text: qsTr("Enabled")
+                fact: root.gimbalControlSettings.uniRcChannelControlEnabled
+            }
+
+            LabelledFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("SDK Serial Device")
+                fact: root.gimbalControlSettings.uniRcSdkSerialPort
+                enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pointSize: ScreenTools.smallFontPointSize
+                text: !root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+                      ? qsTr("Disabled")
+                      : !root.uniRcChannelController
+                        ? qsTr("Controller unavailable")
+                        : root.uniRcChannelController.channelInputActive
+                          ? qsTr("Receiving: CH9 %1, CH10 %2")
+                                .arg(root.uniRcChannelController.channel9)
+                                .arg(root.uniRcChannelController.channel10)
+                          : root.uniRcChannelController.lastError !== ""
+                            ? root.uniRcChannelController.lastError
+                            : root.uniRcChannelController.serialOpen
+                              ? qsTr("Serial open; waiting for channel data")
+                              : qsTr("Waiting to open SDK serial device")
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pointSize: ScreenTools.smallFontPointSize
+                text: qsTr("UniGCS must assign the SDK interface to Serial 2. Map the auto-centering wheel to CH9 and the small-stick press to CH10.")
             }
         }
 

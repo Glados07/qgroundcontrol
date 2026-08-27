@@ -775,6 +775,12 @@ bool GimbalControlManager::_sendZoomStep(int direction)
     if (!_cameraCommandAvailable()) {
         return false;
     }
+    if (_continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::UniRc) {
+        _setLastError(
+            tr("Return the UniRC zoom wheel to center before using touch zoom."));
+        return false;
+    }
     if (!zoomControlsUnlocked()) {
         _setLastError(
             tr("Waiting for a supported pulled-video session and a valid "
@@ -914,6 +920,12 @@ bool GimbalControlManager::setZoom(double zoomLevel)
     if (!_cameraCommandAvailable()) {
         return false;
     }
+    if (_continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::UniRc) {
+        _setLastError(
+            tr("Return the UniRC zoom wheel to center before using touch zoom."));
+        return false;
+    }
     if (!zoomControlsUnlocked()) {
         _setLastError(
             tr("Waiting for a supported pulled-video session and a valid "
@@ -978,6 +990,56 @@ bool GimbalControlManager::startZoomWithPressDuration(
     int direction,
     int pressDurationMs)
 {
+    return _startZoomWithPressDuration(direction,
+                                       pressDurationMs,
+                                       ContinuousZoomOwner::Touch);
+}
+
+bool GimbalControlManager::startUniRcZoom(int direction)
+{
+    // The physical control has deterministic priority over a still-active
+    // touch hold. Its stop is completed (including any retained safety copy)
+    // before a new UniRC direction is allowed to start.
+    if (_continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::Touch
+        && !_stopContinuousZoom(false)) {
+        return false;
+    }
+
+    return _startZoomWithPressDuration(direction,
+                                       kHeldZoomPressThresholdMs,
+                                       ContinuousZoomOwner::UniRc);
+}
+
+bool GimbalControlManager::stopUniRcZoom()
+{
+    if (!_continuousZoomActive
+        || _continuousZoomOwner != ContinuousZoomOwner::UniRc) {
+        return true;
+    }
+    return _stopContinuousZoom(true);
+}
+
+bool GimbalControlManager::cancelUniRcZoom()
+{
+    if (!_continuousZoomActive
+        || _continuousZoomOwner != ContinuousZoomOwner::UniRc) {
+        return true;
+    }
+    return _stopContinuousZoom(false);
+}
+
+bool GimbalControlManager::uniRcZoomActive() const
+{
+    return _continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::UniRc;
+}
+
+bool GimbalControlManager::_startZoomWithPressDuration(
+    int direction,
+    int pressDurationMs,
+    ContinuousZoomOwner owner)
+{
     if (!_cameraCommandAvailable()) {
         return false;
     }
@@ -989,6 +1051,11 @@ bool GimbalControlManager::startZoomWithPressDuration(
     }
 
     if (_continuousZoomActive) {
+        if (_continuousZoomOwner != owner) {
+            _setLastError(
+                tr("Another input source currently owns continuous zoom."));
+            return false;
+        }
         if (_continuousZoomDirection == normalizedDirection) {
             _continuousZoomWatchdog.start();
             return true;
@@ -1108,6 +1175,7 @@ bool GimbalControlManager::startZoomWithPressDuration(
     _setZoomStatusKnown(true);
     _setZoomValueUncertain(false);
     _suppressIdleAlignmentUntilExplicitZoom = true;
+    _continuousZoomOwner = owner;
     _setContinuousZoomState(true, normalizedDirection);
     _continuousZoomWatchdog.start();
     _continuousZoomStepTimer.start(kManualZoomPollIntervalMs);
@@ -1123,6 +1191,10 @@ bool GimbalControlManager::startZoomWithPressDuration(
 
 bool GimbalControlManager::stopZoom()
 {
+    if (_continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::UniRc) {
+        return true;
+    }
     // A normal release performs one final duration calculation so an event
     // arriving on a 600 ms boundary is not lost between timer ticks.
     return _stopContinuousZoom(true);
@@ -1130,6 +1202,10 @@ bool GimbalControlManager::stopZoom()
 
 bool GimbalControlManager::cancelZoom()
 {
+    if (_continuousZoomActive
+        && _continuousZoomOwner == ContinuousZoomOwner::UniRc) {
+        return true;
+    }
     // Cancellation (pointer leave, application background, hidden control)
     // does not advance the timed target, but it must stop native 0x05 motion.
     return _stopContinuousZoom(false);
@@ -3770,6 +3846,9 @@ void GimbalControlManager::_setContinuousZoomState(bool active, int direction)
     const bool activeChanged = _continuousZoomActive != active;
     _continuousZoomActive = active;
     _continuousZoomDirection = active ? direction : 0;
+    if (!active) {
+        _continuousZoomOwner = ContinuousZoomOwner::None;
+    }
     if (activeChanged) {
         emit continuousZoomActiveChanged();
         emit zoomAvailabilityChanged();

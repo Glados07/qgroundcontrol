@@ -29,4 +29,6 @@ public:
     DEFINE_SETTINGFACT(mt11ZoomStep)
     DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
     DEFINE_SETTINGFACT(forceAndroidH265HardwareDecoder)
+    DEFINE_SETTINGFACT(uniRcChannelControlEnabled)
+    DEFINE_SETTINGFACT(uniRcSdkSerialPort)
 };

@@ -86,6 +86,20 @@
             "type": "bool",
             "default": true,
             "qgcRebootRequired": true
+        },
+        {
+            "name": "uniRcChannelControlEnabled",
+            "shortDesc": "Enable UniRC CH9/CH10 gimbal control",
+            "longDesc": "Android opens the UniRC SDK Serial 2 interface and maps CH9 to A8 Mini continuous zoom and the CH10 press edge to the shared MAVLink Gimbal Manager center action.",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "name": "uniRcSdkSerialPort",
+            "shortDesc": "UniRC SDK serial device",
+            "longDesc": "UniRC 10 Pro SDK Serial 2 device. UniGCS must assign the SDK interface to Serial 2 before QGC opens this device.",
+            "type": "string",
+            "default": "/dev/ttyHS0"
         }
     ]
 }

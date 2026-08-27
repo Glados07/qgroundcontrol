@@ -391,6 +391,28 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
+
+    qt_add_executable(UniRcProtocolTest
+        test/Android/UniRcProtocolTest.cc
+        src/Android/UniRcChannelPolicy.cc
+        src/Android/UniRcChannelPolicy.h
+        src/Android/UniRcProtocol.cc
+        src/Android/UniRcProtocol.h
+    )
+    target_include_directories(UniRcProtocolTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+    )
+    target_link_libraries(UniRcProtocolTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME UniRcProtocolTest COMMAND $<TARGET_FILE:UniRcProtocolTest>)
+    add_custom_target(check_unirc_protocol
+        COMMAND $<TARGET_FILE:UniRcProtocolTest>
+        DEPENDS UniRcProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
 endif()
 
 # custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。

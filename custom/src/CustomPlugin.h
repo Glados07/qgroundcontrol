@@ -15,8 +15,10 @@
 #include "QGCCorePlugin.h"
 
 class External3DMapManager;
+class UniRcChannelController;
 class DualVideoManager;
 class FlyViewCustomSettings;
+class GimbalCenterCoordinator;
 class GimbalControlManager;
 class GimbalControlSettings;
 class Mt11ControlManager;
@@ -30,19 +32,23 @@ class CustomPlugin : public QGCCorePlugin
 {
     Q_OBJECT
     Q_MOC_INCLUDE("custom/src/Viewer3D/External3DMapManager.h")
+    Q_MOC_INCLUDE("custom/src/Android/UniRcChannelController.h")
     Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
     Q_MOC_INCLUDE("custom/src/Settings/FlyViewCustomSettings.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlManager.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/GimbalCenterCoordinator.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/Mt11ControlManager.h")
     Q_MOC_INCLUDE("custom/src/Settings/VideoCustomSettings.h")
     Q_MOC_INCLUDE("custom/src/VideoManager/DualVideoManager.h")
 
     Q_PROPERTY(QObject *viewer3DSettings READ viewer3DSettings CONSTANT)
+    Q_PROPERTY(QObject *uniRcChannelController READ uniRcChannelController CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
     Q_PROPERTY(QObject *flyViewCustomSettings READ flyViewCustomSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
+    Q_PROPERTY(QObject *gimbalCenterCoordinator READ gimbalCenterCoordinator CONSTANT)
     Q_PROPERTY(QObject *mt11ControlManager READ mt11ControlManager CONSTANT)
     Q_PROPERTY(QObject *videoCustomSettings READ videoCustomSettings CONSTANT)
     Q_PROPERTY(QObject *dualVideoManager READ dualVideoManager CONSTANT)
@@ -68,6 +74,9 @@ public:
     External3DMapManager *external3DMapManagerObject();
     bool google3DMapsAvailable() const;
 
+    QObject *uniRcChannelController();
+    UniRcChannelController *uniRcChannelControllerObject();
+
     QObject *flyViewCustomSettings();
     FlyViewCustomSettings *flyViewCustomSettingsFactGroup();
 
@@ -75,6 +84,8 @@ public:
     GimbalControlSettings *gimbalControlSettingsFactGroup();
     QObject *gimbalControlManager();
     GimbalControlManager *gimbalControlManagerObject();
+    QObject *gimbalCenterCoordinator();
+    GimbalCenterCoordinator *gimbalCenterCoordinatorObject();
     QObject *mt11ControlManager();
     Mt11ControlManager *mt11ControlManagerObject();
     QObject *videoCustomSettings();
@@ -84,10 +95,12 @@ public:
 
 private:
     void _ensureViewer3DSettings();
+    void _ensureUniRcChannelController();
     void _ensureExternal3DMapManager();
     void _ensureFlyViewCustomSettings();
     void _ensureGimbalControlSettings();
     void _ensureGimbalControlManager();
+    void _ensureGimbalCenterCoordinator();
     void _ensureMt11ControlManager();
     void _ensureVideoCustomSettings();
     void _ensureDualVideoManager();
@@ -98,10 +111,12 @@ private:
     QTranslator _customTranslator;
 
     Viewer3DSettings *_viewer3DSettings = nullptr;
+    UniRcChannelController *_uniRcChannelController = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
     FlyViewCustomSettings *_flyViewCustomSettings = nullptr;
     GimbalControlSettings *_gimbalControlSettings = nullptr;
     GimbalControlManager *_gimbalControlManager = nullptr;
+    GimbalCenterCoordinator *_gimbalCenterCoordinator = nullptr;
     Mt11ControlManager *_mt11ControlManager = nullptr;
     VideoCustomSettings *_videoCustomSettings = nullptr;
     DualVideoManager *_dualVideoManager = nullptr;
