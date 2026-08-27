@@ -154,6 +154,8 @@ void RemoteIDManager::_handleArmStatus(mavlink_message_t& message)
             _basicIDGood = true;
             emit basicIDGoodChanged();
         }
+        _armStatusError.clear();
+        emit armStatusErrorChanged();
         _armStatusGood = true;
         emit armStatusGoodChanged();
         qCDebug(RemoteIDManagerLog) << "Arm status GOOD TO ARM.";

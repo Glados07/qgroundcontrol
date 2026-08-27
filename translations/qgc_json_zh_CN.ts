@@ -1537,7 +1537,7 @@
       <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
       <location filename="../src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Undeclared,Open,Specific,Certified</source>
-      <translation>未声明,开放类,特定类,认证类</translation>
+      <translation>未声明,开放类,特定类,审定类</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[classEU].shortDesc, </extracomment>
