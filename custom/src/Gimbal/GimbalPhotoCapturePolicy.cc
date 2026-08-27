@@ -10,6 +10,53 @@
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 
+namespace {
+
+bool usablePixelSize(const QSize& size)
+{
+    return size.isValid() && !size.isEmpty();
+}
+
+} // namespace
+
+QSize GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+    const QSize& negotiatedPixelSize,
+    const QSize& implicitPixelSize,
+    const QSize& renderedPixelSize)
+{
+    if (usablePixelSize(negotiatedPixelSize)) {
+        return negotiatedPixelSize;
+    }
+    if (usablePixelSize(implicitPixelSize)) {
+        return implicitPixelSize;
+    }
+    return usablePixelSize(renderedPixelSize)
+        ? renderedPixelSize
+        : QSize();
+}
+
+bool GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+    const QSize& pixelSize,
+    int maximumLongEdge,
+    int maximumShortEdge,
+    qint64 maximumPixelCount)
+{
+    if (!usablePixelSize(pixelSize)
+        || maximumLongEdge <= 0
+        || maximumShortEdge <= 0
+        || maximumPixelCount <= 0) {
+        return false;
+    }
+
+    const int longEdge = qMax(pixelSize.width(), pixelSize.height());
+    const int shortEdge = qMin(pixelSize.width(), pixelSize.height());
+    const qint64 pixelCount = static_cast<qint64>(pixelSize.width())
+        * pixelSize.height();
+    return longEdge <= maximumLongEdge
+        && shortEdge <= maximumShortEdge
+        && pixelCount <= maximumPixelCount;
+}
+
 GimbalPhotoCapturePolicy::CaptureGeometry
 GimbalPhotoCapturePolicy::captureGeometry(
     const QSize& outputPixelSize,

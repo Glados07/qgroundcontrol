@@ -30,6 +30,13 @@ public:
         CommandSetVideoMode     = 0x11,
         CommandMaximumZoomValue = 0x16,
         CommandCurrentZoomValue = 0x18,
+        CommandCameraEncodingParameters = 0x20,
+    };
+
+    enum CameraStreamType : quint8 {
+        CameraStreamRecording = 0,
+        CameraStreamMain = 1,
+        CameraStreamSub = 2,
     };
 
     enum VideoSource : quint8 {
@@ -77,6 +84,15 @@ public:
         }
     };
 
+    struct CameraEncodingParameters {
+        quint8 streamType = CameraStreamRecording;
+        quint8 videoEncodingType = 0;
+        quint16 width = 0;
+        quint16 height = 0;
+        quint16 bitrateKbps = 0;
+        quint8 frameRate = 0;
+    };
+
     static QByteArray manualZoomPacket(qint8 direction);
     static QByteArray absoluteZoomPacket(double zoomLevel);
     static QByteArray requestMaximumZoomPacket();
@@ -86,6 +102,7 @@ public:
     static QByteArray toggleVideoRecordingPacket();
     static QByteArray requestVideoModePacket();
     static QByteArray setVideoModePacket(VideoWorkMode mode);
+    static QByteArray requestCameraEncodingParametersPacket(quint8 streamType);
     // Compatibility wrapper for the former two-state UI.
     static QByteArray setThermalModePacket(bool thermalOnMainStream);
 
@@ -108,6 +125,9 @@ public:
                                              quint8* infoType);
     static bool parseVideoModePayload(const QByteArray& payload,
                                       VideoMode* mode);
+    static bool parseCameraEncodingParametersPayload(
+        const QByteArray& payload,
+        CameraEncodingParameters* parameters);
     static VideoWorkMode videoWorkMode(quint8 mainStream,
                                        quint8 subStream);
 

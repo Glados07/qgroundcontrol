@@ -61,6 +61,13 @@ constexpr int kContinuousZoomEndpointConfirmations = 2;
 constexpr int kContinuousZoomPollMs = 100;
 constexpr int kContinuousZoomStopRetryMs = 150;
 constexpr int kLocalPhotoTimeoutMs = 5000;
+constexpr int kLocalPhotoJpegQuality = 100;
+constexpr int kMaximumLocalPhotoLongEdge = 4096;
+constexpr int kMaximumLocalPhotoShortEdge = 2160;
+constexpr qint64 kMaximumLocalPhotoPixelCount =
+    static_cast<qint64>(kMaximumLocalPhotoLongEdge)
+        * kMaximumLocalPhotoShortEdge;
+constexpr int kRecordingResolutionConfirmations = 2;
 constexpr int kLocalRecordingStartTimeoutMs = 3000;
 constexpr int kLocalRecordingStopTimeoutMs = 5000;
 constexpr int kShutdownRecordingWaitMs = 3000;
@@ -127,6 +134,8 @@ void publishLocalMedia(const QString& path, bool photo)
 struct PhotoSaveOutcome {
     bool success = false;
     QString error;
+    QSize outputPixelSize;
+    qint64 fileSize = -1;
 };
 
 PhotoSaveOutcome savePhoto(QImage image,
@@ -140,13 +149,15 @@ PhotoSaveOutcome savePhoto(QImage image,
         return outcome;
     }
 
+    outcome.outputPixelSize = image.size();
+
     QSaveFile file(filename);
     if (!file.open(QIODevice::WriteOnly)) {
         outcome.error = file.errorString();
         return outcome;
     }
     QImageWriter writer(&file, "jpg");
-    writer.setQuality(100);
+    writer.setQuality(kLocalPhotoJpegQuality);
     if (!writer.write(image)) {
         outcome.error = writer.errorString();
         file.cancelWriting();
@@ -157,6 +168,7 @@ PhotoSaveOutcome savePhoto(QImage image,
         return outcome;
     }
     outcome.success = true;
+    outcome.fileSize = QFileInfo(filename).size();
     return outcome;
 }
 
@@ -174,11 +186,14 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
 
     _pollTimer.setInterval(2000);
     _sdkResponseTimer.setSingleShot(true);
-    // A complete 0x16/0x18/0x0a/0x10 poll batch repeats every two seconds.
+    // A complete 0x20/0x16/0x18/0x0a/0x10 poll batch repeats every two seconds.
     // Keep the reachability watchdog safely beyond one missed batch.
     _sdkResponseTimer.setInterval(6000);
     _maximumZoomFreshnessTimer.setSingleShot(true);
     _maximumZoomFreshnessTimer.setInterval(kZoomFeedbackFreshnessMs);
+    _recordingCapabilityTimeoutTimer.setSingleShot(true);
+    _recordingCapabilityTimeoutTimer.setInterval(
+        kRecordingCapabilityTimeoutMs);
     _zoomStatusFreshnessTimer.setSingleShot(true);
     _zoomStatusFreshnessTimer.setInterval(kZoomFeedbackFreshnessMs);
     _absoluteZoomPollTimer.setInterval(kAbsoluteZoomPollMs);
@@ -216,6 +231,8 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_handleAbsoluteZoomFeedback);
     connect(_sdk, &Mt11Sdk::maximumZoomReceived,
             this, &Mt11ControlManager::_handleMaximumZoom);
+    connect(_sdk, &Mt11Sdk::recordingStreamParametersReceived,
+            this, &Mt11ControlManager::_handleRecordingStreamParameters);
     connect(_sdk, &Mt11Sdk::currentZoomReceived,
             this, &Mt11ControlManager::_handleCurrentZoom);
     connect(_sdk, &Mt11Sdk::cameraSystemStatusReceived,
@@ -260,6 +277,10 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
         }
         _setMaximumZoomKnown(false);
     });
+    connect(&_recordingCapabilityTimeoutTimer,
+            &QTimer::timeout,
+            this,
+            &Mt11ControlManager::_expireRecordingResolutionCapability);
     connect(&_zoomStatusFreshnessTimer, &QTimer::timeout, this, [this]() {
         const bool protectedTakeoverActive =
             _continuousZoomActive
@@ -354,6 +375,7 @@ Mt11ControlManager::~Mt11ControlManager()
     _pollTimer.stop();
     _sdkResponseTimer.stop();
     _maximumZoomFreshnessTimer.stop();
+    _recordingCapabilityTimeoutTimer.stop();
     _zoomStatusFreshnessTimer.stop();
     _absoluteZoomPollTimer.stop();
     _absoluteZoomConfirmationTimer.stop();
@@ -789,6 +811,7 @@ bool Mt11ControlManager::setVideoMode(int mode)
             static_cast<Mt11Protocol::VideoWorkMode>(mode))) {
         return false;
     }
+    _clearRecordingResolutionCapability();
     _setVideoModePending(true);
     // 0x16 describes the current main lens. Do not expose capability or
     // position from the previous lens while the switch is pending.
@@ -848,6 +871,7 @@ void Mt11ControlManager::setVideoReceiver(VideoReceiver* receiver)
         }
     }
     _videoReceiver = receiver;
+    _negotiatedPulledVideoSize = QSize();
     _receiverStreamingActive = false;
     _receiverDecodingActive = false;
     _receiverRecordingActive = false;
@@ -863,6 +887,24 @@ void Mt11ControlManager::setVideoReceiver(VideoReceiver* receiver)
             this, &Mt11ControlManager::_handleReceiverDecodingChanged);
     connect(_videoReceiver, &VideoReceiver::recordingChanged,
             this, &Mt11ControlManager::_handleReceiverRecordingChanged);
+    const QPointer<VideoReceiver> guardedReceiver(_videoReceiver);
+    connect(_videoReceiver,
+            &VideoReceiver::videoSizeChanged,
+            this,
+            [this, guardedReceiver](const QSize& videoSize) {
+                setNegotiatedPulledVideoResolution(
+                    guardedReceiver.data(),
+                    videoSize);
+            });
+    connect(_videoReceiver,
+            &VideoReceiver::videoPipelineGenerationStarted,
+            this,
+            [this, guardedReceiver](const QString&, quint64) {
+                if (guardedReceiver
+                    && guardedReceiver.data() == _videoReceiver.data()) {
+                    _negotiatedPulledVideoSize = QSize();
+                }
+            });
     connect(_videoReceiver, &VideoReceiver::onStopRecordingComplete,
             this, [this](VideoReceiver::STATUS status) {
                 _handleReceiverStopRecordingComplete(static_cast<int>(status));
@@ -873,6 +915,7 @@ void Mt11ControlManager::setVideoReceiver(VideoReceiver* receiver)
         _receiverStreamingActive = false;
         _receiverDecodingActive = false;
         _receiverRecordingActive = false;
+        _negotiatedPulledVideoSize = QSize();
         _localRecordingIntent = false;
         _resetLocalRecordingState();
     });
@@ -883,6 +926,38 @@ void Mt11ControlManager::setVideoReceiver(VideoReceiver* receiver)
         _receiverStreamingActive = true;
     }
     _notifyRecordingSessionStateChanged();
+}
+
+void Mt11ControlManager::setNegotiatedPulledVideoResolution(
+    VideoReceiver* sourceReceiver,
+    const QSize& videoSize)
+{
+    if (!sourceReceiver || sourceReceiver != _videoReceiver.data()) {
+        return;
+    }
+
+    if (!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            videoSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount)) {
+        if (videoSize.isValid() && !videoSize.isEmpty()) {
+            qCWarning(Mt11ControlLog)
+                << "Rejected unsafe decoded MT11 Video 2 resolution"
+                << videoSize;
+        }
+        _negotiatedPulledVideoSize = QSize();
+        return;
+    }
+
+    if (_negotiatedPulledVideoSize == videoSize) {
+        return;
+    }
+
+    _negotiatedPulledVideoSize = videoSize;
+    qCInfo(Mt11ControlLog)
+        << "Updated decoded MT11 Video 2 resolution"
+        << _negotiatedPulledVideoSize;
 }
 
 void Mt11ControlManager::handleVideoRecordingStartResult(
@@ -1040,6 +1115,7 @@ void Mt11ControlManager::_settingsChanged()
     _pollTimer.stop();
     _sdkResponseTimer.stop();
     _maximumZoomFreshnessTimer.stop();
+    _clearRecordingResolutionCapability();
     _zoomStatusFreshnessTimer.stop();
     _continuousZoomPollTimer.stop();
     _continuousZoomWatchdog.stop();
@@ -1117,6 +1193,7 @@ void Mt11ControlManager::_pollSdk()
     // mode change is still unconfirmed. The confirming 0x10/0x11 feedback
     // triggers a fresh 0x16/0x18 pair immediately.
     if (!_videoModePending) {
+        (void) _sdk->requestRecordingStreamParameters();
         (void) _sdk->requestMaximumZoom();
         if (!_continuousZoomActive) {
             (void) _sdk->requestCurrentZoom();
@@ -1192,6 +1269,93 @@ void Mt11ControlManager::_handleMaximumZoom(double maximumZoom)
         && _measuredZoomKnown) {
         _alignDisplayToMeasured();
     }
+}
+
+void Mt11ControlManager::_handleRecordingStreamParameters(
+    quint8 videoEncodingType,
+    quint16 width,
+    quint16 height,
+    quint16 bitrateKbps,
+    quint8 frameRate)
+{
+    if (!enabled() || _videoModePending) {
+        return;
+    }
+
+    const QSize recordingSize(width, height);
+    const qint64 pixelCount = static_cast<qint64>(width) * height;
+    if (!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            recordingSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount)) {
+        _clearRecordingResolutionCapability();
+        qCWarning(Mt11ControlLog)
+            << "Rejected unsupported MT11 recording-stream resolution"
+            << recordingSize
+            << "pixel count" << pixelCount;
+        return;
+    }
+
+    if (_recordingResolutionCandidate != recordingSize) {
+        _recordingResolutionCandidate = recordingSize;
+        _recordingResolutionConfirmationCount = 1;
+        if (_recordingResolutionConfirmed
+            && _recordingVideoSize != recordingSize) {
+            _recordingResolutionConfirmed = false;
+            _recordingVideoSize = QSize();
+        }
+    } else if (_recordingResolutionConfirmationCount
+               < kRecordingResolutionConfirmations) {
+        ++_recordingResolutionConfirmationCount;
+    }
+    _recordingCapabilityTimeoutTimer.start();
+
+    if (_recordingResolutionConfirmationCount
+        < kRecordingResolutionConfirmations) {
+        qCInfo(Mt11ControlLog)
+            << "Awaiting a second matching MT11 recording-stream response"
+            << recordingSize;
+        return;
+    }
+
+    const bool changed = !_recordingResolutionConfirmed
+        || _recordingVideoSize != recordingSize;
+    _recordingVideoSize = recordingSize;
+    _recordingResolutionConfirmed = true;
+
+    if (changed) {
+        qCInfo(Mt11ControlLog)
+            << "Updated MT11 recording-stream parameters"
+            << recordingSize
+            << "codec" << videoEncodingType
+            << "bitrate kbps" << bitrateKbps
+            << "fps" << frameRate;
+    }
+}
+
+void Mt11ControlManager::_expireRecordingResolutionCapability()
+{
+    const bool hadConfirmedResolution = _recordingResolutionConfirmed;
+    if (!hadConfirmedResolution
+        && _recordingResolutionConfirmationCount == 0) {
+        return;
+    }
+
+    if (hadConfirmedResolution) {
+        qCWarning(Mt11ControlLog)
+            << "MT11 recording-stream parameters timed out; local photos will use the negotiated RTSP size";
+    }
+    _clearRecordingResolutionCapability();
+}
+
+void Mt11ControlManager::_clearRecordingResolutionCapability()
+{
+    _recordingCapabilityTimeoutTimer.stop();
+    _recordingResolutionConfirmed = false;
+    _recordingVideoSize = QSize();
+    _recordingResolutionCandidate = QSize();
+    _recordingResolutionConfirmationCount = 0;
 }
 
 void Mt11ControlManager::_handleCurrentZoom(double zoomLevel)
@@ -1339,6 +1503,12 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
     const bool refreshZoomState = mainSourceChanged || commandConfirmed;
 
     if (refreshZoomState) {
+        // 0x20 describes the recording stream for the selected work mode.
+        // Retire the preceding lens/layout and require two matching post-reset
+        // observations. Fixed SEQ/CMD correlation cannot identify an
+        // arbitrarily late UDP ACK, but this prevents one stale reply from
+        // sizing a photo in the new mode.
+        _clearRecordingResolutionCapability();
         if (_continuousZoomActive) {
             // A locally started continuous movement must still receive one
             // immediate safety stop even when another controller changed the
@@ -1384,6 +1554,7 @@ void Mt11ControlManager::_handleVideoMode(quint8 mainStream, quint8 subStream)
     }
     if (refreshZoomState && !_videoModePending) {
         _requestZoomState();
+        (void) _sdk->requestRecordingStreamParameters();
     }
 }
 
@@ -1414,6 +1585,9 @@ void Mt11ControlManager::_handleCommunicationError(const QString& message)
 void Mt11ControlManager::_handleReceiverStreamingChanged(bool active)
 {
     _receiverStreamingActive = active;
+    if (!active) {
+        _negotiatedPulledVideoSize = QSize();
+    }
     if (!active && (_localRecordingActive || _localRecordingStartPending)) {
         _localRecordingIntent = false;
         if (_localRecordingOwned && !_localRecordingStopPending) {
@@ -1433,6 +1607,9 @@ void Mt11ControlManager::_handleReceiverStreamingChanged(bool active)
 void Mt11ControlManager::_handleReceiverDecodingChanged(bool active)
 {
     _receiverDecodingActive = active;
+    if (!active) {
+        _negotiatedPulledVideoSize = QSize();
+    }
 }
 
 void Mt11ControlManager::_handleReceiverRecordingChanged(bool active)
@@ -2261,20 +2438,118 @@ bool Mt11ControlManager::_captureLocalVideoFrame()
             .arg(sequence, 3, 10, QLatin1Char('0')));
     QQuickWindow* window = _videoItem->window();
     if (!window) {
+        _setLocalMediaError(tr("Failed to capture the MT11 local video frame."));
         return false;
     }
-    const qreal dpr = qMax<qreal>(1.0, window->effectiveDevicePixelRatio());
-    const QSize sourceSize(qMax(1, qRound(_videoItem->width() * dpr)),
-                           qMax(1, qRound(_videoItem->height() * dpr)));
+
+    const qreal reportedDevicePixelRatio =
+        window->effectiveDevicePixelRatio();
+    const qreal effectiveDevicePixelRatio =
+        qIsFinite(reportedDevicePixelRatio)
+            && reportedDevicePixelRatio > 0.0
+        ? reportedDevicePixelRatio
+        : 1.0;
+    const QSize itemPixelSize(
+        qMax(1,
+             qRound(_videoItem->width()
+                    * effectiveDevicePixelRatio)),
+        qMax(1,
+             qRound(_videoItem->height()
+                    * effectiveDevicePixelRatio)));
+    const QSize implicitVideoSize(
+        qRound(_videoItem->implicitWidth()),
+        qRound(_videoItem->implicitHeight()));
+    const bool negotiatedSizeSafe =
+        GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            _negotiatedPulledVideoSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount);
+    const bool implicitSizeSafe =
+        GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            implicitVideoSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount);
+    const bool itemSizeSafe =
+        GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            itemPixelSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount);
+    const QSize sourcePixelSize =
+        GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+            negotiatedSizeSafe ? _negotiatedPulledVideoSize : QSize(),
+            implicitSizeSafe ? implicitVideoSize : QSize(),
+            itemSizeSafe ? itemPixelSize : QSize());
+    const bool usingRecordingResolution =
+        _recordingResolutionConfirmed
+        && _recordingVideoSize.isValid()
+        && !_recordingVideoSize.isEmpty();
+    const QSize outputPixelSize = usingRecordingResolution
+        ? _recordingVideoSize
+        : sourcePixelSize;
+    if (!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            sourcePixelSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount)
+        || !GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+            outputPixelSize,
+            kMaximumLocalPhotoLongEdge,
+            kMaximumLocalPhotoShortEdge,
+            kMaximumLocalPhotoPixelCount)) {
+        _setLocalMediaError(tr("Failed to capture the MT11 local video frame."));
+        qCWarning(Mt11ControlLog)
+            << "Rejected unsafe MT11 local photo dimensions"
+            << "negotiated" << _negotiatedPulledVideoSize
+            << "implicit" << implicitVideoSize
+            << "rendered" << itemPixelSize
+            << "recording" << _recordingVideoSize;
+        return false;
+    }
     const auto geometry = GimbalPhotoCapturePolicy::captureGeometry(
-        sourceSize, sourceSize, dpr);
+        outputPixelSize,
+        sourcePixelSize,
+        effectiveDevicePixelRatio);
     if (!geometry.isValid()) {
+        _setLocalMediaError(tr("Failed to capture the MT11 local video frame."));
+        qCWarning(Mt11ControlLog)
+            << "Rejected invalid MT11 local photo geometry"
+            << "recording" << _recordingVideoSize
+            << "recording confirmed" << _recordingResolutionConfirmed
+            << "decoded source" << sourcePixelSize
+            << "DPR" << effectiveDevicePixelRatio;
         return false;
     }
+
+    const char* sourceSizeDescription = negotiatedSizeSafe
+        ? "negotiated Video 2 stream"
+        : (implicitSizeSafe
+               ? "video item implicit-size fallback"
+               : "video item physical-size fallback");
+    qCInfo(Mt11ControlLog)
+        << "Starting MT11 local camera-frame capture"
+        << "output" << geometry.outputPixelSize
+        << "output source"
+        << (usingRecordingResolution
+                ? "MT11 recording stream 0x20"
+                : sourceSizeDescription)
+        << "decoded source" << sourcePixelSize
+        << "negotiated" << _negotiatedPulledVideoSize
+        << "item DIP"
+        << QSize(qRound(_videoItem->width()),
+                 qRound(_videoItem->height()))
+        << "item implicit" << implicitVideoSize
+        << "DPR" << effectiveDevicePixelRatio
+        << "content" << geometry.contentPixelSize
+        << "grab logical target" << geometry.grabLogicalSize
+        << "JPEG quality" << kLocalPhotoJpegQuality;
 
     const QSharedPointer<QQuickItemGrabResult> result =
         _videoItem->grabToImage(geometry.grabLogicalSize);
     if (!result) {
+        _setLocalMediaError(tr("Failed to capture the MT11 local video frame."));
         return false;
     }
     auto* lifetime = new Mt11PhotoGrabLifetime(result, window);
@@ -2285,6 +2560,7 @@ bool Mt11ControlManager::_captureLocalVideoFrame()
     });
     _localPhotoGrabLifetime = lifetime;
     _localPhotoPending = true;
+    _setLocalMediaError({});
     const QPointer<QObject> guardedLifetime(lifetime);
     const QWeakPointer<QQuickItemGrabResult> weakResult = result.toWeakRef();
     connect(result.data(), &QQuickItemGrabResult::ready, this,
@@ -2297,31 +2573,64 @@ bool Mt11ControlManager::_captureLocalVideoFrame()
                 }
                 _localPhotoTimer.stop();
                 _localPhotoGrabLifetime.clear();
-                const QImage image = strongResult->image();
+                QImage image = strongResult->image();
+                const QSize grabbedPixelSize = image.size();
                 if (image.isNull()) {
                     _localPhotoPending = false;
                     _setLocalMediaError(tr("Failed to capture the MT11 local video frame."));
+                    qCWarning(Mt11ControlLog)
+                        << "MT11 camera-frame grab produced no usable image"
+                        << "raw" << grabbedPixelSize
+                        << "expected content" << geometry.contentPixelSize
+                        << "expected output" << geometry.outputPixelSize;
                     return;
                 }
                 _localPhotoSaveThreadPool.start(
-                    [this, image, geometry, filename, sequence]() mutable {
+                    [this,
+                     image = std::move(image),
+                     geometry,
+                     filename,
+                     sequence,
+                     grabbedPixelSize]() mutable {
                         const PhotoSaveOutcome outcome =
                             savePhoto(std::move(image), geometry, filename);
-                        (void) QMetaObject::invokeMethod(
+                        const bool completionQueued = QMetaObject::invokeMethod(
                             this,
-                            [this, outcome, filename, sequence]() {
+                            [this,
+                             outcome,
+                             filename,
+                             sequence,
+                             grabbedPixelSize,
+                             geometry]() {
                                 if (sequence != _localPhotoSequence) return;
                                 _localPhotoPending = false;
                                 if (!outcome.success) {
                                     _setLocalMediaError(tr("Failed to save the MT11 local video frame."));
+                                    qCWarning(Mt11ControlLog)
+                                        << "Failed to save MT11 local camera frame"
+                                        << filename << outcome.error
+                                        << "raw" << grabbedPixelSize
+                                        << "expected output"
+                                        << geometry.outputPixelSize;
                                     return;
                                 }
                                 ++_localPhotoCount;
                                 emit localPhotoCountChanged();
                                 _setLocalMediaError({});
+                                qCInfo(Mt11ControlLog)
+                                    << "Saved MT11 local camera frame"
+                                    << filename
+                                    << "raw grab" << grabbedPixelSize
+                                    << "output" << outcome.outputPixelSize
+                                    << "bytes" << outcome.fileSize;
                                 publishLocalMedia(filename, true);
                             },
                             Qt::QueuedConnection);
+                        if (!completionQueued) {
+                            qCWarning(Mt11ControlLog)
+                                << "Failed to queue MT11 local photo completion"
+                                << filename;
+                        }
                     });
             }, Qt::SingleShotConnection);
     connect(result.data(), &QQuickItemGrabResult::ready, lifetime,

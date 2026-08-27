@@ -36,6 +36,7 @@ public:
     bool requestMaximumZoom();
     bool requestCurrentZoom();
     bool requestCameraSystemStatus();
+    bool requestRecordingStreamParameters();
     bool takePhoto();
     bool toggleVideoRecording();
     bool requestVideoMode();
@@ -56,6 +57,11 @@ signals:
                                     quint8 zoomLinkage);
     void functionFeedbackReceived(quint8 infoType);
     void videoModeReceived(quint8 mainStream, quint8 subStream);
+    void recordingStreamParametersReceived(quint8 videoEncodingType,
+                                           quint16 width,
+                                           quint16 height,
+                                           quint16 bitrateKbps,
+                                           quint8 frameRate);
     void packetReceived();
     void communicationError(const QString& message);
 

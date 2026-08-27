@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * UniPod MT11 SDK V0.1.0 protocol regression tests.
+ * UniPod MT11 SDK V0.2.3 protocol regression tests.
  *
  ****************************************************************************/
 
@@ -18,6 +18,8 @@ class Mt11ProtocolTest : public QObject
 
 private slots:
     void documentedCommandFrames();
+    void cameraEncodingParameterFrames();
+    void cameraEncodingParameterPayloads();
     void videoModeFrames();
     void strictFrameDecoding();
     void multiFrameDatagramIsAtomic();
@@ -59,6 +61,69 @@ void Mt11ProtocolTest::documentedCommandFrames()
              QByteArrayLiteral("5566010000000016b2a6"));
     QCOMPARE(Mt11Protocol::requestCurrentZoomPacket().toHex(),
              QByteArrayLiteral("55660100000000187c47"));
+}
+
+void Mt11ProtocolTest::cameraEncodingParameterFrames()
+{
+    // SDK V0.2.3 command 0x20: 0 recording, 1 main, 2 sub stream.
+    QCOMPARE(Mt11Protocol::requestCameraEncodingParametersPacket(0).toHex(),
+             QByteArrayLiteral("556601010000002000bf8d"));
+    QCOMPARE(Mt11Protocol::requestCameraEncodingParametersPacket(1).toHex(),
+             QByteArrayLiteral("5566010100000020019e9d"));
+    QCOMPARE(Mt11Protocol::requestCameraEncodingParametersPacket(2).toHex(),
+             QByteArrayLiteral("556601010000002002fdad"));
+    QVERIFY(Mt11Protocol::requestCameraEncodingParametersPacket(3).isEmpty());
+
+    const auto decoded = Mt11Protocol::decodePacket(
+        Mt11Protocol::requestCameraEncodingParametersPacket(0));
+    QVERIFY(decoded.valid);
+    QCOMPARE(decoded.control, quint8(0x01));
+    QCOMPARE(decoded.command,
+             quint8(Mt11Protocol::CommandCameraEncodingParameters));
+    QCOMPARE(decoded.payload, QByteArray::fromHex("00"));
+}
+
+void Mt11ProtocolTest::cameraEncodingParameterPayloads()
+{
+    Mt11Protocol::CameraEncodingParameters parameters;
+
+    // Recording stream, H.265, 3840x2160, 40000 Kbps, 30 fps.
+    QVERIFY(Mt11Protocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("0002000f7008409c1e"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(0));
+    QCOMPARE(parameters.videoEncodingType, quint8(2));
+    QCOMPARE(parameters.width, quint16(3840));
+    QCOMPARE(parameters.height, quint16(2160));
+    QCOMPARE(parameters.bitrateKbps, quint16(40000));
+    QCOMPARE(parameters.frameRate, quint8(30));
+
+    // Main and sub stream records use the same little-endian layout.
+    QVERIFY(Mt11Protocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("01018007380410271e"), &parameters));
+    QCOMPARE(parameters.streamType, quint8(1));
+    QCOMPARE(parameters.videoEncodingType, quint8(1));
+    QCOMPARE(parameters.width, quint16(1920));
+    QCOMPARE(parameters.height, quint16(1080));
+    QCOMPARE(parameters.bitrateKbps, quint16(10000));
+    QCOMPARE(parameters.frameRate, quint8(30));
+
+    const QList<QByteArray> invalidPayloads = {
+        QByteArray(),
+        QByteArray::fromHex("0002000f7008409c"),
+        QByteArray::fromHex("0302000f7008409c1e"),
+        QByteArray::fromHex("0000000f7008409c1e"),
+        QByteArray::fromHex("0003000f7008409c1e"),
+        QByteArray::fromHex("000200007008409c1e"),
+        QByteArray::fromHex("0002000f0000409c1e"),
+    };
+    for (const QByteArray& payload : invalidPayloads) {
+        QVERIFY(!Mt11Protocol::parseCameraEncodingParametersPayload(
+            payload,
+            &parameters));
+    }
+    QVERIFY(!Mt11Protocol::parseCameraEncodingParametersPayload(
+        QByteArray::fromHex("0002000f7008409c1e"),
+        nullptr));
 }
 
 void Mt11ProtocolTest::videoModeFrames()

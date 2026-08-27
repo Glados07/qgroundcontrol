@@ -552,6 +552,13 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                 Qt::QueuedConnection);
         }
     }
+
+    if (isSecondaryVideoReceiver && mt11Manager) {
+        // The probe publishes only after a real decoded buffer has arrived.
+        // Mt11ControlManager consumes the receiver's videoSizeChanged signal
+        // and rejects callbacks which belong to a detached receiver.
+        (void) PulledVideoResolutionProbe::install(sink, parent);
+    }
 #endif
 
     return sink;

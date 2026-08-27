@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Reports the negotiated main pulled-video resolution from a GStreamer sink.
+ * Reports the negotiated pulled-video resolution from a GStreamer sink.
  *
  ****************************************************************************/
 
@@ -126,7 +126,7 @@ void reportNegotiatedSize(ProbeContext *context)
     if (context->lastLoggedSize != context->negotiatedSize) {
         context->lastLoggedSize = context->negotiatedSize;
         qCInfo(PulledVideoResolutionProbeLog)
-            << "Negotiated main pulled-video resolution:"
+            << "Negotiated pulled-video resolution:"
             << context->negotiatedSize.width()
             << "x"
             << context->negotiatedSize.height();
@@ -170,7 +170,7 @@ GstPadProbeReturn sinkPadProbe(GstPad *pad,
                    && !context->missingCapsLogged) {
             context->missingCapsLogged = true;
             qCWarning(PulledVideoResolutionProbeLog)
-                << "A main pulled-video frame arrived without readable"
+                << "A pulled-video frame arrived without readable"
                    " negotiated width/height caps";
         }
     }

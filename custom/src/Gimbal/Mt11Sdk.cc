@@ -137,6 +137,14 @@ bool Mt11Sdk::requestCameraSystemStatus()
                        Mt11Protocol::CommandCameraSystemInfo);
 }
 
+bool Mt11Sdk::requestRecordingStreamParameters()
+{
+    return _sendPacket(
+        Mt11Protocol::requestCameraEncodingParametersPacket(
+            Mt11Protocol::CameraStreamRecording),
+        Mt11Protocol::CommandCameraEncodingParameters);
+}
+
 bool Mt11Sdk::takePhoto()
 {
     return _sendPacket(Mt11Protocol::takePhotoPacket());
@@ -281,6 +289,23 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
         if (parsed) {
             emit packetReceived();
             emit videoModeReceived(mode.mainStream, mode.subStream);
+        }
+    } else if (command
+               == Mt11Protocol::CommandCameraEncodingParameters) {
+        Mt11Protocol::CameraEncodingParameters parameters;
+        parsed = Mt11Protocol::parseCameraEncodingParametersPayload(
+            payload,
+            &parameters)
+            && (parameters.streamType
+                == Mt11Protocol::CameraStreamRecording);
+        if (parsed) {
+            emit packetReceived();
+            emit recordingStreamParametersReceived(
+                parameters.videoEncodingType,
+                parameters.width,
+                parameters.height,
+                parameters.bitrateKbps,
+                parameters.frameRate);
         }
     } else {
         return;

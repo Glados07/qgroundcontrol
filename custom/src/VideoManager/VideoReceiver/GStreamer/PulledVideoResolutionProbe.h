@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Reports the negotiated main pulled-video resolution from a GStreamer sink.
+ * Reports the negotiated pulled-video resolution from a GStreamer sink.
  *
  ****************************************************************************/
 
@@ -18,7 +18,7 @@ namespace PulledVideoResolutionProbe
 using ResolutionHandler = std::function<void(const QSize&)>;
 
 /// Installs a negotiated-caps probe on a QGC GStreamer video sink.
-/// Returns true only when a probe was installed for the main video receiver.
+/// Returns true only when a probe was installed for a non-thermal receiver.
 bool install(void *sink,
              QObject *parent,
              ResolutionHandler resolutionHandler = {});

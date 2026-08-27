@@ -16,6 +16,9 @@ class GimbalPhotoCapturePolicyTest : public QObject
     Q_OBJECT
 
 private slots:
+    void negotiatedSourceSizeIsIndependentFromPip();
+    void sourceSizeFallbackOrder();
+    void captureSizeSafetyBounds();
     void recordingResolutionAndDpr_data();
     void recordingResolutionAndDpr();
     void dci4kPreservesCompleteFrame();
@@ -23,6 +26,75 @@ private slots:
     void exactOutputDoesNotDetach();
     void invalidGeometryIsRejected();
 };
+
+void GimbalPhotoCapturePolicyTest::negotiatedSourceSizeIsIndependentFromPip()
+{
+    const QSize sourceSize =
+        GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+            QSize(1920, 1080),
+            QSize(1280, 720),
+            QSize(640, 360));
+    QCOMPARE(sourceSize, QSize(1920, 1080));
+
+    const auto geometry = GimbalPhotoCapturePolicy::captureGeometry(
+        sourceSize,
+        sourceSize,
+        2.0);
+    QVERIFY(geometry.isValid());
+    QCOMPARE(geometry.outputPixelSize, QSize(1920, 1080));
+    QCOMPARE(geometry.grabLogicalSize, QSize(960, 540));
+}
+
+void GimbalPhotoCapturePolicyTest::sourceSizeFallbackOrder()
+{
+    QCOMPARE(GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+                 QSize(), QSize(1280, 720), QSize(640, 360)),
+             QSize(1280, 720));
+    QCOMPARE(GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+                 QSize(), QSize(), QSize(640, 360)),
+             QSize(640, 360));
+    QVERIFY(GimbalPhotoCapturePolicy::resolveSourcePixelSize(
+                QSize(), QSize(), QSize()).isEmpty());
+}
+
+void GimbalPhotoCapturePolicyTest::captureSizeSafetyBounds()
+{
+    constexpr int maximumLongEdge = 4096;
+    constexpr int maximumShortEdge = 2160;
+    constexpr qint64 maximumPixelCount =
+        static_cast<qint64>(maximumLongEdge) * maximumShortEdge;
+
+    QVERIFY(GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(3840, 2160),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+    QVERIFY(GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(2160, 4096),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+    QVERIFY(!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(4097, 2160),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+    QVERIFY(!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(4096, 2161),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+    QVERIFY(!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(65535, 135),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+    QVERIFY(!GimbalPhotoCapturePolicy::isPixelSizeWithinBounds(
+        QSize(),
+        maximumLongEdge,
+        maximumShortEdge,
+        maximumPixelCount));
+}
 
 void GimbalPhotoCapturePolicyTest::recordingResolutionAndDpr_data()
 {

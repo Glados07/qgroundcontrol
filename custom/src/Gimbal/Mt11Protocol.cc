@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * UniPod MT11 SDK wire-protocol helpers.
- * Protocol source: UniPod MT11 SDK V0.1.0, sections 1, 2, 4 and 5.
+ * Protocol source: UniPod MT11 SDK V0.2.3.
  *
  ****************************************************************************/
 
@@ -87,6 +87,18 @@ QByteArray Mt11Protocol::toggleVideoRecordingPacket()
 QByteArray Mt11Protocol::requestVideoModePacket()
 {
     return _encode(CommandVideoMode, {});
+}
+
+QByteArray Mt11Protocol::requestCameraEncodingParametersPacket(
+    quint8 streamType)
+{
+    if (streamType > CameraStreamSub) {
+        return {};
+    }
+
+    QByteArray payload;
+    payload.append(static_cast<char>(streamType));
+    return _encode(CommandCameraEncodingParameters, payload);
 }
 
 QByteArray Mt11Protocol::setVideoModePacket(VideoWorkMode mode)
@@ -306,6 +318,41 @@ bool Mt11Protocol::parseVideoModePayload(const QByteArray& payload,
     }
     mode->mainStream = mainStream;
     mode->subStream = subStream;
+    return true;
+}
+
+bool Mt11Protocol::parseCameraEncodingParametersPayload(
+    const QByteArray& payload,
+    CameraEncodingParameters* parameters)
+{
+    if (!parameters || payload.size() != 9) {
+        return false;
+    }
+
+    const auto at = [&payload](int index) {
+        return static_cast<quint8>(payload.at(index));
+    };
+
+    CameraEncodingParameters parsed;
+    parsed.streamType = at(0);
+    parsed.videoEncodingType = at(1);
+    parsed.width = static_cast<quint16>(at(2))
+        | (static_cast<quint16>(at(3)) << 8);
+    parsed.height = static_cast<quint16>(at(4))
+        | (static_cast<quint16>(at(5)) << 8);
+    parsed.bitrateKbps = static_cast<quint16>(at(6))
+        | (static_cast<quint16>(at(7)) << 8);
+    parsed.frameRate = at(8);
+
+    if (parsed.streamType > CameraStreamSub
+        || (parsed.videoEncodingType != 1
+            && parsed.videoEncodingType != 2)
+        || parsed.width == 0
+        || parsed.height == 0) {
+        return false;
+    }
+
+    *parameters = parsed;
     return true;
 }
 

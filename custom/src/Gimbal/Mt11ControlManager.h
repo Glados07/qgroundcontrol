@@ -9,6 +9,7 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSize>
 #include <QtCore/QStringList>
 #include <QtCore/QThreadPool>
 #include <QtCore/QTimer>
@@ -141,6 +142,10 @@ public:
 
     void setVideoItem(QQuickItem* videoItem);
     void setVideoReceiver(VideoReceiver* receiver);
+    /// Accepts a decoded Video 2 frame size only when it belongs to the
+    /// currently attached receiver. It is used instead of the current PIP.
+    void setNegotiatedPulledVideoResolution(VideoReceiver* sourceReceiver,
+                                            const QSize& videoSize);
     void handleVideoRecordingStartResult(bool success,
                                          const QString& outputFile);
     void shutdownLocalMedia(bool waitForStop = false);
@@ -183,6 +188,12 @@ private slots:
     void _handleManualZoom(double zoomLevel);
     void _handleAbsoluteZoomFeedback(bool accepted);
     void _handleMaximumZoom(double maximumZoom);
+    void _handleRecordingStreamParameters(quint8 videoEncodingType,
+                                          quint16 width,
+                                          quint16 height,
+                                          quint16 bitrateKbps,
+                                          quint8 frameRate);
+    void _expireRecordingResolutionCapability();
     void _handleCurrentZoom(double zoomLevel);
     void _handleCameraSystemStatus(quint8 hdrStatus,
                                    quint8 recordingStatus,
@@ -247,6 +258,7 @@ private:
     void _setLastError(const QString& message);
     void _setLocalMediaError(const QString& message);
     void _notifyRecordingSessionStateChanged();
+    void _clearRecordingResolutionCapability();
     bool _captureLocalVideoFrame();
     bool _startRecordingSession();
     bool _stopRecordingSession();
@@ -266,12 +278,14 @@ private:
     static constexpr double kAbsoluteCommandMaximumZoom = 30.0;
     static constexpr double kSupportedHybridMaximumZoom = 165.1;
     static constexpr double kFeedbackMaximumZoom = 255.9;
+    static constexpr int kRecordingCapabilityTimeoutMs = 4500;
 
     GimbalControlSettings* _settings = nullptr;
     Mt11Sdk* _sdk = nullptr;
     QTimer _pollTimer;
     QTimer _sdkResponseTimer;
     QTimer _maximumZoomFreshnessTimer;
+    QTimer _recordingCapabilityTimeoutTimer;
     QTimer _zoomStatusFreshnessTimer;
     QTimer _absoluteZoomPollTimer;
     QTimer _absoluteZoomConfirmationTimer;
@@ -340,6 +354,11 @@ private:
     int _videoModeCommandTarget = VideoModeZoom;
     quint8 _mainVideoSource = 0xff;
     quint8 _subVideoSource = 0xff;
+    QSize _recordingVideoSize;
+    QSize _recordingResolutionCandidate;
+    QSize _negotiatedPulledVideoSize;
+    int _recordingResolutionConfirmationCount = 0;
+    bool _recordingResolutionConfirmed = false;
     QPointer<QQuickItem> _videoItem;
     QPointer<VideoReceiver> _videoReceiver;
     QPointer<QObject> _localPhotoGrabLifetime;
