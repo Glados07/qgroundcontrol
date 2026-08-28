@@ -10,6 +10,7 @@
 #include "GimbalControlManager.h"
 #include "GimbalControlSettings.h"
 #include "QGCLoggingCategory.h"
+#include "UniRcSerialAccessPolicy.h"
 
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
@@ -20,6 +21,8 @@
 #include <array>
 
 #ifdef Q_OS_ANDROID
+#include <QtCore/QJniEnvironment>
+#include <QtCore/QJniObject>
 #include <QtCore/QSocketNotifier>
 
 #include <cerrno>
@@ -38,6 +41,36 @@ QGC_LOGGING_CATEGORY(UniRcChannelLog, "gcs.custom.android.unircchannel")
 namespace {
 
 #ifdef Q_OS_ANDROID
+constexpr char kAndroidBluetoothStateClassName[] =
+    "org/mavlink/qgroundcontrol/QGCCustomBluetoothState";
+
+UniRcSerialAccessPolicy::BluetoothState androidBluetoothState()
+{
+    using BluetoothState = UniRcSerialAccessPolicy::BluetoothState;
+
+    if (!QJniObject::isClassAvailable(kAndroidBluetoothStateClassName)) {
+        return BluetoothState::Unknown;
+    }
+
+    const jint state = QJniObject::callStaticMethod<jint>(
+        kAndroidBluetoothStateClassName,
+        "getStateForUniRc",
+        "()I");
+    QJniEnvironment environment;
+    if (environment.checkAndClearExceptions()) {
+        return BluetoothState::Unknown;
+    }
+
+    switch (state) {
+    case static_cast<jint>(BluetoothState::OffObserved):
+        return BluetoothState::OffObserved;
+    case static_cast<jint>(BluetoothState::OnOrTransition):
+        return BluetoothState::OnOrTransition;
+    default:
+        return BluetoothState::Unknown;
+    }
+}
+
 QString errnoMessage(const QString &operation,
                      const QString &devicePath,
                      int errorNumber)
@@ -124,6 +157,10 @@ void UniRcChannelController::_settingsChanged()
         return;
     }
 
+#ifdef Q_OS_ANDROID
+    _bluetoothOffObserved = false;
+#endif
+
     const QString configuredPath =
         _settings->uniRcSdkSerialPort()->rawValue().toString().trimmed();
     if (_serialOpen
@@ -138,6 +175,9 @@ void UniRcChannelController::_applicationStateChanged(Qt::ApplicationState state
 {
     _applicationActive = state == Qt::ApplicationActive;
     if (!_applicationActive) {
+#ifdef Q_OS_ANDROID
+        _bluetoothOffObserved = false;
+#endif
         _reconnectTimer.stop();
         _inputWatchdog.stop();
         if (_gimbalCenterCoordinator) {
@@ -197,6 +237,45 @@ bool UniRcChannelController::_openSerial()
         _setLastError(
             tr("UniRC SDK serial device must be an absolute /dev path."));
         return false;
+    }
+
+    if (UniRcSerialAccessPolicy::requiresBluetoothOff(devicePath)) {
+        const UniRcSerialAccessPolicy::BluetoothState bluetoothState =
+            androidBluetoothState();
+        const UniRcSerialAccessPolicy::Decision accessDecision =
+            UniRcSerialAccessPolicy::evaluate(
+                devicePath,
+                bluetoothState,
+                _bluetoothOffObserved);
+        _bluetoothOffObserved =
+            bluetoothState == UniRcSerialAccessPolicy::BluetoothState::OffObserved;
+        if (accessDecision != UniRcSerialAccessPolicy::Decision::Allow) {
+            QString message;
+            if (accessDecision
+                == UniRcSerialAccessPolicy::Decision::BlockBluetoothActive) {
+                message =
+                    tr("Android Bluetooth is not fully off (enabled or changing state). Turn it off completely before the UniRC UART2 SDK can open %1.")
+                        .arg(devicePath);
+            } else if (accessDecision
+                       == UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease) {
+                message =
+                    tr("Android Bluetooth appears off; waiting for %1 to be released before opening the UniRC UART2 SDK.")
+                        .arg(devicePath);
+            } else {
+                message =
+                    tr("Cannot verify that Android Bluetooth is off. For safety, the UniRC UART2 SDK will not open %1; turn Bluetooth off and try again.")
+                        .arg(devicePath);
+            }
+            if (_lastError != message) {
+                qCWarning(UniRcChannelLog)
+                    << "Refusing to open UniRC SDK Serial 2"
+                    << devicePath
+                    << "because Android Bluetooth is not confirmed off"
+                    << "state" << static_cast<int>(bluetoothState);
+            }
+            _setLastError(message);
+            return false;
+        }
     }
 
     const QByteArray nativePath = QFile::encodeName(devicePath);
@@ -344,6 +423,7 @@ void UniRcChannelController::_closeSerial(bool sendDisableRequest)
     _resetInput(false);
 
 #ifdef Q_OS_ANDROID
+    _bluetoothOffObserved = false;
     if (_readNotifier) {
         _readNotifier->setEnabled(false);
         delete _readNotifier;

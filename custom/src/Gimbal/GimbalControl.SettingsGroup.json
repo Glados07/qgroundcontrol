@@ -94,7 +94,7 @@
         {
             "name": "uniRcSdkSerialPort",
             "shortDesc": "UniRC SDK serial device",
-            "longDesc": "UniRC 10 Pro SDK Serial 2 device. UniGCS must assign the SDK interface to Serial 2 before QGC opens this device.",
+            "longDesc": "UniGCS must route the UniRC SDK to Serial 2. When this device is /dev/ttyHS0, Android Bluetooth must be fully off before QGC can open the shared UART.",
             "type": "string",
             "default": "/dev/ttyHS0"
         }

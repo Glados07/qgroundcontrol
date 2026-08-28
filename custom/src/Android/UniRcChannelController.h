@@ -119,6 +119,7 @@ private:
     bool _shuttingDown = false;
 
 #ifdef Q_OS_ANDROID
+    bool _bluetoothOffObserved = false;
     int _serialFd = -1;
     QSocketNotifier *_readNotifier = nullptr;
 #endif

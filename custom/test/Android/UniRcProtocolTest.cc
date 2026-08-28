@@ -1,5 +1,6 @@
 #include "UniRcChannelPolicy.h"
 #include "UniRcProtocol.h"
+#include "UniRcSerialAccessPolicy.h"
 
 #include <QtTest/QTest>
 
@@ -64,6 +65,7 @@ private slots:
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
     void centerPolicyUsesReleasedToPressedEdges();
     void policyRejectsUnreasonableValues();
+    void serialAccessRequiresBluetoothOffForHs0();
 };
 
 void UniRcProtocolTest::exact20HzRequest()
@@ -84,6 +86,29 @@ void UniRcProtocolTest::exact20HzRequest()
     QCOMPARE(decoded.sequence, quint16(0x5678));
     QCOMPARE(decoded.command, quint8(0x42));
     QCOMPARE(decoded.payload, QByteArray::fromHex("05"));
+}
+
+void UniRcProtocolTest::serialAccessRequiresBluetoothOffForHs0()
+{
+    using namespace UniRcSerialAccessPolicy;
+
+    const QString sharedSerial2 = QStringLiteral("/dev/ttyHS0");
+    QVERIFY(requiresBluetoothOff(sharedSerial2));
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::OffObserved, false)
+            == Decision::WaitForBluetoothRelease);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::OffObserved, true)
+            == Decision::Allow);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::OnOrTransition)
+            == Decision::BlockBluetoothActive);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::Unknown)
+            == Decision::BlockBluetoothUnknown);
+
+    const QString otherSerial = QStringLiteral("/dev/ttyHS3");
+    QVERIFY(!requiresBluetoothOff(otherSerial));
+    QVERIFY(evaluate(otherSerial, BluetoothState::OnOrTransition)
+            == Decision::Allow);
+    QVERIFY(evaluate(otherSerial, BluetoothState::Unknown)
+            == Decision::Allow);
 }
 
 void UniRcProtocolTest::decodeChannelResponse()

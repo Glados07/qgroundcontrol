@@ -111,6 +111,17 @@ if(ANDROID)
             message(FATAL_ERROR "QGC: Generated Android package does not contain the custom media library")
         endif()
 
+        set(_qgc_bluetooth_state_overlay
+            "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCCustomBluetoothState.java"
+        )
+        if(NOT EXISTS "${_qgc_bluetooth_state_overlay}")
+            message(FATAL_ERROR "QGC: Custom Android Bluetooth state helper was not generated")
+        endif()
+        file(READ "${_qgc_bluetooth_state_overlay}" _qgc_bluetooth_state_overlay_header LIMIT 4096)
+        if(NOT _qgc_bluetooth_state_overlay_header MATCHES "QGC_CUSTOM_ANDROID_BLUETOOTH_STATE_V1")
+            message(FATAL_ERROR "QGC: Generated Android package does not contain the custom Bluetooth state helper")
+        endif()
+
         set(QGC_ANDROID_PACKAGE_SOURCE_DIR "${_qgc_final_android_dir}"
             CACHE PATH "Path to the merged custom Android package template" FORCE
         )
@@ -398,6 +409,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         src/Android/UniRcChannelPolicy.h
         src/Android/UniRcProtocol.cc
         src/Android/UniRcProtocol.h
+        src/Android/UniRcSerialAccessPolicy.cc
+        src/Android/UniRcSerialAccessPolicy.h
     )
     target_include_directories(UniRcProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Android

@@ -837,6 +837,21 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="257"/>
+        <source>Android Bluetooth is not fully off (enabled or changing state). Turn it off completely before the UniRC UART2 SDK can open %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="262"/>
+        <source>Android Bluetooth appears off; waiting for %1 to be released before opening the UniRC UART2 SDK.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="266"/>
+        <source>Cannot verify that Android Bluetooth is off. For safety, the UniRC UART2 SDK will not open %1; turn Bluetooth off and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="206"/>
         <source>UniRC SDK serial path is not a character device: %1</source>
         <translation type="unfinished"></translation>
@@ -960,7 +975,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcSdkSerialPort].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>UniRC 10 Pro SDK Serial 2 device. UniGCS must assign the SDK interface to Serial 2 before QGC opens this device.</source>
+        <source>UniGCS must route the UniRC SDK to Serial 2. When this device is /dev/ttyHS0, Android Bluetooth must be fully off before QGC can open the shared UART.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
