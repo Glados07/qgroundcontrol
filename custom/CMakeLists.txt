@@ -413,6 +413,29 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
+
+    qt_add_executable(AndroidH265DecoderRoutePolicyTest
+        test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.h
+    )
+    target_include_directories(AndroidH265DecoderRoutePolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/VideoManager/VideoReceiver/GStreamer
+    )
+    target_link_libraries(AndroidH265DecoderRoutePolicyTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(
+        NAME AndroidH265DecoderRoutePolicyTest
+        COMMAND $<TARGET_FILE:AndroidH265DecoderRoutePolicyTest>
+    )
+    add_custom_target(check_android_h265_decoder_route_policy
+        COMMAND $<TARGET_FILE:AndroidH265DecoderRoutePolicyTest>
+        DEPENDS AndroidH265DecoderRoutePolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
 endif()
 
 # custom.ts 仅作为模板；实际语言目录由根目录 qt_add_translations 编译。

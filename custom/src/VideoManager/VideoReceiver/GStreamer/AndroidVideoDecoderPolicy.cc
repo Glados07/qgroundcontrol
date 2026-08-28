@@ -6,6 +6,7 @@
 
 #include "AndroidVideoDecoderPolicy.h"
 
+#include "AndroidH265DecoderRoutePolicy.h"
 #include "AndroidH265HardwareDecoderAdapter.h"
 #include "QGCLoggingCategory.h"
 
@@ -26,7 +27,7 @@ namespace {
 
 // Written only while apply() runs during startup, before either decodebin is
 // created, and read-only for the remainder of the process lifetime.
-QStringList s_directHvc1DecoderFactoryNames;
+QStringList s_hardwareRetryFactoryNames;
 
 } // namespace
 
@@ -82,7 +83,9 @@ bool isAdapterFactory(GstElementFactory *factory)
     const gchar *const name = factory
         ? gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory))
         : nullptr;
-    return name && qstrcmp(name, AndroidH265HardwareDecoderAdapter::elementFactoryName()) == 0;
+    return name
+        && AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(
+            QString::fromUtf8(name));
 }
 
 bool isAndroidMediaFactory(GstElementFactory *factory)
@@ -257,7 +260,7 @@ QString pluginAndFactoryName(GstElementFactory *factory)
 
 void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 {
-    s_directHvc1DecoderFactoryNames.clear();
+    s_hardwareRetryFactoryNames.clear();
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
     if (!forceHardwareDecoding) {
@@ -301,18 +304,26 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 
     const int directH264VendorCount = rankNativeVendorMediaCodecDecoders(
         "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false, nullptr);
+    QStringList directHvc1DecoderFactoryNames;
     const int directHvc1VendorCount = rankNativeVendorMediaCodecDecoders(
         "H.265",
         h265Caps,
         hvc1Caps,
         h265ByteStreamCaps,
         adapterRegistered,
-        &s_directHvc1DecoderFactoryNames);
+        &directHvc1DecoderFactoryNames);
 
-    if (!s_directHvc1DecoderFactoryNames.isEmpty()) {
+    s_hardwareRetryFactoryNames =
+        AndroidH265DecoderRoutePolicy::orderedRetryFactories(
+            AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames(),
+            directHvc1DecoderFactoryNames);
+    if (!s_hardwareRetryFactoryNames.isEmpty()) {
         qCInfo(AndroidVideoDecoderPolicyLog)
-            << "Selected ordered receiver-specific H.265 direct hardware retry factories"
-            << s_directHvc1DecoderFactoryNames;
+            << "Selected ordered receiver-specific H.265 hardware retry factories"
+            << s_hardwareRetryFactoryNames
+            << "alternativeAnnexBAdapters"
+            << AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames()
+            << "directHvc1Decoders" << directHvc1DecoderFactoryNames;
     }
 
     if (directH264VendorCount > 0) {
@@ -357,7 +368,7 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 #endif
 }
 
-QStringList AndroidVideoDecoderPolicy::directHvc1DecoderFactoryNames()
+QStringList AndroidVideoDecoderPolicy::hardwareRetryFactoryNames()
 {
-    return s_directHvc1DecoderFactoryNames;
+    return s_hardwareRetryFactoryNames;
 }

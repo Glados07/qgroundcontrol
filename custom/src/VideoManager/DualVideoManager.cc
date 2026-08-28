@@ -59,16 +59,14 @@ bool isAdapterFactoryForRoute(VideoReceiver *receiver,
                               const QString &uri,
                               const QString &factory)
 {
-    if (!AndroidH265DecoderFallback::usesAdapterRoute(receiver, uri)) {
+    const QString adapterFactory =
+        AndroidH265DecoderFallback::activeAdapterFactoryName(receiver, uri);
+    if (adapterFactory.isEmpty()) {
         return false;
     }
 
-    const QString adapterFactory = QString::fromLatin1(
-        AndroidH265HardwareDecoderAdapter::elementFactoryName());
-    const QString internalFactory = QString::fromUtf8(
-        AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
-    return factory == adapterFactory
-        || (!internalFactory.isEmpty() && factory == internalFactory);
+    return AndroidH265HardwareDecoderAdapter::adapterRouteContainsFactory(
+        adapterFactory, factory);
 }
 
 class FinishSecondaryVideoInitialization final : public QRunnable
@@ -703,7 +701,7 @@ void DualVideoManager::_ensureReceiver()
                 // stop/restart so the next attempt gets a fresh Gst pipeline.
                 guardedThis->_decodeStartupTimer.stop();
                 const bool hardwareRouteAdvanced =
-                    AndroidH265DecoderFallback::prepareDirectRetry(
+                    AndroidH265DecoderFallback::prepareHardwareRetry(
                         guardedReceiver.data(),
                         guardedThis->_videoPipelineUri,
                         guardedThis->_videoPipelineGeneration,
@@ -959,7 +957,7 @@ void DualVideoManager::_ensureReceiver()
 
                 const bool hardwareRouteAdvanced =
                     !rtspSourceError && decoderBranchError
-                    && AndroidH265DecoderFallback::prepareDirectRetry(
+                    && AndroidH265DecoderFallback::prepareHardwareRetry(
                         guardedReceiver.data(),
                         uri,
                         generation,
@@ -972,7 +970,7 @@ void DualVideoManager::_ensureReceiver()
                         "H.265 adapter decoder-branch bus error");
 
                 // The core receiver stops every current-generation bus error.
-                // Freeze any proven adapter->direct route before that stop,
+                // Freeze any proven next hardware route before that stop,
                 // then block watchdog/start paths until completion.
                 guardedThis->_stopping = true;
                 qCWarning(DualVideoManagerLog)
@@ -1160,7 +1158,7 @@ void DualVideoManager::_handleDecodeStartupTimeout()
     }
 
     const bool hardwareRouteAdvanced =
-        AndroidH265DecoderFallback::prepareDirectRetry(
+        AndroidH265DecoderFallback::prepareHardwareRetry(
             _receiver.data(),
             _videoPipelineUri,
             _videoPipelineGeneration,

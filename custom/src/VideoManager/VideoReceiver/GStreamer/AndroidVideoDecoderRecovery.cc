@@ -38,16 +38,14 @@ bool isAdapterFactoryForRoute(VideoReceiver *receiver,
                               const QString &uri,
                               const QString &factory)
 {
-    if (!AndroidH265DecoderFallback::usesAdapterRoute(receiver, uri)) {
+    const QString adapterFactory =
+        AndroidH265DecoderFallback::activeAdapterFactoryName(receiver, uri);
+    if (adapterFactory.isEmpty()) {
         return false;
     }
 
-    const QString adapterFactory = QString::fromLatin1(
-        AndroidH265HardwareDecoderAdapter::elementFactoryName());
-    const QString internalFactory = QString::fromUtf8(
-        AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
-    return factory == adapterFactory
-        || (!internalFactory.isEmpty() && factory == internalFactory);
+    return AndroidH265HardwareDecoderAdapter::adapterRouteContainsFactory(
+        adapterFactory, factory);
 }
 }
 
@@ -327,7 +325,7 @@ void AndroidVideoDecoderRecovery::_handlePipelineError(
     }
 
     // GstVideoReceiver stops every current-generation bus error. Freeze a
-    // proven adapter->direct route first, then prevent a first-frame timeout
+    // proven next hardware route first, then prevent a first-frame timeout
     // or late decoder-selection signal from starting a competing stop.
     _firstFrameTimer.stop();
     if (videoCodec != static_cast<int>(VideoReceiver::VIDEO_CODEC_UNKNOWN)) {
@@ -352,7 +350,7 @@ void AndroidVideoDecoderRecovery::_handlePipelineError(
         _videoCodec = static_cast<int>(VideoReceiver::VIDEO_CODEC_H265);
     }
     const bool hardwareRouteAdvanced = !rtspSourceError && decoderBranchError
-        && AndroidH265DecoderFallback::prepareDirectRetry(
+        && AndroidH265DecoderFallback::prepareHardwareRetry(
             _receiver.data(),
             _activeUri,
             _activeGeneration,
@@ -436,7 +434,7 @@ void AndroidVideoDecoderRecovery::_restartAfterDecoderFailure(
     _firstFrameTimer.stop();
     _stopping = true;
     const bool hardwareRouteAdvanced =
-        AndroidH265DecoderFallback::prepareDirectRetry(
+        AndroidH265DecoderFallback::prepareHardwareRetry(
             _receiver.data(),
             _activeUri,
             _activeGeneration,

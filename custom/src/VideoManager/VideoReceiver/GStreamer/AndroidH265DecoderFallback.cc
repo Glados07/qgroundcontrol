@@ -6,6 +6,8 @@
 
 #include "AndroidH265DecoderFallback.h"
 
+#include "AndroidH265DecoderRoutePolicy.h"
+#include "AndroidH265HardwareDecoderAdapter.h"
 #include "AndroidVideoDecoderPolicy.h"
 #include "QGCLoggingCategory.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
@@ -25,8 +27,8 @@ constexpr const char *kRouteUriProperty =
     "customAndroidH265DecoderRouteUri";
 constexpr const char *kRouteCandidateIndexProperty =
     "customAndroidH265DecoderRouteCandidateIndex";
-constexpr const char *kDirectRoutesExhaustedProperty =
-    "customAndroidH265DecoderDirectRoutesExhausted";
+constexpr const char *kRetryRoutesExhaustedProperty =
+    "customAndroidH265DecoderRetryRoutesExhausted";
 // This property name is the intentionally small, generic bridge consumed by
 // GstVideoReceiver when it builds one concrete H.265 decoding branch.
 constexpr const char *kExplicitDecoderFactoryProperty =
@@ -48,7 +50,7 @@ void resetRouteForUri(VideoReceiver *receiver, const QString &uri)
     receiver->setProperty(kRouteUriProperty, uri);
     receiver->setProperty(kExplicitDecoderFactoryProperty, QString());
     receiver->setProperty(kRouteCandidateIndexProperty, -1);
-    receiver->setProperty(kDirectRoutesExhaustedProperty, false);
+    receiver->setProperty(kRetryRoutesExhaustedProperty, false);
     if (!previousFactory.isEmpty()) {
         qCInfo(AndroidH265DecoderFallbackLog)
             << "Cleared receiver-specific Android H.265 decoder route after URI change"
@@ -85,19 +87,30 @@ void AndroidH265DecoderFallback::install(VideoReceiver *receiver)
 #endif
 }
 
-bool AndroidH265DecoderFallback::usesAdapterRoute(
+QString AndroidH265DecoderFallback::activeAdapterFactoryName(
     VideoReceiver *receiver,
     const QString &uri)
 {
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
-    return receiver && !uri.isEmpty() && receiver->uri() == uri
-        && receiver->property(kRouteUriProperty).toString() == uri
-        && receiver->property(kExplicitDecoderFactoryProperty)
-               .toString().isEmpty();
+    if (!receiver || uri.isEmpty() || receiver->uri() != uri
+        || receiver->property(kRouteUriProperty).toString() != uri) {
+        return {};
+    }
+
+    const QString explicitFactory =
+        receiver->property(kExplicitDecoderFactoryProperty).toString();
+    if (explicitFactory.isEmpty()) {
+        return QString::fromLatin1(
+            AndroidH265HardwareDecoderAdapter::elementFactoryName());
+    }
+    return AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(
+               explicitFactory)
+        ? explicitFactory
+        : QString();
 #else
     Q_UNUSED(receiver)
     Q_UNUSED(uri)
-    return false;
+    return {};
 #endif
 }
 
@@ -130,13 +143,13 @@ bool AndroidH265DecoderFallback::canAdvanceHardwareRoute(
         // the outer adapter or its internal MediaCodec identity.
         return (adapterSelected
                 || videoCodec == VideoReceiver::VIDEO_CODEC_H265)
-            && !receiver->property(kDirectRoutesExhaustedProperty).toBool()
-            && !AndroidVideoDecoderPolicy::directHvc1DecoderFactoryNames()
+            && !receiver->property(kRetryRoutesExhaustedProperty).toBool()
+            && !AndroidVideoDecoderPolicy::hardwareRetryFactoryNames()
                     .isEmpty();
     }
 
     // An explicit factory is itself generation-scoped proof that this is an
-    // H.265 direct route. It may advance even when the failure occurs before
+    // H.265 retry route. It may advance even when the failure occurs before
     // the first compressed buffer or decoder-selection callback.
     return true;
 #else
@@ -149,7 +162,7 @@ bool AndroidH265DecoderFallback::canAdvanceHardwareRoute(
 #endif
 }
 
-bool AndroidH265DecoderFallback::prepareDirectRetry(
+bool AndroidH265DecoderFallback::prepareHardwareRetry(
     VideoReceiver *receiver,
     const QString &uri,
     quint64 generation,
@@ -180,34 +193,34 @@ bool AndroidH265DecoderFallback::prepareDirectRetry(
         return false;
     }
 
-    const QStringList directFactories =
-        AndroidVideoDecoderPolicy::directHvc1DecoderFactoryNames();
-    const int directFactoryCount =
-        static_cast<int>(directFactories.size());
+    const QStringList retryFactories =
+        AndroidVideoDecoderPolicy::hardwareRetryFactoryNames();
+    const int retryFactoryCount =
+        static_cast<int>(retryFactories.size());
     const QString previousFactory =
         receiver->property(kExplicitDecoderFactoryProperty).toString();
-    int previousIndex =
+    const int previousIndex =
         receiver->property(kRouteCandidateIndexProperty).toInt();
-    if (!previousFactory.isEmpty()) {
-        const int matchingIndex = static_cast<int>(
-            directFactories.indexOf(previousFactory));
-        if (matchingIndex >= 0) {
-            previousIndex = matchingIndex;
-        }
-    }
-    const int nextIndex = previousIndex + 1;
+    const AndroidH265DecoderRoutePolicy::RouteSelection nextRoute =
+        AndroidH265DecoderRoutePolicy::nextRoute(retryFactories,
+                                                 previousFactory,
+                                                 previousIndex);
 
     // The caller invokes this on the receiver's Qt thread before requesting a
     // complete stop. GstVideoReceiver consumes the frozen value only while it
     // constructs the next generation, so no running pipeline is mutated.
     receiver->setProperty(kRouteUriProperty, uri);
-    if (nextIndex >= 0 && nextIndex < directFactoryCount) {
-        const QString directFactory = directFactories.at(nextIndex);
-        receiver->setProperty(kRouteCandidateIndexProperty, nextIndex);
-        receiver->setProperty(kExplicitDecoderFactoryProperty, directFactory);
+    if (!nextRoute.exhausted) {
+        receiver->setProperty(kRouteCandidateIndexProperty,
+                              nextRoute.candidateIndex);
+        receiver->setProperty(kExplicitDecoderFactoryProperty,
+                              nextRoute.factoryName);
+        const bool a8StyleAdapter =
+            AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(
+                nextRoute.factoryName);
         qCWarning(AndroidH265DecoderFallbackLog)
             << "Advancing the receiver-specific H.265 hardware route;"
-               " the next generation will use a direct vendor MediaCodec"
+               " the next generation will use the next bounded hardware factory"
             << "receiver" << receiver
             << "uri" << uri
             << "generation" << generation
@@ -215,30 +228,34 @@ bool AndroidH265DecoderFallback::prepareDirectRetry(
             << (previousFactory.isEmpty()
                     ? QStringLiteral("qgcandroidh265hwdec")
                     : previousFactory)
-            << "factory" << directFactory
-            << "candidate" << nextIndex + 1 << "/"
-            << directFactoryCount
+            << "factory" << nextRoute.factoryName
+            << "routeKind"
+            << (a8StyleAdapter
+                    ? QStringLiteral("A8-style Annex-B adapter")
+                    : QStringLiteral("direct hvc1 MediaCodec"))
+            << "candidate" << nextRoute.candidateIndex + 1 << "/"
+            << retryFactoryCount
             << "sourceFrame" << sourceFrameReceived
             << "decoderBranchFailure" << confirmedDecoderBranchFailure
             << "reason" << (reason ? reason : "unspecified");
         return true;
     }
 
-    // Do not rebuild the same failed direct factory forever. Once every
-    // compatible direct MediaCodec has been tried, return to the same adapter
-    // used by A8 Mini and keep software decoder ranks disabled.
+    // Do not rebuild a failed explicit route forever. Once every alternative
+    // A8-style adapter and direct MediaCodec has been tried, return to the
+    // preferred adapter used by A8 Mini and keep software ranks disabled.
     receiver->setProperty(kRouteCandidateIndexProperty,
-                          directFactoryCount);
+                          nextRoute.candidateIndex);
     receiver->setProperty(kExplicitDecoderFactoryProperty, QString());
-    receiver->setProperty(kDirectRoutesExhaustedProperty, true);
+    receiver->setProperty(kRetryRoutesExhaustedProperty, true);
     qCWarning(AndroidH265DecoderFallbackLog)
-        << "All receiver-specific direct H.265 MediaCodec routes failed before a decoded frame;"
-           " the next generation will return to the shared hardware adapter"
+        << "All receiver-specific H.265 hardware retry routes failed;"
+           " the next generation will return to the preferred hardware adapter"
         << "receiver" << receiver
         << "uri" << uri
         << "generation" << generation
         << "previousFactory" << previousFactory
-        << "candidateCount" << directFactoryCount
+        << "candidateCount" << retryFactoryCount
         << "sourceFrame" << sourceFrameReceived
         << "decoderBranchFailure" << confirmedDecoderBranchFailure
         << "reason" << (reason ? reason : "unspecified");

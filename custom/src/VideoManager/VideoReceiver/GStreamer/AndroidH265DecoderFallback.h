@@ -18,25 +18,26 @@ public:
     /// never leak into a later stream on the same receiver.
     static void install(VideoReceiver *receiver);
 
-    /// True while this receiver/URI is using the shared A8-compatible
-    /// hvc1-to-Annex-B adapter rather than an explicit direct factory.
-    static bool usesAdapterRoute(VideoReceiver *receiver,
-                                 const QString &uri);
+    /// Adapter factory active for this receiver/URI, including an explicitly
+    /// selected alternative A8-style route. Empty means a native direct route
+    /// or no matching active route.
+    static QString activeAdapterFactoryName(VideoReceiver *receiver,
+                                            const QString &uri);
 
     /// Advance this receiver/URI to its next compatible vendor MediaCodec
-    /// route. Direct factories are tried once in policy order; after the last
-    /// one fails, the route returns to the shared adapter without enabling a
-    /// software decoder. Returns true when the route changes.
-    static bool prepareDirectRetry(VideoReceiver *receiver,
-                                   const QString &uri,
-                                   quint64 generation,
-                                   int videoCodec,
-                                   bool adapterSelected,
-                                   bool sourceFrameReceived,
-                                   bool confirmedDecoderBranchFailure,
-                                   bool decoderFrameReceived,
-                                   bool sinkFrameReceived,
-                                   const char *reason);
+    /// route. Alternative A8-style adapters and direct factories are each
+    /// tried once; after the last one fails, the route returns to the preferred
+    /// adapter without enabling software decoding. Returns true on a change.
+    static bool prepareHardwareRetry(VideoReceiver *receiver,
+                                     const QString &uri,
+                                     quint64 generation,
+                                     int videoCodec,
+                                     bool adapterSelected,
+                                     bool sourceFrameReceived,
+                                     bool confirmedDecoderBranchFailure,
+                                     bool decoderFrameReceived,
+                                     bool sinkFrameReceived,
+                                     const char *reason);
 
 private:
     static bool canAdvanceHardwareRoute(VideoReceiver *receiver,
