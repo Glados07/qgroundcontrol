@@ -38,18 +38,23 @@ AndroidH265DecoderRoutePolicy::nextRoute(
     const QString &previousFactory,
     int previousCandidateIndex)
 {
+    // Route indices are persisted as int-valued QObject properties. Qt 6
+    // changed container sizes and indices to qsizetype, so normalize the
+    // small decoder-factory list explicitly at this boundary.
+    const int factoryCount = static_cast<int>(orderedFactories.size());
     int currentIndex = previousCandidateIndex;
     if (!previousFactory.isEmpty()) {
-        const int matchingIndex = orderedFactories.indexOf(previousFactory);
+        const int matchingIndex =
+            static_cast<int>(orderedFactories.indexOf(previousFactory));
         if (matchingIndex >= 0) {
             currentIndex = matchingIndex;
         }
     }
 
     const int nextIndex = currentIndex + 1;
-    if (nextIndex >= 0 && nextIndex < orderedFactories.size()) {
+    if (nextIndex >= 0 && nextIndex < factoryCount) {
         return RouteSelection{orderedFactories.at(nextIndex), nextIndex, false};
     }
 
-    return RouteSelection{QString(), orderedFactories.size(), true};
+    return RouteSelection{QString(), factoryCount, true};
 }

@@ -761,8 +761,10 @@ bool AndroidH265HardwareDecoderAdapter::registerElement()
         return false;
     }
 
+    const int hardwareCandidateCount =
+        static_cast<int>(hardwareCandidates.size());
     int preferredCandidateIndex = -1;
-    for (int index = 0; index < hardwareCandidates.size(); ++index) {
+    for (int index = 0; index < hardwareCandidateCount; ++index) {
         const HardwareDecoderCandidate &candidate = hardwareCandidates.at(index);
         qCInfo(AndroidH265HardwareDecoderAdapterLog)
             << "Preflighting preferred Android H.265 Annex-B hardware candidate"
@@ -805,7 +807,7 @@ bool AndroidH265HardwareDecoderAdapter::registerElement()
 
     int alternativeIndex = 1;
     for (int index = preferredCandidateIndex + 1;
-         index < hardwareCandidates.size();
+         index < hardwareCandidateCount;
          ++index) {
         // Preserve the proven A8 startup path exactly: only its preferred
         // candidate is preflighted eagerly. Later compatible candidates are

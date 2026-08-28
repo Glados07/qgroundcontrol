@@ -48,10 +48,11 @@ void AndroidH265DecoderRoutePolicyTest::everyRouteIsSelectedOnce()
         QStringLiteral("direct-b"),
     };
 
+    const int factoryCount = static_cast<int>(factories.size());
     QString previousFactory;
     int previousIndex = -1;
     for (int expectedIndex = 0;
-         expectedIndex < factories.size();
+         expectedIndex < factoryCount;
          ++expectedIndex) {
         const auto selection = AndroidH265DecoderRoutePolicy::nextRoute(
             factories, previousFactory, previousIndex);
@@ -66,7 +67,7 @@ void AndroidH265DecoderRoutePolicyTest::everyRouteIsSelectedOnce()
         factories, previousFactory, previousIndex);
     QVERIFY(finalSelection.exhausted);
     QVERIFY(finalSelection.factoryName.isEmpty());
-    QCOMPARE(finalSelection.candidateIndex, factories.size());
+    QCOMPARE(finalSelection.candidateIndex, factoryCount);
 
     const auto stableFinalSelection =
         AndroidH265DecoderRoutePolicy::nextRoute(
@@ -75,7 +76,7 @@ void AndroidH265DecoderRoutePolicyTest::everyRouteIsSelectedOnce()
             finalSelection.candidateIndex);
     QVERIFY(stableFinalSelection.exhausted);
     QVERIFY(stableFinalSelection.factoryName.isEmpty());
-    QCOMPARE(stableFinalSelection.candidateIndex, factories.size());
+    QCOMPARE(stableFinalSelection.candidateIndex, factoryCount);
 }
 
 void AndroidH265DecoderRoutePolicyTest::emptyRouteListIsImmediatelyExhausted()
