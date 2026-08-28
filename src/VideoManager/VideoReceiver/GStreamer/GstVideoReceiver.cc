@@ -38,10 +38,13 @@ constexpr uint32_t kMinimumRtspTimeoutSeconds = 8;
 constexpr guint64 kRtspTeardownTimeoutNanoseconds = GST_SECOND;
 constexpr const char *kExplicitH265DecoderFactoryProperty =
     "customAndroidH265DecoderFactory";
+constexpr const char *kH265ParserOutputFormatProperty =
+    "customAndroidH265ParserOutputFormat";
 
 struct ObjectPipelineContext {
     QString uri;
     QString explicitH265DecoderFactory;
+    QString h265ParserOutputFormat;
     quint64 generation = 0;
 };
 
@@ -93,7 +96,8 @@ void destroyDecoderOutputProbeContext(gpointer data)
 void setObjectPipelineContext(GObject *object,
                               const QString &uri,
                               quint64 generation,
-                              const QString &explicitH265DecoderFactory = {})
+                              const QString &explicitH265DecoderFactory = {},
+                              const QString &h265ParserOutputFormat = {})
 {
     if (!object) {
         return;
@@ -102,6 +106,7 @@ void setObjectPipelineContext(GObject *object,
     auto *const context = new ObjectPipelineContext;
     context->uri = uri;
     context->explicitH265DecoderFactory = explicitH265DecoderFactory;
+    context->h265ParserOutputFormat = h265ParserOutputFormat;
     context->generation = generation;
     g_object_set_qdata_full(object,
                             pipelineContextQuark(),
@@ -155,19 +160,18 @@ VideoReceiver::VIDEO_CODEC videoCodecFromCaps(const GstCaps *caps)
     return VideoReceiver::VIDEO_CODEC_UNKNOWN;
 }
 
-bool capsAreHvc1CompatibleH265(const GstCaps *caps)
+bool capsAreCompatibleH265(const GstCaps *caps)
 {
     if (!caps || gst_caps_is_any(caps) || gst_caps_is_empty(caps)
         || gst_caps_get_size(caps) == 0) {
         return false;
     }
 
-    GstCaps *const hvc1Caps = gst_caps_from_string(
-        "video/x-h265,stream-format=(string)hvc1");
-    const bool compatible = hvc1Caps
-        && gst_caps_can_intersect(caps, hvc1Caps);
-    if (hvc1Caps) {
-        gst_caps_unref(hvc1Caps);
+    GstCaps *const h265Caps = gst_caps_from_string("video/x-h265");
+    const bool compatible = h265Caps
+        && gst_caps_can_intersect(caps, h265Caps);
+    if (h265Caps) {
+        gst_caps_unref(h265Caps);
     }
     return compatible;
 }
@@ -224,6 +228,8 @@ void GstVideoReceiver::start(uint32_t timeout)
     const bool lowLatencyMode = lowLatency();
     const QString explicitH265DecoderFactory =
         property(kExplicitH265DecoderFactoryProperty).toString().trimmed();
+    const QString h265ParserOutputFormat =
+        property(kH265ParserOutputFormatProperty).toString().trimmed();
     quint64 generation = 0;
     while (generation == 0) {
         generation = _pipelineGenerationCounter.fetch_add(1) + 1;
@@ -245,12 +251,14 @@ void GstVideoReceiver::start(uint32_t timeout)
              startUri,
              lowLatencyMode,
              generation,
-             explicitH265DecoderFactory]() {
+             explicitH265DecoderFactory,
+             h265ParserOutputFormat]() {
                 _start(timeout,
                        startUri,
                        lowLatencyMode,
                        generation,
-                       explicitH265DecoderFactory);
+                       explicitH265DecoderFactory,
+                       h265ParserOutputFormat);
             });
         return;
     }
@@ -259,14 +267,16 @@ void GstVideoReceiver::start(uint32_t timeout)
            startUri,
            lowLatencyMode,
            generation,
-           explicitH265DecoderFactory);
+           explicitH265DecoderFactory,
+           h265ParserOutputFormat);
 }
 
 void GstVideoReceiver::_start(uint32_t timeout,
                               const QString &startUri,
                               bool lowLatencyMode,
                               quint64 generation,
-                              const QString &explicitH265DecoderFactory)
+                              const QString &explicitH265DecoderFactory,
+                              const QString &h265ParserOutputFormat)
 {
     if (_pipeline) {
         qCDebug(GstVideoReceiverLog) << "Already running!" << startUri;
@@ -405,7 +415,8 @@ void GstVideoReceiver::_start(uint32_t timeout,
         setObjectPipelineContext(G_OBJECT(_pipeline),
                                  startUri,
                                  generation,
-                                 explicitH265DecoderFactory);
+                                 explicitH265DecoderFactory,
+                                 h265ParserOutputFormat);
 
         g_object_set(_pipeline,
                      "message-forward", TRUE,
@@ -919,7 +930,7 @@ void GstVideoReceiver::_handleEOS()
 
 gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstElement *element, GstQuery *query, gpointer data)
 {
-    Q_UNUSED(bin); Q_UNUSED(pad); Q_UNUSED(element); Q_UNUSED(data)
+    Q_UNUSED(pad); Q_UNUSED(element); Q_UNUSED(data)
 
     if (GST_QUERY_TYPE(query) != GST_QUERY_CAPS) {
         return FALSE;
@@ -927,7 +938,8 @@ gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstEl
 
     GstCaps *srcCaps;
     gst_query_parse_caps(query, &srcCaps);
-    if (!srcCaps || gst_caps_is_any(srcCaps)) {
+    if (!srcCaps || gst_caps_is_any(srcCaps) || gst_caps_is_empty(srcCaps)
+        || gst_caps_get_size(srcCaps) == 0) {
         return FALSE;
     }
 
@@ -937,7 +949,16 @@ gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstEl
     if (gst_structure_has_name(structure, "video/x-h265")) {
         filter = gst_caps_from_string("video/x-h265");
         if (gst_caps_can_intersect(srcCaps, filter)) {
-            sinkCaps = gst_caps_from_string("video/x-h265,stream-format=hvc1");
+            const ObjectPipelineContext *const pipelineContext =
+                bin ? objectPipelineContext(G_OBJECT(bin)) : nullptr;
+            const bool useNativeByteStream = pipelineContext
+                && pipelineContext->h265ParserOutputFormat.compare(
+                       QStringLiteral("byte-stream"),
+                       Qt::CaseInsensitive) == 0;
+            sinkCaps = gst_caps_from_string(
+                useNativeByteStream
+                    ? "video/x-h265,stream-format=byte-stream,alignment=au"
+                    : "video/x-h265,stream-format=hvc1");
         }
         gst_clear_caps(&filter);
     } else if (gst_structure_has_name(structure, "video/x-h264")) {
@@ -1091,7 +1112,23 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
             break;
         }
 
-        (void) g_signal_connect(parser, "autoplug-query", G_CALLBACK(_filterParserCaps), nullptr);
+        // Copy the immutable generation context onto parsebin itself. Its
+        // autoplug query may run on a streaming thread while receiver
+        // teardown is in progress, so the callback must not dereference the
+        // receiver's mutable _pipeline pointer.
+        const ObjectPipelineContext *const pipelineContext = _pipeline
+            ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
+        if (pipelineContext) {
+            setObjectPipelineContext(G_OBJECT(parser),
+                                     pipelineContext->uri,
+                                     pipelineContext->generation,
+                                     pipelineContext->explicitH265DecoderFactory,
+                                     pipelineContext->h265ParserOutputFormat);
+        }
+        (void) g_signal_connect(parser,
+                                "autoplug-query",
+                                G_CALLBACK(_filterParserCaps),
+                                nullptr);
 
         gst_bin_add_many(GST_BIN(bin), source, parser, nullptr);
 
@@ -1175,19 +1212,20 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
         : QString();
     const bool capsUnknown = !caps || gst_caps_is_any(caps)
         || gst_caps_is_empty(caps);
-    const bool compatibleHvc1Caps = capsAreHvc1CompatibleH265(caps);
+    const bool compatibleH265Caps = capsAreCompatibleH265(caps);
     const bool currentGenerationConfirmedH265 =
         _actualVideoCodec.load() == VIDEO_CODEC_H265;
     // A source-pad hint normally supplies the negotiated hvc1 caps. If a
     // late startDecoding() sees only ANY on the still-closed valve, the tee's
     // current-generation CAPS milestone is an equally scoped H.265 proof;
-    // parsebin's autoplug query already constrains that stream to hvc1.
+    // parsebin's autoplug query already constrains that stream to the
+    // generation-frozen H.265 packetization route (hvc1 or byte-stream/AU).
     // The current-generation codec milestone is the stream identity. A late
     // valve caps query may legitimately return a union containing H.264 and
     // H.265 alternatives; requiring every structure to be H.265 would reject
     // the frozen H.265 route even though its hvc1 branch is compatible.
     const bool confirmedH265Route = currentGenerationConfirmedH265
-        && (capsUnknown || compatibleHvc1Caps);
+        && (capsUnknown || compatibleH265Caps);
 
     if (confirmedH265Route && !explicitH265Factory.isEmpty()) {
         _actualVideoCodec.store(VIDEO_CODEC_H265);
@@ -1225,13 +1263,13 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
         gchar *const capsText = caps ? gst_caps_to_string(caps) : nullptr;
         qCCritical(GstVideoReceiverLog)
             << "Refusing receiver-specific explicit H.265 decoder factory "
-               "because this generation is not confirmed as hvc1-compatible H.265"
+               "because this generation is not confirmed as compatible H.265"
             << "receiver" << this
             << "name" << name()
             << "uri" << _pipelineUri()
             << "factory" << explicitH265Factory
             << "currentGenerationCodec" << _actualVideoCodec.load()
-            << "hvc1CompatibleCaps" << compatibleHvc1Caps
+            << "h265CompatibleCaps" << compatibleH265Caps
             << "caps" << (capsText ? capsText : "unknown");
         g_free(capsText);
         return nullptr;
@@ -1253,6 +1291,7 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
 GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMAT format)
 {
     GstElement *fileSink = nullptr;
+    GstElement *inputParser = nullptr;
     GstElement *mux = nullptr;
     GstElement *sink = nullptr;
     GstElement *bin = nullptr;
@@ -1286,6 +1325,56 @@ GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMA
             break;
         }
 
+        const ObjectPipelineContext *const pipelineContext = _pipeline
+            ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
+        int recordingCodec = _actualVideoCodec.load();
+        if (recordingCodec == VIDEO_CODEC_UNKNOWN && _recorderValve) {
+            GstPad *const recorderInputPad =
+                gst_element_get_static_pad(_recorderValve, "sink");
+            GstCaps *const recorderInputCaps = recorderInputPad
+                ? gst_pad_get_current_caps(recorderInputPad) : nullptr;
+            recordingCodec = videoCodecFromCaps(recorderInputCaps);
+            if (recorderInputCaps) {
+                gst_caps_unref(recorderInputCaps);
+            }
+            if (recorderInputPad) {
+                gst_object_unref(recorderInputPad);
+            }
+        }
+        const bool nativeH265Route = pipelineContext
+            && pipelineContext->h265ParserOutputFormat.compare(
+                   QStringLiteral("byte-stream"),
+                   Qt::CaseInsensitive) == 0;
+        if (nativeH265Route && recordingCodec == VIDEO_CODEC_UNKNOWN) {
+            // The native route may also carry H.264 (the MT11 supports both
+            // codecs). Do not guess which parser to insert before negotiated
+            // source CAPS identify the active codec.
+            qCWarning(GstVideoReceiverLog)
+                << "Deferring native-route recording until video codec CAPS are available"
+                << _pipelineUri();
+            break;
+        }
+        const bool nativeH265ByteStream =
+            nativeH265Route && recordingCodec == VIDEO_CODEC_H265;
+        if (nativeH265ByteStream) {
+            // MT11 bypasses the fragile RTP H.265 -> hvc1 conversion before
+            // the tee so Android MediaCodec receives native Annex-B/AU. File
+            // muxers still require hvc1/hev1, therefore convert only inside
+            // the recording branch and let the selected mux negotiate which
+            // packetized format it accepts.
+            inputParser = gst_element_factory_make(
+                "h265parse", "recording_h265_parser");
+            if (!inputParser) {
+                qCCritical(GstVideoReceiverLog)
+                    << "gst_element_factory_make('h265parse') failed for native H.265 recording"
+                    << _pipelineUri();
+                break;
+            }
+            g_object_set(inputParser,
+                         "config-interval", -1,
+                         nullptr);
+        }
+
         GstPadTemplate *padTemplate = gst_element_class_get_pad_template(GST_ELEMENT_GET_CLASS(mux), "video_%u");
         if (!padTemplate) {
             qCCritical(GstVideoReceiverLog) << "gst_element_class_get_pad_template(mux) failed";
@@ -1299,12 +1388,45 @@ GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMA
             break;
         }
 
-        gst_bin_add_many(GST_BIN(bin), mux, sink, nullptr);
+        if (inputParser) {
+            gst_bin_add_many(GST_BIN(bin), inputParser, mux, sink, nullptr);
+        } else {
+            gst_bin_add_many(GST_BIN(bin), mux, sink, nullptr);
+        }
 
         releaseElements = false;
 
-        GstPad *ghostpad = gst_ghost_pad_new("sink", pad);
-        (void) gst_element_add_pad(bin, ghostpad);
+        GstPad *ghostTargetPad = pad;
+        GstPad *parserSrcPad = nullptr;
+        GstPad *parserSinkPad = nullptr;
+        if (inputParser) {
+            parserSrcPad = gst_element_get_static_pad(inputParser, "src");
+            parserSinkPad = gst_element_get_static_pad(inputParser, "sink");
+            if (!parserSrcPad || !parserSinkPad
+                || gst_pad_link(parserSrcPad, pad) != GST_PAD_LINK_OK) {
+                qCCritical(GstVideoReceiverLog)
+                    << "Unable to link native H.265 recording parser to mux"
+                    << _pipelineUri();
+                gst_clear_object(&parserSrcPad);
+                gst_clear_object(&parserSinkPad);
+                gst_clear_object(&pad);
+                break;
+            }
+            ghostTargetPad = parserSinkPad;
+        }
+
+        GstPad *ghostpad = gst_ghost_pad_new("sink", ghostTargetPad);
+        if (!ghostpad || !gst_element_add_pad(bin, ghostpad)) {
+            qCCritical(GstVideoReceiverLog)
+                << "Unable to expose recording sink pad" << _pipelineUri();
+            gst_clear_object(&ghostpad);
+            gst_clear_object(&parserSrcPad);
+            gst_clear_object(&parserSinkPad);
+            gst_clear_object(&pad);
+            break;
+        }
+        gst_clear_object(&parserSrcPad);
+        gst_clear_object(&parserSinkPad);
         gst_clear_object(&pad);
 
         if (!gst_element_link(mux, sink)) {
@@ -1319,6 +1441,7 @@ GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMA
     if (releaseElements) {
         gst_clear_object(&sink);
         gst_clear_object(&mux);
+        gst_clear_object(&inputParser);
     }
 
     gst_clear_object(&bin);
@@ -1363,6 +1486,50 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
     const int sourceCodec = videoCodecFromCaps(sourceCaps);
     if (sourceCodec != VIDEO_CODEC_UNKNOWN) {
         _actualVideoCodec.store(sourceCodec);
+    }
+
+    if (sourceCaps && !gst_caps_is_any(sourceCaps)
+        && !gst_caps_is_empty(sourceCaps)
+        && gst_caps_get_size(sourceCaps) > 0) {
+        const GstStructure *const structure =
+            gst_caps_get_structure(sourceCaps, 0);
+        const gchar *const streamFormat =
+            gst_structure_get_string(structure, "stream-format");
+        const gchar *const alignment =
+            gst_structure_get_string(structure, "alignment");
+        const gchar *const profile =
+            gst_structure_get_string(structure, "profile");
+        const gchar *const level =
+            gst_structure_get_string(structure, "level");
+        gint width = 0;
+        gint height = 0;
+        (void) gst_structure_get_int(structure, "width", &width);
+        (void) gst_structure_get_int(structure, "height", &height);
+        gsize codecDataBytes = 0;
+        const GValue *const codecDataValue =
+            gst_structure_get_value(structure, "codec_data");
+        if (codecDataValue && GST_VALUE_HOLDS_BUFFER(codecDataValue)) {
+            GstBuffer *const codecData = gst_value_get_buffer(codecDataValue);
+            codecDataBytes = codecData ? gst_buffer_get_size(codecData) : 0;
+        }
+        const ObjectPipelineContext *const pipelineContext =
+            _pipeline ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
+        qCInfo(GstVideoReceiverLog)
+            << "Negotiated compressed video source caps"
+            << "uri" << _pipelineUri()
+            << "generation" << _activePipelineGeneration.load()
+            << "codec" << sourceCodec
+            << "streamFormat" << (streamFormat ? streamFormat : "unknown")
+            << "alignment" << (alignment ? alignment : "unknown")
+            << "profile" << (profile ? profile : "unknown")
+            << "level" << (level ? level : "unknown")
+            << "size" << QSize(width, height)
+            << "codecDataBytes" << static_cast<qulonglong>(codecDataBytes)
+            << "requestedH265Route"
+            << (pipelineContext
+                    && !pipelineContext->h265ParserOutputFormat.isEmpty()
+                    ? pipelineContext->h265ParserOutputFormat
+                    : QStringLiteral("hvc1"));
     }
 
     const bool decoderAdded = _addDecoder(_decoderValve, sourceCaps);

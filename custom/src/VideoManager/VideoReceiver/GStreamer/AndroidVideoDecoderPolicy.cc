@@ -27,7 +27,8 @@ namespace {
 
 // Written only while apply() runs during startup, before either decodebin is
 // created, and read-only for the remainder of the process lifetime.
-QStringList s_hardwareRetryFactoryNames;
+QStringList s_hvc1HardwareRetryFactoryNames;
+QStringList s_byteStreamHardwareRetryFactoryNames;
 
 } // namespace
 
@@ -131,10 +132,14 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
                                        GstCaps *nativeStreamCaps,
                                        GstCaps *byteStreamCaps,
                                        bool compatibleAdapterAvailable,
-                                       QStringList *orderedDirectFactoryNames)
+                                       QStringList *orderedDirectFactoryNames,
+                                       QStringList *orderedByteStreamFactoryNames)
 {
     if (orderedDirectFactoryNames) {
         orderedDirectFactoryNames->clear();
+    }
+    if (orderedByteStreamFactoryNames) {
+        orderedByteStreamFactoryNames->clear();
     }
 
     GList *const decoderFactories = gst_element_factory_list_get_elements(
@@ -152,30 +157,35 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
     }
 
     QList<DirectHardwareDecoderCandidate> directCandidates;
+    QList<DirectHardwareDecoderCandidate> byteStreamCandidates;
     const QString adapterDecoderFactoryName = QString::fromUtf8(
         AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName());
     for (GList *node = codecFactories; node; node = node->next) {
         GstElementFactory *const factory = GST_ELEMENT_FACTORY(node->data);
         if (!isAdapterFactory(factory)
-            && isVendorMediaCodecDecoderFactory(factory)
-            && factoryCanSinkCaps(factory, nativeStreamCaps)) {
+            && isVendorMediaCodecDecoderFactory(factory)) {
             GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
             const gchar *const rawFactoryName =
                 gst_plugin_feature_get_name(feature);
             const QString factoryName = QString::fromUtf8(
                 rawFactoryName ? rawFactoryName : "");
-            directCandidates.append(DirectHardwareDecoderCandidate{
+            const DirectHardwareDecoderCandidate candidate{
                 factoryName,
                 gst_plugin_feature_get_rank(feature),
                 !adapterDecoderFactoryName.isEmpty()
                     && factoryName == adapterDecoderFactoryName,
-            });
+            };
+            if (factoryCanSinkCaps(factory, nativeStreamCaps)) {
+                directCandidates.append(candidate);
+            }
+            if (orderedByteStreamFactoryNames
+                && factoryCanSinkCaps(factory, byteStreamCaps)) {
+                byteStreamCandidates.append(candidate);
+            }
         }
     }
 
-    std::sort(directCandidates.begin(),
-              directCandidates.end(),
-              [](const auto &left, const auto &right) {
+    const auto candidateLess = [](const auto &left, const auto &right) {
                   if (left.matchesAdapterDecoder
                       != right.matchesAdapterDecoder) {
                       return left.matchesAdapterDecoder;
@@ -184,11 +194,23 @@ int rankNativeVendorMediaCodecDecoders(const char *codecName,
                       return left.originalRank > right.originalRank;
                   }
                   return left.factoryName < right.factoryName;
-              });
+              };
+    std::sort(directCandidates.begin(),
+              directCandidates.end(),
+              candidateLess);
+    std::sort(byteStreamCandidates.begin(),
+              byteStreamCandidates.end(),
+              candidateLess);
     if (orderedDirectFactoryNames) {
         for (const DirectHardwareDecoderCandidate &candidate :
              directCandidates) {
             orderedDirectFactoryNames->append(candidate.factoryName);
+        }
+    }
+    if (orderedByteStreamFactoryNames) {
+        for (const DirectHardwareDecoderCandidate &candidate :
+             byteStreamCandidates) {
+            orderedByteStreamFactoryNames->append(candidate.factoryName);
         }
     }
     const int directNativeVendorCount =
@@ -260,7 +282,8 @@ QString pluginAndFactoryName(GstElementFactory *factory)
 
 void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 {
-    s_hardwareRetryFactoryNames.clear();
+    s_hvc1HardwareRetryFactoryNames.clear();
+    s_byteStreamHardwareRetryFactoryNames.clear();
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
     if (!forceHardwareDecoding) {
@@ -303,27 +326,40 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
     }
 
     const int directH264VendorCount = rankNativeVendorMediaCodecDecoders(
-        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false, nullptr);
+        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false, nullptr,
+        nullptr);
     QStringList directHvc1DecoderFactoryNames;
+    QStringList directByteStreamDecoderFactoryNames;
     const int directHvc1VendorCount = rankNativeVendorMediaCodecDecoders(
         "H.265",
         h265Caps,
         hvc1Caps,
         h265ByteStreamCaps,
         adapterRegistered,
-        &directHvc1DecoderFactoryNames);
+        &directHvc1DecoderFactoryNames,
+        &directByteStreamDecoderFactoryNames);
+    const int directByteStreamVendorCount =
+        static_cast<int>(directByteStreamDecoderFactoryNames.size());
 
-    s_hardwareRetryFactoryNames =
+    s_hvc1HardwareRetryFactoryNames =
         AndroidH265DecoderRoutePolicy::orderedRetryFactories(
             AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames(),
             directHvc1DecoderFactoryNames);
-    if (!s_hardwareRetryFactoryNames.isEmpty()) {
+    s_byteStreamHardwareRetryFactoryNames =
+        AndroidH265DecoderRoutePolicy::orderedRetryFactories(
+            AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames(),
+            directByteStreamDecoderFactoryNames);
+    if (!s_hvc1HardwareRetryFactoryNames.isEmpty()
+        || !s_byteStreamHardwareRetryFactoryNames.isEmpty()) {
         qCInfo(AndroidVideoDecoderPolicyLog)
-            << "Selected ordered receiver-specific H.265 hardware retry factories"
-            << s_hardwareRetryFactoryNames
+            << "Selected packetization-specific H.265 hardware retry factories"
+            << "hvc1" << s_hvc1HardwareRetryFactoryNames
+            << "byteStream" << s_byteStreamHardwareRetryFactoryNames
             << "alternativeAnnexBAdapters"
             << AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames()
-            << "directHvc1Decoders" << directHvc1DecoderFactoryNames;
+            << "directHvc1Decoders" << directHvc1DecoderFactoryNames
+            << "directByteStreamDecoders"
+            << directByteStreamDecoderFactoryNames;
     }
 
     if (directH264VendorCount > 0) {
@@ -340,9 +376,10 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 
     if (adapterRegistered) {
         qCInfo(AndroidVideoDecoderPolicyLog)
-            << "Android H.265 A8 Mini compatibility adapter is preferred over"
+            << "Android H.265 normalization adapter is preferred over"
             << directHvc1VendorCount
-            << "direct hvc1 vendor MediaCodec candidate(s); internal adapter decoder"
+            << "direct hvc1 and" << directByteStreamVendorCount
+            << "direct byte-stream vendor MediaCodec candidate(s); internal adapter decoder"
             << AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryName()
             << "; software H.265 autoplug candidates were disabled";
     } else if (directHvc1VendorCount > 0) {
@@ -368,7 +405,9 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
 #endif
 }
 
-QStringList AndroidVideoDecoderPolicy::hardwareRetryFactoryNames()
+QStringList AndroidVideoDecoderPolicy::hardwareRetryFactoryNames(
+    bool nativeByteStream)
 {
-    return s_hardwareRetryFactoryNames;
+    return nativeByteStream ? s_byteStreamHardwareRetryFactoryNames
+                            : s_hvc1HardwareRetryFactoryNames;
 }

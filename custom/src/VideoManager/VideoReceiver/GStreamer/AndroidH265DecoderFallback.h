@@ -18,16 +18,21 @@ public:
     /// never leak into a later stream on the same receiver.
     static void install(VideoReceiver *receiver);
 
+    /// Synchronize the bounded retry namespace after custom changes the
+    /// receiver's generation-scoped H.265 input packetization.
+    static void resetForCurrentInputFormat(VideoReceiver *receiver);
+
     /// Adapter factory active for this receiver/URI, including an explicitly
-    /// selected alternative A8-style route. Empty means a native direct route
-    /// or no matching active route.
+    /// selected alternative normalization-adapter route. Empty means a direct
+    /// MediaCodec route or no matching active route.
     static QString activeAdapterFactoryName(VideoReceiver *receiver,
                                             const QString &uri);
 
     /// Advance this receiver/URI to its next compatible vendor MediaCodec
-    /// route. Alternative A8-style adapters and direct factories are each
-    /// tried once; after the last one fails, the route returns to the preferred
-    /// adapter without enabling software decoding. Returns true on a change.
+    /// route. Alternative normalization adapters and packetization-compatible
+    /// direct factories are each tried once; after the last one fails, the
+    /// route returns to the preferred adapter without enabling software
+    /// decoding. Returns true on a change.
     static bool prepareHardwareRetry(VideoReceiver *receiver,
                                      const QString &uri,
                                      quint64 generation,

@@ -18,11 +18,12 @@ public:
         bool exhausted = false;
     };
 
-    /// A8-style Annex-B adapters are tried before native hvc1 routes. Empty
-    /// names and duplicates are discarded without changing relative order.
+    /// Annex-B adapters are tried before direct factories compatible with the
+    /// selected packetization. Empty names and duplicates are discarded
+    /// without changing relative order.
     static QStringList orderedRetryFactories(
         const QStringList &alternativeAdapterFactories,
-        const QStringList &directHvc1Factories);
+        const QStringList &directFactories);
 
     /// Select the next route exactly once. An empty factory with exhausted=true
     /// means return to the preferred adapter as the final stable route.

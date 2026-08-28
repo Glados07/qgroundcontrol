@@ -29,10 +29,39 @@ constexpr const char *kRouteCandidateIndexProperty =
     "customAndroidH265DecoderRouteCandidateIndex";
 constexpr const char *kRetryRoutesExhaustedProperty =
     "customAndroidH265DecoderRetryRoutesExhausted";
+constexpr const char *kRouteInputFormatProperty =
+    "customAndroidH265DecoderRouteInputFormat";
+constexpr const char *kParserOutputFormatProperty =
+    "customAndroidH265ParserOutputFormat";
 // This property name is the intentionally small, generic bridge consumed by
 // GstVideoReceiver when it builds one concrete H.265 decoding branch.
 constexpr const char *kExplicitDecoderFactoryProperty =
     "customAndroidH265DecoderFactory";
+
+bool usesNativeByteStream(VideoReceiver *receiver)
+{
+    return receiver
+        && receiver->property(kParserOutputFormatProperty).toString().compare(
+               QStringLiteral("byte-stream"), Qt::CaseInsensitive) == 0;
+}
+
+bool canSwitchToNativeByteStream(VideoReceiver *receiver,
+                                 const QString &uri,
+                                 int videoCodec,
+                                 bool adapterSelected,
+                                 bool sinkFrameReceived)
+{
+    if (!receiver || uri.isEmpty() || receiver->uri() != uri
+        || receiver->property(kRouteUriProperty).toString() != uri
+        || usesNativeByteStream(receiver) || sinkFrameReceived) {
+        return false;
+    }
+
+    const QString explicitFactory =
+        receiver->property(kExplicitDecoderFactoryProperty).toString();
+    return videoCodec == VideoReceiver::VIDEO_CODEC_H265
+        || adapterSelected || !explicitFactory.isEmpty();
+}
 
 void resetRouteForUri(VideoReceiver *receiver, const QString &uri)
 {
@@ -41,21 +70,27 @@ void resetRouteForUri(VideoReceiver *receiver, const QString &uri)
     }
 
     const QVariant routeUri = receiver->property(kRouteUriProperty);
-    if (routeUri.isValid() && routeUri.toString() == uri) {
+    const QString inputFormat = usesNativeByteStream(receiver)
+        ? QStringLiteral("byte-stream") : QStringLiteral("hvc1");
+    if (routeUri.isValid() && routeUri.toString() == uri
+        && receiver->property(kRouteInputFormatProperty).toString()
+            == inputFormat) {
         return;
     }
 
     const QString previousFactory =
         receiver->property(kExplicitDecoderFactoryProperty).toString();
     receiver->setProperty(kRouteUriProperty, uri);
+    receiver->setProperty(kRouteInputFormatProperty, inputFormat);
     receiver->setProperty(kExplicitDecoderFactoryProperty, QString());
     receiver->setProperty(kRouteCandidateIndexProperty, -1);
     receiver->setProperty(kRetryRoutesExhaustedProperty, false);
     if (!previousFactory.isEmpty()) {
         qCInfo(AndroidH265DecoderFallbackLog)
-            << "Cleared receiver-specific Android H.265 decoder route after URI change"
+            << "Cleared receiver-specific Android H.265 decoder route after URI/input-format change"
             << "receiver" << receiver
             << "uri" << uri
+            << "inputFormat" << inputFormat
             << "previousFactory" << previousFactory;
     }
 }
@@ -82,6 +117,19 @@ void AndroidH265DecoderFallback::install(VideoReceiver *receiver)
                 resetRouteForUri(guardedReceiver.data(), uri);
             }
         });
+#else
+    Q_UNUSED(receiver)
+#endif
+}
+
+void AndroidH265DecoderFallback::resetForCurrentInputFormat(
+    VideoReceiver *receiver)
+{
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    if (receiver
+        && receiver->property(kFallbackInstalledProperty).toBool()) {
+        resetRouteForUri(receiver, receiver->uri());
+    }
 #else
     Q_UNUSED(receiver)
 #endif
@@ -144,7 +192,8 @@ bool AndroidH265DecoderFallback::canAdvanceHardwareRoute(
         return (adapterSelected
                 || videoCodec == VideoReceiver::VIDEO_CODEC_H265)
             && !receiver->property(kRetryRoutesExhaustedProperty).toBool()
-            && !AndroidVideoDecoderPolicy::hardwareRetryFactoryNames()
+            && !AndroidVideoDecoderPolicy::hardwareRetryFactoryNames(
+                    usesNativeByteStream(receiver))
                     .isEmpty();
     }
 
@@ -175,26 +224,68 @@ bool AndroidH265DecoderFallback::prepareHardwareRetry(
     const char *reason)
 {
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    resetRouteForUri(receiver, uri);
     // A decoder-branch bus failure is stronger evidence than the source
     // buffer milestone: MediaCodec can reject CSD/caps while processing the
     // CAPS event, before the first compressed buffer reaches the tee probe.
-    if ((!sourceFrameReceived && !confirmedDecoderBranchFailure)
-        // A watchdog with decoder output but no sink frame is a display-path
-        // diagnosis, not proof that another decoder is needed. A confirmed
-        // decoder-branch bus failure is stronger: it may expose raw caps or
-        // memory which the branch cannot negotiate, so the next hardware
-        // candidate is still a valid bounded recovery route.
-        || (decoderFrameReceived && !confirmedDecoderBranchFailure)
-        || !canAdvanceHardwareRoute(receiver,
+    // Decoder output without a sink frame is evidence for the display/GL
+    // branch, not the compressed-input route. Do not change packetization or
+    // replace a healthy MediaCodec solely for a presentation failure.
+    if (decoderFrameReceived && !confirmedDecoderBranchFailure) {
+        return false;
+    }
+
+    if (canSwitchToNativeByteStream(receiver,
                                     uri,
                                     videoCodec,
                                     adapterSelected,
                                     sinkFrameReceived)) {
+        const QString previousFactory =
+            receiver->property(kExplicitDecoderFactoryProperty).toString();
+        receiver->setProperty(kParserOutputFormatProperty,
+                              QStringLiteral("byte-stream"));
+        // The input-format change is a new route namespace. Clear any hvc1
+        // candidate/exhaustion state before the owner builds the next full
+        // generation; this never mutates the currently running pipeline.
+        resetRouteForUri(receiver, uri);
+        qCWarning(AndroidH265DecoderFallbackLog)
+            << "Switching the receiver-specific H.265 packetization before changing decoder factory;"
+               " the next generation will use native byte-stream/AU"
+            << "receiver" << receiver
+            << "uri" << uri
+            << "generation" << generation
+            << "previousFactory"
+            << (previousFactory.isEmpty()
+                    ? QStringLiteral("qgcandroidh265hwdec")
+                    : previousFactory)
+            << "sourceFrame" << sourceFrameReceived
+            << "decoderFrame" << decoderFrameReceived
+            << "decoderBranchFailure" << confirmedDecoderBranchFailure
+            << "reason" << (reason ? reason : "unspecified");
+        return true;
+    }
+
+    // Factory changes still require a compressed source buffer or a strict
+    // decoder-branch error. The one-time hvc1 -> byte-stream switch above is
+    // deliberately allowed from generation-scoped H.265 CAPS alone: the
+    // hvc1 depay/parser path can wait for or discard media while constructing
+    // codec_data, before the tee observes its first buffer.
+    if (!sourceFrameReceived && !confirmedDecoderBranchFailure) {
         return false;
     }
 
+    if (!canAdvanceHardwareRoute(receiver,
+                                 uri,
+                                 videoCodec,
+                                 adapterSelected,
+                                 sinkFrameReceived)) {
+        return false;
+    }
+
+    const bool nativeByteStream = usesNativeByteStream(receiver);
     const QStringList retryFactories =
-        AndroidVideoDecoderPolicy::hardwareRetryFactoryNames();
+        AndroidVideoDecoderPolicy::hardwareRetryFactoryNames(
+            nativeByteStream);
     const int retryFactoryCount =
         static_cast<int>(retryFactories.size());
     const QString previousFactory =
@@ -231,32 +322,43 @@ bool AndroidH265DecoderFallback::prepareHardwareRetry(
             << "factory" << nextRoute.factoryName
             << "routeKind"
             << (a8StyleAdapter
-                    ? QStringLiteral("A8-style Annex-B adapter")
-                    : QStringLiteral("direct hvc1 MediaCodec"))
+                    ? (nativeByteStream
+                           ? QStringLiteral("native byte-stream/AU adapter")
+                           : QStringLiteral("A8-style Annex-B adapter"))
+                    : (nativeByteStream
+                           ? QStringLiteral("direct byte-stream/AU MediaCodec")
+                           : QStringLiteral("direct hvc1 MediaCodec")))
             << "candidate" << nextRoute.candidateIndex + 1 << "/"
             << retryFactoryCount
             << "sourceFrame" << sourceFrameReceived
+            << "decoderFrame" << decoderFrameReceived
             << "decoderBranchFailure" << confirmedDecoderBranchFailure
             << "reason" << (reason ? reason : "unspecified");
         return true;
     }
 
     // Do not rebuild a failed explicit route forever. Once every alternative
-    // A8-style adapter and direct MediaCodec has been tried, return to the
-    // preferred adapter used by A8 Mini and keep software ranks disabled.
+    // normalization adapter and compatible direct MediaCodec has been tried,
+    // return to the generation's preferred automatic hardware route and keep
+    // software ranks disabled. For A8 this is the established hvc1 route; for
+    // MT11 it is the native byte-stream/AU adapter route.
     receiver->setProperty(kRouteCandidateIndexProperty,
                           nextRoute.candidateIndex);
     receiver->setProperty(kExplicitDecoderFactoryProperty, QString());
     receiver->setProperty(kRetryRoutesExhaustedProperty, true);
     qCWarning(AndroidH265DecoderFallbackLog)
         << "All receiver-specific H.265 hardware retry routes failed;"
-           " the next generation will return to the preferred hardware adapter"
+           " the next generation will return to the preferred hardware route"
         << "receiver" << receiver
         << "uri" << uri
         << "generation" << generation
         << "previousFactory" << previousFactory
         << "candidateCount" << retryFactoryCount
+        << "inputFormat"
+        << (nativeByteStream ? QStringLiteral("byte-stream")
+                             : QStringLiteral("hvc1"))
         << "sourceFrame" << sourceFrameReceived
+        << "decoderFrame" << decoderFrameReceived
         << "decoderBranchFailure" << confirmedDecoderBranchFailure
         << "reason" << (reason ? reason : "unspecified");
     return true;

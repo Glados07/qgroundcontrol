@@ -82,7 +82,8 @@ private:
                 const QString &startUri,
                 bool lowLatencyMode,
                 quint64 generation,
-                const QString &explicitH265DecoderFactory);
+                const QString &explicitH265DecoderFactory,
+                const QString &h265ParserOutputFormat);
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);

@@ -18,6 +18,7 @@ public:
     static void apply(bool forceHardwareDecoding);
 
     /// Ordered receiver-specific H.265 hardware retry factories. Alternative
-    /// A8-style Annex-B adapters precede direct hvc1 MediaCodec factories.
-    static QStringList hardwareRetryFactoryNames();
+    /// Annex-B adapters precede direct MediaCodec factories compatible with
+    /// the receiver's frozen input packetization.
+    static QStringList hardwareRetryFactoryNames(bool nativeByteStream);
 };

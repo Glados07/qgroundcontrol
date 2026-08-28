@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Android H.265 MediaCodec adapter for QGC's hvc1 decoder input.
+ * Android H.265 MediaCodec adapter for hvc1 or native Annex-B/AU input.
  *
  ****************************************************************************/
 
@@ -284,7 +284,9 @@ GstStaticPadTemplate s_sinkPadTemplate = GST_STATIC_PAD_TEMPLATE(
     "sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS("video/x-h265,stream-format=(string)hvc1"));
+    GST_STATIC_CAPS(
+        "video/x-h265,stream-format=(string)hvc1; "
+        "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au"));
 
 GstStaticPadTemplate s_srcPadTemplate = GST_STATIC_PAD_TEMPLATE(
     "src",
@@ -503,7 +505,7 @@ void configureAdapterClass(GstQgcAndroidH265HardwareDecoderClass *klass,
         elementClass,
         "QGC Android H.265 hardware decoder adapter",
         "Codec/Decoder/Video/Hardware",
-        "Converts hvc1 H.265 to Annex-B access units for Android vendor MediaCodec",
+        "Normalizes H.265 to Annex-B access units for Android vendor MediaCodec",
         "QGroundControl custom build");
     gst_element_class_add_static_pad_template(elementClass, &s_sinkPadTemplate);
     gst_element_class_add_static_pad_template(elementClass, &s_srcPadTemplate);
@@ -542,7 +544,7 @@ void initializeAdapterInstance(
         return;
     }
 
-    self->parser = gst_element_factory_make("h265parse", "hvc1_to_annexb_parser");
+    self->parser = gst_element_factory_make("h265parse", "h265_annexb_normalizer");
     self->capsFilter = gst_element_factory_make("capsfilter", "h265_annexb_caps");
     self->outputQueue = gst_element_factory_make("queue", "latest_decoded_frame_queue");
 

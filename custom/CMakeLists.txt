@@ -418,6 +418,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.cc
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.h
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h
     )
     target_include_directories(AndroidH265DecoderRoutePolicyTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/VideoManager/VideoReceiver/GStreamer

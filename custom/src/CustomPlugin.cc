@@ -20,6 +20,8 @@
 #include "Settings/FlyViewCustomSettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderFallback.h"
+#include "VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderRecovery.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
@@ -36,6 +38,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
+#include <QtCore/QVariant>
 #include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickItem>
@@ -77,6 +80,61 @@ void configureGStreamerNetworkPolicy()
             << "GStreamer GIO proxy policy: environment/system"
             << "resolver" << qgetenv("GIO_USE_PROXY_RESOLVER");
     }
+}
+#endif
+
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+void installMt11NativeH265InputRoute(VideoReceiver *receiver,
+                                     GimbalControlSettings *settings)
+{
+    static constexpr const char *kInstalledProperty =
+        "customAndroidH265StreamFormatPolicyInstalled";
+    if (!receiver || !settings
+        || receiver->property(kInstalledProperty).toBool()) {
+        return;
+    }
+
+    receiver->setProperty(kInstalledProperty, true);
+    const auto applyPolicy =
+        [guardedReceiver = QPointer<VideoReceiver>(receiver),
+         guardedSettings = QPointer<GimbalControlSettings>(settings)]() {
+            if (!guardedReceiver || !guardedSettings) {
+                return;
+            }
+
+            const QString parserOutputFormat =
+                AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+                    guardedReceiver->uri(),
+                    guardedSettings->mt11SdkHost()->rawValue().toString());
+            const char *const propertyName =
+                AndroidH265StreamFormatPolicy::receiverPropertyName();
+            if (guardedReceiver->property(propertyName).toString()
+                == parserOutputFormat) {
+                return;
+            }
+
+            guardedReceiver->setProperty(propertyName, parserOutputFormat);
+            AndroidH265DecoderFallback::resetForCurrentInputFormat(
+                guardedReceiver.data());
+            qCInfo(CustomLog)
+                << "Selected receiver-specific Android H.265 parser route"
+                << "receiver" << guardedReceiver.data()
+                << "uri" << guardedReceiver->uri()
+                << "format"
+                << (parserOutputFormat.isEmpty()
+                        ? QStringLiteral("hvc1 (established A8/QGC route)")
+                        : QStringLiteral("byte-stream/AU (native MT11 route)"));
+        };
+
+    applyPolicy();
+    QObject::connect(receiver,
+                     &VideoReceiver::uriChanged,
+                     receiver,
+                     [applyPolicy](const QString &) { applyPolicy(); });
+    QObject::connect(settings->mt11SdkHost(),
+                     &Fact::rawValueChanged,
+                     receiver,
+                     [applyPolicy](const QVariant &) { applyPolicy(); });
 }
 #endif
 
@@ -483,9 +541,13 @@ QQmlApplicationEngine *CustomPlugin::createQmlApplicationEngine(QObject *parent)
 void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
 {
     _ensureVideoCustomSettings();
+    auto *receiver = qobject_cast<VideoReceiver *>(parent);
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    _ensureGimbalControlSettings();
+    installMt11NativeH265InputRoute(receiver, _gimbalControlSettings);
+#endif
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 
-    auto *receiver = qobject_cast<VideoReceiver *>(parent);
     const bool isSecondaryVideoReceiver = receiver
         && _dualVideoManager
         && receiver->parent() == _dualVideoManager;

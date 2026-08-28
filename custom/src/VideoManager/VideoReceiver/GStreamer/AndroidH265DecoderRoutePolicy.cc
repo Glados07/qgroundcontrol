@@ -22,13 +22,13 @@ void appendUniqueFactories(QStringList &destination,
 
 QStringList AndroidH265DecoderRoutePolicy::orderedRetryFactories(
     const QStringList &alternativeAdapterFactories,
-    const QStringList &directHvc1Factories)
+    const QStringList &directFactories)
 {
     QStringList orderedFactories;
     orderedFactories.reserve(alternativeAdapterFactories.size()
-                             + directHvc1Factories.size());
+                             + directFactories.size());
     appendUniqueFactories(orderedFactories, alternativeAdapterFactories);
-    appendUniqueFactories(orderedFactories, directHvc1Factories);
+    appendUniqueFactories(orderedFactories, directFactories);
     return orderedFactories;
 }
 

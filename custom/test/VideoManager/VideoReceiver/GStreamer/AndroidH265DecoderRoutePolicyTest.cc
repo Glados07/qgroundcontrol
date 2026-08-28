@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "AndroidH265DecoderRoutePolicy.h"
+#include "AndroidH265StreamFormatPolicy.h"
 
 #include <QtTest/QTest>
 
@@ -18,6 +19,8 @@ private slots:
     void emptyRouteListIsImmediatelyExhausted();
     void factoryIdentityRepairsAStaleIndex();
     void receiverStatesRemainIndependent();
+    void mt11HostSelectsNativeByteStream();
+    void nonMt11UrisPreserveTheEstablishedRoute();
 };
 
 void AndroidH265DecoderRoutePolicyTest::adaptersPrecedeDirectFactories()
@@ -121,6 +124,40 @@ void AndroidH265DecoderRoutePolicyTest::receiverStatesRemainIndependent()
     QCOMPARE(mt11Second.candidateIndex, 1);
     QCOMPARE(a8First.factoryName, QStringLiteral("adapter-alt1"));
     QCOMPARE(a8First.candidateIndex, 0);
+}
+
+void AndroidH265DecoderRoutePolicyTest::mt11HostSelectsNativeByteStream()
+{
+    QCOMPARE(
+        AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+            QStringLiteral("rtsp://192.168.144.24:8554/video1"),
+            QStringLiteral(" 192.168.144.24 ")),
+        QStringLiteral("byte-stream"));
+    QCOMPARE(
+        AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+            QStringLiteral("rtsps://[2001:db8::24]/video2"),
+            QStringLiteral("[2001:db8::24]")),
+        QStringLiteral("byte-stream"));
+}
+
+void AndroidH265DecoderRoutePolicyTest::nonMt11UrisPreserveTheEstablishedRoute()
+{
+    QVERIFY(AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+                QStringLiteral("rtsp://192.168.144.25:8554/main.264"),
+                QStringLiteral("192.168.144.24"))
+                .isEmpty());
+    QVERIFY(AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+                QStringLiteral("udp265://192.168.144.24:5600"),
+                QStringLiteral("192.168.144.24"))
+                .isEmpty());
+    QVERIFY(AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+                QStringLiteral("rtspx://192.168.144.24/video1"),
+                QStringLiteral("192.168.144.24"))
+                .isEmpty());
+    QVERIFY(AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
+                QStringLiteral("rtsp://192.168.144.24:8554/video1"),
+                QString())
+                .isEmpty());
 }
 
 QTEST_APPLESS_MAIN(AndroidH265DecoderRoutePolicyTest)
