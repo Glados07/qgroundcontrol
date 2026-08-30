@@ -57,6 +57,31 @@ struct DecoderOutputProbeContext : ReceiverPipelineProbeContext {
     QString factory;
 };
 
+struct H265ParameterSetGateContext {
+    QString uri;
+    quint64 generation = 0;
+    quint64 droppedAccessUnits = 0;
+};
+
+struct H265AnnexBBootstrapScan {
+    bool mapped = false;
+    bool foundNal = false;
+    bool vps = false;
+    bool sps = false;
+    bool pps = false;
+    bool ppsAfterSps = false;
+    bool irap = false;
+    bool parameterSetsBeforeIrap = false;
+
+    bool complete() const
+    {
+        // h265parse treats VPS as optional; SPS and PPS are the required
+        // picture headers. Preserve and report VPS when present, but do not
+        // permanently block an otherwise valid byte-stream without it.
+        return mapped && foundNal && parameterSetsBeforeIrap;
+    }
+};
+
 GQuark pipelineContextQuark()
 {
     static const GQuark quark =
@@ -91,6 +116,11 @@ void destroyReceiverPipelineProbeContext(gpointer data)
 void destroyDecoderOutputProbeContext(gpointer data)
 {
     delete static_cast<DecoderOutputProbeContext *>(data);
+}
+
+void destroyH265ParameterSetGateContext(gpointer data)
+{
+    delete static_cast<H265ParameterSetGateContext *>(data);
 }
 
 void setObjectPipelineContext(GObject *object,
@@ -174,6 +204,234 @@ bool capsAreCompatibleH265(const GstCaps *caps)
         gst_caps_unref(h265Caps);
     }
     return compatible;
+}
+
+bool usesH265ByteStreamRoute(const ObjectPipelineContext *pipelineContext)
+{
+    return pipelineContext
+        && pipelineContext->h265ParserOutputFormat.compare(
+               QStringLiteral("byte-stream"),
+               Qt::CaseInsensitive) == 0;
+}
+
+H265AnnexBBootstrapScan scanH265AnnexBBootstrap(GstBuffer *buffer)
+{
+    H265AnnexBBootstrapScan result;
+    if (!buffer) {
+        return result;
+    }
+
+    GstMapInfo map = {};
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        return result;
+    }
+    result.mapped = true;
+
+    // This gate is only installed for the frozen byte-stream/AU route. In an
+    // Annex-B stream, emulation prevention keeps 00 00 01 out of NAL payloads,
+    // so scanning three- and four-byte start codes is sufficient here and
+    // avoids adding another codec-parser dependency to the receiver core.
+    for (gsize offset = 0; offset + 3 < map.size;) {
+        gsize nalHeaderOffset = G_MAXSIZE;
+        if (offset + 4 < map.size
+            && map.data[offset] == 0
+            && map.data[offset + 1] == 0
+            && map.data[offset + 2] == 0
+            && map.data[offset + 3] == 1) {
+            nalHeaderOffset = offset + 4;
+        } else if (map.data[offset] == 0
+                   && map.data[offset + 1] == 0
+                   && map.data[offset + 2] == 1) {
+            nalHeaderOffset = offset + 3;
+        }
+
+        if (nalHeaderOffset == G_MAXSIZE) {
+            ++offset;
+            continue;
+        }
+        if (nalHeaderOffset + 1 >= map.size) {
+            break;
+        }
+
+        result.foundNal = true;
+        const guint nalType = (map.data[nalHeaderOffset] >> 1) & 0x3f;
+        result.vps = result.vps || nalType == 32;
+        result.sps = result.sps || nalType == 33;
+        if (nalType == 34) {
+            result.pps = true;
+            result.ppsAfterSps = result.ppsAfterSps || result.sps;
+        }
+        // BLA, IDR and CRA occupy HEVC NAL unit types 16..21. Do not accept
+        // reserved IRAP types 22/23 as a usable decoder bootstrap picture.
+        const bool isIrap = nalType >= 16 && nalType <= 21;
+        result.irap = result.irap || isIrap;
+        if (isIrap && result.ppsAfterSps) {
+            result.parameterSetsBeforeIrap = true;
+        }
+        offset = nalHeaderOffset + 2;
+    }
+
+    gst_buffer_unmap(buffer, &map);
+    return result;
+}
+
+void configureH265ByteStreamParser(GstBin *bin,
+                                   GstBin * /* subBin */,
+                                   GstElement *element,
+                                   gpointer /* data */)
+{
+    const ObjectPipelineContext *const pipelineContext = bin
+        ? objectPipelineContext(G_OBJECT(bin)) : nullptr;
+    if (!usesH265ByteStreamRoute(pipelineContext) || !element) {
+        return;
+    }
+
+    GstElementFactory *const factory = gst_element_get_factory(element);
+    const gchar *const factoryName = factory
+        ? gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory)) : nullptr;
+    if (g_strcmp0(factoryName, "h265parse") != 0) {
+        return;
+    }
+
+    GObjectClass *const objectClass = G_OBJECT_GET_CLASS(element);
+    GParamSpec *const configIntervalProperty =
+        g_object_class_find_property(objectClass, "config-interval");
+    if (!configIntervalProperty
+        || !(configIntervalProperty->flags & G_PARAM_WRITABLE)) {
+        qCWarning(GstVideoReceiverLog)
+            << "Unable to enable H.265 parameter-set repetition on source parser"
+            << "uri" << pipelineContext->uri
+            << "generation" << pipelineContext->generation;
+        return;
+    }
+
+    g_object_set(element, "config-interval", -1, nullptr);
+
+    // GStreamer 1.22 currently parses H.265 even when upstream caps already
+    // look compatible. Keep this explicit when the property is available so
+    // a future passthrough optimization cannot bypass parameter-set caching.
+    GParamSpec *const disablePassthroughProperty =
+        g_object_class_find_property(objectClass, "disable-passthrough");
+    const bool passthroughDisabled = disablePassthroughProperty
+        && (disablePassthroughProperty->flags & G_PARAM_WRITABLE);
+    if (passthroughDisabled) {
+        g_object_set(element, "disable-passthrough", TRUE, nullptr);
+    }
+
+    qCInfo(GstVideoReceiverLog)
+        << "Configured generation-scoped H.265 byte-stream source parser"
+        << "uri" << pipelineContext->uri
+        << "generation" << pipelineContext->generation
+        << "configInterval" << -1
+        << "disablePassthrough" << passthroughDisabled;
+}
+
+GstPadProbeReturn gateH265ByteStreamUntilBootstrap(
+    GstPad *,
+    GstPadProbeInfo *info,
+    gpointer data)
+{
+    auto *const context =
+        static_cast<H265ParameterSetGateContext *>(data);
+    GstBuffer *const buffer = info
+        ? gst_pad_probe_info_get_buffer(info) : nullptr;
+    if (!context || !buffer) {
+        return GST_PAD_PROBE_OK;
+    }
+
+    const H265AnnexBBootstrapScan bootstrap =
+        scanH265AnnexBBootstrap(buffer);
+    if (bootstrap.complete()) {
+        qCInfo(GstVideoReceiverLog)
+            << "Released H.265 byte-stream decoder input at complete Annex-B bootstrap access unit"
+            << "uri" << context->uri
+            << "generation" << context->generation
+            << "droppedAccessUnits" << context->droppedAccessUnits
+            << "vps" << bootstrap.vps
+            << "sps" << bootstrap.sps
+            << "pps" << bootstrap.pps
+            << "ppsAfterSps" << bootstrap.ppsAfterSps
+            << "irap" << bootstrap.irap
+            << "parameterSetsBeforeIrap"
+            << bootstrap.parameterSetsBeforeIrap
+            << "bufferDelta"
+            << GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT)
+            << "bufferHeader"
+            << GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_HEADER);
+        return GST_PAD_PROBE_REMOVE;
+    }
+
+    // Do not infer decoder readiness from BUFFER_FLAG_HEADER or from a
+    // non-delta flag: HEADER also covers SEI, while h265parse can mark an
+    // ordinary I picture non-delta without inserting parameter sets. The
+    // generation-scoped source parser puts its cached parameter sets in the
+    // same byte-stream buffer as every IRAP. SPS+PPS+IRAP is the exact parser
+    // bootstrap boundary; VPS is preserved and reported when the stream has
+    // one, but h265parse does not require it for valid picture headers.
+    ++context->droppedAccessUnits;
+    if (context->droppedAccessUnits == 1) {
+        qCInfo(GstVideoReceiverLog)
+            << "Holding H.265 byte-stream decoder input until a complete Annex-B bootstrap access unit"
+            << "uri" << context->uri
+            << "generation" << context->generation
+            << "mapped" << bootstrap.mapped
+            << "foundNal" << bootstrap.foundNal
+            << "vps" << bootstrap.vps
+            << "sps" << bootstrap.sps
+            << "pps" << bootstrap.pps
+            << "ppsAfterSps" << bootstrap.ppsAfterSps
+            << "irap" << bootstrap.irap
+            << "parameterSetsBeforeIrap"
+            << bootstrap.parameterSetsBeforeIrap;
+    }
+    return GST_PAD_PROBE_DROP;
+}
+
+bool installH265ParameterSetGate(
+    GstElement *decoder,
+    const ObjectPipelineContext *pipelineContext,
+    int videoCodec)
+{
+    if (!usesH265ByteStreamRoute(pipelineContext)
+        || videoCodec != VideoReceiver::VIDEO_CODEC_H265) {
+        return true;
+    }
+
+    GstPad *const sinkPad = decoder
+        ? gst_element_get_static_pad(decoder, "sink") : nullptr;
+    if (!sinkPad) {
+        qCWarning(GstVideoReceiverLog)
+            << "Unable to install H.265 parameter-set gate: decoder has no static sink pad"
+            << "uri" << pipelineContext->uri
+            << "generation" << pipelineContext->generation;
+        return false;
+    }
+
+    auto *const gateContext = new H265ParameterSetGateContext;
+    gateContext->uri = pipelineContext->uri;
+    gateContext->generation = pipelineContext->generation;
+    const gulong probeId = gst_pad_add_probe(
+        sinkPad,
+        GST_PAD_PROBE_TYPE_BUFFER,
+        gateH265ByteStreamUntilBootstrap,
+        gateContext,
+        destroyH265ParameterSetGateContext);
+    gst_object_unref(sinkPad);
+
+    if (probeId == 0) {
+        delete gateContext;
+        qCWarning(GstVideoReceiverLog)
+            << "Unable to install H.265 parameter-set gate"
+            << "uri" << pipelineContext->uri
+            << "generation" << pipelineContext->generation;
+        return false;
+    }
+
+    qCInfo(GstVideoReceiverLog)
+        << "Armed H.265 byte-stream decoder input for parameter-set/random-access bootstrap"
+        << "uri" << pipelineContext->uri
+        << "generation" << pipelineContext->generation;
+    return true;
 }
 
 void elementFactoryIdentity(GstElementFactory *factory,
@@ -713,6 +971,19 @@ void GstVideoReceiver::startDecoding(void *sink)
         return;
     }
 
+    const ObjectPipelineContext *const pipelineContext = _pipeline
+        ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
+    if (!installH265ParameterSetGate(_decoder,
+                                     pipelineContext,
+                                     _actualVideoCodec.load())) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to prepare H.265 byte-stream decoder input"
+            << _pipelineUri();
+        _shutdownDecodingBranch();
+        _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_FAIL); });
+        return;
+    }
+
     g_object_set(_decoderValve,
                  "drop", FALSE,
                  nullptr);
@@ -1126,6 +1397,10 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                                      pipelineContext->h265ParserOutputFormat);
         }
         (void) g_signal_connect(parser,
+                                "deep-element-added",
+                                G_CALLBACK(configureH265ByteStreamParser),
+                                nullptr);
+        (void) g_signal_connect(parser,
                                 "autoplug-query",
                                 G_CALLBACK(_filterParserCaps),
                                 nullptr);
@@ -1451,8 +1726,22 @@ GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMA
 void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 {
     // FIXME: check for caps - if this is not video stream (and preferably - one of these which we have to support) then simply skip it
+    // Capture the negotiated codec before publishing streaming=true. A sink
+    // can be attached from that notification (or can already be absent here),
+    // and late startDecoding() must not see a transient UNKNOWN codec when it
+    // selects a generation-frozen explicit H.265 route and installs its gate.
+    GstCaps *sourceCaps = gst_pad_get_current_caps(pad);
+    if (!sourceCaps) {
+        sourceCaps = gst_pad_query_caps(pad, nullptr);
+    }
+    const int sourceCodec = videoCodecFromCaps(sourceCaps);
+    if (sourceCodec != VIDEO_CODEC_UNKNOWN) {
+        _actualVideoCodec.store(sourceCodec);
+    }
+
     if (!gst_element_link(_source, _tee)) {
         qCCritical(GstVideoReceiverLog) << "Unable to link source";
+        gst_clear_caps(&sourceCaps);
         return;
     }
 
@@ -1463,6 +1752,7 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 
     (void) gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, _eosProbe, this, nullptr);
     if (!_videoSink) {
+        gst_clear_caps(&sourceCaps);
         return;
     }
 
@@ -1472,6 +1762,7 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
         qCCritical(GstVideoReceiverLog)
             << "Unable to prepare video sink before decoder negotiation"
             << _pipelineUri();
+        gst_clear_caps(&sourceCaps);
         _shutdownDecodingBranch();
         return;
     }
@@ -1479,14 +1770,8 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
     // The parsebin pad owns the most specific negotiated codec caps at this
     // point. Pass them through instead of depending on sticky CAPS having
     // already propagated across the newly-linked tee/valve branch.
-    GstCaps *sourceCaps = gst_pad_get_current_caps(pad);
-    if (!sourceCaps) {
-        sourceCaps = gst_pad_query_caps(pad, nullptr);
-    }
-    const int sourceCodec = videoCodecFromCaps(sourceCaps);
-    if (sourceCodec != VIDEO_CODEC_UNKNOWN) {
-        _actualVideoCodec.store(sourceCodec);
-    }
+    const ObjectPipelineContext *const pipelineContext = _pipeline
+        ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
 
     if (sourceCaps && !gst_caps_is_any(sourceCaps)
         && !gst_caps_is_empty(sourceCaps)
@@ -1512,8 +1797,6 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
             GstBuffer *const codecData = gst_value_get_buffer(codecDataValue);
             codecDataBytes = codecData ? gst_buffer_get_size(codecData) : 0;
         }
-        const ObjectPipelineContext *const pipelineContext =
-            _pipeline ? objectPipelineContext(G_OBJECT(_pipeline)) : nullptr;
         qCInfo(GstVideoReceiverLog)
             << "Negotiated compressed video source caps"
             << "uri" << _pipelineUri()
@@ -1536,6 +1819,18 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
     gst_clear_caps(&sourceCaps);
     if (!decoderAdded) {
         qCCritical(GstVideoReceiverLog) << "_addDecoder() failed";
+        _shutdownDecodingBranch();
+        return;
+    }
+
+    const int gateCodec = sourceCodec != VIDEO_CODEC_UNKNOWN
+        ? sourceCodec : _actualVideoCodec.load();
+    if (!installH265ParameterSetGate(_decoder,
+                                     pipelineContext,
+                                     gateCodec)) {
+        qCCritical(GstVideoReceiverLog)
+            << "Unable to prepare H.265 byte-stream decoder input"
+            << _pipelineUri();
         _shutdownDecodingBranch();
         return;
     }
