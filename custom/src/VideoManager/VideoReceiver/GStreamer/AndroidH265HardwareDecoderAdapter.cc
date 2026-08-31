@@ -6,6 +6,7 @@
 
 #include "AndroidH265HardwareDecoderAdapter.h"
 
+#include "AndroidH265DecoderCapsPolicy.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QByteArray>
@@ -34,8 +35,6 @@ constexpr const char *kAdapterFactoryName = "qgcandroidh265hwdec";
 // preference. The wide gap keeps vendor factories with unusually high native
 // ranks from bypassing hvc1 -> Annex-B/AU normalization.
 constexpr guint kAdapterRank = GST_RANK_PRIMARY + 100;
-constexpr const char *kByteStreamCaps =
-    "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au";
 
 QByteArray s_hardwareDecoderFactoryName;
 QStringList s_registeredElementFactoryNames;
@@ -139,7 +138,8 @@ QString pluginAndFactoryName(GstElementFactory *factory)
 
 QList<HardwareDecoderCandidate> findByteStreamHardwareDecoderCandidates()
 {
-    GstCaps *const byteStreamCaps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const byteStreamCaps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!byteStreamCaps) {
         return {};
     }
@@ -206,7 +206,8 @@ bool preflightHardwareDecoder(const QByteArray &factoryName)
         return false;
     }
 
-    GstCaps *const caps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const caps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!caps) {
         gst_object_unref(bin);
         gst_object_unref(parser);
@@ -559,7 +560,8 @@ void initializeAdapterInstance(
         return;
     }
 
-    GstCaps *const byteStreamCaps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const byteStreamCaps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!byteStreamCaps) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
             << "Unable to create byte-stream/au caps for the Android H.265 adapter"
@@ -575,6 +577,12 @@ void initializeAdapterInstance(
     g_object_set(self->capsFilter,
                  "caps", byteStreamCaps,
                  nullptr);
+
+    // AndroidMedia's default ACCEPT_CAPS path performs a subset check. A
+    // missing framerate denotes an unconstrained value and is therefore not a
+    // subset of the decoder's finite framerate range. Keeping the same range
+    // on this internal filter preserves A8's fixed 25/1 while h265parse can
+    // negotiate 0/1 for MT11 streams which do not advertise a rate.
     gst_caps_unref(byteStreamCaps);
 
     // Decouple the decoder from a slow GL sink and keep only the newest raw
@@ -629,6 +637,8 @@ void initializeAdapterInstance(
         << "Android H.265 adapter instance created"
         << "adapterFactory" << adapterFactoryName
         << "requestedDecoder" << hardwareDecoderFactoryName
+        << "decoderInputContract"
+        << AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps()
         << "actualDecoder"
         << pluginAndFactoryName(gst_element_get_factory(self->decoder))
         << "vendor MediaCodec candidate";

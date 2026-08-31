@@ -503,6 +503,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
 
     qt_add_executable(AndroidH265DecoderRoutePolicyTest
         test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderCapsPolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderCapsPolicy.h
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.cc
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.h
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.cc

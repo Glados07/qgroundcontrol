@@ -4,9 +4,11 @@
  *
  ****************************************************************************/
 
+#include "AndroidH265DecoderCapsPolicy.h"
 #include "AndroidH265DecoderRoutePolicy.h"
 #include "AndroidH265StreamFormatPolicy.h"
 
+#include <QtCore/QByteArray>
 #include <QtTest/QTest>
 
 class AndroidH265DecoderRoutePolicyTest : public QObject
@@ -19,6 +21,7 @@ private slots:
     void emptyRouteListIsImmediatelyExhausted();
     void factoryIdentityRepairsAStaleIndex();
     void receiverStatesRemainIndependent();
+    void byteStreamDecoderCapsSupplyUnknownFrameRate();
     void mt11HostSelectsNativeByteStream();
     void nonMt11UrisPreserveTheEstablishedRoute();
 };
@@ -124,6 +127,20 @@ void AndroidH265DecoderRoutePolicyTest::receiverStatesRemainIndependent()
     QCOMPARE(mt11Second.candidateIndex, 1);
     QCOMPARE(a8First.factoryName, QStringLiteral("adapter-alt1"));
     QCOMPARE(a8First.candidateIndex, 0);
+}
+
+void AndroidH265DecoderRoutePolicyTest::byteStreamDecoderCapsSupplyUnknownFrameRate()
+{
+    const QByteArray caps(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
+
+    QVERIFY(caps.startsWith("video/x-h265,"));
+    QVERIFY(caps.contains("stream-format=(string)byte-stream"));
+    QVERIFY(caps.contains("alignment=(string)au"));
+    QVERIFY(caps.contains("parsed=(boolean)true"));
+    QVERIFY(caps.contains(
+        "framerate=(fraction)[0/1,2147483647/1]"));
+    QVERIFY(!caps.contains("framerate=(fraction)25/1"));
 }
 
 void AndroidH265DecoderRoutePolicyTest::mt11HostSelectsNativeByteStream()
