@@ -1,6 +1,5 @@
 #include "UniRcChannelPolicy.h"
 #include "UniRcProtocol.h"
-#include "UniRcSerialAccessPolicy.h"
 
 #include <QtTest/QTest>
 
@@ -63,13 +62,9 @@ private slots:
     void rejectInvalidFramesAndResponses();
     void streamParserHandlesPartialAndMultipleFrames();
     void streamParserResynchronizes();
-    void periodicStreamInspectionRequiresContinuousChannelFrames();
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
     void centerPolicyUsesReleasedToPressedEdges();
     void policyRejectsUnreasonableValues();
-    void serialAccessRequiresBluetoothOffForHs0();
-    void serialAccessAcceptsReleasedUartSpeeds();
-    void passiveCountersAreOptionalButStillDetectActivity();
 };
 
 void UniRcProtocolTest::exact20HzRequest()
@@ -90,99 +85,6 @@ void UniRcProtocolTest::exact20HzRequest()
     QCOMPARE(decoded.sequence, quint16(0x5678));
     QCOMPARE(decoded.command, quint8(0x42));
     QCOMPARE(decoded.payload, QByteArray::fromHex("05"));
-}
-
-void UniRcProtocolTest::serialAccessRequiresBluetoothOffForHs0()
-{
-    using namespace UniRcSerialAccessPolicy;
-
-    const QString sharedSerial2 = QStringLiteral("/dev/ttyHS0");
-    constexpr qint64 requiredStableMs = 3000;
-    QVERIFY(requiresBluetoothOff(sharedSerial2));
-
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
-                     0, requiredStableMs)
-            == Decision::WaitForBluetoothRelease);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
-                     requiredStableMs - 1, requiredStableMs)
-            == Decision::WaitForBluetoothRelease);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
-                     requiredStableMs, requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
-                     requiredStableMs + 1, requiredStableMs)
-            == Decision::Allow);
-
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::ClassicActive,
-                     requiredStableMs, requiredStableMs)
-            == Decision::BlockBluetoothClassicActive);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::BleActive,
-                     requiredStableMs, requiredStableMs)
-            == Decision::BlockBluetoothBleActive);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::ScanAlwaysEnabled,
-                     requiredStableMs, requiredStableMs)
-            == Decision::BlockBluetoothScanAlwaysEnabled);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::PermissionRequired,
-                     requiredStableMs, requiredStableMs)
-            == Decision::BlockBluetoothPermissionRequired);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::Unknown,
-                     requiredStableMs, requiredStableMs)
-            == Decision::BlockBluetoothUnknown);
-
-    const QString otherSerial = QStringLiteral("/dev/ttyHS3");
-    QVERIFY(!requiresBluetoothOff(otherSerial));
-    QVERIFY(evaluate(otherSerial, BluetoothState::FullyOff, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::ClassicActive, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::BleActive, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::ScanAlwaysEnabled, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::PermissionRequired, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::Unknown, 0,
-                     requiredStableMs)
-            == Decision::Allow);
-}
-
-void UniRcProtocolTest::serialAccessAcceptsReleasedUartSpeeds()
-{
-    using UniRcSerialAccessPolicy::isSdkSafeIdleBaudPair;
-
-    QVERIFY(isSdkSafeIdleBaudPair(9600, 9600));
-    QVERIFY(isSdkSafeIdleBaudPair(38400, 38400));
-    QVERIFY(isSdkSafeIdleBaudPair(115200, 115200));
-
-    QVERIFY(!isSdkSafeIdleBaudPair(9600, 115200));
-    QVERIFY(!isSdkSafeIdleBaudPair(3200000, 3200000));
-    QVERIFY(!isSdkSafeIdleBaudPair(-1, -1));
-}
-
-void UniRcProtocolTest::passiveCountersAreOptionalButStillDetectActivity()
-{
-    using UniRcSerialAccessPolicy::PassiveCounterDecision;
-    using UniRcSerialAccessPolicy::evaluatePassiveCounters;
-
-    QVERIFY(evaluatePassiveCounters(false, false, 0, 0, 0)
-            == PassiveCounterDecision::StableWithoutCounters);
-    QVERIFY(evaluatePassiveCounters(true, true, 0, 0, 0)
-            == PassiveCounterDecision::StableWithCounters);
-    QVERIFY(evaluatePassiveCounters(true, true, 1, 0, 0)
-            == PassiveCounterDecision::ActivityDetected);
-    QVERIFY(evaluatePassiveCounters(true, true, 0, 33, 0)
-            == PassiveCounterDecision::ActivityDetected);
-    QVERIFY(evaluatePassiveCounters(true, true, 0, 0, 1)
-            == PassiveCounterDecision::ActivityDetected);
-    QVERIFY(evaluatePassiveCounters(false, true, 0, 0, 0)
-            == PassiveCounterDecision::AvailabilityChanged);
-    QVERIFY(evaluatePassiveCounters(true, false, 0, 0, 0)
-            == PassiveCounterDecision::AvailabilityChanged);
 }
 
 void UniRcProtocolTest::decodeChannelResponse()
@@ -332,62 +234,6 @@ void UniRcProtocolTest::streamParserResynchronizes()
         parser.append(bogusLength + validFrame);
     QCOMPARE(afterBogusLength.size(), 1);
     QVERIFY(afterBogusLength.first().valid);
-}
-
-void UniRcProtocolTest::periodicStreamInspectionRequiresContinuousChannelFrames()
-{
-    UniRcProtocol::Channels channels {};
-    channels.fill(1500);
-    const QByteArray validFrame = makeChannelFrame(channels);
-    const QByteArray threeFrames = validFrame.repeated(3);
-
-    auto inspection =
-        UniRcProtocol::inspectPeriodicChannelStream(threeFrames);
-    QVERIFY(inspection.recognized);
-    QCOMPARE(inspection.frameCount, 3);
-    QCOMPARE(inspection.leadingBytes, 0);
-    QCOMPARE(inspection.trailingBytes, 0);
-
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 validFrame.repeated(2)).recognized);
-
-    const QByteArray boundarySample =
-        validFrame.mid(13) + threeFrames + validFrame.left(9);
-    inspection =
-        UniRcProtocol::inspectPeriodicChannelStream(boundarySample);
-    QVERIFY(inspection.recognized);
-    QCOMPARE(inspection.frameCount, 3);
-    QCOMPARE(inspection.leadingBytes, validFrame.size() - 13);
-    QCOMPARE(inspection.trailingBytes, 9);
-
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 validFrame + QByteArray(1, '\x04')
-                 + validFrame.repeated(2)).recognized);
-
-    QByteArray badCrc = validFrame;
-    badCrc[badCrc.size() - 1] = static_cast<char>(
-        static_cast<quint8>(badCrc.at(badCrc.size() - 1)) ^ 0x01);
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 validFrame + badCrc + validFrame).recognized);
-
-    const QByteArray ackFrame = makeChannelFrame(channels, 0x02);
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 validFrame + ackFrame + validFrame).recognized);
-
-    QByteArray channelPayload;
-    for (const qint16 channel : channels) {
-        appendLe16(channelPayload, static_cast<quint16>(channel));
-    }
-    const QByteArray otherCommand = makeFrame(0, 0x41, channelPayload);
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 validFrame + otherCommand + validFrame).recognized);
-
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 QByteArray::fromHex("04ff01020304ff01020304ff010203"))
-                 .recognized);
-    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
-                 threeFrames + QByteArray::fromHex("54"))
-                 .recognized);
 }
 
 void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()

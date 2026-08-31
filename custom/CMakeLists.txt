@@ -66,9 +66,9 @@ if(ANDROID)
             PATTERN "local.properties" EXCLUDE
         )
 
-        # The UniRC /dev/ttyHS0 guard must be able to distinguish every active
-        # Bluetooth state. Add only the two permissions needed to read that state;
-        # neither permission enables Bluetooth or permits BLE scanning.
+        # UniRC channel input uses the Android Bluetooth adapter as a Classic
+        # RFCOMM client. Qt requests the runtime permission; the corresponding
+        # platform declarations still have to be present in the APK manifest.
         set(_qgc_android_manifest "${_qgc_final_android_dir}/AndroidManifest.xml")
         if(NOT EXISTS "${_qgc_android_manifest}")
             message(FATAL_ERROR "QGC: Generated Android package is missing AndroidManifest.xml")
@@ -94,12 +94,42 @@ if(ANDROID)
         endif()
 
         string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_ADMIN\""
+            _qgc_legacy_bluetooth_admin_permission_position
+        )
+        if(_qgc_legacy_bluetooth_admin_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_ADMIN\" android:maxSdkVersion=\"30\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.ACCESS_FINE_LOCATION\""
+            _qgc_legacy_bluetooth_location_permission_position
+        )
+        if(_qgc_legacy_bluetooth_location_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" android:maxSdkVersion=\"30\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
             "android:name=\"android.permission.BLUETOOTH_CONNECT\""
             _qgc_bluetooth_connect_permission_position
         )
         if(_qgc_bluetooth_connect_permission_position EQUAL -1)
             string(APPEND _qgc_bluetooth_manifest_injection
                 "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_SCAN\""
+            _qgc_bluetooth_scan_permission_position
+        )
+        if(_qgc_bluetooth_scan_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" android:usesPermissionFlags=\"neverForLocation\" />"
             )
         endif()
 
@@ -137,6 +167,15 @@ if(ANDROID)
         if(_qgc_generated_bluetooth_connect_permission_position EQUAL -1)
             message(FATAL_ERROR
                 "QGC: Generated AndroidManifest.xml is missing BLUETOOTH_CONNECT"
+            )
+        endif()
+        string(FIND "${_qgc_android_manifest_validation}"
+            "android:name=\"android.permission.BLUETOOTH_SCAN\""
+            _qgc_generated_bluetooth_scan_permission_position
+        )
+        if(_qgc_generated_bluetooth_scan_permission_position EQUAL -1)
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing BLUETOOTH_SCAN"
             )
         endif()
 
@@ -185,17 +224,6 @@ if(ANDROID)
             message(FATAL_ERROR "QGC: Generated Android package does not contain the custom media library")
         endif()
 
-        set(_qgc_bluetooth_state_overlay
-            "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCCustomBluetoothState.java"
-        )
-        if(NOT EXISTS "${_qgc_bluetooth_state_overlay}")
-            message(FATAL_ERROR "QGC: Custom Android Bluetooth state helper was not generated")
-        endif()
-        file(READ "${_qgc_bluetooth_state_overlay}" _qgc_bluetooth_state_overlay_header LIMIT 4096)
-        if(NOT _qgc_bluetooth_state_overlay_header MATCHES "QGC_CUSTOM_ANDROID_BLUETOOTH_STATE_V2")
-            message(FATAL_ERROR "QGC: Generated Android package does not contain the custom Bluetooth state helper")
-        endif()
-
         set(QGC_ANDROID_PACKAGE_SOURCE_DIR "${_qgc_final_android_dir}"
             CACHE PATH "Path to the merged custom Android package template" FORCE
         )
@@ -209,6 +237,7 @@ endif()
 
 # Viewer3D 本地场景需要 Quick3D；AssetUtils 用于 OBJ/glTF/GLB 运行时加载。
 list(APPEND CUSTOM_QT_COMPONENTS
+    Bluetooth
     Quick3D
     Quick3DAssetUtils
 )
@@ -369,6 +398,7 @@ set(CUSTOM_SOURCES
 set(CUSTOM_LIBRARIES
     CustomModule
     CustomFlightDisplayModule
+    Qt6::Bluetooth
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
     ${CUSTOM_VIEWER3D_GOOGLE_LIBRARIES}
@@ -483,8 +513,6 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         src/Android/UniRcChannelPolicy.h
         src/Android/UniRcProtocol.cc
         src/Android/UniRcProtocol.h
-        src/Android/UniRcSerialAccessPolicy.cc
-        src/Android/UniRcSerialAccessPolicy.h
     )
     target_include_directories(UniRcProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Android

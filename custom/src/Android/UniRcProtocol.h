@@ -28,14 +28,6 @@ public:
         QByteArray payload;
     };
 
-    struct PeriodicStreamInspection {
-        bool recognized = false;
-        int frameCount = 0;
-        int leadingBytes = 0;
-        int trailingBytes = 0;
-        DecodedPacket lastPacket;
-    };
-
     using Channels = std::array<qint16, ChannelCount>;
 
     class StreamParser
@@ -54,10 +46,6 @@ public:
     static DecodedPacket decodePacket(const QByteArray& packet);
     static bool parseChannelData(const DecodedPacket& packet,
                                  Channels* channels);
-    static PeriodicStreamInspection inspectPeriodicChannelStream(
-        const QByteArray& bytes,
-        int minimumFrames = 3);
-
 private:
     static quint16 _crc16Xmodem(const QByteArray& bytes);
     static void _appendLittleEndian16(QByteArray& bytes, quint16 value);

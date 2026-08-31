@@ -87,16 +87,16 @@
         {
             "name": "uniRcChannelControlEnabled",
             "shortDesc": "Enable UniRC CH9/CH10 gimbal control",
-            "longDesc": "Android opens the UniRC SDK Serial 2 interface and maps CH9 to A8 Mini continuous zoom and the CH10 press edge to the shared MAVLink Gimbal Manager center action.",
+            "longDesc": "Android connects to the paired UniRC BLUE Bluetooth serial device, requests channel data, maps CH9 to A8 Mini continuous zoom, and maps the CH10 press edge to the shared MAVLink Gimbal Manager center action.",
             "type": "bool",
             "default": false
         },
         {
-            "name": "uniRcSdkSerialPort",
-            "shortDesc": "UniRC SDK serial device",
-            "longDesc": "UniGCS must route the UniRC SDK to Serial 2. When this device is /dev/ttyHS0, Android Bluetooth must be fully off before QGC can open the shared UART.",
+            "name": "uniRcSdkBluetoothAddress",
+            "shortDesc": "UniRC SDK Bluetooth address",
+            "longDesc": "Pair the BLUE94 or BLUE- device in Android settings and configure UniGCS to route the remote-control SDK to Bluetooth. Use Scan to select the device.",
             "type": "string",
-            "default": "/dev/ttyHS0"
+            "default": ""
         }
     ]
 }

@@ -537,52 +537,23 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="27"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="30"/>
         <source>Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="35"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="38"/>
         <source>Zoom Step</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="47"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="50"/>
         <source>A8 Mini</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="54"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="57"/>
         <source>MT11</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="122"/>
-        <source>SIYI A8 Mini Gimbal Camera</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="78"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="129"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="161"/>
-        <source>Enabled</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="135"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="167"/>
-        <source>SDK Host</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="142"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="174"/>
-        <source>SDK Port</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="154"/>
-        <source>UniPod MT11 Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -591,33 +562,87 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
-        <source>SDK Serial Device</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="78"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="169"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="201"/>
+        <source>Enabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="94"/>
-        <source>Disabled</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
+        <source>SDK Bluetooth Address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="96"/>
+        <source>Scanning...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="97"/>
+        <source>Scan BLUE Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="110"/>
+        <source>No Bluetooth device selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="131"/>
+        <source>Set the UniGCS SDK interface to Bluetooth and pair the BLUE94/BLUE- device in Android Bluetooth settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="139"/>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="141"/>
         <source>Controller unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="98"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="143"/>
         <source>Receiving: CH9 %1, CH10 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="147"/>
+        <source>Scanning for UniRC Bluetooth devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="151"/>
         <source>UniRC request sent; waiting for channel data</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="105"/>
-        <source>Waiting to open SDK serial device</source>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="152"/>
+        <source>Waiting for the UniRC SDK Bluetooth connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="162"/>
+        <source>SIYI A8 Mini Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="175"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="207"/>
+        <source>SDK Host</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="182"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="214"/>
+        <source>SDK Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="194"/>
+        <source>UniPod MT11 Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -827,213 +852,138 @@
 <context>
     <name>UniRcChannelController</name>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="45"/>
-        <source>%1 %2 failed: %3 (errno %4)</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="40"/>
+        <source>Unnamed Bluetooth device</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="198"/>
-        <source>UniRC SDK serial device must be an absolute /dev path.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="273"/>
+        <source>Bluetooth permission service is unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="353"/>
-        <source>Android Bluetooth is enabled or changing state. Turn it off before QGC can use the UniRC UART2 device %1.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="284"/>
+        <source>Nearby devices permission is required for the UniRC SDK Bluetooth connection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="358"/>
-        <source>Bluetooth and BLE are off; waiting %2 ms to confirm that %1 remains released.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="293"/>
+        <source>Grant Nearby devices permission to scan and connect to the UniRC SDK Bluetooth device.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="364"/>
-        <source>Android Bluetooth is off, but the BLE-only service is still active and may own %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="307"/>
+        <source>Nearby devices permission was denied. Enable it in Android app settings before using UniRC Bluetooth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="369"/>
-        <source>Android Bluetooth scanning is still enabled and can restart the Bluetooth HAL on %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="317"/>
+        <source>No Android Bluetooth adapter is available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="375"/>
-        <source>QGC needs the Nearby devices permission to verify that Bluetooth has released %1. Grant it once; if it was denied, enable it in Android app settings before trying again.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="322"/>
+        <source>Turn on Android Bluetooth before using the UniRC SDK Bluetooth connection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="379"/>
-        <source>QGC cannot verify that Bluetooth and BLE have released %1. For safety, the UniRC UART2 SDK will not access it.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="333"/>
+        <source>Enable UniRC CH9/CH10 gimbal control before scanning.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="404"/>
-        <source>Bluetooth and BLE are fully off; checking whether %1 is idle before sending any SDK data.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="354"/>
+        <source>Scanning for UniRC BLUE Bluetooth devices...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="206"/>
-        <source>UniRC SDK serial path is not a character device: %1</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="405"/>
+        <source>No UniRC BLUE Bluetooth device was found. Pair it in Android settings, then scan again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="215"/>
-        <source>Open</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="406"/>
+        <source>No UniRC BLUE Bluetooth device was selected. Select a discovered device or enter its Bluetooth address.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="227"/>
-        <source>Lock</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="426"/>
+        <source>UniRC Bluetooth scan failed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="240"/>
-        <source>Exclusive open</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="449"/>
+        <source>The UniRC SDK Bluetooth address is invalid: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="479"/>
-        <source>%1 has not returned to an SDK-safe idle UART state (%2). QGC did not configure or write the port; Android Bluetooth/HCI may still own it.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="458"/>
+        <source>Pair the UniRC BLUE device %1 in Android Bluetooth settings before connecting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="490"/>
-        <source>QGC cannot safely verify whether %1 is idle: %2</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="487"/>
+        <source>Connecting to UniRC SDK Bluetooth device %1...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="517"/>
-        <source>Checking %1 for existing UART activity before sending the UniRC request.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="528"/>
+        <source>Failed to send the UniRC 0x42 request over Bluetooth: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="549"/>
-        <source>Bluetooth or BLE became active while QGC was checking %1. No UniRC data was written.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="544"/>
+        <source>The UniRC SDK Bluetooth connection to %1 was disconnected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="560"/>
-        <source>QGC could not complete the passive UART check for %1: %2</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="558"/>
+        <source>UniRC SDK Bluetooth error on %1: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="572"/>
-        <source>%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="571"/>
+        <source>Timed out while connecting to the UniRC SDK Bluetooth device %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="604"/>
-        <source>The UART configuration on %1 did not remain at 115200 8N1 without hardware flow control (%2). Another owner may still be changing it.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="620"/>
-        <source>Bluetooth/BLE or the UART configuration changed before the UniRC request could be sent to %1. QGC closed the port without writing data.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="677"/>
-        <source>Bluetooth or BLE became active while QGC was using %1. The UART was closed without writing a stop frame.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="688"/>
-        <source>The configuration of %1 changed while the UniRC SDK was active. Bluetooth HAL or another process may have reclaimed the UART; QGC closed it without writing more data.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="751"/>
-        <source>Read queued byte count for</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="765"/>
-        <source>Poll</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="282"/>
-        <source>Failed to request UniRC channel data from %1.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="848"/>
-        <source>The three UniRC request frames were queued on %1, but the UART output queue did not empty within %2 ms (%3).</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="856"/>
-        <source>The three UniRC request frames were queued on %1, but checking the UART output queue failed (%2).</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="311"/>
-        <source>Read termios for</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="329"/>
-        <source>Configure</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1401"/>
-        <source>Flush</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="462"/>
-        <source>Read</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="484"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="683"/>
         <source>UniRC gimbal control dependencies are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="554"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="745"/>
         <source>Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="685"/>
-        <source>UniRC 0x42 channel data stopped on %1 after %2 frame(s).</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="990"/>
+        <source>UniRC 0x42 Bluetooth channel data stopped on %1 after %2 frame(s).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="690"/>
-        <source>QGC opened %1 and sent the UniRC request, but received no bytes. The UART2 SDK route is not active or the port is still owned by firmware/another process.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="995"/>
+        <source>The UniRC request still had %1 Bluetooth byte(s) queued after %2 ms; the SPP transport did not accept the request.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="694"/>
-        <source>Received %1 serial byte(s) from %2, but no valid UniRC SDK frame; check UART2 routing and the 115200 serial format.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1002"/>
+        <source>Connected to %1 and queued the UniRC request, but received no Bluetooth data. Confirm that UniGCS routes the SDK to Bluetooth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="698"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1006"/>
+        <source>Received %1 Bluetooth byte(s) from %2, but no valid UniRC SDK frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1010"/>
         <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="704"/>
-        <source>QGC found input on %1 before sending the UniRC request but could not inspect it safely: %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="723"/>
-        <source>Existing non-UniRC UART activity was detected on %1 before QGC sent any data (%2; inspectedBytes=%3; consecutive0x42=%4). Bluetooth HAL or another process may still own the port.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1018"/>
-        <source>Read ownership probe input from</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="994"/>
-        <source>Read UART activity counters for</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1030"/>
+        <source>unselected device</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1078,19 +1028,19 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Android opens the UniRC SDK Serial 2 interface and maps CH9 to A8 Mini continuous zoom and the CH10 press edge to the shared MAVLink Gimbal Manager center action.</source>
+        <source>Android connects to the paired UniRC BLUE Bluetooth serial device, requests channel data, maps CH9 to A8 Mini continuous zoom, and maps the CH10 press edge to the shared MAVLink Gimbal Manager center action.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <extracomment>.QGC.MetaData.Facts[uniRcSdkSerialPort].shortDesc, </extracomment>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkBluetoothAddress].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>UniRC SDK serial device</source>
+        <source>UniRC SDK Bluetooth address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <extracomment>.QGC.MetaData.Facts[uniRcSdkSerialPort].longDesc, </extracomment>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkBluetoothAddress].longDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>UniGCS must route the UniRC SDK to Serial 2. When this device is /dev/ttyHS0, Android Bluetooth must be fully off before QGC can open the shared UART.</source>
+        <source>Pair the BLUE94 or BLUE- device in Android settings and configure UniGCS to route the remote-control SDK to Bluetooth. Use Scan to select the device.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

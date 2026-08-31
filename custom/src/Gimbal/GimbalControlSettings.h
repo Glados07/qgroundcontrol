@@ -30,5 +30,5 @@ public:
     DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
     DEFINE_SETTINGFACT(forceAndroidH265HardwareDecoder)
     DEFINE_SETTINGFACT(uniRcChannelControlEnabled)
-    DEFINE_SETTINGFACT(uniRcSdkSerialPort)
+    DEFINE_SETTINGFACT(uniRcSdkBluetoothAddress)
 };

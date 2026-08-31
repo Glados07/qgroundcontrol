@@ -81,9 +81,54 @@ ColumnLayout {
 
             LabelledFactTextField {
                 Layout.fillWidth: true
-                label: qsTr("SDK Serial Device")
-                fact: root.gimbalControlSettings.uniRcSdkSerialPort
+                label: qsTr("SDK Bluetooth Address")
+                fact: root.gimbalControlSettings.uniRcSdkBluetoothAddress
                 enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: ScreenTools.defaultFontPixelWidth
+
+                QGCButton {
+                    text: root.uniRcChannelController
+                          && root.uniRcChannelController.bluetoothScanning
+                          ? qsTr("Scanning...")
+                          : qsTr("Scan BLUE Device")
+                    enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+                             && root.uniRcChannelController
+                             && !root.uniRcChannelController.bluetoothScanning
+                    onClicked: root.uniRcChannelController.startBluetoothScan()
+                }
+
+                QGCLabel {
+                    Layout.fillWidth: true
+                    elide: Text.ElideMiddle
+                    text: root.uniRcChannelController
+                          && root.uniRcChannelController.selectedBluetoothDevice !== ""
+                          ? root.uniRcChannelController.selectedBluetoothDevice
+                          : qsTr("No Bluetooth device selected")
+                }
+            }
+
+            Repeater {
+                model: root.uniRcChannelController
+                       ? root.uniRcChannelController.bluetoothDevices
+                       : []
+
+                delegate: QGCButton {
+                    Layout.fillWidth: true
+                    text: modelData
+                    enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+                    onClicked: root.uniRcChannelController.selectBluetoothDevice(index)
+                }
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pointSize: ScreenTools.smallFontPointSize
+                text: qsTr("Set the UniGCS SDK interface to Bluetooth and pair the BLUE94/BLUE- device in Android Bluetooth settings.")
             }
 
             QGCLabel {
@@ -94,15 +139,17 @@ ColumnLayout {
                       ? qsTr("Disabled")
                       : !root.uniRcChannelController
                         ? qsTr("Controller unavailable")
-                        : root.uniRcChannelController.channelInputActive
+                          : root.uniRcChannelController.channelInputActive
                           ? qsTr("Receiving: CH9 %1, CH10 %2")
                                 .arg(root.uniRcChannelController.channel9)
                                 .arg(root.uniRcChannelController.channel10)
+                          : root.uniRcChannelController.bluetoothScanning
+                            ? qsTr("Scanning for UniRC Bluetooth devices")
                           : root.uniRcChannelController.lastError !== ""
                             ? root.uniRcChannelController.lastError
-                            : root.uniRcChannelController.serialOpen
+                            : root.uniRcChannelController.bluetoothConnected
                               ? qsTr("UniRC request sent; waiting for channel data")
-                              : qsTr("Waiting to open SDK serial device")
+                              : qsTr("Waiting for the UniRC SDK Bluetooth connection")
             }
         }
 
