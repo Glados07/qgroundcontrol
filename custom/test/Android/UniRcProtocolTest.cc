@@ -93,21 +93,57 @@ void UniRcProtocolTest::serialAccessRequiresBluetoothOffForHs0()
     using namespace UniRcSerialAccessPolicy;
 
     const QString sharedSerial2 = QStringLiteral("/dev/ttyHS0");
+    constexpr qint64 requiredStableMs = 3000;
     QVERIFY(requiresBluetoothOff(sharedSerial2));
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::OffObserved, false)
+
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
+                     0, requiredStableMs)
             == Decision::WaitForBluetoothRelease);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::OffObserved, true)
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
+                     requiredStableMs - 1, requiredStableMs)
+            == Decision::WaitForBluetoothRelease);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
+                     requiredStableMs, requiredStableMs)
             == Decision::Allow);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::OnOrTransition)
-            == Decision::BlockBluetoothActive);
-    QVERIFY(evaluate(sharedSerial2, BluetoothState::Unknown)
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::FullyOff,
+                     requiredStableMs + 1, requiredStableMs)
+            == Decision::Allow);
+
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::ClassicActive,
+                     requiredStableMs, requiredStableMs)
+            == Decision::BlockBluetoothClassicActive);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::BleActive,
+                     requiredStableMs, requiredStableMs)
+            == Decision::BlockBluetoothBleActive);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::ScanAlwaysEnabled,
+                     requiredStableMs, requiredStableMs)
+            == Decision::BlockBluetoothScanAlwaysEnabled);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::PermissionRequired,
+                     requiredStableMs, requiredStableMs)
+            == Decision::BlockBluetoothPermissionRequired);
+    QVERIFY(evaluate(sharedSerial2, BluetoothState::Unknown,
+                     requiredStableMs, requiredStableMs)
             == Decision::BlockBluetoothUnknown);
 
     const QString otherSerial = QStringLiteral("/dev/ttyHS3");
     QVERIFY(!requiresBluetoothOff(otherSerial));
-    QVERIFY(evaluate(otherSerial, BluetoothState::OnOrTransition)
+    QVERIFY(evaluate(otherSerial, BluetoothState::FullyOff, 0,
+                     requiredStableMs)
             == Decision::Allow);
-    QVERIFY(evaluate(otherSerial, BluetoothState::Unknown)
+    QVERIFY(evaluate(otherSerial, BluetoothState::ClassicActive, 0,
+                     requiredStableMs)
+            == Decision::Allow);
+    QVERIFY(evaluate(otherSerial, BluetoothState::BleActive, 0,
+                     requiredStableMs)
+            == Decision::Allow);
+    QVERIFY(evaluate(otherSerial, BluetoothState::ScanAlwaysEnabled, 0,
+                     requiredStableMs)
+            == Decision::Allow);
+    QVERIFY(evaluate(otherSerial, BluetoothState::PermissionRequired, 0,
+                     requiredStableMs)
+            == Decision::Allow);
+    QVERIFY(evaluate(otherSerial, BluetoothState::Unknown, 0,
+                     requiredStableMs)
             == Decision::Allow);
 }
 

@@ -1,19 +1,26 @@
 #pragma once
 
 #include <QtCore/QString>
+#include <QtCore/QtGlobal>
 
 namespace UniRcSerialAccessPolicy {
 
 // Values mirror QGCCustomBluetoothState.getStateForUniRc().
 enum class BluetoothState {
     Unknown = 0,
-    OffObserved = 1,
-    OnOrTransition = 2,
+    FullyOff = 1,
+    ClassicActive = 2,
+    BleActive = 3,
+    ScanAlwaysEnabled = 4,
+    PermissionRequired = 5,
 };
 
 enum class Decision {
     Allow,
-    BlockBluetoothActive,
+    BlockBluetoothClassicActive,
+    BlockBluetoothBleActive,
+    BlockBluetoothScanAlwaysEnabled,
+    BlockBluetoothPermissionRequired,
     BlockBluetoothUnknown,
     WaitForBluetoothRelease,
 };
@@ -21,6 +28,7 @@ enum class Decision {
 bool requiresBluetoothOff(const QString &devicePath);
 Decision evaluate(const QString &devicePath,
                   BluetoothState bluetoothState,
-                  bool offWasPreviouslyObserved = false);
+                  qint64 fullOffStableMs,
+                  qint64 requiredStableMs);
 
 } // namespace UniRcSerialAccessPolicy

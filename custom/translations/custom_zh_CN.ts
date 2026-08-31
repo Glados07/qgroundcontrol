@@ -612,8 +612,8 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
-        <source>Serial open; waiting for channel data</source>
-        <translation>串口已打开，正在等待通道数据</translation>
+        <source>UniRC request sent; waiting for channel data</source>
+        <translation>已发送UniRC请求，正在等待通道数据</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="105"/>
@@ -837,19 +837,39 @@
         <translation>UniRC SDK串口设备必须使用绝对/dev路径。</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="257"/>
-        <source>Android Bluetooth is not fully off (enabled or changing state). Turn it off completely before the UniRC UART2 SDK can open %1.</source>
-        <translation>Android系统蓝牙尚未完全关闭（仍开启或正在切换状态）。必须将其完全关闭，UniRC UART2 SDK才能打开%1。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="353"/>
+        <source>Android Bluetooth is enabled or changing state. Turn it off before QGC can use the UniRC UART2 device %1.</source>
+        <translation>Android系统蓝牙已开启或正在切换状态。QGC使用UniRC UART2设备%1前必须先关闭蓝牙。</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="262"/>
-        <source>Android Bluetooth appears off; waiting for %1 to be released before opening the UniRC UART2 SDK.</source>
-        <translation>Android系统蓝牙显示为已关闭，正在等待%1完成释放；UniRC UART2 SDK随后会自动重试。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="358"/>
+        <source>Bluetooth and BLE are off; waiting %2 ms to confirm that %1 remains released.</source>
+        <translation>蓝牙与BLE均已关闭；正在等待%2毫秒，确认%1保持释放状态。</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="266"/>
-        <source>Cannot verify that Android Bluetooth is off. For safety, the UniRC UART2 SDK will not open %1; turn Bluetooth off and try again.</source>
-        <translation>无法确认Android系统蓝牙已关闭。为确保安全，UniRC UART2 SDK不会打开%1；请关闭蓝牙后重试。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="364"/>
+        <source>Android Bluetooth is off, but the BLE-only service is still active and may own %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <translation>Android系统蓝牙已关闭，但仅BLE服务仍处于活动状态，可能仍占用%1。请在Android定位/扫描设置中关闭蓝牙扫描。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="369"/>
+        <source>Android Bluetooth scanning is still enabled and can restart the Bluetooth HAL on %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <translation>Android蓝牙扫描仍开启，可能在%1上重新启动蓝牙HAL。请在Android定位/扫描设置中关闭蓝牙扫描。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="375"/>
+        <source>QGC needs the Nearby devices permission to verify that Bluetooth has released %1. Grant it once; if it was denied, enable it in Android app settings before trying again.</source>
+        <translation>QGC需要“附近的设备”权限来确认蓝牙已释放%1。该权限只会自动请求一次；若已拒绝，请在Android应用设置中开启后重试。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="379"/>
+        <source>QGC cannot verify that Bluetooth and BLE have released %1. For safety, the UniRC UART2 SDK will not access it.</source>
+        <translation>QGC无法确认蓝牙和BLE已释放%1。为避免串口冲突，UniRC UART2 SDK不会访问该设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="404"/>
+        <source>Bluetooth and BLE are fully off; checking whether %1 is idle before sending any SDK data.</source>
+        <translation>蓝牙和BLE均已完全关闭；发送任何SDK数据前，正在检查%1是否空闲。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="206"/>
@@ -870,6 +890,81 @@
         <location filename="../src/Android/UniRcChannelController.cc" line="240"/>
         <source>Exclusive open</source>
         <translation>独占打开</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="479"/>
+        <source>%1 has not returned to an SDK-safe idle UART state (%2). QGC did not configure or write the port; Android Bluetooth/HCI may still own it.</source>
+        <translation>%1尚未恢复到SDK安全的空闲串口状态（%2）。QGC没有配置或写入该端口；Android蓝牙/HCI可能仍在占用它。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="490"/>
+        <source>QGC cannot safely verify whether %1 is idle: %2</source>
+        <translation>QGC无法安全确认%1是否空闲：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="499"/>
+        <source>The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.</source>
+        <translation>内核无法提供%1的UART活动计数，因此QGC不能证明蓝牙HAL已释放该端口。请改用UniRC SDK UDP接口或厂商UART仲裁固件。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="509"/>
+        <source>Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.</source>
+        <translation>QGC发送任何数据前，%1上已存在串口活动；蓝牙HAL或其他进程仍在占用该UART。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="517"/>
+        <source>Checking %1 for existing UART activity before sending the UniRC request.</source>
+        <translation>在发送UniRC请求前，正在检查%1是否存在其他UART活动。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="549"/>
+        <source>Bluetooth or BLE became active while QGC was checking %1. No UniRC data was written.</source>
+        <translation>QGC检查%1期间蓝牙或BLE重新激活。未写入任何UniRC数据。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="560"/>
+        <source>QGC could not complete the passive UART check for %1: %2</source>
+        <translation>QGC无法完成对%1的被动UART检查：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="572"/>
+        <source>%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.</source>
+        <translation>QGC检查期间%1变为非空闲串口状态（%2）。未写入任何UniRC数据。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="585"/>
+        <source>Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).</source>
+        <translation>QGC发送任何数据前在%1上检测到已有UART活动。蓝牙HAL或其他进程仍在占用端口（%2）。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="604"/>
+        <source>The UART configuration on %1 did not remain at 115200 8N1 without hardware flow control (%2). Another owner may still be changing it.</source>
+        <translation>%1的串口配置未能保持115200 8N1且无硬件流控（%2）。其他占用者可能仍在修改该端口。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="620"/>
+        <source>Bluetooth/BLE or the UART configuration changed before the UniRC request could be sent to %1. QGC closed the port without writing data.</source>
+        <translation>发送UniRC请求前，蓝牙/BLE状态或%1的串口配置发生变化。QGC未写入数据并已关闭端口。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="677"/>
+        <source>Bluetooth or BLE became active while QGC was using %1. The UART was closed without writing a stop frame.</source>
+        <translation>QGC使用%1期间蓝牙或BLE重新激活。UART已关闭，且未写入停止帧。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="688"/>
+        <source>The configuration of %1 changed while the UniRC SDK was active. Bluetooth HAL or another process may have reclaimed the UART; QGC closed it without writing more data.</source>
+        <translation>UniRC SDK活动期间%1的配置发生变化。蓝牙HAL或其他进程可能已重新占用UART；QGC已关闭端口，未再写入数据。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="751"/>
+        <source>Read queued byte count for</source>
+        <translation>读取串口待处理字节数</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="765"/>
+        <source>Poll</source>
+        <translation>轮询</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="282"/>
@@ -908,8 +1003,8 @@
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="690"/>
-        <source>No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.</source>
-        <translation>未从%1收到任何串口字节；请将UniGCS的SDK连接方式设为UART2，并关闭其他地面站应用。</translation>
+        <source>QGC opened %1 and sent the UniRC request, but received no bytes. The UART2 SDK route is not active or the port is still owned by firmware/another process.</source>
+        <translation>QGC已打开%1并发送UniRC请求，但未收到任何字节。UART2 SDK路由未生效，或端口仍由固件/其他进程占用。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="694"/>

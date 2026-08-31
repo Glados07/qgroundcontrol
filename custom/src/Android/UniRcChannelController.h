@@ -63,15 +63,21 @@ private slots:
     void _reconcile();
     void _readAvailable();
     void _inputWatchdogExpired();
+#ifdef Q_OS_ANDROID
+    void _ownershipProbeExpired();
+    void _runtimeSafetyCheck();
+#endif
 
 private:
     bool _shouldRun() const;
     bool _openSerial();
-    void _closeSerial(bool sendDisableRequest);
+    void _closeSerial(bool sendDisableRequest, const char *reason);
     bool _configureSerial(int fd, const QString &devicePath);
     bool _writeAll(const QByteArray &bytes, int timeoutMs);
     bool _sendChannelRequest(quint8 frequencyCode);
-    void _scheduleSerialFailure(const QString &message);
+    void _scheduleSerialFailure(const QString &message,
+                                const char *stage,
+                                const char *reason);
     void _handleChannelPacket(const UniRcProtocol::DecodedPacket &packet);
     void _resetReceiveDiagnostics();
     QString _receiveTimeoutMessage() const;
@@ -86,6 +92,13 @@ private:
     static constexpr int kInitialFrameTimeoutMs = 1200;
     static constexpr int kActiveFrameTimeoutMs = 350;
     static constexpr int kReconnectDelayMs = 3000;
+    static constexpr int kFailureRetryDelayMs = 10000;
+    static constexpr int kBluetoothPollMs = 250;
+    static constexpr int kBlockedBluetoothRetryMs = 2000;
+    static constexpr int kBluetoothStableMs = 3000;
+    static constexpr int kOwnershipProbeMs = 2000;
+    static constexpr int kRuntimeSafetyPollMs = 500;
+    static constexpr int kRepeatedFailureLogMs = 60000;
     static constexpr int kZoomStartRetryMs = 250;
     static constexpr int kWriteTimeoutMs = 100;
     static constexpr int kReceiveSampleMaxBytes = 64;
@@ -119,7 +132,75 @@ private:
     bool _shuttingDown = false;
 
 #ifdef Q_OS_ANDROID
-    bool _bluetoothOffObserved = false;
+    enum class SerialPhase {
+        Idle,
+        OwnershipProbe,
+        AwaitingFirstFrame,
+        Active,
+    };
+
+    struct SerialActivitySnapshot {
+        QString termiosSignature;
+        bool termiosAvailable = false;
+        bool lineDisciplineAvailable = false;
+        bool countersAvailable = false;
+        qulonglong inputSpeed = 0;
+        qulonglong outputSpeed = 0;
+        int lineDiscipline = -1;
+        bool hardwareFlowControl = false;
+        qint64 rxCount = 0;
+        qint64 txCount = 0;
+        qint64 frameCount = 0;
+        qint64 overrunCount = 0;
+        qint64 parityCount = 0;
+        qint64 breakCount = 0;
+        qint64 bufferOverrunCount = 0;
+        int queuedBytes = -1;
+        bool readable = false;
+    };
+
+    bool _captureSerialActivity(int fd,
+                                SerialActivitySnapshot *snapshot,
+                                QString *error) const;
+    bool _serialActivityChanged(const SerialActivitySnapshot &before,
+                                const SerialActivitySnapshot &after,
+                                QString *details) const;
+    bool _configureAndRequestChannels();
+    bool _serialLooksReleased(const SerialActivitySnapshot &snapshot,
+                              QString *details) const;
+    bool _serialConfigurationMatches(int fd, QString *details) const;
+    bool _safeToWriteDisableRequest() const;
+    void _startAttempt(const QString &devicePath,
+                       const QString &bluetoothEvidence);
+    void _failAttempt(const char *stage,
+                      const char *reason,
+                      const QString &message,
+                      bool closeDescriptor);
+    void _logPreflightTransition(const QString &key,
+                                 const QString &message,
+                                 const QString &evidence,
+                                 bool warning);
+    void _logAttemptFailure(const char *stage,
+                            const char *reason,
+                            const QString &message);
+
+    QTimer _ownershipProbeTimer;
+    QTimer _runtimeSafetyTimer;
+    QElapsedTimer _bluetoothFullOffElapsed;
+    QElapsedTimer _attemptElapsed;
+    QElapsedTimer _failureLogElapsed;
+    SerialActivitySnapshot _ownershipProbeStart;
+    SerialPhase _serialPhase = SerialPhase::Idle;
+    QString _lastBluetoothEvidence;
+    QString _lastPreflightLogKey;
+    QString _lastFailureLogKey;
+    quint64 _attemptSequence = 0;
+    quint64 _activeAttemptId = 0;
+    quint64 _suppressedFailureCount = 0;
+    int _nextRetryDelayMs = kReconnectDelayMs;
+    bool _firstRxLogged = false;
+    bool _ttyExclusiveClaimed = false;
+    bool _sharedBluetoothUart = false;
     int _serialFd = -1;
     QSocketNotifier *_readNotifier = nullptr;
 #endif

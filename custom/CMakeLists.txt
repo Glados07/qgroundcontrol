@@ -66,6 +66,80 @@ if(ANDROID)
             PATTERN "local.properties" EXCLUDE
         )
 
+        # The UniRC /dev/ttyHS0 guard must be able to distinguish every active
+        # Bluetooth state. Add only the two permissions needed to read that state;
+        # neither permission enables Bluetooth or permits BLE scanning.
+        set(_qgc_android_manifest "${_qgc_final_android_dir}/AndroidManifest.xml")
+        if(NOT EXISTS "${_qgc_android_manifest}")
+            message(FATAL_ERROR "QGC: Generated Android package is missing AndroidManifest.xml")
+        endif()
+        file(READ "${_qgc_android_manifest}" _qgc_android_manifest_contents)
+        set(_qgc_android_permission_anchor "    <!-- %%INSERT_PERMISSIONS -->")
+        set(_qgc_bluetooth_manifest_injection "")
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH\""
+            _qgc_legacy_bluetooth_permission_position
+        )
+        if(_qgc_legacy_bluetooth_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH\" android:maxSdkVersion=\"30\" />"
+            )
+        elseif(NOT _qgc_android_manifest_contents MATCHES
+            "<uses-permission[^>]*android:name=\"android\\.permission\\.BLUETOOTH\"[^>]*android:maxSdkVersion=\"30\"[^>]*/>"
+        )
+            message(FATAL_ERROR
+                "QGC: Existing android.permission.BLUETOOTH must be limited to maxSdkVersion 30"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_CONNECT\""
+            _qgc_bluetooth_connect_permission_position
+        )
+        if(_qgc_bluetooth_connect_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />"
+            )
+        endif()
+
+        if(_qgc_bluetooth_manifest_injection)
+            string(FIND "${_qgc_android_manifest_contents}"
+                "${_qgc_android_permission_anchor}"
+                _qgc_android_permission_anchor_position
+            )
+            if(_qgc_android_permission_anchor_position EQUAL -1)
+                message(FATAL_ERROR
+                    "QGC: AndroidManifest.xml is missing the permission insertion anchor"
+                )
+            endif()
+            string(REPLACE
+                "${_qgc_android_permission_anchor}"
+                "${_qgc_android_permission_anchor}${_qgc_bluetooth_manifest_injection}"
+                _qgc_android_manifest_contents
+                "${_qgc_android_manifest_contents}"
+            )
+            file(WRITE "${_qgc_android_manifest}" "${_qgc_android_manifest_contents}")
+        endif()
+
+        file(READ "${_qgc_android_manifest}" _qgc_android_manifest_validation)
+        if(NOT _qgc_android_manifest_validation MATCHES
+            "<uses-permission[^>]*android:name=\"android\\.permission\\.BLUETOOTH\"[^>]*android:maxSdkVersion=\"30\"[^>]*/>"
+        )
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing the maxSdkVersion 30 BLUETOOTH permission"
+            )
+        endif()
+        string(FIND "${_qgc_android_manifest_validation}"
+            "android:name=\"android.permission.BLUETOOTH_CONNECT\""
+            _qgc_generated_bluetooth_connect_permission_position
+        )
+        if(_qgc_generated_bluetooth_connect_permission_position EQUAL -1)
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing BLUETOOTH_CONNECT"
+            )
+        endif()
+
         # Qt's Android deployment invokes Gradle from a generated project. Keep the
         # regular build cache, but disable configuration-cache reuse for the custom
         # package so stale instrumented AGP classes cannot break APK packaging before
@@ -118,7 +192,7 @@ if(ANDROID)
             message(FATAL_ERROR "QGC: Custom Android Bluetooth state helper was not generated")
         endif()
         file(READ "${_qgc_bluetooth_state_overlay}" _qgc_bluetooth_state_overlay_header LIMIT 4096)
-        if(NOT _qgc_bluetooth_state_overlay_header MATCHES "QGC_CUSTOM_ANDROID_BLUETOOTH_STATE_V1")
+        if(NOT _qgc_bluetooth_state_overlay_header MATCHES "QGC_CUSTOM_ANDROID_BLUETOOTH_STATE_V2")
             message(FATAL_ERROR "QGC: Generated Android package does not contain the custom Bluetooth state helper")
         endif()
 

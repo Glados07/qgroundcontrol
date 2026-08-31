@@ -101,7 +101,7 @@ ColumnLayout {
                           : root.uniRcChannelController.lastError !== ""
                             ? root.uniRcChannelController.lastError
                             : root.uniRcChannelController.serialOpen
-                              ? qsTr("Serial open; waiting for channel data")
+                              ? qsTr("UniRC request sent; waiting for channel data")
                               : qsTr("Waiting to open SDK serial device")
             }
         }

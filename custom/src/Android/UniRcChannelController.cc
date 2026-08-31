@@ -15,6 +15,8 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtGui/QGuiApplication>
 
@@ -28,6 +30,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <linux/serial.h>
 #include <poll.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
@@ -43,13 +46,77 @@ namespace {
 #ifdef Q_OS_ANDROID
 constexpr char kAndroidBluetoothStateClassName[] =
     "org/mavlink/qgroundcontrol/QGCCustomBluetoothState";
+constexpr int kNTtyLineDiscipline = 0;
 
-UniRcSerialAccessPolicy::BluetoothState androidBluetoothState()
+QString serialSpeedDescription(qulonglong speedCode)
+{
+    if (speedCode == static_cast<qulonglong>(B38400)) {
+        return QStringLiteral("38400");
+    }
+    if (speedCode == static_cast<qulonglong>(B115200)) {
+        return QStringLiteral("115200");
+    }
+#ifdef B230400
+    if (speedCode == static_cast<qulonglong>(B230400)) {
+        return QStringLiteral("230400");
+    }
+#endif
+#ifdef B460800
+    if (speedCode == static_cast<qulonglong>(B460800)) {
+        return QStringLiteral("460800");
+    }
+#endif
+#ifdef B921600
+    if (speedCode == static_cast<qulonglong>(B921600)) {
+        return QStringLiteral("921600");
+    }
+#endif
+#ifdef B1000000
+    if (speedCode == static_cast<qulonglong>(B1000000)) {
+        return QStringLiteral("1000000");
+    }
+#endif
+#ifdef B2000000
+    if (speedCode == static_cast<qulonglong>(B2000000)) {
+        return QStringLiteral("2000000");
+    }
+#endif
+#ifdef B3000000
+    if (speedCode == static_cast<qulonglong>(B3000000)) {
+        return QStringLiteral("3000000");
+    }
+#endif
+#ifdef B3500000
+    if (speedCode == static_cast<qulonglong>(B3500000)) {
+        return QStringLiteral("3500000");
+    }
+#endif
+#ifdef B4000000
+    if (speedCode == static_cast<qulonglong>(B4000000)) {
+        return QStringLiteral("4000000");
+    }
+#endif
+#ifdef BOTHER
+    if (speedCode == static_cast<qulonglong>(BOTHER)) {
+        return QStringLiteral("BOTHER(code=%1)").arg(speedCode);
+    }
+#endif
+    return QStringLiteral("code=%1").arg(speedCode);
+}
+
+struct AndroidBluetoothSnapshot {
+    UniRcSerialAccessPolicy::BluetoothState state =
+        UniRcSerialAccessPolicy::BluetoothState::Unknown;
+    QString evidence = QStringLiteral("helper=unavailable");
+};
+
+AndroidBluetoothSnapshot androidBluetoothSnapshot()
 {
     using BluetoothState = UniRcSerialAccessPolicy::BluetoothState;
+    AndroidBluetoothSnapshot snapshot;
 
     if (!QJniObject::isClassAvailable(kAndroidBluetoothStateClassName)) {
-        return BluetoothState::Unknown;
+        return snapshot;
     }
 
     const jint state = QJniObject::callStaticMethod<jint>(
@@ -58,17 +125,53 @@ UniRcSerialAccessPolicy::BluetoothState androidBluetoothState()
         "()I");
     QJniEnvironment environment;
     if (environment.checkAndClearExceptions()) {
-        return BluetoothState::Unknown;
+        snapshot.evidence = QStringLiteral("helper=exception");
+        return snapshot;
+    }
+
+    const QJniObject diagnostics = QJniObject::callStaticObjectMethod(
+        kAndroidBluetoothStateClassName,
+        "getDiagnosticsForUniRc",
+        "()Ljava/lang/String;");
+    if (!environment.checkAndClearExceptions() && diagnostics.isValid()) {
+        snapshot.evidence = diagnostics.toString();
+    } else {
+        snapshot.evidence = QStringLiteral("helper=diagnostics-unavailable");
     }
 
     switch (state) {
-    case static_cast<jint>(BluetoothState::OffObserved):
-        return BluetoothState::OffObserved;
-    case static_cast<jint>(BluetoothState::OnOrTransition):
-        return BluetoothState::OnOrTransition;
+    case static_cast<jint>(BluetoothState::FullyOff):
+        snapshot.state = BluetoothState::FullyOff;
+        break;
+    case static_cast<jint>(BluetoothState::ClassicActive):
+        snapshot.state = BluetoothState::ClassicActive;
+        break;
+    case static_cast<jint>(BluetoothState::BleActive):
+        snapshot.state = BluetoothState::BleActive;
+        break;
+    case static_cast<jint>(BluetoothState::ScanAlwaysEnabled):
+        snapshot.state = BluetoothState::ScanAlwaysEnabled;
+        break;
+    case static_cast<jint>(BluetoothState::PermissionRequired):
+        snapshot.state = BluetoothState::PermissionRequired;
+        break;
     default:
-        return BluetoothState::Unknown;
+        break;
     }
+    return snapshot;
+}
+
+void requestAndroidBluetoothPermission()
+{
+    if (!QJniObject::isClassAvailable(kAndroidBluetoothStateClassName)) {
+        return;
+    }
+    QJniObject::callStaticMethod<void>(
+        kAndroidBluetoothStateClassName,
+        "requestBluetoothConnectPermissionForUniRc",
+        "()V");
+    QJniEnvironment environment;
+    (void) environment.checkAndClearExceptions();
 }
 
 QString errnoMessage(const QString &operation,
@@ -102,6 +205,11 @@ UniRcChannelController::UniRcChannelController(
     _reconnectTimer.setSingleShot(true);
     _reconnectTimer.setInterval(kReconnectDelayMs);
     _inputWatchdog.setSingleShot(true);
+#ifdef Q_OS_ANDROID
+    _ownershipProbeTimer.setSingleShot(true);
+    _runtimeSafetyTimer.setSingleShot(false);
+    _runtimeSafetyTimer.setInterval(kRuntimeSafetyPollMs);
+#endif
 
     connect(&_reconnectTimer,
             &QTimer::timeout,
@@ -111,6 +219,16 @@ UniRcChannelController::UniRcChannelController(
             &QTimer::timeout,
             this,
             &UniRcChannelController::_inputWatchdogExpired);
+#ifdef Q_OS_ANDROID
+    connect(&_ownershipProbeTimer,
+            &QTimer::timeout,
+            this,
+            &UniRcChannelController::_ownershipProbeExpired);
+    connect(&_runtimeSafetyTimer,
+            &QTimer::timeout,
+            this,
+            &UniRcChannelController::_runtimeSafetyCheck);
+#endif
     connect(_settings->uniRcChannelControlEnabled(),
             &Fact::rawValueChanged,
             this,
@@ -145,10 +263,14 @@ void UniRcChannelController::shutdown()
     _shuttingDown = true;
     _reconnectTimer.stop();
     _inputWatchdog.stop();
+#ifdef Q_OS_ANDROID
+    _ownershipProbeTimer.stop();
+    _runtimeSafetyTimer.stop();
+#endif
     if (_gimbalCenterCoordinator) {
         _gimbalCenterCoordinator->cancel();
     }
-    _closeSerial(true);
+    _closeSerial(true, "shutdown");
 }
 
 void UniRcChannelController::_settingsChanged()
@@ -158,15 +280,20 @@ void UniRcChannelController::_settingsChanged()
     }
 
 #ifdef Q_OS_ANDROID
-    _bluetoothOffObserved = false;
+    _bluetoothFullOffElapsed.invalidate();
+    _lastPreflightLogKey.clear();
 #endif
 
     const QString configuredPath =
         _settings->uniRcSdkSerialPort()->rawValue().toString().trimmed();
-    if (_serialOpen
+    bool serialSessionOpen = _serialOpen;
+#ifdef Q_OS_ANDROID
+    serialSessionOpen = _serialFd >= 0;
+#endif
+    if (serialSessionOpen
         && (!_settings->uniRcChannelControlEnabled()->rawValue().toBool()
             || configuredPath != _openedDevicePath)) {
-        _closeSerial(true);
+        _closeSerial(true, "settings-changed");
     }
     _reconcile();
 }
@@ -176,14 +303,15 @@ void UniRcChannelController::_applicationStateChanged(Qt::ApplicationState state
     _applicationActive = state == Qt::ApplicationActive;
     if (!_applicationActive) {
 #ifdef Q_OS_ANDROID
-        _bluetoothOffObserved = false;
+        _bluetoothFullOffElapsed.invalidate();
+        _lastPreflightLogKey.clear();
 #endif
         _reconnectTimer.stop();
         _inputWatchdog.stop();
         if (_gimbalCenterCoordinator) {
             _gimbalCenterCoordinator->cancel();
         }
-        _closeSerial(true);
+        _closeSerial(true, "application-background");
         return;
     }
     _reconcile();
@@ -207,7 +335,7 @@ void UniRcChannelController::_reconcile()
     if (!_shouldRun()) {
         _reconnectTimer.stop();
         _inputWatchdog.stop();
-        _closeSerial(true);
+        _closeSerial(true, "not-running");
         if (!_shuttingDown
             && _settings
             && !_settings->uniRcChannelControlEnabled()->rawValue().toBool()) {
@@ -221,7 +349,7 @@ void UniRcChannelController::_reconcile()
         return;
     }
     if (!_openSerial() && !_reconnectTimer.isActive()) {
-        _reconnectTimer.start();
+        _reconnectTimer.start(_nextRetryDelayMs);
     }
 #endif
 }
@@ -233,57 +361,121 @@ bool UniRcChannelController::_openSerial()
 #else
     const QString devicePath =
         _settings->uniRcSdkSerialPort()->rawValue().toString().trimmed();
+    _nextRetryDelayMs = kFailureRetryDelayMs;
     if (!devicePath.startsWith(QStringLiteral("/dev/"))) {
-        _setLastError(
-            tr("UniRC SDK serial device must be an absolute /dev path."));
+        const QString message =
+            tr("UniRC SDK serial device must be an absolute /dev path.");
+        _setLastError(message);
+        _logPreflightTransition(QStringLiteral("invalid-device-path"),
+                                message,
+                                QStringLiteral("device=%1").arg(devicePath),
+                                true);
         return false;
     }
 
-    if (UniRcSerialAccessPolicy::requiresBluetoothOff(devicePath)) {
-        const UniRcSerialAccessPolicy::BluetoothState bluetoothState =
-            androidBluetoothState();
+    QString accessPolicyPath = devicePath;
+    const QString canonicalPath = QFileInfo(devicePath).canonicalFilePath();
+    if (canonicalPath == QStringLiteral("/dev/ttyHS0")) {
+        accessPolicyPath = canonicalPath;
+    }
+
+    _lastBluetoothEvidence = QStringLiteral("check=not-required");
+
+    const bool sharedBluetoothUart =
+        UniRcSerialAccessPolicy::requiresBluetoothOff(accessPolicyPath);
+    if (sharedBluetoothUart) {
+        const AndroidBluetoothSnapshot bluetooth = androidBluetoothSnapshot();
+        _lastBluetoothEvidence = bluetooth.evidence;
+        qint64 fullOffStableMs = 0;
+        if (bluetooth.state
+            == UniRcSerialAccessPolicy::BluetoothState::FullyOff) {
+            if (!_bluetoothFullOffElapsed.isValid()) {
+                _bluetoothFullOffElapsed.start();
+            }
+            fullOffStableMs = _bluetoothFullOffElapsed.elapsed();
+        } else {
+            _bluetoothFullOffElapsed.invalidate();
+        }
+
         const UniRcSerialAccessPolicy::Decision accessDecision =
             UniRcSerialAccessPolicy::evaluate(
-                devicePath,
-                bluetoothState,
-                _bluetoothOffObserved);
-        _bluetoothOffObserved =
-            bluetoothState == UniRcSerialAccessPolicy::BluetoothState::OffObserved;
+                accessPolicyPath,
+                bluetooth.state,
+                fullOffStableMs,
+                kBluetoothStableMs);
         if (accessDecision != UniRcSerialAccessPolicy::Decision::Allow) {
             QString message;
             if (accessDecision
-                == UniRcSerialAccessPolicy::Decision::BlockBluetoothActive) {
+                == UniRcSerialAccessPolicy::Decision::BlockBluetoothClassicActive) {
                 message =
-                    tr("Android Bluetooth is not fully off (enabled or changing state). Turn it off completely before the UniRC UART2 SDK can open %1.")
+                    tr("Android Bluetooth is enabled or changing state. Turn it off before QGC can use the UniRC UART2 device %1.")
                         .arg(devicePath);
             } else if (accessDecision
-                       == UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease) {
+                == UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease) {
                 message =
-                    tr("Android Bluetooth appears off; waiting for %1 to be released before opening the UniRC UART2 SDK.")
+                    tr("Bluetooth and BLE are off; waiting %2 ms to confirm that %1 remains released.")
+                        .arg(devicePath)
+                        .arg(kBluetoothStableMs);
+            } else if (accessDecision
+                       == UniRcSerialAccessPolicy::Decision::BlockBluetoothBleActive) {
+                message =
+                    tr("Android Bluetooth is off, but the BLE-only service is still active and may own %1. Turn off Bluetooth scanning in Android location/scanning settings.")
+                        .arg(devicePath);
+            } else if (accessDecision
+                       == UniRcSerialAccessPolicy::Decision::BlockBluetoothScanAlwaysEnabled) {
+                message =
+                    tr("Android Bluetooth scanning is still enabled and can restart the Bluetooth HAL on %1. Turn off Bluetooth scanning in Android location/scanning settings.")
+                        .arg(devicePath);
+            } else if (accessDecision
+                       == UniRcSerialAccessPolicy::Decision::BlockBluetoothPermissionRequired) {
+                requestAndroidBluetoothPermission();
+                message =
+                    tr("QGC needs the Nearby devices permission to verify that Bluetooth has released %1. Grant it once; if it was denied, enable it in Android app settings before trying again.")
                         .arg(devicePath);
             } else {
                 message =
-                    tr("Cannot verify that Android Bluetooth is off. For safety, the UniRC UART2 SDK will not open %1; turn Bluetooth off and try again.")
+                    tr("QGC cannot verify that Bluetooth and BLE have released %1. For safety, the UniRC UART2 SDK will not access it.")
                         .arg(devicePath);
             }
-            if (_lastError != message) {
-                qCWarning(UniRcChannelLog)
-                    << "Refusing to open UniRC SDK Serial 2"
-                    << devicePath
-                    << "because Android Bluetooth is not confirmed off"
-                    << "state" << static_cast<int>(bluetoothState);
-            }
+            _nextRetryDelayMs =
+                accessDecision
+                        == UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease
+                    ? kBluetoothPollMs
+                    : kBlockedBluetoothRetryMs;
+            const QString preflightKey = QStringLiteral("bluetooth-%1-%2")
+                .arg(static_cast<int>(accessDecision))
+                .arg(accessDecision
+                     == UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease
+                         ? 1
+                         : 0);
+            _logPreflightTransition(
+                preflightKey,
+                message,
+                bluetooth.evidence,
+                accessDecision
+                    != UniRcSerialAccessPolicy::Decision::WaitForBluetoothRelease);
             _setLastError(message);
             return false;
         }
+
+        _logPreflightTransition(QStringLiteral("bluetooth-ready"),
+                                tr("Bluetooth and BLE are fully off; checking whether %1 is idle before sending any SDK data.")
+                                    .arg(devicePath),
+                                bluetooth.evidence,
+                                false);
     }
 
+    _startAttempt(devicePath, _lastBluetoothEvidence);
+    _sharedBluetoothUart = sharedBluetoothUart;
     const QByteArray nativePath = QFile::encodeName(devicePath);
     struct stat deviceStat {};
     if (::stat(nativePath.constData(), &deviceStat) == 0
         && !S_ISCHR(deviceStat.st_mode)) {
-        _setLastError(tr("UniRC SDK serial path is not a character device: %1")
-                          .arg(devicePath));
+        _failAttempt("stat",
+                     "not-character-device",
+                     tr("UniRC SDK serial path is not a character device: %1")
+                         .arg(devicePath),
+                     false);
         return false;
     }
 
@@ -291,23 +483,26 @@ bool UniRcChannelController::_openSerial()
                           O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         const int errorNumber = errno;
-        _setLastError(errnoMessage(tr("Open"), devicePath, errorNumber));
-        qCWarning(UniRcChannelLog)
-            << "Cannot open UniRC SDK Serial 2" << devicePath
-            << "errno" << errorNumber << std::strerror(errorNumber)
-            << "; verify UniGCS Serial 2 SDK assignment, DAC permission,"
-               " SELinux policy and exclusive ownership";
+        _failAttempt("open",
+                     "open-failed",
+                     errnoMessage(tr("Open"), devicePath, errorNumber),
+                     false);
         return false;
     }
+    _serialFd = fd;
+    _openedDevicePath = devicePath;
 
     if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {
         const int errorNumber = errno;
         if (errorNumber == EWOULDBLOCK || errorNumber == EAGAIN) {
-            _setLastError(errnoMessage(tr("Lock"), devicePath, errorNumber));
-            ::close(fd);
+            _failAttempt("claim",
+                         "cooperative-lock-busy",
+                         errnoMessage(tr("Lock"), devicePath, errorNumber),
+                         true);
             return false;
         }
-        qCWarning(UniRcChannelLog)
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
             << "UniRC serial advisory lock is unsupported"
             << devicePath << errorNumber << std::strerror(errorNumber);
     }
@@ -315,36 +510,196 @@ bool UniRcChannelController::_openSerial()
 #ifdef TIOCEXCL
     if (::ioctl(fd, TIOCEXCL) != 0) {
         const int errorNumber = errno;
-        if (errorNumber == EBUSY) {
-            _setLastError(errnoMessage(tr("Exclusive open"),
-                                       devicePath,
-                                       errorNumber));
-            (void) ::flock(fd, LOCK_UN);
-            ::close(fd);
+        if (UniRcSerialAccessPolicy::requiresBluetoothOff(accessPolicyPath)) {
+            _failAttempt("claim",
+                         errorNumber == EBUSY
+                             ? "tty-exclusive-busy"
+                             : "tty-exclusive-unavailable",
+                         errnoMessage(tr("Exclusive open"),
+                                      devicePath,
+                                      errorNumber),
+                         true);
             return false;
         }
-        qCWarning(UniRcChannelLog)
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
             << "UniRC serial TIOCEXCL is unsupported"
             << devicePath << errorNumber << std::strerror(errorNumber);
+    } else {
+        _ttyExclusiveClaimed = true;
     }
 #endif
 
-    if (!_configureSerial(fd, devicePath)) {
-#ifdef TIOCNXCL
-        (void) ::ioctl(fd, TIOCNXCL);
-#endif
-        (void) ::flock(fd, LOCK_UN);
-        ::close(fd);
+    if (!_sharedBluetoothUart) {
+        return _configureAndRequestChannels();
+    }
+
+    QString probeError;
+    if (!_captureSerialActivity(fd, &_ownershipProbeStart, &probeError)) {
+        _failAttempt("ownership-probe",
+                     "probe-unavailable",
+                     tr("QGC cannot safely verify whether %1 is idle: %2")
+                         .arg(devicePath, probeError),
+                     true);
+        return false;
+    }
+    QString releasedDetails;
+    if (!_serialLooksReleased(_ownershipProbeStart, &releasedDetails)) {
+        _failAttempt(
+            "ownership-probe",
+            "uart-not-released",
+            tr("%1 has not returned to an SDK-safe idle UART state (%2). QGC did not configure or write the port; Android Bluetooth/HCI may still own it.")
+                .arg(devicePath, releasedDetails),
+            true);
+        return false;
+    }
+    if (!_ownershipProbeStart.countersAvailable) {
+        _failAttempt(
+            "ownership-probe",
+            "activity-counters-unavailable",
+            tr("The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.")
+                .arg(devicePath),
+            true);
+        return false;
+    }
+    if (_ownershipProbeStart.queuedBytes > 0
+        || _ownershipProbeStart.readable) {
+        _failAttempt(
+            "ownership-probe",
+            "preexisting-input",
+            tr("Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.")
+                .arg(devicePath),
+            true);
         return false;
     }
 
-    _serialFd = fd;
-    _openedDevicePath = devicePath;
-    _parser.reset();
-    _resetReceiveDiagnostics();
-    _channelPolicy.reset();
-    _acceptedZoomDirection = 0;
-    _zoomStartRetryElapsed.invalidate();
+    _serialPhase = SerialPhase::OwnershipProbe;
+    _setLastError(
+        tr("Checking %1 for existing UART activity before sending the UniRC request.")
+            .arg(devicePath));
+    qCDebug(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event ownership-probe-start"
+        << "durationMs" << kOwnershipProbeMs
+        << "device" << devicePath
+        << "termios" << _ownershipProbeStart.termiosSignature
+        << "bluetooth" << _lastBluetoothEvidence;
+    _ownershipProbeTimer.start(kOwnershipProbeMs);
+    return true;
+#endif
+}
+
+#ifdef Q_OS_ANDROID
+void UniRcChannelController::_ownershipProbeExpired()
+{
+    if (_serialFd < 0
+        || _serialPhase != SerialPhase::OwnershipProbe
+        || !_shouldRun()) {
+        _closeSerial(false, "ownership-probe-cancelled");
+        return;
+    }
+
+    if (_sharedBluetoothUart) {
+        const AndroidBluetoothSnapshot bluetooth = androidBluetoothSnapshot();
+        _lastBluetoothEvidence = bluetooth.evidence;
+        if (bluetooth.state
+            != UniRcSerialAccessPolicy::BluetoothState::FullyOff) {
+            _bluetoothFullOffElapsed.invalidate();
+            _failAttempt(
+                "ownership-probe",
+                "bluetooth-reactivated",
+                tr("Bluetooth or BLE became active while QGC was checking %1. No UniRC data was written.")
+                    .arg(_openedDevicePath),
+                true);
+            return;
+        }
+    }
+
+    SerialActivitySnapshot probeEnd;
+    QString probeError;
+    if (!_captureSerialActivity(_serialFd, &probeEnd, &probeError)) {
+        _failAttempt("ownership-probe",
+                     "probe-read-failed",
+                     tr("QGC could not complete the passive UART check for %1: %2")
+                         .arg(_openedDevicePath, probeError),
+                     true);
+        return;
+    }
+
+    QString releasedDetails;
+    if (!_serialLooksReleased(probeEnd, &releasedDetails)) {
+        _failAttempt(
+            "ownership-probe",
+            "uart-not-released",
+            tr("%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.")
+                .arg(_openedDevicePath, releasedDetails),
+            true);
+        return;
+    }
+
+    QString activityDetails;
+    if (_serialActivityChanged(_ownershipProbeStart,
+                               probeEnd,
+                               &activityDetails)) {
+        _failAttempt(
+            "ownership-probe",
+            "uart-active-before-request",
+            tr("Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).")
+                .arg(_openedDevicePath, activityDetails),
+            true);
+        return;
+    }
+
+    (void) _configureAndRequestChannels();
+}
+
+bool UniRcChannelController::_configureAndRequestChannels()
+{
+    if (!_configureSerial(_serialFd, _openedDevicePath)) {
+        _failAttempt("configure",
+                     "configure-failed",
+                     lastError(),
+                     true);
+        return false;
+    }
+
+    QString configuredDetails;
+    if (!_serialConfigurationMatches(_serialFd, &configuredDetails)) {
+        _failAttempt(
+            "configure",
+            "verification-failed",
+            tr("The UART configuration on %1 did not remain at 115200 8N1 without hardware flow control (%2). Another owner may still be changing it.")
+                .arg(_openedDevicePath, configuredDetails),
+            true);
+        return false;
+    }
+
+    if (_sharedBluetoothUart) {
+        const AndroidBluetoothSnapshot beforeRequestBluetooth =
+            androidBluetoothSnapshot();
+        _lastBluetoothEvidence = beforeRequestBluetooth.evidence;
+        if (beforeRequestBluetooth.state
+            != UniRcSerialAccessPolicy::BluetoothState::FullyOff) {
+            _bluetoothFullOffElapsed.invalidate();
+            _failAttempt(
+                "request",
+                "safety-state-changed-before-write",
+                tr("Bluetooth/BLE or the UART configuration changed before the UniRC request could be sent to %1. QGC closed the port without writing data.")
+                    .arg(_openedDevicePath),
+                true);
+            return false;
+        }
+    }
+    if (!_serialConfigurationMatches(_serialFd, &configuredDetails)) {
+        _failAttempt(
+            "configure",
+            "verification-changed-before-write",
+            tr("The UART configuration on %1 did not remain at 115200 8N1 without hardware flow control (%2). Another owner may still be changing it.")
+                .arg(_openedDevicePath, configuredDetails),
+            true);
+        return false;
+    }
+
     _readNotifier = new QSocketNotifier(
         static_cast<qintptr>(_serialFd), QSocketNotifier::Read, this);
     connect(_readNotifier,
@@ -354,28 +709,443 @@ bool UniRcChannelController::_openSerial()
                 _readAvailable();
             });
 
-    _setSerialOpen(true);
-    _setChannelInputActive(false);
-    _setLastError(QString());
     if (!_sendChannelRequest(kChannelFrequencyCode20Hz)) {
-        const QString message =
+        _failAttempt(
+            "request",
+            "request-write-failed",
             tr("Failed to request UniRC channel data from %1.")
-                .arg(devicePath);
-        // The enable write may have reached the controller only partially.
-        // Best-effort the required three disable frames while the fd is still
-        // owned, so a failed startup cannot leave periodic output enabled.
-        _closeSerial(true);
-        _setLastError(message);
+                .arg(_openedDevicePath),
+            true);
         return false;
     }
 
+    _serialPhase = SerialPhase::AwaitingFirstFrame;
+    _setSerialOpen(true);
+    _setChannelInputActive(false);
+    _setLastError(QString());
     _inputWatchdog.start(kInitialFrameTimeoutMs);
-    qCInfo(UniRcChannelLog)
-        << "Opened UniRC SDK Serial 2" << devicePath
-        << "115200 8N1; requested 16 channels at 20 Hz";
+    _runtimeSafetyTimer.start();
+    qCDebug(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event request-sent"
+        << "device" << _openedDevicePath
+        << "frequencyCode" << kChannelFrequencyCode20Hz
+        << "requestFrames" << 3
+        << "termios" << configuredDetails
+        << "ownership"
+        << (_sharedBluetoothUart
+                ? "passive-activity-check-passed"
+                : "not-required");
     return true;
-#endif
 }
+
+void UniRcChannelController::_runtimeSafetyCheck()
+{
+    if (_serialFd < 0
+        || (_serialPhase != SerialPhase::AwaitingFirstFrame
+            && _serialPhase != SerialPhase::Active)
+        || _serialFailureScheduled) {
+        _runtimeSafetyTimer.stop();
+        return;
+    }
+
+    if (_sharedBluetoothUart) {
+        const AndroidBluetoothSnapshot bluetooth = androidBluetoothSnapshot();
+        _lastBluetoothEvidence = bluetooth.evidence;
+        if (bluetooth.state
+            != UniRcSerialAccessPolicy::BluetoothState::FullyOff) {
+            _bluetoothFullOffElapsed.invalidate();
+            _scheduleSerialFailure(
+                tr("Bluetooth or BLE became active while QGC was using %1. The UART was closed without writing a stop frame.")
+                    .arg(_openedDevicePath),
+                "runtime-safety",
+                "bluetooth-reactivated");
+            return;
+        }
+    }
+
+    QString configurationDetails;
+    if (!_serialConfigurationMatches(_serialFd, &configurationDetails)) {
+        _scheduleSerialFailure(
+            tr("The configuration of %1 changed while the UniRC SDK was active. Bluetooth HAL or another process may have reclaimed the UART; QGC closed it without writing more data.")
+                .arg(_openedDevicePath),
+            "runtime-safety",
+            "termios-drift");
+    }
+}
+
+bool UniRcChannelController::_captureSerialActivity(
+    int fd,
+    SerialActivitySnapshot *snapshot,
+    QString *error) const
+{
+    if (!snapshot || fd < 0) {
+        if (error) {
+            *error = QStringLiteral("invalid descriptor");
+        }
+        return false;
+    }
+
+    *snapshot = SerialActivitySnapshot {};
+    struct termios configuration {};
+    if (::tcgetattr(fd, &configuration) != 0) {
+        if (error) {
+            *error = errnoMessage(tr("Read termios for"),
+                                  _openedDevicePath,
+                                  errno);
+        }
+        return false;
+    }
+
+    int lineDiscipline = -1;
+#ifdef TIOCGETD
+    snapshot->lineDisciplineAvailable =
+        ::ioctl(fd, TIOCGETD, &lineDiscipline) == 0;
+#endif
+    snapshot->termiosAvailable = true;
+    snapshot->inputSpeed =
+        static_cast<qulonglong>(::cfgetispeed(&configuration));
+    snapshot->outputSpeed =
+        static_cast<qulonglong>(::cfgetospeed(&configuration));
+    snapshot->lineDiscipline = lineDiscipline;
+#ifdef CRTSCTS
+    snapshot->hardwareFlowControl = configuration.c_cflag & CRTSCTS;
+#endif
+    snapshot->termiosSignature =
+        QStringLiteral("ispeed=%1,ospeed=%2,cflag=0x%3,iflag=0x%4,oflag=0x%5,lflag=0x%6,line=%7")
+            .arg(serialSpeedDescription(snapshot->inputSpeed))
+            .arg(serialSpeedDescription(snapshot->outputSpeed))
+            .arg(static_cast<qulonglong>(configuration.c_cflag), 0, 16)
+            .arg(static_cast<qulonglong>(configuration.c_iflag), 0, 16)
+            .arg(static_cast<qulonglong>(configuration.c_oflag), 0, 16)
+            .arg(static_cast<qulonglong>(configuration.c_lflag), 0, 16)
+            .arg(lineDiscipline);
+
+#ifdef TIOCGICOUNT
+    struct serial_icounter_struct counters {};
+    if (::ioctl(fd, TIOCGICOUNT, &counters) == 0) {
+        snapshot->countersAvailable = true;
+        snapshot->rxCount = counters.rx;
+        snapshot->txCount = counters.tx;
+        snapshot->frameCount = counters.frame;
+        snapshot->overrunCount = counters.overrun;
+        snapshot->parityCount = counters.parity;
+        snapshot->breakCount = counters.brk;
+        snapshot->bufferOverrunCount = counters.buf_overrun;
+    }
+#endif
+
+    int queuedBytes = 0;
+    if (::ioctl(fd, FIONREAD, &queuedBytes) != 0) {
+        if (error) {
+            *error = errnoMessage(tr("Read queued byte count for"),
+                                  _openedDevicePath,
+                                  errno);
+        }
+        return false;
+    }
+    snapshot->queuedBytes = queuedBytes;
+
+    struct pollfd descriptor {
+        fd, POLLIN, 0
+    };
+    const int pollResult = ::poll(&descriptor, 1, 0);
+    if (pollResult < 0) {
+        if (error) {
+            *error = errnoMessage(tr("Poll"), _openedDevicePath, errno);
+        }
+        return false;
+    }
+    snapshot->readable = pollResult > 0
+        && (descriptor.revents & POLLIN);
+    return true;
+}
+
+bool UniRcChannelController::_serialActivityChanged(
+    const SerialActivitySnapshot &before,
+    const SerialActivitySnapshot &after,
+    QString *details) const
+{
+    QStringList changes;
+    if (!before.termiosAvailable || !after.termiosAvailable) {
+        changes.append(QStringLiteral("termios-unavailable"));
+    } else if (before.termiosSignature != after.termiosSignature) {
+        changes.append(QStringLiteral("termios-changed"));
+    }
+
+    if (!before.countersAvailable || !after.countersAvailable) {
+        changes.append(QStringLiteral("activity-counters-unavailable"));
+    } else {
+        const qint64 rxDelta = after.rxCount - before.rxCount;
+        const qint64 txDelta = after.txCount - before.txCount;
+        const qint64 errorDelta =
+            (after.frameCount - before.frameCount)
+            + (after.overrunCount - before.overrunCount)
+            + (after.parityCount - before.parityCount)
+            + (after.breakCount - before.breakCount)
+            + (after.bufferOverrunCount - before.bufferOverrunCount);
+        if (rxDelta != 0 || txDelta != 0 || errorDelta != 0) {
+            changes.append(
+                QStringLiteral("counter-delta(rx=%1,tx=%2,error=%3)")
+                    .arg(rxDelta)
+                    .arg(txDelta)
+                    .arg(errorDelta));
+        }
+    }
+
+    if (before.queuedBytes > 0 || after.queuedBytes > 0
+        || before.readable || after.readable) {
+        changes.append(
+            QStringLiteral("pending-input(before=%1,after=%2)")
+                .arg(before.queuedBytes)
+                .arg(after.queuedBytes));
+    }
+    if (details) {
+        *details = changes.isEmpty()
+            ? QStringLiteral("idle")
+            : changes.join(QLatin1Char(','));
+    }
+    return !changes.isEmpty();
+}
+
+bool UniRcChannelController::_serialLooksReleased(
+    const SerialActivitySnapshot &snapshot,
+    QString *details) const
+{
+    QStringList blockers;
+    if (!snapshot.termiosAvailable) {
+        blockers.append(QStringLiteral("termios-unavailable"));
+    }
+    if (!snapshot.lineDisciplineAvailable) {
+        blockers.append(QStringLiteral("line-discipline-unavailable"));
+    } else if (snapshot.lineDiscipline != kNTtyLineDiscipline) {
+        blockers.append(
+            QStringLiteral("line-discipline=%1")
+                .arg(snapshot.lineDiscipline));
+    }
+
+    const qulonglong idleSpeed38400 =
+        static_cast<qulonglong>(B38400);
+    const qulonglong sdkSpeed115200 =
+        static_cast<qulonglong>(B115200);
+    const bool idleSpeed =
+        (snapshot.inputSpeed == idleSpeed38400
+         && snapshot.outputSpeed == idleSpeed38400)
+        || (snapshot.inputSpeed == sdkSpeed115200
+            && snapshot.outputSpeed == sdkSpeed115200);
+    if (snapshot.termiosAvailable && !idleSpeed) {
+        blockers.append(
+            QStringLiteral("unexpected-speed(in=%1,out=%2)")
+                .arg(serialSpeedDescription(snapshot.inputSpeed))
+                .arg(serialSpeedDescription(snapshot.outputSpeed)));
+    }
+    if (snapshot.hardwareFlowControl) {
+        blockers.append(QStringLiteral("hardware-flow-control=on"));
+    }
+
+    if (details) {
+        *details = blockers.isEmpty()
+            ? QStringLiteral("n_tty,idle-speed,no-hw-flow")
+            : blockers.join(QLatin1Char(','));
+    }
+    return blockers.isEmpty();
+}
+
+bool UniRcChannelController::_serialConfigurationMatches(
+    int fd,
+    QString *details) const
+{
+    struct termios configuration {};
+    if (fd < 0 || ::tcgetattr(fd, &configuration) != 0) {
+        if (details) {
+            *details = fd < 0
+                ? QStringLiteral("fd-closed")
+                : QStringLiteral("tcgetattr-errno-%1").arg(errno);
+        }
+        return false;
+    }
+
+    const bool speedMatches =
+        ::cfgetispeed(&configuration) == B115200
+        && ::cfgetospeed(&configuration) == B115200;
+    const bool dataMatches =
+        (configuration.c_cflag & CSIZE) == CS8
+        && !(configuration.c_cflag & PARENB)
+        && !(configuration.c_cflag & CSTOPB)
+        && (configuration.c_cflag & CLOCAL)
+        && (configuration.c_cflag & CREAD);
+    bool flowMatches = true;
+#ifdef CRTSCTS
+    flowMatches = !(configuration.c_cflag & CRTSCTS);
+#endif
+    const bool inputRawMatches =
+        !(configuration.c_iflag
+          & (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR
+             | ICRNL | IXON));
+    const bool outputRawMatches = !(configuration.c_oflag & OPOST);
+    const bool localRawMatches =
+        !(configuration.c_lflag
+          & (ECHO | ECHONL | ICANON | ISIG | IEXTEN));
+    const bool readTimingMatches =
+        configuration.c_cc[VMIN] == 0
+        && configuration.c_cc[VTIME] == 0;
+    int lineDiscipline = -1;
+    bool lineDisciplineMatches = false;
+#ifdef TIOCGETD
+    lineDisciplineMatches =
+        ::ioctl(fd, TIOCGETD, &lineDiscipline) == 0
+        && lineDiscipline == kNTtyLineDiscipline;
+#endif
+    if (details) {
+        *details = QStringLiteral("speed=%1,data8n1=%2,inputRaw=%3,outputRaw=%4,localRaw=%5,readTiming=%6,hwflowOff=%7,n_tty=%8(line=%9)")
+            .arg(speedMatches)
+            .arg(dataMatches)
+            .arg(inputRawMatches)
+            .arg(outputRawMatches)
+            .arg(localRawMatches)
+            .arg(readTimingMatches)
+            .arg(flowMatches)
+            .arg(lineDisciplineMatches)
+            .arg(lineDiscipline);
+    }
+    return speedMatches && dataMatches && inputRawMatches
+        && outputRawMatches && localRawMatches && readTimingMatches
+        && flowMatches && lineDisciplineMatches;
+}
+
+bool UniRcChannelController::_safeToWriteDisableRequest() const
+{
+    if (_serialFd < 0
+        || _serialFailureScheduled
+        || _serialPhase != SerialPhase::Active
+        || _channelFrameCount == 0) {
+        return false;
+    }
+    if (_sharedBluetoothUart) {
+        const AndroidBluetoothSnapshot bluetooth = androidBluetoothSnapshot();
+        if (bluetooth.state
+            != UniRcSerialAccessPolicy::BluetoothState::FullyOff) {
+            return false;
+        }
+    }
+    QString configurationDetails;
+    return _serialConfigurationMatches(_serialFd, &configurationDetails);
+}
+
+void UniRcChannelController::_startAttempt(
+    const QString &devicePath,
+    const QString &bluetoothEvidence)
+{
+    _activeAttemptId = ++_attemptSequence;
+    _attemptElapsed.start();
+    _openedDevicePath = devicePath;
+    _serialPhase = SerialPhase::Idle;
+    _parser.reset();
+    _resetReceiveDiagnostics();
+    _channelPolicy.reset();
+    _acceptedZoomDirection = 0;
+    _zoomStartRetryElapsed.invalidate();
+    _firstRxLogged = false;
+    _ttyExclusiveClaimed = false;
+    qCDebug(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event begin"
+        << "device" << devicePath
+        << "bluetooth" << bluetoothEvidence;
+}
+
+void UniRcChannelController::_failAttempt(const char *stage,
+                                          const char *reason,
+                                          const QString &message,
+                                          bool closeDescriptor)
+{
+    _logAttemptFailure(stage, reason, message);
+    if (closeDescriptor) {
+        _closeSerial(false, reason);
+    } else {
+        _serialPhase = SerialPhase::Idle;
+        _activeAttemptId = 0;
+        _attemptElapsed.invalidate();
+        _openedDevicePath.clear();
+        _sharedBluetoothUart = false;
+    }
+    _setLastError(message);
+    _nextRetryDelayMs = kFailureRetryDelayMs;
+    if (_shouldRun() && !_reconnectTimer.isActive()) {
+        _reconnectTimer.start(_nextRetryDelayMs);
+    }
+}
+
+void UniRcChannelController::_logPreflightTransition(
+    const QString &key,
+    const QString &message,
+    const QString &evidence,
+    bool warning)
+{
+    const QString transitionKey = key + QLatin1Char('/') + evidence;
+    if (_lastPreflightLogKey == transitionKey) {
+        return;
+    }
+    _lastPreflightLogKey = transitionKey;
+    if (warning) {
+        qCWarning(UniRcChannelLog)
+            << "UniRC preflight"
+            << "state" << key
+            << "message" << message
+            << "evidence" << evidence;
+    } else {
+        qCDebug(UniRcChannelLog)
+            << "UniRC preflight"
+            << "state" << key
+            << "message" << message
+            << "evidence" << evidence;
+    }
+}
+
+void UniRcChannelController::_logAttemptFailure(
+    const char *stage,
+    const char *reason,
+    const QString &message)
+{
+    const QString key = QString::fromLatin1(stage)
+        + QLatin1Char('/') + QString::fromLatin1(reason)
+        + QLatin1Char('/') + _openedDevicePath
+        + QLatin1Char('/') + message
+        + QLatin1Char('/') + _lastBluetoothEvidence;
+    if (_lastFailureLogKey == key
+        && _failureLogElapsed.isValid()
+        && _failureLogElapsed.elapsed() < kRepeatedFailureLogMs) {
+        ++_suppressedFailureCount;
+        return;
+    }
+
+    const quint64 suppressed = _lastFailureLogKey == key
+        ? _suppressedFailureCount
+        : 0;
+    _suppressedFailureCount = 0;
+    _lastFailureLogKey = key;
+    _failureLogElapsed.restart();
+    qCWarning(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event end"
+        << "stage" << stage
+        << "reason" << reason
+        << "elapsedMs"
+        << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
+        << "device" << _openedDevicePath
+        << "rxBytes" << _receivedByteCount
+        << "decodedFrames" << _decodedFrameCount
+        << "channelFrames" << _channelFrameCount
+        << "invalidChannelFrames" << _invalidChannelFrameCount
+        << "lastControl" << static_cast<int>(_lastFrameControl)
+        << "lastCommand" << static_cast<int>(_lastFrameCommand)
+        << "lastPayloadBytes" << _lastFramePayloadSize
+        << "rxSample" << _receiveSample.toHex(' ')
+        << "bluetooth" << _lastBluetoothEvidence
+        << "suppressedSameFailure" << suppressed
+        << "message" << message;
+}
+#endif
 
 bool UniRcChannelController::_configureSerial(int fd,
                                               const QString &devicePath)
@@ -417,13 +1187,15 @@ bool UniRcChannelController::_configureSerial(int fd,
 #endif
 }
 
-void UniRcChannelController::_closeSerial(bool sendDisableRequest)
+void UniRcChannelController::_closeSerial(bool sendDisableRequest,
+                                          const char *reason)
 {
     _inputWatchdog.stop();
     _resetInput(false);
 
 #ifdef Q_OS_ANDROID
-    _bluetoothOffObserved = false;
+    _ownershipProbeTimer.stop();
+    _runtimeSafetyTimer.stop();
     if (_readNotifier) {
         _readNotifier->setEnabled(false);
         delete _readNotifier;
@@ -431,16 +1203,39 @@ void UniRcChannelController::_closeSerial(bool sendDisableRequest)
     }
 
     if (_serialFd >= 0) {
-        if (sendDisableRequest) {
+        const bool writeDisable =
+            sendDisableRequest && _safeToWriteDisableRequest();
+        if (writeDisable) {
             (void) _sendChannelRequest(0);
+        } else if (sendDisableRequest) {
+            qCDebug(UniRcChannelLog)
+                << "UniRC attempt" << _activeAttemptId
+                << "event disable-request-skipped"
+                << "reason" << reason
+                << "phase" << static_cast<int>(_serialPhase)
+                << "channelFrames" << _channelFrameCount;
         }
 #ifdef TIOCNXCL
-        (void) ::ioctl(_serialFd, TIOCNXCL);
+        if (_ttyExclusiveClaimed) {
+            (void) ::ioctl(_serialFd, TIOCNXCL);
+        }
 #endif
         (void) ::flock(_serialFd, LOCK_UN);
         (void) ::close(_serialFd);
         _serialFd = -1;
     }
+    _ttyExclusiveClaimed = false;
+    _sharedBluetoothUart = false;
+    if (_activeAttemptId != 0) {
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event descriptor-closed"
+            << "reason" << reason;
+    }
+    _serialPhase = SerialPhase::Idle;
+    _activeAttemptId = 0;
+    _attemptElapsed.invalidate();
+    _bluetoothFullOffElapsed.invalidate();
 #endif
 
     _openedDevicePath.clear();
@@ -476,8 +1271,9 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
         }
         if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
             const int errorNumber = errno;
-            qCWarning(UniRcChannelLog)
-                << "UniRC serial write failed"
+            qCDebug(UniRcChannelLog)
+                << "UniRC attempt" << _activeAttemptId
+                << "event write-failed"
                 << _openedDevicePath
                 << "offset" << offset << "/" << bytes.size()
                 << "errno" << errorNumber << std::strerror(errorNumber);
@@ -486,8 +1282,9 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
 
         const int remainingMs = timeoutMs - static_cast<int>(elapsed.elapsed());
         if (remainingMs <= 0) {
-            qCWarning(UniRcChannelLog)
-                << "UniRC serial write timed out"
+            qCDebug(UniRcChannelLog)
+                << "UniRC attempt" << _activeAttemptId
+                << "event write-timeout"
                 << _openedDevicePath
                 << "offset" << offset << "/" << bytes.size();
             return false;
@@ -502,8 +1299,9 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
         if (pollResult <= 0
             || (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
             const int errorNumber = pollResult < 0 ? errno : 0;
-            qCWarning(UniRcChannelLog)
-                << "UniRC serial write poll failed"
+            qCDebug(UniRcChannelLog)
+                << "UniRC attempt" << _activeAttemptId
+                << "event write-poll-failed"
                 << _openedDevicePath
                 << "result" << pollResult
                 << "revents" << descriptor.revents
@@ -529,8 +1327,9 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
     // request which failed while preserving the same UART byte stream.
     for (int requestIndex = 0; requestIndex < 3; ++requestIndex) {
         if (!_writeAll(packet, kWriteTimeoutMs)) {
-            qCWarning(UniRcChannelLog)
-                << "Failed to send UniRC channel request"
+            qCDebug(UniRcChannelLog)
+                << "UniRC attempt" << _activeAttemptId
+                << "event request-frame-failed"
                 << requestIndex + 1 << "/3"
                 << "frequencyCode" << frequencyCode
                 << "packet" << packet.toHex(' ');
@@ -568,7 +1367,9 @@ void UniRcChannelController::_readAvailable()
 
         const int errorNumber = errno;
         _scheduleSerialFailure(
-            errnoMessage(tr("Read"), _openedDevicePath, errorNumber));
+            errnoMessage(tr("Read"), _openedDevicePath, errorNumber),
+            "read",
+            "read-failed");
         return;
     }
 
@@ -576,6 +1377,15 @@ void UniRcChannelController::_readAvailable()
         return;
     }
 
+    if (!_firstRxLogged) {
+        _firstRxLogged = true;
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event first-rx"
+            << "latencyMs"
+            << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
+            << "chunkBytes" << incoming.size();
+    }
     _receivedByteCount += static_cast<quint64>(incoming.size());
     if (_receiveSample.size() < kReceiveSampleMaxBytes) {
         _receiveSample.append(
@@ -600,7 +1410,9 @@ void UniRcChannelController::_handleChannelPacket(
     }
     if (!_gimbalControlManager || !_gimbalCenterCoordinator) {
         _scheduleSerialFailure(
-            tr("UniRC gimbal control dependencies are unavailable."));
+            tr("UniRC gimbal control dependencies are unavailable."),
+            "dispatch",
+            "dependencies-unavailable");
         return;
     }
 
@@ -612,6 +1424,23 @@ void UniRcChannelController::_handleChannelPacket(
     const qint16 channel9 = channels.at(8);
     const qint16 channel10 = channels.at(9);
     ++_channelFrameCount;
+#ifdef Q_OS_ANDROID
+    if (_serialPhase != SerialPhase::Active) {
+        _serialPhase = SerialPhase::Active;
+        _lastFailureLogKey.clear();
+        _suppressedFailureCount = 0;
+        qCInfo(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event stream-active"
+            << "latencyMs"
+            << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
+            << "device" << _openedDevicePath
+            << "rxBytes" << _receivedByteCount
+            << "decodedFrames" << _decodedFrameCount
+            << "CH9" << channel9
+            << "CH10" << channel10;
+    }
+#endif
     // A syntactically valid 0x42 frame proves that the UART/SDK route is
     // alive, even when CH9/CH10 are not mapped yet. Do not let the initial
     // watchdog overwrite that actionable mapping error with a link timeout.
@@ -737,18 +1566,11 @@ void UniRcChannelController::_inputWatchdogExpired()
 #endif
     _resetInput(false);
     const QString message = _receiveTimeoutMessage();
-    qCWarning(UniRcChannelLog)
-        << "UniRC receive watchdog diagnostics"
-        << "device" << _openedDevicePath
-        << "rxBytes" << _receivedByteCount
-        << "decodedFrames" << _decodedFrameCount
-        << "channelFrames" << _channelFrameCount
-        << "invalidChannelFrames" << _invalidChannelFrameCount
-        << "lastControl" << static_cast<int>(_lastFrameControl)
-        << "lastCommand" << static_cast<int>(_lastFrameCommand)
-        << "lastPayloadBytes" << _lastFramePayloadSize
-        << "rxSample" << _receiveSample.toHex(' ');
-    _scheduleSerialFailure(message);
+    const bool streamWasActive = _channelFrameCount > 0;
+    _scheduleSerialFailure(message,
+                           streamWasActive ? "rx-active" : "rx-initial",
+                           streamWasActive ? "channel-stream-stopped"
+                                           : "initial-response-timeout");
 }
 
 void UniRcChannelController::_resetReceiveDiagnostics()
@@ -772,7 +1594,7 @@ QString UniRcChannelController::_receiveTimeoutMessage() const
             .arg(_channelFrameCount);
     }
     if (_receivedByteCount == 0) {
-        return tr("No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.")
+        return tr("QGC opened %1 and sent the UniRC request, but received no bytes. The UART2 SDK route is not active or the port is still owned by firmware/another process.")
             .arg(_openedDevicePath);
     }
     if (_decodedFrameCount == 0) {
@@ -785,7 +1607,10 @@ QString UniRcChannelController::_receiveTimeoutMessage() const
         .arg(_openedDevicePath);
 }
 
-void UniRcChannelController::_scheduleSerialFailure(const QString &message)
+void UniRcChannelController::_scheduleSerialFailure(
+    const QString &message,
+    const char *stage,
+    const char *reason)
 {
     if (_serialFailureScheduled || _shuttingDown) {
         return;
@@ -793,27 +1618,45 @@ void UniRcChannelController::_scheduleSerialFailure(const QString &message)
     _serialFailureScheduled = true;
     _inputWatchdog.stop();
 #ifdef Q_OS_ANDROID
+    _runtimeSafetyTimer.stop();
     if (_readNotifier) {
         // Keep deletion/close outside the activated callback, but prevent a
         // valid tail frame from re-arming CH9 or firing CH10 first.
         _readNotifier->setEnabled(false);
     }
-#endif
     _resetInput(false);
-    QTimer::singleShot(0, this, [this, message]() {
+    const QByteArray stageName(stage);
+    const QByteArray reasonName(reason);
+    const quint64 failedAttemptId = _activeAttemptId;
+    _logAttemptFailure(stageName.constData(),
+                       reasonName.constData(),
+                       message);
+    QTimer::singleShot(0, this, [this,
+                                message,
+                                reasonName,
+                                failedAttemptId]() {
         _serialFailureScheduled = false;
         if (_shuttingDown) {
             return;
         }
-        // The protocol requires three freq=0 frames. Keep this best-effort
-        // shutdown even for read/watchdog failures while the fd still exists.
-        _closeSerial(true);
+        if (_activeAttemptId != failedAttemptId) {
+            _reconcile();
+            return;
+        }
+        _closeSerial(false, reasonName.constData());
         _setLastError(message);
-        qCWarning(UniRcChannelLog) << message;
+        _nextRetryDelayMs = kFailureRetryDelayMs;
         if (_shouldRun() && !_reconnectTimer.isActive()) {
-            _reconnectTimer.start();
+            _reconnectTimer.start(_nextRetryDelayMs);
         }
     });
+#else
+    Q_UNUSED(stage)
+    Q_UNUSED(reason)
+    _resetInput(false);
+    _serialFailureScheduled = false;
+    _setLastError(message);
+#endif
 }
 
 void UniRcChannelController::_setSerialOpen(bool open)

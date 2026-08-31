@@ -612,7 +612,7 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="104"/>
-        <source>Serial open; waiting for channel data</source>
+        <source>UniRC request sent; waiting for channel data</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -837,18 +837,38 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="257"/>
-        <source>Android Bluetooth is not fully off (enabled or changing state). Turn it off completely before the UniRC UART2 SDK can open %1.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="353"/>
+        <source>Android Bluetooth is enabled or changing state. Turn it off before QGC can use the UniRC UART2 device %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="262"/>
-        <source>Android Bluetooth appears off; waiting for %1 to be released before opening the UniRC UART2 SDK.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="358"/>
+        <source>Bluetooth and BLE are off; waiting %2 ms to confirm that %1 remains released.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="266"/>
-        <source>Cannot verify that Android Bluetooth is off. For safety, the UniRC UART2 SDK will not open %1; turn Bluetooth off and try again.</source>
+        <location filename="../src/Android/UniRcChannelController.cc" line="364"/>
+        <source>Android Bluetooth is off, but the BLE-only service is still active and may own %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="369"/>
+        <source>Android Bluetooth scanning is still enabled and can restart the Bluetooth HAL on %1. Turn off Bluetooth scanning in Android location/scanning settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="375"/>
+        <source>QGC needs the Nearby devices permission to verify that Bluetooth has released %1. Grant it once; if it was denied, enable it in Android app settings before trying again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="379"/>
+        <source>QGC cannot verify that Bluetooth and BLE have released %1. For safety, the UniRC UART2 SDK will not access it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="404"/>
+        <source>Bluetooth and BLE are fully off; checking whether %1 is idle before sending any SDK data.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -869,6 +889,81 @@
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="240"/>
         <source>Exclusive open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="479"/>
+        <source>%1 has not returned to an SDK-safe idle UART state (%2). QGC did not configure or write the port; Android Bluetooth/HCI may still own it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="490"/>
+        <source>QGC cannot safely verify whether %1 is idle: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="499"/>
+        <source>The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="509"/>
+        <source>Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="517"/>
+        <source>Checking %1 for existing UART activity before sending the UniRC request.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="549"/>
+        <source>Bluetooth or BLE became active while QGC was checking %1. No UniRC data was written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="560"/>
+        <source>QGC could not complete the passive UART check for %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="572"/>
+        <source>%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="585"/>
+        <source>Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="604"/>
+        <source>The UART configuration on %1 did not remain at 115200 8N1 without hardware flow control (%2). Another owner may still be changing it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="620"/>
+        <source>Bluetooth/BLE or the UART configuration changed before the UniRC request could be sent to %1. QGC closed the port without writing data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="677"/>
+        <source>Bluetooth or BLE became active while QGC was using %1. The UART was closed without writing a stop frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="688"/>
+        <source>The configuration of %1 changed while the UniRC SDK was active. Bluetooth HAL or another process may have reclaimed the UART; QGC closed it without writing more data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="751"/>
+        <source>Read queued byte count for</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="765"/>
+        <source>Poll</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -908,7 +1003,7 @@
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="690"/>
-        <source>No serial bytes received from %1; set the UniGCS SDK connection method to UART2 and close other ground-station apps.</source>
+        <source>QGC opened %1 and sent the UniRC request, but received no bytes. The UART2 SDK route is not active or the port is still owned by firmware/another process.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

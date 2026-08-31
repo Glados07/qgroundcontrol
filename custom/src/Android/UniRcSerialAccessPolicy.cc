@@ -9,19 +9,31 @@ bool requiresBluetoothOff(const QString &devicePath)
 
 Decision evaluate(const QString &devicePath,
                   BluetoothState bluetoothState,
-                  bool offWasPreviouslyObserved)
+                  qint64 fullOffStableMs,
+                  qint64 requiredStableMs)
 {
     if (!requiresBluetoothOff(devicePath)) {
         return Decision::Allow;
     }
-    if (bluetoothState == BluetoothState::OffObserved) {
-        return offWasPreviouslyObserved
+
+    switch (bluetoothState) {
+    case BluetoothState::FullyOff:
+        return fullOffStableMs >= requiredStableMs
             ? Decision::Allow
             : Decision::WaitForBluetoothRelease;
+    case BluetoothState::ClassicActive:
+        return Decision::BlockBluetoothClassicActive;
+    case BluetoothState::BleActive:
+        return Decision::BlockBluetoothBleActive;
+    case BluetoothState::ScanAlwaysEnabled:
+        return Decision::BlockBluetoothScanAlwaysEnabled;
+    case BluetoothState::PermissionRequired:
+        return Decision::BlockBluetoothPermissionRequired;
+    case BluetoothState::Unknown:
+        return Decision::BlockBluetoothUnknown;
     }
-    return bluetoothState == BluetoothState::OnOrTransition
-        ? Decision::BlockBluetoothActive
-        : Decision::BlockBluetoothUnknown;
+
+    return Decision::BlockBluetoothUnknown;
 }
 
 } // namespace UniRcSerialAccessPolicy
