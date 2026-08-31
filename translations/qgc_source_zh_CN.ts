@@ -15157,6 +15157,11 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
       <translation>设置失败</translation>
     </message>
     <message>
+      <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="150"/>
+      <source>Setup failed: Unique Product ID must be exactly 20 characters.</source>
+      <translation>设置失败：唯一产品识别码必须正好为20个字符。</translation>
+    </message>
+    <message>
       <location filename="../src/UI/AppSettings/RemoteIDSettings.qml" line="111"/>
       <source>Confirm Basic ID Setup</source>
       <translation>确认设置基本ID</translation>

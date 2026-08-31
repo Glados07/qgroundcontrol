@@ -144,6 +144,13 @@ SettingsPage {
     }
 
     function confirmAndSendBasicID() {
+        if (isChinaRegion &&
+                remoteIDSettings.basicIDTypeChina.rawValue === 4 &&
+                String(remoteIDSettings.basicID.rawValue).length < 20) {
+            mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Setup failed: Unique Product ID must be exactly 20 characters."))
+            return
+        }
+
         if (!_remoteIDManager || !_remoteIDManager.basicIDConfigurationValid) {
             mainWindow.showMessageDialog(qsTr("Basic ID"), qsTr("Invalid configuration"))
             return
