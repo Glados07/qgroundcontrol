@@ -132,13 +132,14 @@ public final class QGCCustomBluetoothState {
             state = STATE_SCAN_ALWAYS_ENABLED;
         } else if (permissionRequired) {
             state = STATE_PERMISSION_REQUIRED;
-        } else if (!probeFailed
-            && adapterRead
-            && adapterState == BluetoothAdapter.STATE_OFF
-            && scannerRead
-            && !scannerAvailable
-            && bluetoothOn.isDisabled()
-            && scanAlways.isDisabled()) {
+        } else if (QGCCustomBluetoothStatePolicy.canReportFullyOff(
+            probeFailed,
+            adapterRead && adapterState == BluetoothAdapter.STATE_OFF,
+            scannerRead,
+            scannerAvailable,
+            bluetoothOn.value,
+            scanAlways.value,
+            scanAlways.description)) {
             state = STATE_FULLY_OFF;
         } else {
             state = STATE_UNKNOWN;
@@ -273,10 +274,6 @@ public final class QGCCustomBluetoothState {
         SettingValue(final int value, final String description) {
             this.value = value;
             this.description = description;
-        }
-
-        boolean isDisabled() {
-            return value == 0;
         }
 
         boolean isEnabled() {
