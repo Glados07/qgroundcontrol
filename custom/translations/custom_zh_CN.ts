@@ -902,16 +902,6 @@
         <translation>QGC无法安全确认%1是否空闲：%2</translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="499"/>
-        <source>The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.</source>
-        <translation>内核无法提供%1的UART活动计数，因此QGC不能证明蓝牙HAL已释放该端口。请改用UniRC SDK UDP接口或厂商UART仲裁固件。</translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="509"/>
-        <source>Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.</source>
-        <translation>QGC发送任何数据前，%1上已存在串口活动；蓝牙HAL或其他进程仍在占用该UART。</translation>
-    </message>
-    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="517"/>
         <source>Checking %1 for existing UART activity before sending the UniRC request.</source>
         <translation>在发送UniRC请求前，正在检查%1是否存在其他UART活动。</translation>
@@ -930,11 +920,6 @@
         <location filename="../src/Android/UniRcChannelController.cc" line="572"/>
         <source>%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.</source>
         <translation>QGC检查期间%1变为非空闲串口状态（%2）。未写入任何UniRC数据。</translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="585"/>
-        <source>Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).</source>
-        <translation>QGC发送任何数据前在%1上检测到已有UART活动。蓝牙HAL或其他进程仍在占用端口（%2）。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="604"/>
@@ -972,6 +957,16 @@
         <translation>无法从%1请求UniRC通道数据。</translation>
     </message>
     <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="848"/>
+        <source>The three UniRC request frames were queued on %1, but the UART output queue did not empty within %2 ms (%3).</source>
+        <translation>三份UniRC请求帧已进入%1的发送队列，但UART输出队列未在%2毫秒内清空（%3）。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="856"/>
+        <source>The three UniRC request frames were queued on %1, but checking the UART output queue failed (%2).</source>
+        <translation>三份UniRC请求帧已进入%1的发送队列，但检查UART输出队列失败（%2）。</translation>
+    </message>
+    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="311"/>
         <source>Read termios for</source>
         <translation>读取串口参数</translation>
@@ -980,6 +975,11 @@
         <location filename="../src/Android/UniRcChannelController.cc" line="329"/>
         <source>Configure</source>
         <translation>配置</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1401"/>
+        <source>Flush</source>
+        <translation>清空串口缓冲区</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="462"/>
@@ -1015,6 +1015,26 @@
         <location filename="../src/Android/UniRcChannelController.cc" line="698"/>
         <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
         <translation>已从%2收到%1个有效UniRC SDK帧，但没有CTRL=0、CMD=0x42、32字节的通道帧。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="704"/>
+        <source>QGC found input on %1 before sending the UniRC request but could not inspect it safely: %2</source>
+        <translation>QGC在发送UniRC请求前发现%1存在输入，但无法安全检查这些数据：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="723"/>
+        <source>Existing non-UniRC UART activity was detected on %1 before QGC sent any data (%2; inspectedBytes=%3; consecutive0x42=%4). Bluetooth HAL or another process may still own the port.</source>
+        <translation>QGC发送任何数据前在%1检测到非UniRC UART活动（%2；已检查字节=%3；连续0x42帧=%4）。蓝牙HAL或其他进程可能仍在占用该端口。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1018"/>
+        <source>Read ownership probe input from</source>
+        <translation>读取所有权探测输入</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="994"/>
+        <source>Read UART activity counters for</source>
+        <translation>读取UART活动计数器</translation>
     </message>
 </context>
 <context>

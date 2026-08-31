@@ -69,12 +69,28 @@ private slots:
 #endif
 
 private:
+    enum class OutputQueueResult {
+        Confirmed,
+        Unavailable,
+        TimedOut,
+        Error,
+    };
+
+    enum class ChannelRequestResult {
+        Succeeded,
+        WriteFailed,
+        OutputQueueTimedOut,
+        OutputQueueError,
+    };
+
     bool _shouldRun() const;
     bool _openSerial();
     void _closeSerial(bool sendDisableRequest, const char *reason);
     bool _configureSerial(int fd, const QString &devicePath);
     bool _writeAll(const QByteArray &bytes, int timeoutMs);
-    bool _sendChannelRequest(quint8 frequencyCode);
+    OutputQueueResult _waitForSerialOutputQueueEmpty(int timeoutMs,
+                                                     QString *details);
+    ChannelRequestResult _sendChannelRequest(quint8 frequencyCode);
     void _scheduleSerialFailure(const QString &message,
                                 const char *stage,
                                 const char *reason);
@@ -101,6 +117,7 @@ private:
     static constexpr int kRepeatedFailureLogMs = 60000;
     static constexpr int kZoomStartRetryMs = 250;
     static constexpr int kWriteTimeoutMs = 100;
+    static constexpr int kOutputQueueTimeoutMs = 100;
     static constexpr int kReceiveSampleMaxBytes = 64;
 
     QPointer<GimbalControlSettings> _settings;
@@ -113,11 +130,15 @@ private:
     QElapsedTimer _zoomStartRetryElapsed;
     QString _openedDevicePath;
     QString _lastError;
+    QString _requestOutputQueueEvidence;
     QByteArray _receiveSample;
+    QByteArray _lastRequestPacket;
     quint64 _receivedByteCount = 0;
     quint64 _decodedFrameCount = 0;
     quint64 _channelFrameCount = 0;
     quint64 _invalidChannelFrameCount = 0;
+    quint64 _requestFrameCount = 0;
+    quint64 _requestByteCount = 0;
     int _lastFramePayloadSize = -1;
     int _channel9 = 0;
     int _channel10 = 0;
@@ -127,6 +148,7 @@ private:
     bool _serialOpen = false;
     bool _channelInputActive = false;
     bool _invalidChannelWarningActive = false;
+    bool _requestOutputQueueEmpty = false;
     bool _applicationActive = false;
     bool _serialFailureScheduled = false;
     bool _shuttingDown = false;
@@ -147,6 +169,8 @@ private:
         qulonglong inputSpeed = 0;
         qulonglong outputSpeed = 0;
         int lineDiscipline = -1;
+        int lineDisciplineError = 0;
+        int countersError = 0;
         bool hardwareFlowControl = false;
         qint64 rxCount = 0;
         qint64 txCount = 0;
@@ -162,6 +186,8 @@ private:
     bool _captureSerialActivity(int fd,
                                 SerialActivitySnapshot *snapshot,
                                 QString *error) const;
+    bool _drainOwnershipProbeInput(QByteArray *bytes,
+                                   QString *error) const;
     bool _serialActivityChanged(const SerialActivitySnapshot &before,
                                 const SerialActivitySnapshot &after,
                                 QString *details) const;
@@ -188,6 +214,7 @@ private:
     QTimer _runtimeSafetyTimer;
     QElapsedTimer _bluetoothFullOffElapsed;
     QElapsedTimer _attemptElapsed;
+    QElapsedTimer _requestElapsed;
     QElapsedTimer _failureLogElapsed;
     SerialActivitySnapshot _ownershipProbeStart;
     SerialPhase _serialPhase = SerialPhase::Idle;

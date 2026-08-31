@@ -13,6 +13,8 @@ constexpr quint8 kRequestControl = 0x01;
 constexpr quint8 kPeriodicResponseControl = 0x00;
 constexpr int kMinimumFrameSize = 10;
 constexpr int kMaximumPayloadSize = 512;
+constexpr int kChannelFrameSize = kMinimumFrameSize
+    + UniRcProtocol::ChannelCount * 2;
 
 quint8 byteAt(const QByteArray& bytes, int index)
 {
@@ -23,6 +25,30 @@ int headerOffset(const QByteArray& bytes, int from = 0)
 {
     static const QByteArray header = QByteArray::fromHex("5566");
     return bytes.indexOf(header, from);
+}
+
+bool isPeriodicChannelFramePrefix(const QByteArray& bytes)
+{
+    static const quint8 fixedPrefix[] = {
+        kHeader0,
+        kHeader1,
+        kPeriodicResponseControl,
+        static_cast<quint8>(UniRcProtocol::ChannelCount * 2),
+        0x00,
+    };
+
+    for (int index = 0;
+         index < bytes.size() && index < static_cast<int>(sizeof(fixedPrefix));
+         ++index) {
+        if (byteAt(bytes, index) != fixedPrefix[index]) {
+            return false;
+        }
+    }
+    if (bytes.size() > 7
+        && byteAt(bytes, 7) != UniRcProtocol::CommandChannelData) {
+        return false;
+    }
+    return bytes.size() < kChannelFrameSize;
 }
 }
 
@@ -107,6 +133,60 @@ bool UniRcProtocol::parseChannelData(const DecodedPacket& packet,
     return true;
 }
 
+UniRcProtocol::PeriodicStreamInspection
+UniRcProtocol::inspectPeriodicChannelStream(const QByteArray& bytes,
+                                            int minimumFrames)
+{
+    PeriodicStreamInspection best;
+    if (minimumFrames <= 0
+        || minimumFrames > bytes.size() / kChannelFrameSize) {
+        return best;
+    }
+
+    const int maximumLeadingBytes = kChannelFrameSize - 1;
+    int start = headerOffset(bytes);
+    while (start >= 0 && start <= maximumLeadingBytes) {
+        int offset = start;
+        int frameCount = 0;
+        DecodedPacket lastPacket;
+        bool completeFramesValid = true;
+        while (bytes.size() - offset >= kChannelFrameSize) {
+            const DecodedPacket packet =
+                decodePacket(bytes.mid(offset, kChannelFrameSize));
+            Channels channels {};
+            if (!parseChannelData(packet, &channels)) {
+                completeFramesValid = false;
+                break;
+            }
+            lastPacket = packet;
+            ++frameCount;
+            offset += kChannelFrameSize;
+        }
+
+        if (frameCount > best.frameCount) {
+            best.frameCount = frameCount;
+            best.leadingBytes = start;
+            best.trailingBytes = bytes.size() - offset;
+            best.lastPacket = lastPacket;
+        }
+
+        const QByteArray trailing = bytes.mid(offset);
+        if (completeFramesValid
+            && frameCount >= minimumFrames
+            && isPeriodicChannelFramePrefix(trailing)) {
+            best.recognized = true;
+            best.frameCount = frameCount;
+            best.leadingBytes = start;
+            best.trailingBytes = trailing.size();
+            best.lastPacket = lastPacket;
+            return best;
+        }
+
+        start = headerOffset(bytes, start + 1);
+    }
+    return best;
+}
+
 QList<UniRcProtocol::DecodedPacket>
 UniRcProtocol::StreamParser::append(const QByteArray& bytes)
 {
@@ -119,7 +199,8 @@ UniRcProtocol::StreamParser::append(const QByteArray& bytes)
         const int start = headerOffset(_buffer);
         if (start < 0) {
             const bool keepPossibleHeader =
-                static_cast<quint8>(_buffer.back()) == kHeader0;
+                static_cast<quint8>(_buffer.at(_buffer.size() - 1))
+                == kHeader0;
             _buffer = keepPossibleHeader
                 ? QByteArray(1, static_cast<char>(kHeader0))
                 : QByteArray();

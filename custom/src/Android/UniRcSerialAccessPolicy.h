@@ -25,7 +25,21 @@ enum class Decision {
     WaitForBluetoothRelease,
 };
 
+enum class PassiveCounterDecision {
+    StableWithCounters,
+    StableWithoutCounters,
+    ActivityDetected,
+    AvailabilityChanged,
+};
+
 bool requiresBluetoothOff(const QString &devicePath);
+bool isSdkSafeIdleBaudPair(qint64 inputBaud, qint64 outputBaud);
+PassiveCounterDecision evaluatePassiveCounters(
+    bool beforeAvailable,
+    bool afterAvailable,
+    qint64 rxDelta,
+    qint64 txDelta,
+    qint64 errorDelta);
 Decision evaluate(const QString &devicePath,
                   BluetoothState bluetoothState,
                   qint64 fullOffStableMs,

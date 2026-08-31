@@ -59,13 +59,17 @@ class UniRcProtocolTest : public QObject
 private slots:
     void exact20HzRequest();
     void decodeChannelResponse();
+    void decodeDocumentedChannelResponse();
     void rejectInvalidFramesAndResponses();
     void streamParserHandlesPartialAndMultipleFrames();
     void streamParserResynchronizes();
+    void periodicStreamInspectionRequiresContinuousChannelFrames();
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
     void centerPolicyUsesReleasedToPressedEdges();
     void policyRejectsUnreasonableValues();
     void serialAccessRequiresBluetoothOffForHs0();
+    void serialAccessAcceptsReleasedUartSpeeds();
+    void passiveCountersAreOptionalButStillDetectActivity();
 };
 
 void UniRcProtocolTest::exact20HzRequest()
@@ -147,6 +151,40 @@ void UniRcProtocolTest::serialAccessRequiresBluetoothOffForHs0()
             == Decision::Allow);
 }
 
+void UniRcProtocolTest::serialAccessAcceptsReleasedUartSpeeds()
+{
+    using UniRcSerialAccessPolicy::isSdkSafeIdleBaudPair;
+
+    QVERIFY(isSdkSafeIdleBaudPair(9600, 9600));
+    QVERIFY(isSdkSafeIdleBaudPair(38400, 38400));
+    QVERIFY(isSdkSafeIdleBaudPair(115200, 115200));
+
+    QVERIFY(!isSdkSafeIdleBaudPair(9600, 115200));
+    QVERIFY(!isSdkSafeIdleBaudPair(3200000, 3200000));
+    QVERIFY(!isSdkSafeIdleBaudPair(-1, -1));
+}
+
+void UniRcProtocolTest::passiveCountersAreOptionalButStillDetectActivity()
+{
+    using UniRcSerialAccessPolicy::PassiveCounterDecision;
+    using UniRcSerialAccessPolicy::evaluatePassiveCounters;
+
+    QVERIFY(evaluatePassiveCounters(false, false, 0, 0, 0)
+            == PassiveCounterDecision::StableWithoutCounters);
+    QVERIFY(evaluatePassiveCounters(true, true, 0, 0, 0)
+            == PassiveCounterDecision::StableWithCounters);
+    QVERIFY(evaluatePassiveCounters(true, true, 1, 0, 0)
+            == PassiveCounterDecision::ActivityDetected);
+    QVERIFY(evaluatePassiveCounters(true, true, 0, 33, 0)
+            == PassiveCounterDecision::ActivityDetected);
+    QVERIFY(evaluatePassiveCounters(true, true, 0, 0, 1)
+            == PassiveCounterDecision::ActivityDetected);
+    QVERIFY(evaluatePassiveCounters(false, true, 0, 0, 0)
+            == PassiveCounterDecision::AvailabilityChanged);
+    QVERIFY(evaluatePassiveCounters(true, false, 0, 0, 0)
+            == PassiveCounterDecision::AvailabilityChanged);
+}
+
 void UniRcProtocolTest::decodeChannelResponse()
 {
     UniRcProtocol::Channels expected = {
@@ -169,6 +207,33 @@ void UniRcProtocolTest::decodeChannelResponse()
     }
     QCOMPARE(actual[8], qint16(1950));
     QCOMPARE(actual[9], qint16(1050));
+}
+
+void UniRcProtocolTest::decodeDocumentedChannelResponse()
+{
+    const QByteArray documentedResponse = QByteArray::fromHex(
+        "5566002000990042"
+        "dc05dc05dc05dc05dc05dc05dc05dc05"
+        "dc05dc05dc051a04dc05dc051a041a04"
+        "ff88");
+    const UniRcProtocol::DecodedPacket packet =
+        UniRcProtocol::decodePacket(documentedResponse);
+    QVERIFY(packet.valid);
+    QCOMPARE(packet.control, quint8(0));
+    QCOMPARE(packet.sequence, quint16(0x0099));
+    QCOMPARE(packet.command, quint8(0x42));
+    QCOMPARE(packet.payload.size(), 32);
+
+    UniRcProtocol::Channels channels {};
+    QVERIFY(UniRcProtocol::parseChannelData(packet, &channels));
+    for (int index = 0; index < 11; ++index) {
+        QCOMPARE(channels[static_cast<std::size_t>(index)], qint16(1500));
+    }
+    QCOMPARE(channels[11], qint16(1050));
+    QCOMPARE(channels[12], qint16(1500));
+    QCOMPARE(channels[13], qint16(1500));
+    QCOMPARE(channels[14], qint16(1050));
+    QCOMPARE(channels[15], qint16(1050));
 }
 
 void UniRcProtocolTest::rejectInvalidFramesAndResponses()
@@ -267,6 +332,62 @@ void UniRcProtocolTest::streamParserResynchronizes()
         parser.append(bogusLength + validFrame);
     QCOMPARE(afterBogusLength.size(), 1);
     QVERIFY(afterBogusLength.first().valid);
+}
+
+void UniRcProtocolTest::periodicStreamInspectionRequiresContinuousChannelFrames()
+{
+    UniRcProtocol::Channels channels {};
+    channels.fill(1500);
+    const QByteArray validFrame = makeChannelFrame(channels);
+    const QByteArray threeFrames = validFrame.repeated(3);
+
+    auto inspection =
+        UniRcProtocol::inspectPeriodicChannelStream(threeFrames);
+    QVERIFY(inspection.recognized);
+    QCOMPARE(inspection.frameCount, 3);
+    QCOMPARE(inspection.leadingBytes, 0);
+    QCOMPARE(inspection.trailingBytes, 0);
+
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 validFrame.repeated(2)).recognized);
+
+    const QByteArray boundarySample =
+        validFrame.mid(13) + threeFrames + validFrame.left(9);
+    inspection =
+        UniRcProtocol::inspectPeriodicChannelStream(boundarySample);
+    QVERIFY(inspection.recognized);
+    QCOMPARE(inspection.frameCount, 3);
+    QCOMPARE(inspection.leadingBytes, validFrame.size() - 13);
+    QCOMPARE(inspection.trailingBytes, 9);
+
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 validFrame + QByteArray(1, '\x04')
+                 + validFrame.repeated(2)).recognized);
+
+    QByteArray badCrc = validFrame;
+    badCrc[badCrc.size() - 1] = static_cast<char>(
+        static_cast<quint8>(badCrc.at(badCrc.size() - 1)) ^ 0x01);
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 validFrame + badCrc + validFrame).recognized);
+
+    const QByteArray ackFrame = makeChannelFrame(channels, 0x02);
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 validFrame + ackFrame + validFrame).recognized);
+
+    QByteArray channelPayload;
+    for (const qint16 channel : channels) {
+        appendLe16(channelPayload, static_cast<quint16>(channel));
+    }
+    const QByteArray otherCommand = makeFrame(0, 0x41, channelPayload);
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 validFrame + otherCommand + validFrame).recognized);
+
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 QByteArray::fromHex("04ff01020304ff01020304ff010203"))
+                 .recognized);
+    QVERIFY(!UniRcProtocol::inspectPeriodicChannelStream(
+                 threeFrames + QByteArray::fromHex("54"))
+                 .recognized);
 }
 
 void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()

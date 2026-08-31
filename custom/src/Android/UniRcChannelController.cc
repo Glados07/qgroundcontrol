@@ -47,9 +47,32 @@ namespace {
 constexpr char kAndroidBluetoothStateClassName[] =
     "org/mavlink/qgroundcontrol/QGCCustomBluetoothState";
 constexpr int kNTtyLineDiscipline = 0;
+constexpr int kOwnershipProbeReadLimitBytes = 16 * 1024;
+
+bool optionalTtyIoctlUnsupported(int errorNumber)
+{
+    return errorNumber == ENOTTY || errorNumber == EINVAL;
+}
+
+qint64 sdkSafeIdleBaudRate(qulonglong speedCode)
+{
+    if (speedCode == static_cast<qulonglong>(B9600)) {
+        return 9600;
+    }
+    if (speedCode == static_cast<qulonglong>(B38400)) {
+        return 38400;
+    }
+    if (speedCode == static_cast<qulonglong>(B115200)) {
+        return 115200;
+    }
+    return -1;
+}
 
 QString serialSpeedDescription(qulonglong speedCode)
 {
+    if (speedCode == static_cast<qulonglong>(B9600)) {
+        return QStringLiteral("9600");
+    }
     if (speedCode == static_cast<qulonglong>(B38400)) {
         return QStringLiteral("38400");
     }
@@ -553,26 +576,6 @@ bool UniRcChannelController::_openSerial()
             true);
         return false;
     }
-    if (!_ownershipProbeStart.countersAvailable) {
-        _failAttempt(
-            "ownership-probe",
-            "activity-counters-unavailable",
-            tr("The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.")
-                .arg(devicePath),
-            true);
-        return false;
-    }
-    if (_ownershipProbeStart.queuedBytes > 0
-        || _ownershipProbeStart.readable) {
-        _failAttempt(
-            "ownership-probe",
-            "preexisting-input",
-            tr("Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.")
-                .arg(devicePath),
-            true);
-        return false;
-    }
-
     _serialPhase = SerialPhase::OwnershipProbe;
     _setLastError(
         tr("Checking %1 for existing UART activity before sending the UniRC request.")
@@ -583,6 +586,21 @@ bool UniRcChannelController::_openSerial()
         << "durationMs" << kOwnershipProbeMs
         << "device" << devicePath
         << "termios" << _ownershipProbeStart.termiosSignature
+        << "lineDisciplineAvailable"
+        << _ownershipProbeStart.lineDisciplineAvailable
+        << "lineDisciplineErrno" << _ownershipProbeStart.lineDisciplineError
+        << "countersAvailable" << _ownershipProbeStart.countersAvailable
+        << "countersErrno" << _ownershipProbeStart.countersError
+        << "rx" << _ownershipProbeStart.rxCount
+        << "tx" << _ownershipProbeStart.txCount
+        << "errors"
+        << (_ownershipProbeStart.frameCount
+            + _ownershipProbeStart.overrunCount
+            + _ownershipProbeStart.parityCount
+            + _ownershipProbeStart.breakCount
+            + _ownershipProbeStart.bufferOverrunCount)
+        << "queuedBytes" << _ownershipProbeStart.queuedBytes
+        << "readable" << _ownershipProbeStart.readable
         << "bluetooth" << _lastBluetoothEvidence;
     _ownershipProbeTimer.start(kOwnershipProbeMs);
     return true;
@@ -638,17 +656,125 @@ void UniRcChannelController::_ownershipProbeExpired()
     }
 
     QString activityDetails;
-    if (_serialActivityChanged(_ownershipProbeStart,
+    const bool activityChanged =
+        _serialActivityChanged(_ownershipProbeStart,
                                probeEnd,
-                               &activityDetails)) {
+                               &activityDetails);
+    bool existingSdkStreamRecognized = false;
+    UniRcProtocol::PeriodicStreamInspection streamInspection;
+    QByteArray probeInput;
+    if (activityChanged) {
+        const qint64 rxDelta =
+            probeEnd.rxCount - _ownershipProbeStart.rxCount;
+        const qint64 txDelta =
+            probeEnd.txCount - _ownershipProbeStart.txCount;
+        const qint64 errorDelta =
+            (probeEnd.frameCount - _ownershipProbeStart.frameCount)
+            + (probeEnd.overrunCount - _ownershipProbeStart.overrunCount)
+            + (probeEnd.parityCount - _ownershipProbeStart.parityCount)
+            + (probeEnd.breakCount - _ownershipProbeStart.breakCount)
+            + (probeEnd.bufferOverrunCount
+               - _ownershipProbeStart.bufferOverrunCount);
+        const bool counterAvailabilityStable =
+            probeEnd.countersAvailable
+            == _ownershipProbeStart.countersAvailable;
+        const bool inputObserved =
+            _ownershipProbeStart.queuedBytes > 0
+            || probeEnd.queuedBytes > 0
+            || _ownershipProbeStart.readable
+            || probeEnd.readable
+            || (_ownershipProbeStart.countersAvailable && rxDelta > 0);
+        const bool sdkSpeedStable =
+            _ownershipProbeStart.inputSpeed
+                == static_cast<qulonglong>(B115200)
+            && _ownershipProbeStart.outputSpeed
+                == static_cast<qulonglong>(B115200)
+            && probeEnd.inputSpeed == static_cast<qulonglong>(B115200)
+            && probeEnd.outputSpeed == static_cast<qulonglong>(B115200);
+        const bool safeToInspectExistingStream =
+            inputObserved
+            && sdkSpeedStable
+            && counterAvailabilityStable
+            && txDelta == 0
+            && errorDelta == 0
+            && _ownershipProbeStart.termiosSignature
+                == probeEnd.termiosSignature;
+
+        if (safeToInspectExistingStream) {
+            QString drainError;
+            if (!_drainOwnershipProbeInput(&probeInput, &drainError)) {
+                _receivedByteCount =
+                    static_cast<quint64>(probeInput.size());
+                _receiveSample =
+                    probeInput.left(kReceiveSampleMaxBytes);
+                _failAttempt(
+                    "ownership-probe",
+                    "preexisting-input-read-failed",
+                    tr("QGC found input on %1 before sending the UniRC request but could not inspect it safely: %2")
+                        .arg(_openedDevicePath, drainError),
+                    true);
+                return;
+            }
+            streamInspection =
+                UniRcProtocol::inspectPeriodicChannelStream(probeInput);
+            existingSdkStreamRecognized = streamInspection.recognized;
+        }
+    }
+
+    if (activityChanged && !existingSdkStreamRecognized) {
+        if (!probeInput.isEmpty()) {
+            _receivedByteCount = static_cast<quint64>(probeInput.size());
+            _receiveSample = probeInput.left(kReceiveSampleMaxBytes);
+        }
         _failAttempt(
             "ownership-probe",
             "uart-active-before-request",
-            tr("Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).")
-                .arg(_openedDevicePath, activityDetails),
+            tr("Existing non-UniRC UART activity was detected on %1 before QGC sent any data (%2; inspectedBytes=%3; consecutive0x42=%4). Bluetooth HAL or another process may still own the port.")
+                .arg(_openedDevicePath)
+                .arg(activityDetails)
+                .arg(probeInput.size())
+                .arg(streamInspection.frameCount),
             true);
         return;
     }
+
+    if (existingSdkStreamRecognized) {
+        UniRcProtocol::Channels channels {};
+        (void) UniRcProtocol::parseChannelData(streamInspection.lastPacket,
+                                               &channels);
+        qCInfo(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event existing-sdk-stream-recognized"
+            << "frames" << streamInspection.frameCount
+            << "leadingBytes" << streamInspection.leadingBytes
+            << "trailingBytes" << streamInspection.trailingBytes
+            << "payload" << streamInspection.lastPacket.payload.toHex(' ')
+            << "CH9" << channels.at(8)
+            << "CH10" << channels.at(9)
+            << "action refresh-with-new-request";
+        activityDetails =
+            QStringLiteral("existing-sdk-stream-recognized(frames=%1)")
+                .arg(streamInspection.frameCount);
+    }
+
+    qCDebug(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event ownership-probe-passed"
+        << "device" << _openedDevicePath
+        << "activity" << activityDetails
+        << "startTermios" << _ownershipProbeStart.termiosSignature
+        << "endTermios" << probeEnd.termiosSignature
+        << "startCountersAvailable"
+        << _ownershipProbeStart.countersAvailable
+        << "startCountersErrno" << _ownershipProbeStart.countersError
+        << "endCountersAvailable" << probeEnd.countersAvailable
+        << "endCountersErrno" << probeEnd.countersError
+        << "rxDelta" << probeEnd.rxCount - _ownershipProbeStart.rxCount
+        << "txDelta" << probeEnd.txCount - _ownershipProbeStart.txCount
+        << "startQueuedBytes" << _ownershipProbeStart.queuedBytes
+        << "endQueuedBytes" << probeEnd.queuedBytes
+        << "startReadable" << _ownershipProbeStart.readable
+        << "endReadable" << probeEnd.readable;
 
     (void) _configureAndRequestChannels();
 }
@@ -709,16 +835,37 @@ bool UniRcChannelController::_configureAndRequestChannels()
                 _readAvailable();
             });
 
-    if (!_sendChannelRequest(kChannelFrequencyCode20Hz)) {
+    const ChannelRequestResult requestResult =
+        _sendChannelRequest(kChannelFrequencyCode20Hz);
+    if (requestResult != ChannelRequestResult::Succeeded) {
+        const char *reason = "request-write-failed";
+        QString message =
+            tr("Failed to request UniRC channel data from %1.")
+                .arg(_openedDevicePath);
+        if (requestResult == ChannelRequestResult::OutputQueueTimedOut) {
+            reason = "request-output-queue-timeout";
+            message =
+                tr("The three UniRC request frames were queued on %1, but the UART output queue did not empty within %2 ms (%3).")
+                    .arg(_openedDevicePath)
+                    .arg(kOutputQueueTimeoutMs)
+                    .arg(_requestOutputQueueEvidence);
+        } else if (requestResult
+                   == ChannelRequestResult::OutputQueueError) {
+            reason = "request-output-queue-error";
+            message =
+                tr("The three UniRC request frames were queued on %1, but checking the UART output queue failed (%2).")
+                    .arg(_openedDevicePath,
+                         _requestOutputQueueEvidence);
+        }
         _failAttempt(
             "request",
-            "request-write-failed",
-            tr("Failed to request UniRC channel data from %1.")
-                .arg(_openedDevicePath),
+            reason,
+            message,
             true);
         return false;
     }
 
+    _requestElapsed.start();
     _serialPhase = SerialPhase::AwaitingFirstFrame;
     _setSerialOpen(true);
     _setChannelInputActive(false);
@@ -729,8 +876,11 @@ bool UniRcChannelController::_configureAndRequestChannels()
         << "UniRC attempt" << _activeAttemptId
         << "event request-sent"
         << "device" << _openedDevicePath
-        << "frequencyCode" << kChannelFrequencyCode20Hz
-        << "requestFrames" << 3
+        << "frequencyCode" << static_cast<int>(kChannelFrequencyCode20Hz)
+        << "requestFrames" << _requestFrameCount
+        << "requestBytes" << _requestByteCount
+        << "requestOutputQueue" << _requestOutputQueueEvidence
+        << "requestPacket" << _lastRequestPacket.toHex(' ')
         << "termios" << configuredDetails
         << "ownership"
         << (_sharedBluetoothUart
@@ -799,8 +949,11 @@ bool UniRcChannelController::_captureSerialActivity(
 
     int lineDiscipline = -1;
 #ifdef TIOCGETD
-    snapshot->lineDisciplineAvailable =
-        ::ioctl(fd, TIOCGETD, &lineDiscipline) == 0;
+    if (::ioctl(fd, TIOCGETD, &lineDiscipline) == 0) {
+        snapshot->lineDisciplineAvailable = true;
+    } else {
+        snapshot->lineDisciplineError = errno;
+    }
 #endif
     snapshot->termiosAvailable = true;
     snapshot->inputSpeed =
@@ -832,7 +985,21 @@ bool UniRcChannelController::_captureSerialActivity(
         snapshot->parityCount = counters.parity;
         snapshot->breakCount = counters.brk;
         snapshot->bufferOverrunCount = counters.buf_overrun;
+    } else {
+        const int errorNumber = errno;
+        snapshot->countersError = errorNumber;
+        if (!optionalTtyIoctlUnsupported(errorNumber)) {
+            if (error) {
+                *error = errnoMessage(
+                    tr("Read UART activity counters for"),
+                    _openedDevicePath,
+                    errorNumber);
+            }
+            return false;
+        }
     }
+#else
+    snapshot->countersError = ENOTTY;
 #endif
 
     int queuedBytes = 0;
@@ -861,6 +1028,64 @@ bool UniRcChannelController::_captureSerialActivity(
     return true;
 }
 
+bool UniRcChannelController::_drainOwnershipProbeInput(
+    QByteArray *bytes,
+    QString *error) const
+{
+    if (!bytes || _serialFd < 0) {
+        if (error) {
+            *error = QStringLiteral("invalid descriptor or output buffer");
+        }
+        return false;
+    }
+
+    bytes->clear();
+    char buffer[512];
+    while (bytes->size() < kOwnershipProbeReadLimitBytes) {
+        const qsizetype remaining =
+            kOwnershipProbeReadLimitBytes - bytes->size();
+        const size_t requested = static_cast<size_t>(
+            qMin<qsizetype>(remaining,
+                            static_cast<qsizetype>(sizeof(buffer))));
+        const ssize_t size = ::read(_serialFd, buffer, requested);
+        if (size > 0) {
+            bytes->append(buffer, static_cast<qsizetype>(size));
+            continue;
+        }
+        if (size < 0 && errno == EINTR) {
+            continue;
+        }
+        if (size == 0
+            || (size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))) {
+            return true;
+        }
+        if (error) {
+            *error = errnoMessage(tr("Read ownership probe input from"),
+                                  _openedDevicePath,
+                                  errno);
+        }
+        return false;
+    }
+
+    int remainingBytes = 0;
+    if (::ioctl(_serialFd, FIONREAD, &remainingBytes) != 0) {
+        if (error) {
+            *error = errnoMessage(tr("Read queued byte count for"),
+                                  _openedDevicePath,
+                                  errno);
+        }
+        return false;
+    }
+    if (remainingBytes > 0) {
+        if (error) {
+            *error = QStringLiteral("probe input exceeded %1 bytes")
+                .arg(kOwnershipProbeReadLimitBytes);
+        }
+        return false;
+    }
+    return true;
+}
+
 bool UniRcChannelController::_serialActivityChanged(
     const SerialActivitySnapshot &before,
     const SerialActivitySnapshot &after,
@@ -873,36 +1098,58 @@ bool UniRcChannelController::_serialActivityChanged(
         changes.append(QStringLiteral("termios-changed"));
     }
 
-    if (!before.countersAvailable || !after.countersAvailable) {
-        changes.append(QStringLiteral("activity-counters-unavailable"));
-    } else {
-        const qint64 rxDelta = after.rxCount - before.rxCount;
-        const qint64 txDelta = after.txCount - before.txCount;
-        const qint64 errorDelta =
-            (after.frameCount - before.frameCount)
-            + (after.overrunCount - before.overrunCount)
-            + (after.parityCount - before.parityCount)
-            + (after.breakCount - before.breakCount)
-            + (after.bufferOverrunCount - before.bufferOverrunCount);
-        if (rxDelta != 0 || txDelta != 0 || errorDelta != 0) {
-            changes.append(
-                QStringLiteral("counter-delta(rx=%1,tx=%2,error=%3)")
-                    .arg(rxDelta)
-                    .arg(txDelta)
-                    .arg(errorDelta));
-        }
+    const qint64 rxDelta = after.rxCount - before.rxCount;
+    const qint64 txDelta = after.txCount - before.txCount;
+    const qint64 errorDelta =
+        (after.frameCount - before.frameCount)
+        + (after.overrunCount - before.overrunCount)
+        + (after.parityCount - before.parityCount)
+        + (after.breakCount - before.breakCount)
+        + (after.bufferOverrunCount - before.bufferOverrunCount);
+    const UniRcSerialAccessPolicy::PassiveCounterDecision counterDecision =
+        UniRcSerialAccessPolicy::evaluatePassiveCounters(
+            before.countersAvailable,
+            after.countersAvailable,
+            rxDelta,
+            txDelta,
+            errorDelta);
+    QString counterEvidence;
+    switch (counterDecision) {
+    case UniRcSerialAccessPolicy::PassiveCounterDecision::ActivityDetected:
+        changes.append(
+            QStringLiteral("counter-delta(rx=%1,tx=%2,error=%3)")
+                .arg(rxDelta)
+                .arg(txDelta)
+                .arg(errorDelta));
+        counterEvidence = QStringLiteral("counters=activity");
+        break;
+    case UniRcSerialAccessPolicy::PassiveCounterDecision::AvailabilityChanged:
+        changes.append(
+            QStringLiteral("counter-availability-changed(before=%1,after=%2)")
+                .arg(before.countersAvailable)
+                .arg(after.countersAvailable));
+        counterEvidence = QStringLiteral("counters=availability-changed");
+        break;
+    case UniRcSerialAccessPolicy::PassiveCounterDecision::StableWithCounters:
+        counterEvidence = QStringLiteral("counters=stable");
+        break;
+    case UniRcSerialAccessPolicy::PassiveCounterDecision::StableWithoutCounters:
+        counterEvidence = QStringLiteral("counters=unavailable-optional");
+        break;
     }
 
     if (before.queuedBytes > 0 || after.queuedBytes > 0
         || before.readable || after.readable) {
         changes.append(
-            QStringLiteral("pending-input(before=%1,after=%2)")
+            QStringLiteral("pending-input(before=%1/%2,after=%3/%4)")
                 .arg(before.queuedBytes)
-                .arg(after.queuedBytes));
+                .arg(before.readable)
+                .arg(after.queuedBytes)
+                .arg(after.readable));
     }
     if (details) {
         *details = changes.isEmpty()
-            ? QStringLiteral("idle")
+            ? QStringLiteral("idle,%1").arg(counterEvidence)
             : changes.join(QLatin1Char(','));
     }
     return !changes.isEmpty();
@@ -924,15 +1171,10 @@ bool UniRcChannelController::_serialLooksReleased(
                 .arg(snapshot.lineDiscipline));
     }
 
-    const qulonglong idleSpeed38400 =
-        static_cast<qulonglong>(B38400);
-    const qulonglong sdkSpeed115200 =
-        static_cast<qulonglong>(B115200);
+    const qint64 inputBaud = sdkSafeIdleBaudRate(snapshot.inputSpeed);
+    const qint64 outputBaud = sdkSafeIdleBaudRate(snapshot.outputSpeed);
     const bool idleSpeed =
-        (snapshot.inputSpeed == idleSpeed38400
-         && snapshot.outputSpeed == idleSpeed38400)
-        || (snapshot.inputSpeed == sdkSpeed115200
-            && snapshot.outputSpeed == sdkSpeed115200);
+        UniRcSerialAccessPolicy::isSdkSafeIdleBaudPair(inputBaud, outputBaud);
     if (snapshot.termiosAvailable && !idleSpeed) {
         blockers.append(
             QStringLiteral("unexpected-speed(in=%1,out=%2)")
@@ -945,7 +1187,8 @@ bool UniRcChannelController::_serialLooksReleased(
 
     if (details) {
         *details = blockers.isEmpty()
-            ? QStringLiteral("n_tty,idle-speed,no-hw-flow")
+            ? QStringLiteral("n_tty,idle-speed=%1,no-hw-flow")
+                  .arg(serialSpeedDescription(snapshot.inputSpeed))
             : blockers.join(QLatin1Char(','));
     }
     return blockers.isEmpty();
@@ -1038,6 +1281,7 @@ void UniRcChannelController::_startAttempt(
 {
     _activeAttemptId = ++_attemptSequence;
     _attemptElapsed.start();
+    _requestElapsed.invalidate();
     _openedDevicePath = devicePath;
     _serialPhase = SerialPhase::Idle;
     _parser.reset();
@@ -1134,6 +1378,11 @@ void UniRcChannelController::_logAttemptFailure(
         << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
         << "device" << _openedDevicePath
         << "rxBytes" << _receivedByteCount
+        << "requestFrames" << _requestFrameCount
+        << "requestBytes" << _requestByteCount
+        << "requestOutputQueueEmpty" << _requestOutputQueueEmpty
+        << "requestOutputQueue" << _requestOutputQueueEvidence
+        << "requestPacket" << _lastRequestPacket.toHex(' ')
         << "decodedFrames" << _decodedFrameCount
         << "channelFrames" << _channelFrameCount
         << "invalidChannelFrames" << _invalidChannelFrameCount
@@ -1182,7 +1431,13 @@ bool UniRcChannelController::_configureSerial(int fd,
         return false;
     }
 
-    (void) ::tcflush(fd, TCIOFLUSH);
+    if (::tcflush(fd, TCIOFLUSH) != 0) {
+        const int errorNumber = errno;
+        _setLastError(errnoMessage(tr("Flush"),
+                                   devicePath,
+                                   errorNumber));
+        return false;
+    }
     return true;
 #endif
 }
@@ -1235,6 +1490,7 @@ void UniRcChannelController::_closeSerial(bool sendDisableRequest,
     _serialPhase = SerialPhase::Idle;
     _activeAttemptId = 0;
     _attemptElapsed.invalidate();
+    _requestElapsed.invalidate();
     _bluetoothFullOffElapsed.invalidate();
 #else
     Q_UNUSED(sendDisableRequest);
@@ -1317,33 +1573,178 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
 #endif
 }
 
-bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
+UniRcChannelController::OutputQueueResult
+UniRcChannelController::_waitForSerialOutputQueueEmpty(int timeoutMs,
+                                                       QString *details)
+{
+#ifndef Q_OS_ANDROID
+    Q_UNUSED(timeoutMs);
+    if (details) {
+        *details = QStringLiteral("not-android");
+    }
+    return OutputQueueResult::Unavailable;
+#else
+    if (_serialFd < 0) {
+        if (details) {
+            *details = QStringLiteral("fd-closed");
+        }
+        return OutputQueueResult::TimedOut;
+    }
+
+#ifdef TIOCOUTQ
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while (true) {
+        int queuedBytes = -1;
+        if (::ioctl(_serialFd, TIOCOUTQ, &queuedBytes) != 0) {
+            const int errorNumber = errno;
+            if (details) {
+                *details = QStringLiteral("tiocoutq-%1-errno-%2")
+                    .arg(optionalTtyIoctlUnsupported(errorNumber)
+                             ? QStringLiteral("unsupported")
+                             : QStringLiteral("error"))
+                    .arg(errorNumber);
+            }
+            return optionalTtyIoctlUnsupported(errorNumber)
+                ? OutputQueueResult::Unavailable
+                : OutputQueueResult::Error;
+        }
+        if (queuedBytes == 0) {
+            if (details) {
+                *details = QStringLiteral("output-queue-empty");
+            }
+            return OutputQueueResult::Confirmed;
+        }
+
+        const int remainingMs =
+            timeoutMs - static_cast<int>(elapsed.elapsed());
+        if (remainingMs <= 0) {
+            if (details) {
+                *details = QStringLiteral("output-queue-timeout(bytes=%1)")
+                    .arg(queuedBytes);
+            }
+            return OutputQueueResult::TimedOut;
+        }
+
+        const int waitMs = qMin(remainingMs, 5);
+        int pollResult = -1;
+        do {
+            pollResult = ::poll(nullptr, 0, waitMs);
+        } while (pollResult < 0 && errno == EINTR);
+        if (pollResult < 0) {
+            const int errorNumber = errno;
+            if (details) {
+                *details = QStringLiteral("output-queue-wait-errno-%1")
+                    .arg(errorNumber);
+            }
+            return OutputQueueResult::Error;
+        }
+    }
+#else
+    Q_UNUSED(timeoutMs);
+    if (details) {
+        *details = QStringLiteral("tiocoutq-unavailable");
+    }
+    return OutputQueueResult::Unavailable;
+#endif
+#endif
+}
+
+UniRcChannelController::ChannelRequestResult
+UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
 {
 #ifndef Q_OS_ANDROID
     Q_UNUSED(frequencyCode);
-    return false;
+    return ChannelRequestResult::WriteFailed;
 #else
     const QByteArray packet =
         UniRcProtocol::channelDataRequestPacket(frequencyCode, 0);
     if (packet.isEmpty()) {
-        return false;
+        return ChannelRequestResult::WriteFailed;
     }
 
-    // The UniRC V1.0 SDK requires three consecutive complete requests. Keep
-    // them as three writes as documented so diagnostics identify the exact
-    // request which failed while preserving the same UART byte stream.
+    const bool enableRequest = frequencyCode != UniRcProtocol::FrequencyOff;
+    if (enableRequest) {
+        _lastRequestPacket = packet;
+        _requestFrameCount = 0;
+        _requestByteCount = 0;
+        _requestOutputQueueEmpty = false;
+        _requestOutputQueueEvidence.clear();
+    }
+
     for (int requestIndex = 0; requestIndex < 3; ++requestIndex) {
         if (!_writeAll(packet, kWriteTimeoutMs)) {
             qCDebug(UniRcChannelLog)
                 << "UniRC attempt" << _activeAttemptId
                 << "event request-frame-failed"
                 << requestIndex + 1 << "/3"
-                << "frequencyCode" << frequencyCode
+                << "frequencyCode" << static_cast<int>(frequencyCode)
                 << "packet" << packet.toHex(' ');
-            return false;
+            return ChannelRequestResult::WriteFailed;
         }
+        if (enableRequest) {
+            ++_requestFrameCount;
+            _requestByteCount += static_cast<quint64>(packet.size());
+        }
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event request-frame-queued"
+            << requestIndex + 1 << "/3"
+            << "frequencyCode" << static_cast<int>(frequencyCode)
+            << "bytes" << packet.size()
+            << "packet" << packet.toHex(' ');
     }
-    return true;
+
+    QString outputQueueDetails;
+    const OutputQueueResult outputQueueResult =
+        _waitForSerialOutputQueueEmpty(kOutputQueueTimeoutMs,
+                                       &outputQueueDetails);
+    if (outputQueueResult == OutputQueueResult::TimedOut) {
+        if (enableRequest) {
+            _requestOutputQueueEvidence =
+                QStringLiteral("timed-out:%1").arg(outputQueueDetails);
+        }
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event request-output-queue-timeout"
+            << "device" << _openedDevicePath
+            << "details" << outputQueueDetails;
+        return ChannelRequestResult::OutputQueueTimedOut;
+    }
+    if (outputQueueResult == OutputQueueResult::Error) {
+        if (enableRequest) {
+            _requestOutputQueueEvidence =
+                QStringLiteral("error:%1").arg(outputQueueDetails);
+        }
+        qCDebug(UniRcChannelLog)
+            << "UniRC attempt" << _activeAttemptId
+            << "event request-output-queue-error"
+            << "device" << _openedDevicePath
+            << "details" << outputQueueDetails;
+        return ChannelRequestResult::OutputQueueError;
+    }
+    if (enableRequest) {
+        _requestOutputQueueEmpty =
+            outputQueueResult == OutputQueueResult::Confirmed;
+        _requestOutputQueueEvidence =
+            QStringLiteral("%1:%2")
+                .arg(outputQueueResult == OutputQueueResult::Confirmed
+                         ? QStringLiteral("confirmed")
+                         : QStringLiteral("unavailable"),
+                     outputQueueDetails);
+    }
+    qCDebug(UniRcChannelLog)
+        << "UniRC attempt" << _activeAttemptId
+        << "event"
+        << (outputQueueResult == OutputQueueResult::Confirmed
+                ? "request-output-queue-empty"
+                : "request-output-queue-unavailable")
+        << "frequencyCode" << static_cast<int>(frequencyCode)
+        << "frames" << 3
+        << "bytes" << packet.size() * 3
+        << "details" << outputQueueDetails
+        << "packet" << packet.toHex(' ');
+    return ChannelRequestResult::Succeeded;
 #endif
 }
 
@@ -1390,7 +1791,9 @@ void UniRcChannelController::_readAvailable()
         qCDebug(UniRcChannelLog)
             << "UniRC attempt" << _activeAttemptId
             << "event first-rx"
-            << "latencyMs"
+            << "requestElapsedMs"
+            << (_requestElapsed.isValid() ? _requestElapsed.elapsed() : -1)
+            << "attemptElapsedMs"
             << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
             << "chunkBytes" << incoming.size();
     }
@@ -1440,11 +1843,28 @@ void UniRcChannelController::_handleChannelPacket(
         qCInfo(UniRcChannelLog)
             << "UniRC attempt" << _activeAttemptId
             << "event stream-active"
-            << "latencyMs"
+            << "requestElapsedMs"
+            << (_requestElapsed.isValid() ? _requestElapsed.elapsed() : -1)
+            << "attemptElapsedMs"
             << (_attemptElapsed.isValid() ? _attemptElapsed.elapsed() : -1)
             << "device" << _openedDevicePath
             << "rxBytes" << _receivedByteCount
             << "decodedFrames" << _decodedFrameCount
+            << "control"
+            << QStringLiteral("0x%1")
+                   .arg(static_cast<qulonglong>(packet.control),
+                        2,
+                        16,
+                        QLatin1Char('0'))
+            << "sequence" << packet.sequence
+            << "command"
+            << QStringLiteral("0x%1")
+                   .arg(static_cast<qulonglong>(packet.command),
+                        2,
+                        16,
+                        QLatin1Char('0'))
+            << "payloadBytes" << packet.payload.size()
+            << "payload" << packet.payload.toHex(' ')
             << "CH9" << channel9
             << "CH10" << channel10;
     }
@@ -1584,10 +2004,15 @@ void UniRcChannelController::_inputWatchdogExpired()
 void UniRcChannelController::_resetReceiveDiagnostics()
 {
     _receiveSample.clear();
+    _requestOutputQueueEvidence.clear();
+    _lastRequestPacket.clear();
     _receivedByteCount = 0;
     _decodedFrameCount = 0;
     _channelFrameCount = 0;
     _invalidChannelFrameCount = 0;
+    _requestFrameCount = 0;
+    _requestByteCount = 0;
+    _requestOutputQueueEmpty = false;
     _invalidChannelWarningActive = false;
     _lastFrameControl = 0;
     _lastFrameCommand = 0;

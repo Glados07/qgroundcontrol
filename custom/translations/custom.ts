@@ -902,16 +902,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="499"/>
-        <source>The kernel cannot provide UART activity counters for %1, so QGC cannot prove that the Bluetooth HAL released it. Use the UniRC SDK UDP interface or vendor UART arbitration firmware.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="509"/>
-        <source>Serial activity was already present on %1 before QGC sent any data; Bluetooth HAL or another process still owns the UART.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="517"/>
         <source>Checking %1 for existing UART activity before sending the UniRC request.</source>
         <translation type="unfinished"></translation>
@@ -929,11 +919,6 @@
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="572"/>
         <source>%1 changed to a non-idle UART state while QGC was checking it (%2). No UniRC data was written.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="585"/>
-        <source>Existing UART activity was detected on %1 before QGC sent any data. Bluetooth HAL or another process still owns the port (%2).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -972,6 +957,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="848"/>
+        <source>The three UniRC request frames were queued on %1, but the UART output queue did not empty within %2 ms (%3).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="856"/>
+        <source>The three UniRC request frames were queued on %1, but checking the UART output queue failed (%2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="311"/>
         <source>Read termios for</source>
         <translation type="unfinished"></translation>
@@ -979,6 +974,11 @@
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="329"/>
         <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1401"/>
+        <source>Flush</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1014,6 +1014,26 @@
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="698"/>
         <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="704"/>
+        <source>QGC found input on %1 before sending the UniRC request but could not inspect it safely: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="723"/>
+        <source>Existing non-UniRC UART activity was detected on %1 before QGC sent any data (%2; inspectedBytes=%3; consecutive0x42=%4). Bluetooth HAL or another process may still own the port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1018"/>
+        <source>Read ownership probe input from</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="994"/>
+        <source>Read UART activity counters for</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
