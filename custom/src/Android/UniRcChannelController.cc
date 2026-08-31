@@ -1236,6 +1236,9 @@ void UniRcChannelController::_closeSerial(bool sendDisableRequest,
     _activeAttemptId = 0;
     _attemptElapsed.invalidate();
     _bluetoothFullOffElapsed.invalidate();
+#else
+    Q_UNUSED(sendDisableRequest);
+    Q_UNUSED(reason);
 #endif
 
     _openedDevicePath.clear();
@@ -1316,6 +1319,10 @@ bool UniRcChannelController::_writeAll(const QByteArray &bytes, int timeoutMs)
 
 bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
 {
+#ifndef Q_OS_ANDROID
+    Q_UNUSED(frequencyCode);
+    return false;
+#else
     const QByteArray packet =
         UniRcProtocol::channelDataRequestPacket(frequencyCode, 0);
     if (packet.isEmpty()) {
@@ -1337,6 +1344,7 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
         }
     }
     return true;
+#endif
 }
 
 void UniRcChannelController::_readAvailable()
