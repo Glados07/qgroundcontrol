@@ -35,10 +35,13 @@ class UniRcChannelController : public QObject
     Q_PROPERTY(bool bluetoothScanning READ bluetoothScanning NOTIFY bluetoothScanningChanged)
     Q_PROPERTY(QStringList bluetoothDevices READ bluetoothDevices NOTIFY bluetoothDevicesChanged)
     Q_PROPERTY(QString selectedBluetoothDevice READ selectedBluetoothDevice NOTIFY selectedBluetoothDeviceChanged)
+    Q_PROPERTY(bool sdkRouteActive READ sdkRouteActive NOTIFY sdkRouteActiveChanged)
     Q_PROPERTY(bool channelInputActive READ channelInputActive NOTIFY channelInputActiveChanged)
     Q_PROPERTY(int channel9 READ channel9 NOTIFY channelsChanged)
     Q_PROPERTY(int channel10 READ channel10 NOTIFY channelsChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString diagnosticStage READ diagnosticStage NOTIFY diagnosticsChanged)
+    Q_PROPERTY(QString diagnosticSummary READ diagnosticSummary NOTIFY diagnosticsChanged)
 
 public:
     explicit UniRcChannelController(GimbalControlSettings *settings,
@@ -51,10 +54,13 @@ public:
     bool bluetoothScanning() const;
     QStringList bluetoothDevices() const { return _bluetoothDeviceLabels; }
     QString selectedBluetoothDevice() const { return _selectedBluetoothDevice; }
+    bool sdkRouteActive() const { return _sdkRouteActive; }
     bool channelInputActive() const { return _channelInputActive; }
     int channel9() const { return _channel9; }
     int channel10() const { return _channel10; }
     QString lastError() const { return _lastError; }
+    QString diagnosticStage() const { return _diagnosticStage; }
+    QString diagnosticSummary() const;
 
     Q_INVOKABLE void startBluetoothScan();
     Q_INVOKABLE void selectBluetoothDevice(int index);
@@ -65,9 +71,11 @@ signals:
     void bluetoothScanningChanged();
     void bluetoothDevicesChanged();
     void selectedBluetoothDeviceChanged();
+    void sdkRouteActiveChanged();
     void channelInputActiveChanged();
     void channelsChanged();
     void lastErrorChanged();
+    void diagnosticsChanged();
 
 private slots:
     void _settingsChanged();
@@ -82,6 +90,7 @@ private slots:
     void _socketConnected();
     void _socketDisconnected();
     void _socketReadyRead();
+    void _socketBytesWritten(qint64 bytes);
     void _socketError(QBluetoothSocket::SocketError error);
 
 private:
@@ -93,6 +102,7 @@ private:
     void _closeBluetooth(bool sendDisableRequest, const char *reason);
     bool _sendChannelRequest(quint8 frequencyCode);
     void _readAvailableBluetoothData();
+    void _markChannelRequestTransmitted(const char *evidence);
     void _handleChannelPacket(const UniRcProtocol::DecodedPacket &packet);
     void _scheduleBluetoothFailure(const QString &message,
                                    const char *reason);
@@ -105,8 +115,10 @@ private:
     void _tryStartZoom(int direction);
     void _resetInput(bool normalZoomStop);
     void _setBluetoothConnected(bool connected);
+    void _setSdkRouteActive(bool active);
     void _setChannelInputActive(bool active);
     void _setLastError(const QString &message);
+    void _setDiagnosticStage(const QString &stage);
 
     static constexpr int kInitialFrameTimeoutMs = 1500;
     static constexpr int kActiveFrameTimeoutMs = 350;
@@ -116,6 +128,7 @@ private:
     static constexpr int kFailureRetryDelayMs = 10000;
     static constexpr int kSocketCloseTimeoutMs = 1000;
     static constexpr int kZoomStartRetryMs = 250;
+    static constexpr int kDiagnosticRefreshMs = 500;
     static constexpr int kReceiveSampleMaxBytes = 64;
 
     QPointer<GimbalControlSettings> _settings;
@@ -133,8 +146,10 @@ private:
     QElapsedTimer _zoomStartRetryElapsed;
     QElapsedTimer _connectionElapsed;
     QElapsedTimer _requestElapsed;
+    QElapsedTimer _diagnosticRefreshElapsed;
     QString _selectedBluetoothDevice;
     QString _lastError;
+    QString _diagnosticStage = QStringLiteral("DISABLED");
     QByteArray _receiveSample;
     QByteArray _lastRequestPacket;
     quint64 _connectionAttempt = 0;
@@ -144,6 +159,7 @@ private:
     quint64 _invalidChannelFrameCount = 0;
     quint64 _requestFrameCount = 0;
     quint64 _requestByteCount = 0;
+    quint64 _requestConfirmedByteCount = 0;
     int _lastFramePayloadSize = -1;
     int _channel9 = 0;
     int _channel10 = 0;
@@ -151,11 +167,13 @@ private:
     quint8 _lastFrameControl = 0;
     quint8 _lastFrameCommand = 0;
     bool _bluetoothConnected = false;
+    bool _bluetoothPaired = false;
+    bool _sdkRouteActive = false;
     bool _channelInputActive = false;
     bool _invalidChannelWarningActive = false;
     bool _applicationActive = false;
     bool _permissionRequestPending = false;
-    bool _requestQueuePendingObserved = false;
+    bool _requestAwaitingTransmission = false;
     bool _failureScheduled = false;
     bool _shuttingDown = false;
 };

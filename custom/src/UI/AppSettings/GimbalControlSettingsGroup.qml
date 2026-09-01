@@ -25,6 +25,25 @@ ColumnLayout {
                                                 ? QGroundControl.corePlugin.uniRcChannelController
                                                 : null
 
+    function uniRcConnectedStatus(stage) {
+        switch (stage) {
+        case "RFCOMM_CONNECTED":
+            return qsTr("UniRC Bluetooth connected; preparing the 0x42 request")
+        case "REQUEST_0X42_QUEUED":
+            return qsTr("UniRC request queued locally; waiting for Bluetooth write")
+        case "REQUEST_0X42_TRANSMITTED":
+            return qsTr("UniRC request written locally; waiting for Bluetooth data")
+        case "BT_RX_NO_SDK_FRAME":
+            return qsTr("Bluetooth data received, but no valid UniRC SDK frame yet")
+        case "SDK_FRAME_NO_0X42":
+            return qsTr("Valid UniRC SDK frame received, but no 0x42 channel response yet")
+        case "SDK_ROUTE_ACTIVE":
+            return qsTr("UniRC Bluetooth SDK route and 0x42 response confirmed")
+        default:
+            return qsTr("UniRC Bluetooth connected; checking the SDK route")
+        }
+    }
+
     SettingsGroupLayout {
         Layout.fillWidth: true
         heading: qsTr("Gimbal Camera")
@@ -133,6 +152,17 @@ ColumnLayout {
 
             QGCLabel {
                 Layout.fillWidth: true
+                wrapMode: Text.WrapAnywhere
+                font.pointSize: ScreenTools.smallFontPointSize
+                visible: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+                         && root.uniRcChannelController
+                text: root.uniRcChannelController
+                      ? root.uniRcChannelController.diagnosticSummary
+                      : ""
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 font.pointSize: ScreenTools.smallFontPointSize
                 text: !root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
@@ -148,7 +178,8 @@ ColumnLayout {
                           : root.uniRcChannelController.lastError !== ""
                             ? root.uniRcChannelController.lastError
                             : root.uniRcChannelController.bluetoothConnected
-                              ? qsTr("UniRC request sent; waiting for channel data")
+                              ? root.uniRcConnectedStatus(
+                                    root.uniRcChannelController.diagnosticStage)
                               : qsTr("Waiting for the UniRC SDK Bluetooth connection")
             }
         }

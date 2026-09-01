@@ -537,112 +537,142 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="30"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="+49"/>
         <source>Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="38"/>
+        <location line="+8"/>
         <source>Zoom Step</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="50"/>
+        <location line="+12"/>
         <source>A8 Mini</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="57"/>
+        <location line="+7"/>
         <source>MT11</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
+        <location line="+14"/>
         <source>UniRC CH9/CH10 Gimbal Control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="78"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="169"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="201"/>
+        <location line="+7"/>
+        <location line="+103"/>
+        <location line="+32"/>
         <source>Enabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
+        <location line="-129"/>
         <source>SDK Bluetooth Address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="96"/>
+        <location line="+12"/>
         <source>Scanning...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="97"/>
+        <location line="+1"/>
         <source>Scan BLUE Device</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="110"/>
+        <location line="+13"/>
         <source>No Bluetooth device selected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="131"/>
+        <location line="+21"/>
         <source>Set the UniGCS SDK interface to Bluetooth and pair the BLUE94/BLUE- device in Android Bluetooth settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="139"/>
+        <location line="+19"/>
         <source>Disabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="141"/>
+        <location line="+2"/>
         <source>Controller unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="143"/>
+        <location line="+2"/>
         <source>Receiving: CH9 %1, CH10 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="147"/>
+        <location line="+4"/>
         <source>Scanning for UniRC Bluetooth devices</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="151"/>
-        <source>UniRC request sent; waiting for channel data</source>
+        <location line="-144"/>
+        <source>UniRC request queued locally; waiting for Bluetooth write</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="152"/>
+        <location line="+150"/>
         <source>Waiting for the UniRC SDK Bluetooth connection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="162"/>
+        <location line="+10"/>
         <source>SIYI A8 Mini Gimbal Camera</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="175"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="207"/>
+        <location line="+13"/>
+        <location line="+32"/>
         <source>SDK Host</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="182"/>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="214"/>
+        <location line="-25"/>
+        <location line="+32"/>
         <source>SDK Port</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="194"/>
+        <location line="-20"/>
         <source>UniPod MT11 Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-194"/>
+        <source>UniRC Bluetooth connected; preparing the 0x42 request</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>UniRC request written locally; waiting for Bluetooth data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Bluetooth data received, but no valid UniRC SDK frame yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Valid UniRC SDK frame received, but no 0x42 channel response yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>UniRC Bluetooth SDK route and 0x42 response confirmed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>UniRC Bluetooth connected; checking the SDK route</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -852,137 +882,137 @@
 <context>
     <name>UniRcChannelController</name>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="40"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="+40"/>
         <source>Unnamed Bluetooth device</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="273"/>
+        <location line="+250"/>
         <source>Bluetooth permission service is unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="284"/>
+        <location line="+12"/>
         <source>Nearby devices permission is required for the UniRC SDK Bluetooth connection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="293"/>
+        <location line="+10"/>
         <source>Grant Nearby devices permission to scan and connect to the UniRC SDK Bluetooth device.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="307"/>
+        <location line="+16"/>
         <source>Nearby devices permission was denied. Enable it in Android app settings before using UniRC Bluetooth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="317"/>
+        <location line="+11"/>
         <source>No Android Bluetooth adapter is available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="322"/>
+        <location line="+6"/>
         <source>Turn on Android Bluetooth before using the UniRC SDK Bluetooth connection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="333"/>
+        <location line="+11"/>
         <source>Enable UniRC CH9/CH10 gimbal control before scanning.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="354"/>
+        <location line="+21"/>
         <source>Scanning for UniRC BLUE Bluetooth devices...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="405"/>
+        <location line="+56"/>
         <source>No UniRC BLUE Bluetooth device was found. Pair it in Android settings, then scan again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="406"/>
+        <location line="+1"/>
         <source>No UniRC BLUE Bluetooth device was selected. Select a discovered device or enter its Bluetooth address.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="426"/>
+        <location line="+24"/>
         <source>UniRC Bluetooth scan failed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="449"/>
+        <location line="+27"/>
         <source>The UniRC SDK Bluetooth address is invalid: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="458"/>
+        <location line="+12"/>
         <source>Pair the UniRC BLUE device %1 in Android Bluetooth settings before connecting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="487"/>
+        <location line="+40"/>
         <source>Connecting to UniRC SDK Bluetooth device %1...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="528"/>
+        <location line="+43"/>
         <source>Failed to send the UniRC 0x42 request over Bluetooth: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="544"/>
+        <location line="+21"/>
         <source>The UniRC SDK Bluetooth connection to %1 was disconnected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="558"/>
+        <location line="+14"/>
         <source>UniRC SDK Bluetooth error on %1: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="571"/>
+        <location line="+13"/>
         <source>Timed out while connecting to the UniRC SDK Bluetooth device %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="683"/>
+        <location line="+204"/>
         <source>UniRC gimbal control dependencies are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="745"/>
+        <location line="+64"/>
         <source>Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="990"/>
+        <location line="+266"/>
         <source>UniRC 0x42 Bluetooth channel data stopped on %1 after %2 frame(s).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="995"/>
+        <location line="+5"/>
         <source>The UniRC request still had %1 Bluetooth byte(s) queued after %2 ms; the SPP transport did not accept the request.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1002"/>
-        <source>Connected to %1 and queued the UniRC request, but received no Bluetooth data. Confirm that UniGCS routes the SDK to Bluetooth.</source>
+        <location line="+7"/>
+        <source>Connected to %1 and completed the local Bluetooth write for the UniRC 0x42 request, but received no data. RFCOMM is connected, but the SDK route is not confirmed; check the UniGCS Bluetooth route.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1006"/>
+        <location line="+4"/>
         <source>Received %1 Bluetooth byte(s) from %2, but no valid UniRC SDK frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1010"/>
+        <location line="+4"/>
         <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="1030"/>
+        <location line="+20"/>
         <source>unselected device</source>
         <translation type="unfinished"></translation>
     </message>
