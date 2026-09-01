@@ -79,13 +79,19 @@ ColumnLayout {
                 fact: root.gimbalControlSettings.uniRcChannelControlEnabled
             }
 
-            LabelledFactComboBox {
+            LabelledComboBox {
                 Layout.fillWidth: true
                 label: qsTr("SDK Interface")
-                fact: root.gimbalControlSettings.uniRcSdkInterface
-                indexModel: false
-                comboBox.model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
+                model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
+                currentIndex: root.gimbalControlSettings.uniRcSdkInterface.enumIndex
                 enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+
+                onActivated: (index) => {
+                    const interfaceFact = root.gimbalControlSettings.uniRcSdkInterface
+                    if (index >= 0 && index < interfaceFact.enumValues.length) {
+                        interfaceFact.value = interfaceFact.enumValues[index]
+                    }
+                }
             }
 
             LabelledFactTextField {

@@ -990,7 +990,7 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcSdkInterface].enumStrings, </extracomment>
         <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="87"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="85"/>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
         <source>Bluetooth</source>
         <translation type="unfinished"></translation>
