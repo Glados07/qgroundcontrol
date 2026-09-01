@@ -84,6 +84,7 @@ ColumnLayout {
                 label: qsTr("SDK Interface")
                 fact: root.gimbalControlSettings.uniRcSdkInterface
                 indexModel: false
+                comboBox.model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
                 enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
             }
 
@@ -111,16 +112,15 @@ ColumnLayout {
 
                     delegate: RowLayout {
                         Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth
+                        spacing: ScreenTools.defaultFontPixelWidth / 2
 
                         QGCLabel {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4.5
                             text: qsTr("CH%1").arg(index + 1)
                             font.bold: true
                         }
 
                         QGCLabel {
-                            Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignRight
                             font.family: ScreenTools.fixedFontFamily
                             text: root.uniRcChannelController
                                   && root.uniRcChannelController.sdkRouteActive
