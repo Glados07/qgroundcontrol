@@ -40,6 +40,12 @@
             "default": 1.0
         },
         {
+            "name": "uniRcZoomDirectionReversed",
+            "shortDesc": "Reverse channel gimbal zoom control",
+            "type": "bool",
+            "default": false
+        },
+        {
             "name": "mt11Enabled",
             "shortDesc": "Enable UniPod MT11 camera control",
             "type": "bool",
@@ -86,17 +92,23 @@
         },
         {
             "name": "uniRcChannelControlEnabled",
-            "shortDesc": "Enable UniRC CH9/CH10 gimbal control",
-            "longDesc": "Android connects to the paired UniRC BLUE Bluetooth serial device, requests channel data, maps CH9 to A8 Mini continuous zoom, and maps the CH10 press edge to the shared MAVLink Gimbal Manager center action.",
+            "shortDesc": "Enable UniRC SDK",
             "type": "bool",
-            "default": false
+            "default": true
+        },
+        {
+            "name": "uniRcSdkInterface",
+            "shortDesc": "UniRC SDK interface",
+            "type": "uint32",
+            "enumStrings": "Bluetooth",
+            "enumValues": "0",
+            "default": 0
         },
         {
             "name": "uniRcSdkBluetoothAddress",
             "shortDesc": "UniRC SDK Bluetooth address",
-            "longDesc": "Pair the BLUE94 or BLUE- device in Android settings and configure UniGCS to route the remote-control SDK to Bluetooth. Use Scan to select the device.",
             "type": "string",
-            "default": ""
+            "default": "41:42:9E:3D:A5:D2"
         }
     ]
 }

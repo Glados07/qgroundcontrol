@@ -7,7 +7,8 @@
 #include "UniRcChannelPolicy.h"
 
 UniRcChannelPolicy::Result UniRcChannelPolicy::update(qint16 channel9,
-                                                      qint16 channel10)
+                                                      qint16 channel10,
+                                                      bool zoomDirectionReversed)
 {
     if (channel9 < MinimumReasonableValue
         || channel9 > MaximumReasonableValue
@@ -30,6 +31,9 @@ UniRcChannelPolicy::Result UniRcChannelPolicy::update(qint16 channel9,
         nextZoomDirection = -1;
     } else if (channel9 > ZoomInThreshold) {
         nextZoomDirection = 1;
+    }
+    if (zoomDirectionReversed) {
+        nextZoomDirection = -nextZoomDirection;
     }
 
     result.zoomDirectionChanged = nextZoomDirection != _zoomDirection;

@@ -9,18 +9,15 @@
 #include "UniRcChannelPolicy.h"
 #include "UniRcProtocol.h"
 
-#include <QtBluetooth/QBluetoothDeviceDiscoveryAgent>
-#include <QtBluetooth/QBluetoothDeviceInfo>
 #include <QtBluetooth/QBluetoothSocket>
 #include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
-#include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QString>
-#include <QtCore/QStringList>
 #include <QtCore/QTimer>
+#include <QtCore/QVariantList>
 
 class GimbalCenterCoordinator;
 class GimbalControlManager;
@@ -32,11 +29,9 @@ class UniRcChannelController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool bluetoothConnected READ bluetoothConnected NOTIFY bluetoothConnectedChanged)
-    Q_PROPERTY(bool bluetoothScanning READ bluetoothScanning NOTIFY bluetoothScanningChanged)
-    Q_PROPERTY(QStringList bluetoothDevices READ bluetoothDevices NOTIFY bluetoothDevicesChanged)
-    Q_PROPERTY(QString selectedBluetoothDevice READ selectedBluetoothDevice NOTIFY selectedBluetoothDeviceChanged)
     Q_PROPERTY(bool sdkRouteActive READ sdkRouteActive NOTIFY sdkRouteActiveChanged)
     Q_PROPERTY(bool channelInputActive READ channelInputActive NOTIFY channelInputActiveChanged)
+    Q_PROPERTY(QVariantList channelValues READ channelValues NOTIFY channelsChanged)
     Q_PROPERTY(int channel9 READ channel9 NOTIFY channelsChanged)
     Q_PROPERTY(int channel10 READ channel10 NOTIFY channelsChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -51,26 +46,19 @@ public:
     ~UniRcChannelController() override;
 
     bool bluetoothConnected() const { return _bluetoothConnected; }
-    bool bluetoothScanning() const;
-    QStringList bluetoothDevices() const { return _bluetoothDeviceLabels; }
-    QString selectedBluetoothDevice() const { return _selectedBluetoothDevice; }
     bool sdkRouteActive() const { return _sdkRouteActive; }
     bool channelInputActive() const { return _channelInputActive; }
-    int channel9() const { return _channel9; }
-    int channel10() const { return _channel10; }
+    QVariantList channelValues() const { return _channelValues; }
+    int channel9() const { return _channelValues.value(8).toInt(); }
+    int channel10() const { return _channelValues.value(9).toInt(); }
     QString lastError() const { return _lastError; }
     QString diagnosticStage() const { return _diagnosticStage; }
     QString diagnosticSummary() const;
 
-    Q_INVOKABLE void startBluetoothScan();
-    Q_INVOKABLE void selectBluetoothDevice(int index);
     Q_INVOKABLE void shutdown();
 
 signals:
     void bluetoothConnectedChanged();
-    void bluetoothScanningChanged();
-    void bluetoothDevicesChanged();
-    void selectedBluetoothDeviceChanged();
     void sdkRouteActiveChanged();
     void channelInputActiveChanged();
     void channelsChanged();
@@ -79,14 +67,11 @@ signals:
 
 private slots:
     void _settingsChanged();
+    void _zoomDirectionSettingChanged();
     void _applicationStateChanged(Qt::ApplicationState state);
     void _reconcile();
     void _connectionTimeoutExpired();
     void _inputWatchdogExpired();
-    void _deviceDiscovered(const QBluetoothDeviceInfo &info);
-    void _discoveryFinished();
-    void _discoveryCanceled();
-    void _discoveryError(QBluetoothDeviceDiscoveryAgent::Error error);
     void _socketConnected();
     void _socketDisconnected();
     void _socketReadyRead();
@@ -97,7 +82,6 @@ private:
     bool _shouldRun() const;
     bool _ensureBluetoothPermission();
     bool _ensureBluetoothPoweredOn();
-    void _startBluetoothScan(bool userRequested);
     void _connectBluetooth();
     void _closeBluetooth(bool sendDisableRequest, const char *reason);
     bool _sendChannelRequest(quint8 frequencyCode);
@@ -110,7 +94,6 @@ private:
     QString _receiveTimeoutMessage() const;
     QString _configuredBluetoothAddress() const;
     QString _transportDescription() const;
-    void _updateSelectedBluetoothDevice();
     void _applyZoomDirection(int direction, bool directionChanged);
     void _tryStartZoom(int direction);
     void _resetInput(bool normalZoomStop);
@@ -130,14 +113,12 @@ private:
     static constexpr int kZoomStartRetryMs = 250;
     static constexpr int kDiagnosticRefreshMs = 500;
     static constexpr int kReceiveSampleMaxBytes = 64;
+    static constexpr quint32 kBluetoothSdkInterface = 0;
 
     QPointer<GimbalControlSettings> _settings;
     QPointer<GimbalControlManager> _gimbalControlManager;
     QPointer<GimbalCenterCoordinator> _gimbalCenterCoordinator;
-    QBluetoothDeviceDiscoveryAgent *_discoveryAgent = nullptr;
     QBluetoothSocket *_socket = nullptr;
-    QList<QBluetoothDeviceInfo> _bluetoothDeviceInfos;
-    QStringList _bluetoothDeviceLabels;
     UniRcProtocol::StreamParser _parser;
     UniRcChannelPolicy _channelPolicy;
     QTimer _reconnectTimer;
@@ -147,11 +128,11 @@ private:
     QElapsedTimer _connectionElapsed;
     QElapsedTimer _requestElapsed;
     QElapsedTimer _diagnosticRefreshElapsed;
-    QString _selectedBluetoothDevice;
     QString _lastError;
     QString _diagnosticStage = QStringLiteral("DISABLED");
     QByteArray _receiveSample;
     QByteArray _lastRequestPacket;
+    QVariantList _channelValues;
     quint64 _connectionAttempt = 0;
     quint64 _receivedByteCount = 0;
     quint64 _decodedFrameCount = 0;
@@ -161,8 +142,6 @@ private:
     quint64 _requestByteCount = 0;
     quint64 _requestConfirmedByteCount = 0;
     int _lastFramePayloadSize = -1;
-    int _channel9 = 0;
-    int _channel10 = 0;
     int _acceptedZoomDirection = 0;
     quint8 _lastFrameControl = 0;
     quint8 _lastFrameCommand = 0;

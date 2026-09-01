@@ -25,7 +25,9 @@ public:
         bool centerRequested = false;
     };
 
-    Result update(qint16 channel9, qint16 channel10);
+    Result update(qint16 channel9,
+                  qint16 channel10,
+                  bool zoomDirectionReversed = false);
     Result linkLost();
     void reset();
 

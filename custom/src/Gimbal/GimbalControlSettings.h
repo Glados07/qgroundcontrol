@@ -23,6 +23,7 @@ public:
     DEFINE_SETTINGFACT(sdkHost)
     DEFINE_SETTINGFACT(sdkPort)
     DEFINE_SETTINGFACT(zoomStep)
+    DEFINE_SETTINGFACT(uniRcZoomDirectionReversed)
     DEFINE_SETTINGFACT(mt11Enabled)
     DEFINE_SETTINGFACT(mt11SdkHost)
     DEFINE_SETTINGFACT(mt11SdkPort)
@@ -30,5 +31,6 @@ public:
     DEFINE_SETTINGFACT(mavlinkAutoVideoStream)
     DEFINE_SETTINGFACT(forceAndroidH265HardwareDecoder)
     DEFINE_SETTINGFACT(uniRcChannelControlEnabled)
+    DEFINE_SETTINGFACT(uniRcSdkInterface)
     DEFINE_SETTINGFACT(uniRcSdkBluetoothAddress)
 };

@@ -63,6 +63,7 @@ private slots:
     void streamParserHandlesPartialAndMultipleFrames();
     void streamParserResynchronizes();
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
+    void zoomPolicyCanReverseDirection();
     void centerPolicyUsesReleasedToPressedEdges();
     void policyRejectsUnreasonableValues();
 };
@@ -276,6 +277,54 @@ void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()
     result = policy.update(1050, 1050);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, -1);
+}
+
+void UniRcProtocolTest::zoomPolicyCanReverseDirection()
+{
+    UniRcChannelPolicy policy;
+
+    // A deflected wheel still cannot start before a neutral sample.
+    auto result = policy.update(1950, 1050, true);
+    QVERIFY(result.channelsValid);
+    QVERIFY(!result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 0);
+
+    result = policy.update(1500, 1050, true);
+    QVERIFY(result.channelsValid);
+    QCOMPARE(result.zoomDirection, 0);
+
+    result = policy.update(1525, 1050, true);
+    QVERIFY(!result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 0);
+    result = policy.update(1526, 1050, true);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, -1);
+
+    result = policy.update(1475, 1050, true);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 0);
+
+    result = policy.update(1474, 1050, true);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 1);
+
+    // Runtime setting changes use the same linkLost/reset path: an active
+    // direction stops, then the wheel must pass through neutral again.
+    result = policy.linkLost();
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 0);
+    result = policy.update(1050, 1050, true);
+    QVERIFY(!result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 0);
+    policy.update(1500, 1050, true);
+    result = policy.update(1050, 1050, true);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 1);
+
+    // CH10 remains edge-triggered and independent from zoom reversal.
+    policy.update(1500, 1050, true);
+    result = policy.update(1500, 1950, true);
+    QVERIFY(result.centerRequested);
 }
 
 void UniRcProtocolTest::centerPolicyUsesReleasedToPressedEdges()

@@ -537,143 +537,83 @@
 <context>
     <name>GimbalControlSettingsGroup</name>
     <message>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="+49"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="30"/>
         <source>Gimbal Camera</source>
         <translation>云台相机</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="38"/>
         <source>Zoom Step</source>
         <translation>变焦步长</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="50"/>
         <source>A8 Mini</source>
         <translation>A8 Mini</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="57"/>
         <source>MT11</source>
         <translation>MT11</translation>
     </message>
     <message>
-        <location line="+14"/>
-        <source>UniRC CH9/CH10 Gimbal Control</source>
-        <translation>UniRC CH9/CH10云台控制</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="71"/>
+        <source>UniRC SDK</source>
+        <translation>UniRC SDK</translation>
     </message>
     <message>
-        <location line="+7"/>
-        <location line="+103"/>
-        <location line="+32"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="78"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="150"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="191"/>
         <source>Enabled</source>
         <translation>启用</translation>
     </message>
     <message>
-        <location line="-129"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="84"/>
+        <source>SDK Interface</source>
+        <translation>SDK接口</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="92"/>
         <source>SDK Bluetooth Address</source>
         <translation>SDK蓝牙地址</translation>
     </message>
     <message>
-        <location line="+12"/>
-        <source>Scanning...</source>
-        <translation>正在扫描…</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
+        <source>Channel Values</source>
+        <translation>遥控通道</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>Scan BLUE Device</source>
-        <translation>扫描BLUE设备</translation>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="117"/>
+        <source>CH%1</source>
+        <translation>CH%1</translation>
     </message>
     <message>
-        <location line="+13"/>
-        <source>No Bluetooth device selected</source>
-        <translation>未选择蓝牙设备</translation>
-    </message>
-    <message>
-        <location line="+21"/>
-        <source>Set the UniGCS SDK interface to Bluetooth and pair the BLUE94/BLUE- device in Android Bluetooth settings.</source>
-        <translation>请在UniGCS中将SDK接口设置为蓝牙，并在Android蓝牙设置中配对BLUE94/BLUE-设备。</translation>
-    </message>
-    <message>
-        <location line="+19"/>
-        <source>Disabled</source>
-        <translation>已禁用</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Controller unavailable</source>
-        <translation>控制器不可用</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Receiving: CH9 %1, CH10 %2</source>
-        <translation>正在接收：CH9 %1，CH10 %2</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Scanning for UniRC Bluetooth devices</source>
-        <translation>正在扫描UniRC蓝牙设备</translation>
-    </message>
-    <message>
-        <location line="-144"/>
-        <source>UniRC request queued locally; waiting for Bluetooth write</source>
-        <translation>UniRC请求已在本地排队，正在等待蓝牙写出</translation>
-    </message>
-    <message>
-        <location line="+150"/>
-        <source>Waiting for the UniRC SDK Bluetooth connection</source>
-        <translation>正在等待UniRC SDK蓝牙连接</translation>
-    </message>
-    <message>
-        <location line="+10"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="143"/>
         <source>SIYI A8 Mini Gimbal Camera</source>
         <translation>SIYI A8 Mini云台相机</translation>
     </message>
     <message>
-        <location line="+13"/>
-        <location line="+32"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="156"/>
+        <source>Reverse channel gimbal zoom control</source>
+        <translation>通道进行云台缩放控制是否反向</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="165"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="197"/>
         <source>SDK Host</source>
         <translation>SDK主机地址</translation>
     </message>
     <message>
-        <location line="-25"/>
-        <location line="+32"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="172"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="204"/>
         <source>SDK Port</source>
         <translation>SDK端口</translation>
     </message>
     <message>
-        <location line="-20"/>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="184"/>
         <source>UniPod MT11 Gimbal Camera</source>
         <translation>UniPod MT11云台相机</translation>
-    </message>
-    <message>
-        <location line="-194"/>
-        <source>UniRC Bluetooth connected; preparing the 0x42 request</source>
-        <translation>UniRC蓝牙已连接，正在准备0x42请求</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>UniRC request written locally; waiting for Bluetooth data</source>
-        <translation>UniRC请求已在本地写出，正在等待蓝牙数据</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Bluetooth data received, but no valid UniRC SDK frame yet</source>
-        <translation>已收到蓝牙数据，但尚未收到合法的UniRC SDK帧</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Valid UniRC SDK frame received, but no 0x42 channel response yet</source>
-        <translation>已收到合法的UniRC SDK帧，但尚未收到0x42通道回包</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>UniRC Bluetooth SDK route and 0x42 response confirmed</source>
-        <translation>已确认UniRC蓝牙SDK路由和0x42回包</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>UniRC Bluetooth connected; checking the SDK route</source>
-        <translation>UniRC蓝牙已连接，正在检查SDK路由</translation>
     </message>
 </context>
 <context>
@@ -882,143 +822,129 @@
 <context>
     <name>UniRcChannelController</name>
     <message>
-        <location filename="../src/Android/UniRcChannelController.cc" line="+40"/>
-        <source>Unnamed Bluetooth device</source>
-        <translation>未命名蓝牙设备</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="181"/>
+        <source>The selected UniRC SDK interface is not supported.</source>
+        <translation>所选UniRC SDK接口暂不受支持。</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="211"/>
+        <source>Configure the UniRC SDK Bluetooth address before connecting.</source>
+        <translation>连接前请配置UniRC SDK蓝牙地址。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc" line="224"/>
         <source>Bluetooth permission service is unavailable.</source>
         <translation>蓝牙权限服务不可用。</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="236"/>
         <source>Nearby devices permission is required for the UniRC SDK Bluetooth connection.</source>
         <translation>UniRC SDK蓝牙连接需要“附近的设备”权限。</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <source>Grant Nearby devices permission to scan and connect to the UniRC SDK Bluetooth device.</source>
-        <translation>请授予“附近的设备”权限，以扫描并连接UniRC SDK蓝牙设备。</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="246"/>
+        <source>Grant Nearby devices permission to connect to the UniRC SDK Bluetooth device.</source>
+        <translation>请授予“附近的设备”权限，以连接UniRC SDK蓝牙设备。</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="262"/>
         <source>Nearby devices permission was denied. Enable it in Android app settings before using UniRC Bluetooth.</source>
         <translation>“附近的设备”权限已被拒绝。使用UniRC蓝牙前，请在Android应用设置中启用该权限。</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="273"/>
         <source>No Android Bluetooth adapter is available.</source>
         <translation>未检测到可用的Android蓝牙适配器。</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="279"/>
         <source>Turn on Android Bluetooth before using the UniRC SDK Bluetooth connection.</source>
         <translation>使用UniRC SDK蓝牙连接前，请开启Android系统蓝牙。</translation>
     </message>
     <message>
-        <location line="+11"/>
-        <source>Enable UniRC CH9/CH10 gimbal control before scanning.</source>
-        <translation>扫描前请先启用UniRC CH9/CH10云台控制。</translation>
-    </message>
-    <message>
-        <location line="+21"/>
-        <source>Scanning for UniRC BLUE Bluetooth devices...</source>
-        <translation>正在扫描UniRC BLUE蓝牙设备……</translation>
-    </message>
-    <message>
-        <location line="+56"/>
-        <source>No UniRC BLUE Bluetooth device was found. Pair it in Android settings, then scan again.</source>
-        <translation>未找到UniRC BLUE蓝牙设备。请先在Android设置中配对，然后重新扫描。</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>No UniRC BLUE Bluetooth device was selected. Select a discovered device or enter its Bluetooth address.</source>
-        <translation>尚未选择UniRC BLUE蓝牙设备。请选择已发现的设备，或输入其蓝牙地址。</translation>
-    </message>
-    <message>
-        <location line="+24"/>
-        <source>UniRC Bluetooth scan failed: %1</source>
-        <translation>UniRC蓝牙扫描失败：%1</translation>
-    </message>
-    <message>
-        <location line="+27"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="301"/>
         <source>The UniRC SDK Bluetooth address is invalid: %1</source>
         <translation>UniRC SDK蓝牙地址无效：%1</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="313"/>
         <source>Pair the UniRC BLUE device %1 in Android Bluetooth settings before connecting.</source>
         <translation>连接前请先在Android蓝牙设置中配对UniRC BLUE设备%1。</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="353"/>
         <source>Connecting to UniRC SDK Bluetooth device %1...</source>
         <translation>正在连接UniRC SDK蓝牙设备%1……</translation>
     </message>
     <message>
-        <location line="+43"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="396"/>
         <source>Failed to send the UniRC 0x42 request over Bluetooth: %1</source>
         <translation>通过蓝牙发送UniRC 0x42请求失败：%1</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="417"/>
         <source>The UniRC SDK Bluetooth connection to %1 was disconnected.</source>
         <translation>与%1的UniRC SDK蓝牙连接已断开。</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="431"/>
         <source>UniRC SDK Bluetooth error on %1: %2</source>
         <translation>%1发生UniRC SDK蓝牙错误：%2</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="444"/>
         <source>Timed out while connecting to the UniRC SDK Bluetooth device %1.</source>
         <translation>连接UniRC SDK蓝牙设备%1超时。</translation>
     </message>
     <message>
-        <location line="+204"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="648"/>
         <source>UniRC gimbal control dependencies are unavailable.</source>
         <translation>UniRC云台控制依赖不可用。</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="716"/>
         <source>Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.</source>
         <translation>正在接收UniRC 0x42数据，但CH9=%1或CH10=%2超出900至2100范围；请检查通道映射。</translation>
     </message>
     <message>
-        <location line="+266"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="982"/>
         <source>UniRC 0x42 Bluetooth channel data stopped on %1 after %2 frame(s).</source>
         <translation>%1上的UniRC 0x42蓝牙通道数据在收到%2帧后中断。</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="987"/>
         <source>The UniRC request still had %1 Bluetooth byte(s) queued after %2 ms; the SPP transport did not accept the request.</source>
         <translation>UniRC请求在%2毫秒后仍有%1个蓝牙字节排队；SPP传输层未接收该请求。</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="994"/>
         <source>Connected to %1 and completed the local Bluetooth write for the UniRC 0x42 request, but received no data. RFCOMM is connected, but the SDK route is not confirmed; check the UniGCS Bluetooth route.</source>
         <translation>已连接%1并完成UniRC 0x42请求的本地蓝牙写出，但未收到数据。RFCOMM已经连接，但SDK路由尚未确认；请检查UniGCS蓝牙路由。</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="998"/>
         <source>Received %1 Bluetooth byte(s) from %2, but no valid UniRC SDK frame.</source>
         <translation>已从%2收到%1个蓝牙字节，但没有有效的UniRC SDK帧。</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1002"/>
         <source>Received %1 valid UniRC SDK frame(s) from %2, but no CTRL=0, CMD=0x42, 32-byte channel frame.</source>
         <translation>已从%2收到%1个有效UniRC SDK帧，但没有CTRL=0、CMD=0x42、32字节的通道帧。</translation>
     </message>
     <message>
-        <location line="+20"/>
-        <source>unselected device</source>
-        <translation>未选择设备</translation>
+        <location filename="../src/Android/UniRcChannelController.cc" line="1019"/>
+        <source>unconfigured device</source>
+        <translation>未配置设备</translation>
     </message>
 </context>
 <context>
     <name>GimbalControl.SettingsGroup.json</name>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcZoomDirectionReversed].shortDesc, </extracomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Reverse channel gimbal zoom control</source>
+        <translation>通道进行云台缩放控制是否反向</translation>
+    </message>
     <message>
         <extracomment>.QGC.MetaData.Facts[mt11Enabled].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
@@ -1052,26 +978,27 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Enable UniRC CH9/CH10 gimbal control</source>
-        <translation>启用UniRC CH9/CH10云台控制</translation>
+        <source>Enable UniRC SDK</source>
+        <translation>启用UniRC SDK</translation>
     </message>
     <message>
-        <extracomment>.QGC.MetaData.Facts[uniRcChannelControlEnabled].longDesc, </extracomment>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkInterface].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Android connects to the paired UniRC BLUE Bluetooth serial device, requests channel data, maps CH9 to A8 Mini continuous zoom, and maps the CH10 press edge to the shared MAVLink Gimbal Manager center action.</source>
-        <translation>Android连接已配对的UniRC BLUE蓝牙串行设备并请求通道数据，将CH9映射为A8 Mini连续变倍，将CH10按下沿映射为共享的MAVLink Gimbal Manager回中动作。</translation>
+        <source>UniRC SDK interface</source>
+        <translation>UniRC SDK接口</translation>
+    </message>
+    <message>
+        <extracomment>.QGC.MetaData.Facts[uniRcSdkInterface].enumStrings, </extracomment>
+        <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
+        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
+        <source>Bluetooth</source>
+        <translation>蓝牙</translation>
     </message>
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcSdkBluetoothAddress].shortDesc, </extracomment>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
         <source>UniRC SDK Bluetooth address</source>
         <translation>UniRC SDK蓝牙地址</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[uniRcSdkBluetoothAddress].longDesc, </extracomment>
-        <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Pair the BLUE94 or BLUE- device in Android settings and configure UniGCS to route the remote-control SDK to Bluetooth. Use Scan to select the device.</source>
-        <translation>请先在Android设置中配对BLUE94或BLUE-设备，并在UniGCS中将遥控SDK路由到蓝牙；可使用“扫描”选择设备。</translation>
     </message>
 </context>
 <context>

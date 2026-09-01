@@ -21,29 +21,7 @@
 #include <QtCore/QVariant>
 #include <QtGui/QGuiApplication>
 
-#include <array>
-#include <utility>
-
 QGC_LOGGING_CATEGORY(UniRcChannelLog, "gcs.custom.android.unircchannel")
-
-namespace {
-
-bool isUniRcBluetoothName(const QString &name)
-{
-    return name.trimmed().startsWith(QStringLiteral("BLUE"),
-                                     Qt::CaseInsensitive);
-}
-
-QString bluetoothDeviceLabel(const QBluetoothDeviceInfo &info)
-{
-    const QString name = info.name().trimmed().isEmpty()
-        ? UniRcChannelController::tr("Unnamed Bluetooth device")
-        : info.name().trimmed();
-    return QStringLiteral("%1 [%2]")
-        .arg(name, info.address().toString());
-}
-
-} // namespace
 
 UniRcChannelController::UniRcChannelController(
     GimbalControlSettings *settings,
@@ -54,7 +32,6 @@ UniRcChannelController::UniRcChannelController(
     , _settings(settings)
     , _gimbalControlManager(gimbalControlManager)
     , _gimbalCenterCoordinator(gimbalCenterCoordinator)
-    , _discoveryAgent(new QBluetoothDeviceDiscoveryAgent(this))
 {
     Q_ASSERT(_settings);
     Q_ASSERT(_gimbalControlManager);
@@ -65,6 +42,12 @@ UniRcChannelController::UniRcChannelController(
     _connectionTimeout.setSingleShot(true);
     _connectionTimeout.setInterval(kConnectionTimeoutMs);
     _inputWatchdog.setSingleShot(true);
+    _channelValues.reserve(UniRcProtocol::ChannelCount);
+    for (int channelIndex = 0;
+         channelIndex < UniRcProtocol::ChannelCount;
+         ++channelIndex) {
+        _channelValues.append(0);
+    }
 
     connect(&_reconnectTimer,
             &QTimer::timeout,
@@ -78,23 +61,11 @@ UniRcChannelController::UniRcChannelController(
             &QTimer::timeout,
             this,
             &UniRcChannelController::_connectionTimeoutExpired);
-    connect(_discoveryAgent,
-            &QBluetoothDeviceDiscoveryAgent::deviceDiscovered,
-            this,
-            &UniRcChannelController::_deviceDiscovered);
-    connect(_discoveryAgent,
-            &QBluetoothDeviceDiscoveryAgent::finished,
-            this,
-            &UniRcChannelController::_discoveryFinished);
-    connect(_discoveryAgent,
-            &QBluetoothDeviceDiscoveryAgent::canceled,
-            this,
-            &UniRcChannelController::_discoveryCanceled);
-    connect(_discoveryAgent,
-            &QBluetoothDeviceDiscoveryAgent::errorOccurred,
-            this,
-            &UniRcChannelController::_discoveryError);
     connect(_settings->uniRcChannelControlEnabled(),
+            &Fact::rawValueChanged,
+            this,
+            &UniRcChannelController::_settingsChanged);
+    connect(_settings->uniRcSdkInterface(),
             &Fact::rawValueChanged,
             this,
             &UniRcChannelController::_settingsChanged);
@@ -102,6 +73,10 @@ UniRcChannelController::UniRcChannelController(
             &Fact::rawValueChanged,
             this,
             &UniRcChannelController::_settingsChanged);
+    connect(_settings->uniRcZoomDirectionReversed(),
+            &Fact::rawValueChanged,
+            this,
+            &UniRcChannelController::_zoomDirectionSettingChanged);
 
     if (auto *application =
             qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
@@ -113,53 +88,12 @@ UniRcChannelController::UniRcChannelController(
                 &UniRcChannelController::_applicationStateChanged);
     }
 
-    _updateSelectedBluetoothDevice();
     QTimer::singleShot(0, this, &UniRcChannelController::_reconcile);
 }
 
 UniRcChannelController::~UniRcChannelController()
 {
     shutdown();
-}
-
-bool UniRcChannelController::bluetoothScanning() const
-{
-    return _discoveryAgent && _discoveryAgent->isActive();
-}
-
-void UniRcChannelController::startBluetoothScan()
-{
-    _startBluetoothScan(true);
-}
-
-void UniRcChannelController::selectBluetoothDevice(int index)
-{
-    if (!_settings
-        || index < 0
-        || index >= _bluetoothDeviceInfos.size()) {
-        return;
-    }
-
-    const QBluetoothDeviceInfo &info = _bluetoothDeviceInfos.at(index);
-    if (!info.isValid() || info.address().isNull()) {
-        return;
-    }
-    if (!isUniRcBluetoothName(info.name())) {
-        qCDebug(UniRcChannelLog)
-            << "Ignoring non-UniRC Bluetooth device"
-            << info.name() << info.address().toString();
-        return;
-    }
-
-    if (_discoveryAgent->isActive()) {
-        _discoveryAgent->stop();
-    }
-    _setDiagnosticStage(QStringLiteral("BT_DEVICE_SELECTED"));
-    _settings->uniRcSdkBluetoothAddress()->setRawValue(
-        info.address().toString());
-    qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth event device-selected"
-        << info.name() << info.address().toString();
 }
 
 void UniRcChannelController::shutdown()
@@ -173,9 +107,6 @@ void UniRcChannelController::shutdown()
     _reconnectTimer.stop();
     _connectionTimeout.stop();
     _inputWatchdog.stop();
-    if (_discoveryAgent && _discoveryAgent->isActive()) {
-        _discoveryAgent->stop();
-    }
     if (_gimbalCenterCoordinator) {
         _gimbalCenterCoordinator->cancel();
     }
@@ -193,12 +124,26 @@ void UniRcChannelController::_settingsChanged()
         _bluetoothPaired = false;
         emit diagnosticsChanged();
     }
-    if (_discoveryAgent->isActive()) {
-        _discoveryAgent->stop();
-    }
     _closeBluetooth(true, "settings-changed");
-    _updateSelectedBluetoothDevice();
     _reconcile();
+}
+
+void UniRcChannelController::_zoomDirectionSettingChanged()
+{
+    if (_shuttingDown) {
+        return;
+    }
+
+    // Changing the mapping while the wheel is deflected must not reverse the
+    // lens without a neutral transition. Stop the current action and re-arm
+    // both channel controls from their safe positions; the Bluetooth session
+    // and 0x42 stream remain connected.
+    _resetInput(false);
+    qCInfo(UniRcChannelLog)
+        << "UniRC CH9 zoom direction mapping changed"
+        << "reversed"
+        << _settings->uniRcZoomDirectionReversed()->rawValue().toBool()
+        << "waiting for wheel center";
 }
 
 void UniRcChannelController::_applicationStateChanged(
@@ -210,9 +155,6 @@ void UniRcChannelController::_applicationStateChanged(
         _reconnectTimer.stop();
         _connectionTimeout.stop();
         _inputWatchdog.stop();
-        if (_discoveryAgent->isActive()) {
-            _discoveryAgent->stop();
-        }
         if (_gimbalCenterCoordinator) {
             _gimbalCenterCoordinator->cancel();
         }
@@ -229,7 +171,9 @@ bool UniRcChannelController::_shouldRun() const
         && !_failureScheduled
         && _applicationActive
         && _settings
-        && _settings->uniRcChannelControlEnabled()->rawValue().toBool();
+        && _settings->uniRcChannelControlEnabled()->rawValue().toBool()
+        && _settings->uniRcSdkInterface()->rawValue().toUInt()
+               == kBluetoothSdkInterface;
 #else
     return false;
 #endif
@@ -241,15 +185,22 @@ void UniRcChannelController::_reconcile()
         _reconnectTimer.stop();
         _connectionTimeout.stop();
         _inputWatchdog.stop();
-        if (_discoveryAgent->isActive()) {
-            _discoveryAgent->stop();
-        }
         _closeBluetooth(true, "not-running");
         if (!_failureScheduled) {
             if (_shuttingDown) {
                 _setDiagnosticStage(QStringLiteral("SHUTDOWN"));
             } else if (!_applicationActive) {
                 _setDiagnosticStage(QStringLiteral("APP_INACTIVE"));
+            } else if (_settings
+                       && _settings->uniRcChannelControlEnabled()
+                              ->rawValue().toBool()
+                       && _settings->uniRcSdkInterface()
+                              ->rawValue().toUInt()
+                              != kBluetoothSdkInterface) {
+                _setDiagnosticStage(
+                    QStringLiteral("SDK_INTERFACE_UNSUPPORTED"));
+                _setLastError(
+                    tr("The selected UniRC SDK interface is not supported."));
             } else {
                 _setDiagnosticStage(QStringLiteral("DISABLED"));
             }
@@ -262,8 +213,7 @@ void UniRcChannelController::_reconcile()
         return;
     }
 
-    if (_socket || _discoveryAgent->isActive()
-        || _permissionRequestPending) {
+    if (_socket || _permissionRequestPending) {
         return;
     }
     if (!_ensureBluetoothPermission() || !_ensureBluetoothPoweredOn()) {
@@ -274,7 +224,13 @@ void UniRcChannelController::_reconcile()
     }
 
     if (_configuredBluetoothAddress().isEmpty()) {
-        _startBluetoothScan(false);
+        if (_bluetoothPaired) {
+            _bluetoothPaired = false;
+            emit diagnosticsChanged();
+        }
+        _setDiagnosticStage(QStringLiteral("BT_ADDRESS_MISSING"));
+        _setLastError(
+            tr("Configure the UniRC SDK Bluetooth address before connecting."));
         return;
     }
     _connectBluetooth();
@@ -309,7 +265,7 @@ bool UniRcChannelController::_ensureBluetoothPermission()
     _permissionRequestPending = true;
     _setDiagnosticStage(QStringLiteral("BT_PERMISSION_REQUEST"));
     _setLastError(
-        tr("Grant Nearby devices permission to scan and connect to the UniRC SDK Bluetooth device."));
+        tr("Grant Nearby devices permission to connect to the UniRC SDK Bluetooth device."));
     application->requestPermission(
         permission,
         this,
@@ -346,124 +302,6 @@ bool UniRcChannelController::_ensureBluetoothPoweredOn()
         return false;
     }
     return true;
-}
-
-void UniRcChannelController::_startBluetoothScan(bool userRequested)
-{
-    if (!_shouldRun()) {
-        if (userRequested) {
-            _setLastError(
-                tr("Enable UniRC CH9/CH10 gimbal control before scanning."));
-        }
-        return;
-    }
-    if (!_ensureBluetoothPermission() || !_ensureBluetoothPoweredOn()) {
-        return;
-    }
-
-    _reconnectTimer.stop();
-    if (userRequested) {
-        _closeBluetooth(true, "user-scan");
-    }
-    if (_discoveryAgent->isActive()) {
-        _discoveryAgent->stop();
-    }
-
-    _bluetoothDeviceInfos.clear();
-    _bluetoothDeviceLabels.clear();
-    emit bluetoothDevicesChanged();
-    _updateSelectedBluetoothDevice();
-    _setLastError(
-        tr("Scanning for UniRC BLUE Bluetooth devices..."));
-    _setDiagnosticStage(QStringLiteral("BT_SCANNING"));
-    qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth event scan-start"
-        << "userRequested" << userRequested;
-    _discoveryAgent->start(
-        QBluetoothDeviceDiscoveryAgent::ClassicMethod);
-    emit bluetoothScanningChanged();
-}
-
-void UniRcChannelController::_deviceDiscovered(
-    const QBluetoothDeviceInfo &info)
-{
-    if (!info.isValid() || info.address().isNull()) {
-        return;
-    }
-    if (!isUniRcBluetoothName(info.name())) {
-        qCDebug(UniRcChannelLog)
-            << "Ignoring non-UniRC Bluetooth device"
-            << info.name() << info.address().toString();
-        return;
-    }
-    for (const QBluetoothDeviceInfo &known :
-         std::as_const(_bluetoothDeviceInfos)) {
-        if (known.address() == info.address()) {
-            return;
-        }
-    }
-
-    _bluetoothDeviceInfos.append(info);
-    _bluetoothDeviceLabels.append(bluetoothDeviceLabel(info));
-    emit bluetoothDevicesChanged();
-    _updateSelectedBluetoothDevice();
-    qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth event device-discovered"
-        << "name" << info.name()
-        << "address" << info.address().toString()
-        << "pairing"
-        << static_cast<int>(
-               QBluetoothLocalDevice().pairingStatus(info.address()));
-
-}
-
-void UniRcChannelController::_discoveryFinished()
-{
-    emit bluetoothScanningChanged();
-    if (!_shouldRun() || _reconnectTimer.isActive()) {
-        return;
-    }
-    if (!_configuredBluetoothAddress().isEmpty()) {
-        _reconcile();
-        return;
-    }
-
-    _setLastError(
-        _bluetoothDeviceInfos.isEmpty()
-            ? tr("No UniRC BLUE Bluetooth device was found. Pair it in Android settings, then scan again.")
-            : tr("No UniRC BLUE Bluetooth device was selected. Select a discovered device or enter its Bluetooth address."));
-    _setDiagnosticStage(
-        _bluetoothDeviceInfos.isEmpty()
-            ? QStringLiteral("BT_DEVICE_NOT_FOUND")
-            : QStringLiteral("BT_DEVICE_NOT_SELECTED"));
-}
-
-void UniRcChannelController::_discoveryCanceled()
-{
-    emit bluetoothScanningChanged();
-    _updateSelectedBluetoothDevice();
-    if (!_shuttingDown && !_reconnectTimer.isActive()) {
-        QTimer::singleShot(0, this, &UniRcChannelController::_reconcile);
-    }
-}
-
-void UniRcChannelController::_discoveryError(
-    QBluetoothDeviceDiscoveryAgent::Error error)
-{
-    emit bluetoothScanningChanged();
-    if (_shuttingDown) {
-        return;
-    }
-    const QString message =
-        tr("UniRC Bluetooth scan failed: %1")
-            .arg(_discoveryAgent->errorString());
-    qCWarning(UniRcChannelLog)
-        << message << "error" << error;
-    _setDiagnosticStage(QStringLiteral("BT_SCAN_ERROR"));
-    _setLastError(message);
-    if (_shouldRun() && !_reconnectTimer.isActive()) {
-        _reconnectTimer.start(kFailureRetryDelayMs);
-    }
 }
 
 void UniRcChannelController::_connectBluetooth()
@@ -834,7 +672,7 @@ void UniRcChannelController::_handleChannelPacket(
         return;
     }
 
-    std::array<qint16, 16> channels {};
+    UniRcProtocol::Channels channels {};
     if (!UniRcProtocol::parseChannelData(packet, &channels)) {
         return;
     }
@@ -875,14 +713,21 @@ void UniRcChannelController::_handleChannelPacket(
     }
 
     _inputWatchdog.start(kActiveFrameTimeoutMs);
-    if (_channel9 != channel9 || _channel10 != channel10) {
-        _channel9 = channel9;
-        _channel10 = channel10;
+    QVariantList channelValues;
+    channelValues.reserve(static_cast<qsizetype>(channels.size()));
+    for (const qint16 channel : channels) {
+        channelValues.append(static_cast<int>(channel));
+    }
+    if (_channelValues != channelValues) {
+        _channelValues = channelValues;
         emit channelsChanged();
     }
 
     const UniRcChannelPolicy::Result result =
-        _channelPolicy.update(channel9, channel10);
+        _channelPolicy.update(
+            channel9,
+            channel10,
+            _settings->uniRcZoomDirectionReversed()->rawValue().toBool());
     if (!result.channelsValid) {
         ++_invalidChannelFrameCount;
         if (!_invalidChannelWarningActive) {
@@ -1194,12 +1039,9 @@ QString UniRcChannelController::_configuredBluetoothAddress() const
 
 QString UniRcChannelController::_transportDescription() const
 {
-    if (!_selectedBluetoothDevice.isEmpty()) {
-        return _selectedBluetoothDevice;
-    }
     const QString address = _configuredBluetoothAddress();
     return address.isEmpty()
-        ? tr("unselected device")
+        ? tr("unconfigured device")
         : address;
 }
 
@@ -1234,28 +1076,6 @@ QString UniRcChannelController::diagnosticSummary() const
         .arg(_channelInputActive ? QStringLiteral("ready")
                                  : QStringLiteral("safe"))
         .arg(lastFrame);
-}
-
-void UniRcChannelController::_updateSelectedBluetoothDevice()
-{
-    const QBluetoothAddress configured(
-        _configuredBluetoothAddress());
-    QString selected = configured.isNull()
-        ? QString()
-        : configured.toString();
-    for (const QBluetoothDeviceInfo &info :
-         std::as_const(_bluetoothDeviceInfos)) {
-        if (info.address() == configured) {
-            selected = bluetoothDeviceLabel(info);
-            break;
-        }
-    }
-    if (_selectedBluetoothDevice == selected) {
-        return;
-    }
-    _selectedBluetoothDevice = selected;
-    emit selectedBluetoothDeviceChanged();
-    emit diagnosticsChanged();
 }
 
 void UniRcChannelController::_setBluetoothConnected(bool connected)
