@@ -105,14 +105,9 @@
 <context>
     <name>FlyViewCustomLayer</name>
     <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="101"/>
+        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="106"/>
         <source>Gimbal</source>
         <translation>云台</translation>
-    </message>
-    <message>
-        <location filename="../src/FlightDisplay/FlyViewCustomLayer.qml" line="102"/>
-        <source>REL</source>
-        <translation>相对</translation>
     </message>
 </context>
 <context>

@@ -20,8 +20,6 @@ Item {
     property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
     property real directionDegrees: vehicle ? Number(vehicle.heading.rawValue) : NaN
     property string indicatorPrefix: ""
-    property real secondaryDegrees: NaN
-    property string secondaryPrefix: ""
 
     readonly property real _rawHeading: Number(directionDegrees)
     readonly property bool headingValid: isFinite(_rawHeading)
@@ -55,20 +53,6 @@ Item {
                 : "---°"
         if (indicatorPrefix.length > 0) {
             primaryText = indicatorPrefix + " " + primaryText
-        }
-
-        var relativeValue = Number(secondaryDegrees)
-        if (isFinite(relativeValue)) {
-            var roundedRelative = Math.round(relativeValue)
-            if (Math.abs(roundedRelative) < 1) {
-                roundedRelative = 0
-            }
-            var relativeText = (roundedRelative > 0 ? "+" : "")
-                    + roundedRelative + "°"
-            if (secondaryPrefix.length > 0) {
-                relativeText = secondaryPrefix + " " + relativeText
-            }
-            primaryText += "  " + relativeText
         }
         return primaryText
     }

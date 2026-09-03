@@ -11,6 +11,7 @@
 #include "Android/UniRcChannelController.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
 #include "FactMetaData.h"
+#include "Gimbal/GimbalAzimuthProvider.h"
 #include "Gimbal/GimbalCenterCoordinator.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
@@ -184,6 +185,7 @@ void CustomPlugin::init()
 
     _ensureFlyViewCustomSettings();
 
+    _ensureGimbalAzimuthProvider();
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureGimbalCenterCoordinator();
@@ -301,6 +303,17 @@ GimbalControlManager *CustomPlugin::gimbalControlManagerObject()
     return _gimbalControlManager;
 }
 
+QObject *CustomPlugin::gimbalAzimuthProvider()
+{
+    return gimbalAzimuthProviderObject();
+}
+
+GimbalAzimuthProvider *CustomPlugin::gimbalAzimuthProviderObject()
+{
+    _ensureGimbalAzimuthProvider();
+    return _gimbalAzimuthProvider;
+}
+
 QObject *CustomPlugin::gimbalCenterCoordinator()
 {
     return gimbalCenterCoordinatorObject();
@@ -358,8 +371,10 @@ DualVideoManager *CustomPlugin::dualVideoManagerObject()
 
 bool CustomPlugin::mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message)
 {
-    Q_UNUSED(vehicle);
     Q_UNUSED(link);
+
+    _ensureGimbalAzimuthProvider();
+    _gimbalAzimuthProvider->handleMavlinkMessage(vehicle, message);
 
     return !GimbalVideoStreamSupport::shouldFilterMavlinkMessage(_gimbalControlSettings, message);
 }
@@ -405,6 +420,13 @@ void CustomPlugin::_ensureFlyViewCustomSettings()
 {
     if (!_flyViewCustomSettings) {
         _flyViewCustomSettings = new FlyViewCustomSettings(this);
+    }
+}
+
+void CustomPlugin::_ensureGimbalAzimuthProvider()
+{
+    if (!_gimbalAzimuthProvider) {
+        _gimbalAzimuthProvider = new GimbalAzimuthProvider(this);
     }
 }
 

@@ -18,6 +18,7 @@ class External3DMapManager;
 class UniRcChannelController;
 class DualVideoManager;
 class FlyViewCustomSettings;
+class GimbalAzimuthProvider;
 class GimbalCenterCoordinator;
 class GimbalControlManager;
 class GimbalControlSettings;
@@ -35,6 +36,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_MOC_INCLUDE("custom/src/Android/UniRcChannelController.h")
     Q_MOC_INCLUDE("custom/src/Viewer3D/Viewer3DSettings.h")
     Q_MOC_INCLUDE("custom/src/Settings/FlyViewCustomSettings.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/GimbalAzimuthProvider.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlManager.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalCenterCoordinator.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
@@ -46,6 +48,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_PROPERTY(QObject *uniRcChannelController READ uniRcChannelController CONSTANT)
     Q_PROPERTY(QObject *external3DMapManager READ external3DMapManager CONSTANT)
     Q_PROPERTY(QObject *flyViewCustomSettings READ flyViewCustomSettings CONSTANT)
+    Q_PROPERTY(QObject *gimbalAzimuthProvider READ gimbalAzimuthProvider CONSTANT)
     Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
     Q_PROPERTY(QObject *gimbalCenterCoordinator READ gimbalCenterCoordinator CONSTANT)
@@ -80,6 +83,8 @@ public:
     QObject *flyViewCustomSettings();
     FlyViewCustomSettings *flyViewCustomSettingsFactGroup();
 
+    QObject *gimbalAzimuthProvider();
+    GimbalAzimuthProvider *gimbalAzimuthProviderObject();
     QObject *gimbalControlSettings();
     GimbalControlSettings *gimbalControlSettingsFactGroup();
     QObject *gimbalControlManager();
@@ -98,6 +103,7 @@ private:
     void _ensureUniRcChannelController();
     void _ensureExternal3DMapManager();
     void _ensureFlyViewCustomSettings();
+    void _ensureGimbalAzimuthProvider();
     void _ensureGimbalControlSettings();
     void _ensureGimbalControlManager();
     void _ensureGimbalCenterCoordinator();
@@ -114,6 +120,7 @@ private:
     UniRcChannelController *_uniRcChannelController = nullptr;
     External3DMapManager *_external3DMapManager = nullptr;
     FlyViewCustomSettings *_flyViewCustomSettings = nullptr;
+    GimbalAzimuthProvider *_gimbalAzimuthProvider = nullptr;
     GimbalControlSettings *_gimbalControlSettings = nullptr;
     GimbalControlManager *_gimbalControlManager = nullptr;
     GimbalCenterCoordinator *_gimbalCenterCoordinator = nullptr;

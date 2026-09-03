@@ -507,6 +507,23 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    qt_add_executable(GimbalAzimuthPolicyTest
+        test/Gimbal/GimbalAzimuthPolicyTest.cc
+        src/Gimbal/GimbalAzimuthPolicy.cc
+        src/Gimbal/GimbalAzimuthPolicy.h
+    )
+    target_include_directories(GimbalAzimuthPolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(GimbalAzimuthPolicyTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalAzimuthPolicyTest COMMAND $<TARGET_FILE:GimbalAzimuthPolicyTest>)
+    add_custom_target(check_gimbal_azimuth_policy
+        COMMAND $<TARGET_FILE:GimbalAzimuthPolicyTest>
+        DEPENDS GimbalAzimuthPolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
     qt_add_executable(UniRcProtocolTest
         test/Android/UniRcProtocolTest.cc
         src/Android/UniRcChannelPolicy.cc

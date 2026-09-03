@@ -23,6 +23,10 @@ Item {
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var _gimbalController: _activeVehicle ? _activeVehicle.gimbalController : null
     property var _activeGimbal: _gimbalController ? _gimbalController.activeGimbal : null
+    readonly property var _gimbalAzimuthProvider: QGroundControl.corePlugin
+                                                    && QGroundControl.corePlugin.gimbalAzimuthProvider !== undefined
+                                                    ? QGroundControl.corePlugin.gimbalAzimuthProvider
+                                                    : null
     property var _flyViewCustomSettings: QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
     property bool _showHeadingCompassBar: Boolean(_flyViewCustomSettings &&
                                                   _flyViewCustomSettings.showHeadingCompassBar &&
@@ -32,16 +36,19 @@ Item {
                                                         _flyViewCustomSettings.showGimbalHeadingCompassBar.rawValue)
     property real _heading: _activeVehicle ? Number(_activeVehicle.heading.rawValue) : NaN
     property bool _headingValid: isFinite(_heading)
-    property real _gimbalAbsoluteYaw: _activeGimbal ? Number(_activeGimbal.absoluteYaw.rawValue) : NaN
-    property real _gimbalBodyYaw: _activeGimbal ? Number(_activeGimbal.bodyYaw.rawValue) : NaN
-    // Native Gimbal has no per-attitude timestamp. This vehicle-link gate
-    // intentionally matches the top toolbar's feedback validity boundary.
+    property real _gimbalAbsoluteYaw: _gimbalAzimuthProvider && _gimbalAzimuthProvider.valid
+                                      ? Number(_gimbalAzimuthProvider.absoluteYaw)
+                                      : NaN
+    // The provider invalidates stale gimbal samples independently. The
+    // compass also hides immediately when the whole vehicle link is lost.
     property bool _vehicleCommunicationLost: !_activeVehicle ||
                                              !_activeVehicle.vehicleLinkManager ||
                                              _activeVehicle.vehicleLinkManager.communicationLost
     property bool _gimbalHeadingValid: Boolean(_activeVehicle &&
                                                !_vehicleCommunicationLost &&
                                                _activeGimbal &&
+                                               _gimbalAzimuthProvider &&
+                                               _gimbalAzimuthProvider.valid &&
                                                isFinite(_gimbalAbsoluteYaw))
     property real _toolsMargin: ScreenTools.defaultFontPixelWidth * 0.75
 
@@ -66,8 +73,9 @@ Item {
         bottomEdgeRightInset:   parentToolInsets.bottomEdgeRightInset
     }
 
-    // The gimbal bar uses the active MAVLink gimbal's feedback-confirmed
-    // earth-frame azimuth. bodyYaw is shown only as a secondary relative value.
+    // The gimbal bar shows only the active gimbal's feedback-confirmed
+    // earth-frame azimuth. Frame conversion is centralized in the custom
+    // provider so the toolbar and compass cannot disagree.
     Loader {
         id: gimbalCompassBarLoader
 
@@ -95,11 +103,7 @@ Item {
             item.directionDegrees = Qt.binding(function() {
                 return root._gimbalAbsoluteYaw
             })
-            item.secondaryDegrees = Qt.binding(function() {
-                return root._gimbalBodyYaw
-            })
             item.indicatorPrefix = qsTr("Gimbal")
-            item.secondaryPrefix = qsTr("REL")
         }
 
         onStatusChanged: {

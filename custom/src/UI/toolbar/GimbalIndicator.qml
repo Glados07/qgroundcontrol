@@ -35,6 +35,13 @@ Item {
                                                      && QGroundControl.corePlugin.gimbalCenterCoordinator !== undefined
                                                      ? QGroundControl.corePlugin.gimbalCenterCoordinator
                                                      : null
+    readonly property var _gimbalAzimuthProvider: QGroundControl.corePlugin
+                                                  && QGroundControl.corePlugin.gimbalAzimuthProvider !== undefined
+                                                  ? QGroundControl.corePlugin.gimbalAzimuthProvider
+                                                  : null
+    readonly property real _gimbalAbsoluteYaw: _gimbalAzimuthProvider && _gimbalAzimuthProvider.valid
+                                                ? Number(_gimbalAzimuthProvider.absoluteYaw)
+                                                : NaN
 
     property var    margins:                    ScreenTools.defaultFontPixelWidth
     property var    panelRadius:                ScreenTools.defaultFontPixelWidth * 0.5
@@ -847,7 +854,10 @@ Item {
         QGCLabel {
             id:                     panLabel
             text:                   activeGimbal ?
-                                        gimbalTelemetryLayout.showAzimuth ? (qsTr("Az: ") + activeGimbal.absoluteYaw.rawValue.toFixed(1)) :
+                                        gimbalTelemetryLayout.showAzimuth ?
+                                            (isFinite(control._gimbalAbsoluteYaw)
+                                                ? (qsTr("Az: ") + control._gimbalAbsoluteYaw.toFixed(1))
+                                                : (qsTr("Az: ") + "--")) :
                                             (qsTr("Y: ") + activeGimbal.bodyYaw.rawValue.toFixed(1)) :
                                                 ""
         }
