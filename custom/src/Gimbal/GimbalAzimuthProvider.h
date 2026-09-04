@@ -49,8 +49,17 @@ class GimbalAzimuthProvider final : public QObject {
     struct CachedSample {
         GimbalAzimuthPolicy::Result result;
         GimbalYawLockResolver::State yawLockState;
-        bool lockCompatibilityEligible = false;
+        GimbalYawLockResolver::CompatibilityMode lockCompatibilityMode = GimbalYawLockResolver::CompatibilityMode::None;
+        bool yawLock = false;
         bool deltaYawSupported = false;
+        bool reportedYawValid = false;
+        double reportedYawDegrees = 0.0;
+        bool transitionReferenceValid = false;
+        double transitionReferenceYawDegrees = 0.0;
+        bool transitionReportedYawReferenceValid = false;
+        double transitionReportedYawReferenceDegrees = 0.0;
+        qint64 transitionReferenceAtMs = -1;
+        qint64 transitionStartedAtMs = -1;
         quint32 timeBootMs = 0;
         qint64 receivedAtMs = 0;
     };

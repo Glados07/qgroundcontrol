@@ -28,6 +28,8 @@ constexpr quint8 kDeltaYawPayloadLength =
 constexpr quint8 kDeltaYawVelocityPayloadLength =
     static_cast<quint8>(MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS_MIN_LEN + (2 * sizeof(float)));
 constexpr qint64 kSampleTimeoutMs = 2000;
+constexpr qint64 kTransitionReferenceMaxAgeMs = 1000;
+constexpr qint64 kLegacyLockTransitionGuardMs = 1000;
 constexpr int kStaleSampleCheckIntervalMs = 250;
 
 bool hasSemanticExtensionValue(float value) {
@@ -59,6 +61,19 @@ QString lockSelectionName(GimbalYawLockResolver::Selection selection) {
             return QStringLiteral("ReportedYaw");
         case GimbalYawLockResolver::Selection::VehicleHeading:
             return QStringLiteral("VehicleHeading");
+    }
+
+    return QStringLiteral("Unknown");
+}
+
+QString lockCompatibilityModeName(GimbalYawLockResolver::CompatibilityMode mode) {
+    switch (mode) {
+        case GimbalYawLockResolver::CompatibilityMode::None:
+            return QStringLiteral("None");
+        case GimbalYawLockResolver::CompatibilityMode::ExplicitVehicleFrame:
+            return QStringLiteral("ExplicitVehicleFrame");
+        case GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame:
+            return QStringLiteral("LegacyNoFrame");
     }
 
     return QStringLiteral("Unknown");
@@ -144,6 +159,11 @@ void GimbalAzimuthProvider::handleMavlinkMessage(Vehicle *vehicle, const mavlink
 
     bool headingOk = false;
     const double vehicleHeading = vehicle->heading()->rawValue().toDouble(&headingOk);
+    const auto headingTelemetryIt = _vehicleHeadingTelemetryAtMs.constFind(vehicle);
+    const bool measuredHeadingAvailable =
+        headingTelemetryIt != _vehicleHeadingTelemetryAtMs.cend() && headingOk && std::isfinite(vehicleHeading);
+    const bool recentHeadingTelemetry = measuredHeadingAvailable && receivedAtMs >= headingTelemetryIt.value() &&
+                                        (receivedAtMs - headingTelemetryIt.value()) <= kSampleTimeoutMs;
 
     GimbalAzimuthPolicy::Input input;
     input.quaternion = {
@@ -158,69 +178,117 @@ void GimbalAzimuthProvider::handleMavlinkMessage(Vehicle *vehicle, const mavlink
     input.deltaYawSupported = deltaYawSupported;
     input.deltaYawAvailable = deltaYawSupported && std::isfinite(status.delta_yaw);
     input.deltaYawRadians = static_cast<double>(status.delta_yaw);
-    input.vehicleHeadingAvailable =
-        _vehicleHeadingTelemetryAtMs.contains(vehicle) && headingOk && std::isfinite(vehicleHeading);
+    input.vehicleHeadingAvailable = recentHeadingTelemetry;
     input.vehicleHeadingDegrees = vehicleHeading;
+
+    const GimbalYawLockResolver::CompatibilityMode lockCompatibilityMode =
+        GimbalYawLockResolver::modeForStatus(input.yawLock, input.yawInVehicleFrame, input.yawInEarthFrame);
 
     CachedSample sample;
     if (!senderRestarted && previousFresh) {
         sample.yawLockState = previousIt->yawLockState;
-    }
-
-    const GimbalAzimuthPolicy::Result standardResult = GimbalAzimuthPolicy::calculate(input);
-    GimbalAzimuthPolicy::Result reportedYawResult;
-    GimbalAzimuthPolicy::Result vehicleHeadingResult;
-    const bool lockCompatibilityEligible = input.yawInVehicleFrame && !input.yawInEarthFrame && input.yawLock;
-    if (lockCompatibilityEligible) {
-        GimbalAzimuthPolicy::Input reportedYawInput = input;
-        reportedYawInput.yawInVehicleFrame = false;
-        reportedYawInput.yawInEarthFrame = true;
-        reportedYawResult = GimbalAzimuthPolicy::calculate(reportedYawInput);
-
-        const auto headingTelemetryIt = _vehicleHeadingTelemetryAtMs.constFind(vehicle);
-        const bool recentHeadingTelemetry = headingTelemetryIt != _vehicleHeadingTelemetryAtMs.cend() &&
-                                            receivedAtMs >= headingTelemetryIt.value() &&
-                                            (receivedAtMs - headingTelemetryIt.value()) <= kSampleTimeoutMs;
-        if (recentHeadingTelemetry) {
-            GimbalAzimuthPolicy::Input vehicleHeadingInput = input;
-            vehicleHeadingInput.deltaYawSupported = false;
-            vehicleHeadingInput.deltaYawAvailable = false;
-            vehicleHeadingResult = GimbalAzimuthPolicy::calculate(vehicleHeadingInput);
+        if (lockCompatibilityMode == GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame) {
+            if ((previousIt->lockCompatibilityMode == GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame) &&
+                previousIt->transitionReferenceValid) {
+                sample.transitionReferenceValid = true;
+                sample.transitionReferenceYawDegrees = previousIt->transitionReferenceYawDegrees;
+                sample.transitionReportedYawReferenceValid = previousIt->transitionReportedYawReferenceValid;
+                sample.transitionReportedYawReferenceDegrees = previousIt->transitionReportedYawReferenceDegrees;
+                sample.transitionReferenceAtMs = previousIt->transitionReferenceAtMs;
+                sample.transitionStartedAtMs = previousIt->transitionStartedAtMs;
+            } else if (!previousIt->yawLock && previousIt->result.valid &&
+                       std::isfinite(previousIt->result.absoluteYawDegrees) &&
+                       (receivedAtMs >= previousIt->receivedAtMs) &&
+                       ((receivedAtMs - previousIt->receivedAtMs) <= kTransitionReferenceMaxAgeMs)) {
+                // This is the same Vehicle/component/device route and the
+                // preceding Follow sample is close to the mode edge, so it is
+                // a bounded world-yaw continuity reference for the ambiguous
+                // legacy lock. Raw q continuity is checked independently.
+                sample.transitionReferenceValid = true;
+                sample.transitionReferenceYawDegrees = previousIt->result.absoluteYawDegrees;
+                sample.transitionReportedYawReferenceValid = previousIt->reportedYawValid;
+                sample.transitionReportedYawReferenceDegrees = previousIt->reportedYawDegrees;
+                sample.transitionReferenceAtMs = previousIt->receivedAtMs;
+                sample.transitionStartedAtMs = receivedAtMs;
+            }
         }
     }
 
+    const GimbalAzimuthPolicy::Result standardResult = GimbalAzimuthPolicy::calculate(input);
+    GimbalAzimuthPolicy::Input reportedYawInput = input;
+    reportedYawInput.yawInVehicleFrame = false;
+    reportedYawInput.yawInEarthFrame = true;
+    const GimbalAzimuthPolicy::Result reportedYawResult = GimbalAzimuthPolicy::calculate(reportedYawInput);
+    GimbalAzimuthPolicy::Result vehicleHeadingResult;
+
+    const bool needsVehicleHeadingCandidate =
+        (lockCompatibilityMode == GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame) ||
+        ((lockCompatibilityMode == GimbalYawLockResolver::CompatibilityMode::ExplicitVehicleFrame) &&
+         (standardResult.source == GimbalAzimuthPolicy::Source::DeltaYaw));
+    if (recentHeadingTelemetry && needsVehicleHeadingCandidate) {
+        GimbalAzimuthPolicy::Input vehicleHeadingInput = input;
+        // LegacyNoFrame + YAW_LOCK would normally make Policy interpret q as
+        // earth-frame yaw. Force the independent body-frame hypothesis here
+        // so this candidate is genuinely yaw(q) + Vehicle.heading.
+        vehicleHeadingInput.yawInVehicleFrame = true;
+        vehicleHeadingInput.yawInEarthFrame = false;
+        vehicleHeadingInput.deltaYawSupported = false;
+        vehicleHeadingInput.deltaYawAvailable = false;
+        vehicleHeadingResult = GimbalAzimuthPolicy::calculate(vehicleHeadingInput);
+    }
+
     GimbalYawLockResolver::Input resolverInput;
-    resolverInput.eligible = lockCompatibilityEligible;
+    resolverInput.mode = lockCompatibilityMode;
     resolverInput.standardResult = standardResult;
     resolverInput.reportedYawResult = reportedYawResult;
     resolverInput.vehicleHeadingResult = vehicleHeadingResult;
+    resolverInput.transitionReferenceAvailable =
+        (lockCompatibilityMode == GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame) &&
+        sample.transitionReferenceValid && (sample.transitionReferenceAtMs >= 0) &&
+        (sample.transitionStartedAtMs >= sample.transitionReferenceAtMs) &&
+        ((sample.transitionStartedAtMs - sample.transitionReferenceAtMs) <= kTransitionReferenceMaxAgeMs) &&
+        (receivedAtMs >= sample.transitionStartedAtMs) &&
+        ((receivedAtMs - sample.transitionStartedAtMs) <= kLegacyLockTransitionGuardMs);
+    resolverInput.transitionReferenceYawDegrees = sample.transitionReferenceYawDegrees;
+    resolverInput.transitionReportedYawReferenceAvailable =
+        resolverInput.transitionReferenceAvailable && sample.transitionReportedYawReferenceValid;
+    resolverInput.transitionReportedYawReferenceDegrees = sample.transitionReportedYawReferenceDegrees;
     const GimbalYawLockResolver::Result resolved = GimbalYawLockResolver::update(sample.yawLockState, resolverInput);
     sample.result = resolved.azimuth;
-    sample.lockCompatibilityEligible = lockCompatibilityEligible;
+    sample.lockCompatibilityMode = lockCompatibilityMode;
+    sample.yawLock = input.yawLock;
     sample.deltaYawSupported = deltaYawSupported;
+    sample.reportedYawValid = reportedYawResult.valid && std::isfinite(reportedYawResult.absoluteYawDegrees);
+    sample.reportedYawDegrees = reportedYawResult.absoluteYawDegrees;
     sample.timeBootMs = status.time_boot_ms;
     sample.receivedAtMs = receivedAtMs;
 
     const bool sourceChanged =
         senderRestarted || previousIt == vehicleSamples.cend() || previousIt->result.source != sample.result.source;
     const bool lockSessionChanged = previousIt == vehicleSamples.cend() || senderRestarted || !previousFresh ||
-                                    previousIt->lockCompatibilityEligible != lockCompatibilityEligible;
+                                    previousIt->lockCompatibilityMode != lockCompatibilityMode ||
+                                    previousIt->yawLock != input.yawLock;
     if (sourceChanged || resolved.selectionChanged || lockSessionChanged) {
         qCInfo(GimbalAzimuthProviderLog) << "Gimbal azimuth reference changed"
                                          << "vehicle" << vehicle->id() << "source component" << message.compid
                                          << "device id" << status.gimbal_device_id << "payload length" << message.len
                                          << "flags" << status.flags << "yaw lock" << input.yawLock << "vehicle frame"
                                          << input.yawInVehicleFrame << "earth frame" << input.yawInEarthFrame
+                                         << "compatibility mode" << lockCompatibilityModeName(lockCompatibilityMode)
                                          << "delta supported" << input.deltaYawSupported << "delta yaw"
-                                         << input.deltaYawRadians << "heading available"
-                                         << input.vehicleHeadingAvailable << "vehicle heading"
+                                         << input.deltaYawRadians << "heading available" << measuredHeadingAvailable
+                                         << "recent heading" << recentHeadingTelemetry << "vehicle heading"
                                          << input.vehicleHeadingDegrees << "protocol reference"
                                          << _sourceName(standardResult.source) << "protocol azimuth"
                                          << standardResult.absoluteYawDegrees << "reported q yaw valid"
                                          << reportedYawResult.valid << "reported q yaw"
                                          << reportedYawResult.absoluteYawDegrees << "heading candidate valid"
                                          << vehicleHeadingResult.valid << "heading candidate yaw"
-                                         << vehicleHeadingResult.absoluteYawDegrees << "lock resolver"
+                                         << vehicleHeadingResult.absoluteYawDegrees << "transition reference valid"
+                                         << resolverInput.transitionReferenceAvailable << "transition reference yaw"
+                                         << resolverInput.transitionReferenceYawDegrees << "transition raw q valid"
+                                         << resolverInput.transitionReportedYawReferenceAvailable << "transition raw q"
+                                         << resolverInput.transitionReportedYawReferenceDegrees << "lock resolver"
                                          << lockSelectionName(resolved.selection) << "result valid"
                                          << sample.result.valid << "reference" << _sourceName(sample.result.source)
                                          << "azimuth" << sample.result.absoluteYawDegrees;

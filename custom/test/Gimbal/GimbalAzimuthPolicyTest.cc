@@ -52,7 +52,8 @@ GimbalYawLockResolver::Input resolverInput(
     bool eligible, double standardYawDegrees, double reportedYawDegrees,
     GimbalAzimuthPolicy::Source standardSource = GimbalAzimuthPolicy::Source::VehicleHeadingFallback) {
     GimbalYawLockResolver::Input input;
-    input.eligible = eligible;
+    input.mode = eligible ? GimbalYawLockResolver::CompatibilityMode::ExplicitVehicleFrame
+                          : GimbalYawLockResolver::CompatibilityMode::None;
     input.standardResult = azimuthResult(standardYawDegrees, standardSource);
     input.reportedYawResult = azimuthResult(reportedYawDegrees, GimbalAzimuthPolicy::Source::ReportedEarthFrame);
     return input;
@@ -64,6 +65,39 @@ GimbalYawLockResolver::Input resolverInputWithHeading(double standardYawDegrees,
         resolverInput(true, standardYawDegrees, reportedYawDegrees, GimbalAzimuthPolicy::Source::DeltaYaw);
     input.vehicleHeadingResult =
         azimuthResult(vehicleHeadingYawDegrees, GimbalAzimuthPolicy::Source::VehicleHeadingFallback);
+    return input;
+}
+
+GimbalYawLockResolver::Input legacyResolverInput(
+    bool yawLock, double vehicleHeadingDegrees, double reportedYawDegrees, bool transitionReferenceAvailable = false,
+    double transitionReferenceYawDegrees = 0.0,
+    double transitionReportedYawReferenceDegrees = std::numeric_limits<double>::quiet_NaN(),
+    bool vehicleHeadingAvailable = true) {
+    GimbalAzimuthPolicy::Input policyInput;
+    policyInput.quaternion = quaternionFromEulerDegrees(0.0, 0.0, reportedYawDegrees);
+    policyInput.yawLock = yawLock;
+    policyInput.vehicleHeadingAvailable = vehicleHeadingAvailable;
+    policyInput.vehicleHeadingDegrees = vehicleHeadingDegrees;
+
+    GimbalYawLockResolver::Input input;
+    input.mode = GimbalYawLockResolver::modeForStatus(policyInput.yawLock, policyInput.yawInVehicleFrame,
+                                                      policyInput.yawInEarthFrame);
+    input.standardResult = GimbalAzimuthPolicy::calculate(policyInput);
+    GimbalAzimuthPolicy::Input reportedYawInput = policyInput;
+    reportedYawInput.yawInVehicleFrame = false;
+    reportedYawInput.yawInEarthFrame = true;
+    input.reportedYawResult = GimbalAzimuthPolicy::calculate(reportedYawInput);
+    if (input.mode == GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame && vehicleHeadingAvailable) {
+        policyInput.yawInVehicleFrame = true;
+        policyInput.deltaYawSupported = false;
+        policyInput.deltaYawAvailable = false;
+        input.vehicleHeadingResult = GimbalAzimuthPolicy::calculate(policyInput);
+    }
+    input.transitionReferenceAvailable = transitionReferenceAvailable;
+    input.transitionReferenceYawDegrees = transitionReferenceYawDegrees;
+    input.transitionReportedYawReferenceAvailable =
+        transitionReferenceAvailable && std::isfinite(transitionReportedYawReferenceDegrees);
+    input.transitionReportedYawReferenceDegrees = transitionReportedYawReferenceDegrees;
     return input;
 }
 
@@ -83,6 +117,13 @@ class GimbalAzimuthPolicyTest : public QObject {
     void yawLockKeepsAbsoluteYawStableAcrossBaseRotation();
     void yawLockWithoutDeltaUsesVehicleHeading();
     void yawFollowTracksBaseRotationWithFixedBodyYaw();
+    void resolverClassifiesLoggedLegacyFlags();
+    void resolverKeepsLoggedLegacyTransitionContinuous();
+    void resolverKeepsCompliantLegacyEarthFrameAtTransition();
+    void resolverDoesNotHideLegacyYawCommandAtTransition();
+    void resolverCorrectsDelayedLegacyFrameChange();
+    void resolverLearnsLegacyVehicleHeadingWhenStartingLocked();
+    void resolverLeavesAmbiguousLegacyTransitionOnProtocolResult();
     void resolverRequiresMotionAfterFollowForReportedYaw();
     void resolverRequiresMotionAfterFollowForStandard();
     void resolverLearnsReportedYawWhenStartingLocked();
@@ -337,6 +378,145 @@ void GimbalAzimuthPolicyTest::yawFollowTracksBaseRotationWithFixedBodyYaw() {
     QVERIFY(anglesEqual(afterResult.absoluteYawDegrees - beforeResult.absoluteYawDegrees, 90.0));
     QCOMPARE(beforeResult.source, GimbalAzimuthPolicy::Source::DeltaYaw);
     QCOMPARE(afterResult.source, GimbalAzimuthPolicy::Source::DeltaYaw);
+}
+
+void GimbalAzimuthPolicyTest::resolverClassifiesLoggedLegacyFlags() {
+    constexpr unsigned kYawLockFlag = 16U;
+    constexpr unsigned kYawInVehicleFrameFlag = 32U;
+    constexpr unsigned kYawInEarthFrameFlag = 64U;
+    const auto modeForFlags = [=](unsigned flags) {
+        return GimbalYawLockResolver::modeForStatus(
+            (flags & kYawLockFlag) != 0U, (flags & kYawInVehicleFrameFlag) != 0U, (flags & kYawInEarthFrameFlag) != 0U);
+    };
+
+    // The captured bridge changed only YAW_LOCK: Follow flags=12 and Lock
+    // flags=28. Neither packet declared a yaw frame, so Lock must enter the
+    // legacy ambiguity resolver instead of bypassing it.
+    QCOMPARE(modeForFlags(12U), GimbalYawLockResolver::CompatibilityMode::None);
+    QCOMPARE(modeForFlags(28U), GimbalYawLockResolver::CompatibilityMode::LegacyNoFrame);
+    QCOMPARE(modeForFlags(kYawLockFlag | kYawInVehicleFrameFlag),
+             GimbalYawLockResolver::CompatibilityMode::ExplicitVehicleFrame);
+    QCOMPARE(modeForFlags(kYawLockFlag | kYawInEarthFrameFlag), GimbalYawLockResolver::CompatibilityMode::None);
+    QCOMPARE(modeForFlags(kYawLockFlag | kYawInVehicleFrameFlag | kYawInEarthFrameFlag),
+             GimbalYawLockResolver::CompatibilityMode::None);
+}
+
+void GimbalAzimuthPolicyTest::resolverKeepsLoggedLegacyTransitionContinuous() {
+    GimbalYawLockResolver::State state;
+
+    const auto follow = GimbalYawLockResolver::update(state, legacyResolverInput(false, 45.0, -171.738));
+    QVERIFY(anglesEqual(follow.azimuth.absoluteYawDegrees, -126.738, 1e-6));
+    QCOMPARE(follow.azimuth.source, GimbalAzimuthPolicy::Source::LegacyVehicleHeading);
+
+    // Real log values: the first Lock q changed by just 0.351 degrees, while
+    // the old protocol-only path dropped the 45-degree vehicle heading and
+    // produced a 44.649-degree display jump.
+    const auto lockInput = legacyResolverInput(true, 45.0, -171.387, true, follow.azimuth.absoluteYawDegrees, -171.738);
+    const auto lock = GimbalYawLockResolver::update(state, lockInput);
+    QCOMPARE(lock.selection, GimbalYawLockResolver::Selection::VehicleHeading);
+    QCOMPARE(lock.azimuth.source, GimbalAzimuthPolicy::Source::YawLockVehicleHeadingCompatibility);
+    QVERIFY(anglesEqual(lock.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+    QVERIFY(anglesEqual(lock.azimuth.absoluteYawDegrees - follow.azimuth.absoluteYawDegrees, 0.351, 1e-6));
+
+    // With the camera still earth-fixed, a 45-degree base turn is cancelled by
+    // body q. The learned heading+q result therefore remains unchanged.
+    const auto baseTurn = GimbalYawLockResolver::update(state, legacyResolverInput(true, 90.0, 143.613));
+    QCOMPARE(baseTurn.selection, GimbalYawLockResolver::Selection::VehicleHeading);
+    QVERIFY(anglesEqual(baseTurn.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+
+    // Follow is still the native legacy heading+q calculation. Leaving Lock
+    // clears compatibility state without introducing another reference jump.
+    const auto unlock = GimbalYawLockResolver::update(state, legacyResolverInput(false, 90.0, 143.613));
+    QCOMPARE(unlock.selection, GimbalYawLockResolver::Selection::Undecided);
+    QCOMPARE(unlock.azimuth.source, GimbalAzimuthPolicy::Source::LegacyVehicleHeading);
+    QVERIFY(anglesEqual(unlock.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+}
+
+void GimbalAzimuthPolicyTest::resolverKeepsCompliantLegacyEarthFrameAtTransition() {
+    GimbalYawLockResolver::State state;
+
+    const auto follow = GimbalYawLockResolver::update(state, legacyResolverInput(false, 45.0, -171.738));
+    const auto lock = GimbalYawLockResolver::update(
+        state, legacyResolverInput(true, 45.0, -126.387, true, follow.azimuth.absoluteYawDegrees, -171.738));
+
+    // A compliant legacy sender changes q to earth yaw at Lock entry. Direct q
+    // is continuous, so the protocol interpretation wins instead of applying
+    // heading a second time.
+    QCOMPARE(lock.selection, GimbalYawLockResolver::Selection::Standard);
+    QCOMPARE(lock.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(lock.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+
+    const auto baseTurn = GimbalYawLockResolver::update(state, legacyResolverInput(true, 90.0, -126.2));
+    QCOMPARE(baseTurn.selection, GimbalYawLockResolver::Selection::Standard);
+    QCOMPARE(baseTurn.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(baseTurn.azimuth.absoluteYawDegrees, -126.2, 1e-6));
+}
+
+void GimbalAzimuthPolicyTest::resolverDoesNotHideLegacyYawCommandAtTransition() {
+    GimbalYawLockResolver::State state;
+
+    const auto follow = GimbalYawLockResolver::update(state, legacyResolverInput(false, 45.0, -171.738));
+    const auto lock = GimbalYawLockResolver::update(
+        state, legacyResolverInput(true, 45.0, -165.738, true, follow.azimuth.absoluteYawDegrees, -171.738));
+
+    // A compliant sender can enter earth-frame Lock while a yaw command is
+    // changing the actual world bearing. heading+q happens to remain within
+    // the broad continuity window here, but raw q moved 6 degrees. Do not hide
+    // the command by selecting the vendor body-frame interpretation.
+    QCOMPARE(lock.selection, GimbalYawLockResolver::Selection::Undecided);
+    QCOMPARE(lock.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(lock.azimuth.absoluteYawDegrees, -165.738, 1e-6));
+}
+
+void GimbalAzimuthPolicyTest::resolverCorrectsDelayedLegacyFrameChange() {
+    GimbalYawLockResolver::State state;
+
+    const auto follow = GimbalYawLockResolver::update(state, legacyResolverInput(false, 45.0, -171.738));
+    const auto earlyLock = GimbalYawLockResolver::update(
+        state, legacyResolverInput(true, 45.0, -171.387, true, follow.azimuth.absoluteYawDegrees, -171.738));
+    QCOMPARE(earlyLock.selection, GimbalYawLockResolver::Selection::VehicleHeading);
+
+    // Some senders update YAW_LOCK before changing q from body to earth. The
+    // provider keeps the transition reference for one second, allowing the
+    // resolver to switch as soon as the new q representation is unambiguous.
+    const auto settledLock = GimbalYawLockResolver::update(
+        state, legacyResolverInput(true, 45.0, -126.387, true, follow.azimuth.absoluteYawDegrees, -171.738));
+    QCOMPARE(settledLock.selection, GimbalYawLockResolver::Selection::Standard);
+    QCOMPARE(settledLock.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(settledLock.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+}
+
+void GimbalAzimuthPolicyTest::resolverLearnsLegacyVehicleHeadingWhenStartingLocked() {
+    GimbalYawLockResolver::State state;
+
+    // With no preceding Follow sample there is no information-theoretic way
+    // to classify the first packet. Start with the MAVLink legacy result.
+    const auto first = GimbalYawLockResolver::update(state, legacyResolverInput(true, 45.0, -171.387));
+    QCOMPARE(first.selection, GimbalYawLockResolver::Selection::Undecided);
+    QCOMPARE(first.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(first.azimuth.absoluteYawDegrees, -171.387, 1e-6));
+
+    // Base motion supplies the missing evidence: direct q moves by 45 degrees,
+    // while heading+q remains at the fixed world bearing.
+    const auto learned = GimbalYawLockResolver::update(state, legacyResolverInput(true, 90.0, 143.613));
+    QCOMPARE(learned.selection, GimbalYawLockResolver::Selection::VehicleHeading);
+    QCOMPARE(learned.azimuth.source, GimbalAzimuthPolicy::Source::YawLockVehicleHeadingCompatibility);
+    QVERIFY(anglesEqual(learned.azimuth.absoluteYawDegrees, -126.387, 1e-6));
+}
+
+void GimbalAzimuthPolicyTest::resolverLeavesAmbiguousLegacyTransitionOnProtocolResult() {
+    GimbalYawLockResolver::State state;
+
+    const auto follow = GimbalYawLockResolver::update(state, legacyResolverInput(false, 2.0, 68.0));
+    const auto lock = GimbalYawLockResolver::update(
+        state, legacyResolverInput(true, 2.0, 68.2, true, follow.azimuth.absoluteYawDegrees, 68.0));
+
+    // Near North the two hypotheses differ by too little to justify a vendor
+    // override. Preserve the protocol-safe direct-q result until real motion
+    // creates at least the configured advantage.
+    QCOMPARE(lock.selection, GimbalYawLockResolver::Selection::Undecided);
+    QCOMPARE(lock.azimuth.source, GimbalAzimuthPolicy::Source::LegacyEarthFrame);
+    QVERIFY(anglesEqual(lock.azimuth.absoluteYawDegrees, 68.2, 1e-6));
 }
 
 void GimbalAzimuthPolicyTest::resolverRequiresMotionAfterFollowForReportedYaw() {
@@ -641,8 +821,8 @@ void GimbalAzimuthPolicyTest::resolverDropsVehicleHeadingWhenReferenceExpires() 
     const auto heading = GimbalYawLockResolver::update(state, resolverInputWithHeading(50.0, 30.0, 70.0));
     QCOMPARE(heading.selection, GimbalYawLockResolver::Selection::VehicleHeading);
 
-    const auto expired = GimbalYawLockResolver::update(
-        state, resolverInput(true, 50.0, 30.0, GimbalAzimuthPolicy::Source::DeltaYaw));
+    const auto expired =
+        GimbalYawLockResolver::update(state, resolverInput(true, 50.0, 30.0, GimbalAzimuthPolicy::Source::DeltaYaw));
     QCOMPARE(expired.selection, GimbalYawLockResolver::Selection::Standard);
     QVERIFY(expired.selectionChanged);
     QCOMPARE(expired.azimuth.source, GimbalAzimuthPolicy::Source::DeltaYaw);
