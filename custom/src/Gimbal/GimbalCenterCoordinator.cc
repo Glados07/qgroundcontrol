@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Reliable MAVLink gimbal-center sequencing used by custom input surfaces.
+ * Shared MAVLink gimbal posture sequencing and UniRC CH10 action state.
  *
  ****************************************************************************/
 
@@ -55,8 +55,47 @@ GimbalCenterCoordinator::~GimbalCenterCoordinator()
 
 bool GimbalCenterCoordinator::requestCenter()
 {
+    return _beginRequest(Ch10GimbalActionState::Action::Recenter);
+}
+
+bool GimbalCenterCoordinator::requestNextCh10Action()
+{
+    return _beginRequest(_ch10ActionState.nextAction());
+}
+
+void GimbalCenterCoordinator::noteRecenterCommandDispatched()
+{
+    _logNextCh10ActionChange(
+        _ch10ActionState.recenterCommandDispatched(),
+        "recenter-command-dispatched");
+}
+
+void GimbalCenterCoordinator::notePitch90CommandDispatched()
+{
+    _logNextCh10ActionChange(
+        _ch10ActionState.pitch90CommandDispatched(),
+        "pitch-90-command-dispatched");
+}
+
+void GimbalCenterCoordinator::noteYawLockCommandDispatched()
+{
+    _logNextCh10ActionChange(
+        _ch10ActionState.yawLockCommandDispatched(),
+        "yaw-mode-command-dispatched");
+}
+
+void GimbalCenterCoordinator::noteManualAttitudeInput()
+{
+    _logNextCh10ActionChange(
+        _ch10ActionState.manualAttitudeInputDetected(),
+        "manual-attitude-input");
+}
+
+bool GimbalCenterCoordinator::_beginRequest(
+    Ch10GimbalActionState::Action action)
+{
     if (_busy) {
-        return _requestContextIsCurrent();
+        return _requestContextIsCurrent() && (_requestAction == action);
     }
 
     Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
@@ -72,6 +111,7 @@ bool GimbalCenterCoordinator::requestCenter()
     _requestVehicleId = vehicle->id();
     _requestManagerCompid = gimbal->managerCompid()->rawValue().toInt();
     _requestPrimerKey = _primerKey(vehicle, gimbal);
+    _requestAction = action;
     _acquireSent = false;
     ++_requestGeneration;
 
@@ -82,11 +122,15 @@ bool GimbalCenterCoordinator::requestCenter()
     _requestConnections.append(connect(gimbal, &QObject::destroyed, this, &GimbalCenterCoordinator::cancel));
 
     _setBusy(true);
-    emit centerRequestStarted();
+    emit gimbalActionRequestStarted();
+    if (_requestAction == Ch10GimbalActionState::Action::Recenter) {
+        emit centerRequestStarted();
+    }
 
     const bool hasOwnership = _hasConfirmedOwnership(gimbal);
     if (!hasOwnership) {
-        if (!_requestPrimerKey.isEmpty()) {
+        if ((_requestAction == Ch10GimbalActionState::Action::Recenter)
+            && !_requestPrimerKey.isEmpty()) {
             _primerRequiredKeys.insert(_requestPrimerKey);
         }
         _phase = Phase::WaitingForOwnership;
@@ -94,6 +138,11 @@ bool GimbalCenterCoordinator::requestCenter()
         _acquireSent = true;
         controller->acquireGimbalControl();
         QTimer::singleShot(0, this, &GimbalCenterCoordinator::_reviewRequest);
+        return true;
+    }
+
+    if (_requestAction == Ch10GimbalActionState::Action::Pitch90) {
+        _sendPitch90();
         return true;
     }
 
@@ -121,6 +170,9 @@ void GimbalCenterCoordinator::_activeVehicleChanged(Vehicle *vehicle)
     if (_busy && (vehicle != _requestVehicle)) {
         cancel();
     }
+    if (vehicle != _observedVehicle) {
+        _resetNextCh10Action("active-vehicle-changed");
+    }
 
     _clearObservedConnections();
     _observedVehicle = vehicle;
@@ -132,6 +184,7 @@ void GimbalCenterCoordinator::_activeVehicleChanged(Vehicle *vehicle)
             if (_busy) {
                 cancel();
             }
+            _resetNextCh10Action("active-vehicle-destroyed");
             _activeVehicleChanged(nullptr);
         }));
     }
@@ -153,6 +206,7 @@ void GimbalCenterCoordinator::_activeVehicleChanged(Vehicle *vehicle)
             if (_busy) {
                 cancel();
             }
+            _resetNextCh10Action("gimbal-controller-destroyed");
             _observedController.clear();
             _bindObservedGimbal(nullptr);
         }));
@@ -165,6 +219,9 @@ void GimbalCenterCoordinator::_activeGimbalChanged()
     Gimbal *const gimbal = _observedController ? _observedController->activeGimbal() : nullptr;
     if (_busy && (gimbal != _requestGimbal)) {
         cancel();
+    }
+    if (gimbal != _observedGimbal) {
+        _resetNextCh10Action("active-gimbal-changed");
     }
     _bindObservedGimbal(gimbal);
 }
@@ -212,7 +269,9 @@ void GimbalCenterCoordinator::_mavCommandResult(int vehicleId, int targetCompone
     }
 
     if (_phase == Phase::WaitingForFinalAck) {
-        if (accepted && !_requestPrimerKey.isEmpty()) {
+        if (accepted
+            && (_requestAction == Ch10GimbalActionState::Action::Recenter)
+            && !_requestPrimerKey.isEmpty()) {
             _primerRequiredKeys.remove(_requestPrimerKey);
         }
         _finishRequest();
@@ -236,8 +295,12 @@ void GimbalCenterCoordinator::_reviewRequest()
         return;
     }
 
-    _phase = Phase::WaitingForPrimerAck;
-    _sendPrimer();
+    if (_requestAction == Ch10GimbalActionState::Action::Pitch90) {
+        _sendPitch90();
+    } else {
+        _phase = Phase::WaitingForPrimerAck;
+        _sendPrimer();
+    }
 }
 
 void GimbalCenterCoordinator::_sendPrimer()
@@ -272,9 +335,26 @@ void GimbalCenterCoordinator::_sendFinalCenter()
     _requestTimeout.stop();
     _primerSettleTimer.stop();
     _phase = Phase::WaitingForFinalAck;
+    const quint64 requestGeneration = _requestGeneration;
+    const QPointer<Vehicle> requestVehicle = _requestVehicle;
+    const uint messagesSentBefore = requestVehicle->messagesSent();
     _setDispatchInProgress(true);
     _requestController->centerGimbal();
     _setDispatchInProgress(false);
+
+    // A duplicate-command result can finish the request synchronously from
+    // inside centerGimbal(). Never dereference the cleared request pointers.
+    if (!_busy || (_requestGeneration != requestGeneration)
+        || !requestVehicle || (_requestVehicle != requestVehicle)) {
+        return;
+    }
+    const bool commandDispatched =
+        requestVehicle->messagesSent() != messagesSentBefore;
+    if (!commandDispatched) {
+        cancel();
+        return;
+    }
+    noteRecenterCommandDispatched();
 
     // A matching command result may be emitted synchronously (for example a
     // duplicate-command rejection), so only arm the timer if the request is
@@ -282,6 +362,37 @@ void GimbalCenterCoordinator::_sendFinalCenter()
     if (_busy && (_phase == Phase::WaitingForFinalAck)) {
         _finalAckTimeout.start();
     }
+}
+
+void GimbalCenterCoordinator::_sendPitch90()
+{
+    if (!_busy || !_requestContextIsCurrent() || !_hasConfirmedOwnership(_requestGimbal)) {
+        cancel();
+        return;
+    }
+
+    _requestTimeout.stop();
+    _phase = Phase::WaitingForFinalAck;
+    const quint64 requestGeneration = _requestGeneration;
+    const QPointer<Vehicle> requestVehicle = _requestVehicle;
+    const uint messagesSentBefore = requestVehicle->messagesSent();
+    _setDispatchInProgress(true);
+    _requestController->sendPitchBodyYaw(kPitch90Degrees, 0.0f);
+    _setDispatchInProgress(false);
+
+    if (!_busy || (_requestGeneration != requestGeneration)
+        || !requestVehicle || (_requestVehicle != requestVehicle)) {
+        return;
+    }
+    const bool commandDispatched =
+        requestVehicle->messagesSent() != messagesSentBefore;
+    if (commandDispatched) {
+        notePitch90CommandDispatched();
+    } else {
+        cancel();
+        return;
+    }
+    _finishRequest();
 }
 
 void GimbalCenterCoordinator::_finishRequest()
@@ -296,10 +407,32 @@ void GimbalCenterCoordinator::_finishRequest()
     _requestPrimerKey.clear();
     _requestVehicleId = -1;
     _requestManagerCompid = -1;
+    _requestAction = Ch10GimbalActionState::Action::Recenter;
     _acquireSent = false;
     _phase = Phase::Idle;
     _setDispatchInProgress(false);
     _setBusy(false);
+}
+
+void GimbalCenterCoordinator::_logNextCh10ActionChange(bool changed,
+                                                       const char *reason)
+{
+    if (!changed) {
+        return;
+    }
+
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Next UniRC CH10 gimbal action"
+        << (_ch10ActionState.nextAction()
+                == Ch10GimbalActionState::Action::Recenter
+            ? "recenter"
+            : "pitch-90")
+        << "reason" << reason;
+}
+
+void GimbalCenterCoordinator::_resetNextCh10Action(const char *reason)
+{
+    _logNextCh10ActionChange(_ch10ActionState.reset(), reason);
 }
 
 void GimbalCenterCoordinator::_setBusy(bool busy)
@@ -339,6 +472,7 @@ void GimbalCenterCoordinator::_bindObservedGimbal(Gimbal *gimbal)
         if (_busy) {
             cancel();
         }
+        _resetNextCh10Action("active-gimbal-destroyed");
         _observedGimbal.clear();
     }));
 

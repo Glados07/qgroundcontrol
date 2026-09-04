@@ -532,9 +532,11 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         src/Android/UniRcChannelPolicy.h
         src/Android/UniRcProtocol.cc
         src/Android/UniRcProtocol.h
+        src/Gimbal/Ch10GimbalActionState.h
     )
     target_include_directories(UniRcProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
     )
     target_link_libraries(UniRcProtocolTest PRIVATE
         Qt6::Core

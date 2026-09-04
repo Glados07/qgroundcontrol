@@ -1,3 +1,4 @@
+#include "Ch10GimbalActionState.h"
 #include "UniRcChannelPolicy.h"
 #include "UniRcProtocol.h"
 
@@ -49,6 +50,15 @@ QByteArray makeChannelFrame(const UniRcProtocol::Channels& channels,
     }
     return makeFrame(control, UniRcProtocol::CommandChannelData, payload);
 }
+
+UniRcChannelPolicy::Result updatePolicy(UniRcChannelPolicy& policy,
+                                        qint16 channel9,
+                                        qint16 channel10,
+                                        bool zoomDirectionReversed = false)
+{
+    return policy.update(1500, 1500, channel9, channel10,
+                         zoomDirectionReversed);
+}
 }
 
 class UniRcProtocolTest : public QObject
@@ -64,7 +74,14 @@ private slots:
     void streamParserResynchronizes();
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
     void zoomPolicyCanReverseDirection();
-    void centerPolicyUsesReleasedToPressedEdges();
+    void ch10PolicyUsesReleasedToPressedEdges();
+    void manualAttitudeDeadband_data();
+    void manualAttitudeDeadband();
+    void gimbalActionStateTransitions();
+    void gimbalActionStateAlternatesOnlyAfterDispatch();
+    void sameFrameManualInputPrecedesCh10();
+    void ch9DoesNotChangeGimbalAction();
+    void invalidAttitudeValuesAreIgnored();
     void policyRejectsUnreasonableValues();
 };
 
@@ -241,26 +258,26 @@ void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()
 {
     UniRcChannelPolicy policy;
 
-    auto result = policy.update(1950, 1050);
+    auto result = updatePolicy(policy, 1950, 1050);
     QVERIFY(result.channelsValid);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1500, 1050);
+    result = updatePolicy(policy, 1500, 1050);
     QVERIFY(result.channelsValid);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1525, 1050);
+    result = updatePolicy(policy, 1525, 1050);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    result = policy.update(1526, 1050);
+    result = updatePolicy(policy, 1526, 1050);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 1);
 
-    result = policy.update(1475, 1050);
+    result = updatePolicy(policy, 1475, 1050);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    result = policy.update(1474, 1050);
+    result = updatePolicy(policy, 1474, 1050);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, -1);
 
@@ -269,12 +286,12 @@ void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1050, 1050);
+    result = updatePolicy(policy, 1050, 1050);
     QVERIFY(result.channelsValid);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    policy.update(1500, 1050);
-    result = policy.update(1050, 1050);
+    updatePolicy(policy, 1500, 1050);
+    result = updatePolicy(policy, 1050, 1050);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, -1);
 }
@@ -284,27 +301,27 @@ void UniRcProtocolTest::zoomPolicyCanReverseDirection()
     UniRcChannelPolicy policy;
 
     // A deflected wheel still cannot start before a neutral sample.
-    auto result = policy.update(1950, 1050, true);
+    auto result = updatePolicy(policy, 1950, 1050, true);
     QVERIFY(result.channelsValid);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1500, 1050, true);
+    result = updatePolicy(policy, 1500, 1050, true);
     QVERIFY(result.channelsValid);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1525, 1050, true);
+    result = updatePolicy(policy, 1525, 1050, true);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    result = policy.update(1526, 1050, true);
+    result = updatePolicy(policy, 1526, 1050, true);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, -1);
 
-    result = policy.update(1475, 1050, true);
+    result = updatePolicy(policy, 1475, 1050, true);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
 
-    result = policy.update(1474, 1050, true);
+    result = updatePolicy(policy, 1474, 1050, true);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 1);
 
@@ -313,76 +330,249 @@ void UniRcProtocolTest::zoomPolicyCanReverseDirection()
     result = policy.linkLost();
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    result = policy.update(1050, 1050, true);
+    result = updatePolicy(policy, 1050, 1050, true);
     QVERIFY(!result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
-    policy.update(1500, 1050, true);
-    result = policy.update(1050, 1050, true);
+    updatePolicy(policy, 1500, 1050, true);
+    result = updatePolicy(policy, 1050, 1050, true);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 1);
 
     // CH10 remains edge-triggered and independent from zoom reversal.
-    policy.update(1500, 1050, true);
-    result = policy.update(1500, 1950, true);
-    QVERIFY(result.centerRequested);
+    updatePolicy(policy, 1500, 1050, true);
+    result = updatePolicy(policy, 1500, 1950, true);
+    QVERIFY(result.ch10Pressed);
 }
 
-void UniRcProtocolTest::centerPolicyUsesReleasedToPressedEdges()
+void UniRcProtocolTest::ch10PolicyUsesReleasedToPressedEdges()
 {
     UniRcChannelPolicy policy;
 
-    auto result = policy.update(1500, 1950);
+    auto result = updatePolicy(policy, 1500, 1950);
     QVERIFY(result.channelsValid);
-    QVERIFY(!result.centerRequested);
+    QVERIFY(!result.ch10Pressed);
 
-    result = policy.update(1500, 1250);
-    QVERIFY(!result.centerRequested);
-    result = policy.update(1500, 1750);
-    QVERIFY(result.centerRequested);
-    result = policy.update(1500, 1950);
-    QVERIFY(!result.centerRequested);
-    result = policy.update(1500, 1500);
-    QVERIFY(!result.centerRequested);
-    result = policy.update(1500, 1251);
-    QVERIFY(!result.centerRequested);
-    result = policy.update(1500, 1250);
-    QVERIFY(!result.centerRequested);
-    result = policy.update(1500, 1750);
-    QVERIFY(result.centerRequested);
+    result = updatePolicy(policy, 1500, 1250);
+    QVERIFY(!result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1750);
+    QVERIFY(result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1950);
+    QVERIFY(!result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1500);
+    QVERIFY(!result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1251);
+    QVERIFY(!result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1250);
+    QVERIFY(!result.ch10Pressed);
+    result = updatePolicy(policy, 1500, 1750);
+    QVERIFY(result.ch10Pressed);
 
     policy.linkLost();
-    result = policy.update(1500, 1950);
-    QVERIFY(!result.centerRequested);
-    policy.update(1500, 1050);
-    result = policy.update(1500, 1950);
-    QVERIFY(result.centerRequested);
+    result = updatePolicy(policy, 1500, 1950);
+    QVERIFY(!result.ch10Pressed);
+    updatePolicy(policy, 1500, 1050);
+    result = updatePolicy(policy, 1500, 1950);
+    QVERIFY(result.ch10Pressed);
+}
+
+void UniRcProtocolTest::manualAttitudeDeadband_data()
+{
+    QTest::addColumn<qint16>("value");
+    QTest::addColumn<bool>("manualInput");
+
+    QTest::newRow("below-neutral-range") << qint16(1399) << true;
+    QTest::newRow("lower-inclusive-boundary") << qint16(1400) << false;
+    QTest::newRow("center") << qint16(1500) << false;
+    QTest::newRow("upper-inclusive-boundary") << qint16(1600) << false;
+    QTest::newRow("above-neutral-range") << qint16(1601) << true;
+}
+
+void UniRcProtocolTest::manualAttitudeDeadband()
+{
+    QFETCH(qint16, value);
+    QFETCH(bool, manualInput);
+
+    UniRcChannelPolicy ch7Policy;
+    const auto ch7Result = ch7Policy.update(value, 1500, 1500, 1050);
+    QCOMPARE(ch7Result.manualAttitudeInputDetected, manualInput);
+
+    UniRcChannelPolicy ch8Policy;
+    const auto ch8Result = ch8Policy.update(1500, value, 1500, 1050);
+    QCOMPARE(ch8Result.manualAttitudeInputDetected, manualInput);
+}
+
+void UniRcProtocolTest::gimbalActionStateTransitions()
+{
+    using Action = Ch10GimbalActionState::Action;
+
+    Ch10GimbalActionState state;
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    QVERIFY(state.recenterCommandDispatched());
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    QVERIFY(state.yawLockCommandDispatched());
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    QVERIFY(state.recenterCommandDispatched());
+    QVERIFY(state.pitch90CommandDispatched());
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    QVERIFY(state.recenterCommandDispatched());
+    QVERIFY(state.manualAttitudeInputDetected());
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    QVERIFY(!state.pitch90CommandDispatched());
+    QVERIFY(!state.yawLockCommandDispatched());
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    QVERIFY(state.recenterCommandDispatched());
+    QVERIFY(state.reset());
+    QVERIFY(state.nextAction() == Action::Recenter);
+}
+
+void UniRcProtocolTest::gimbalActionStateAlternatesOnlyAfterDispatch()
+{
+    using Action = Ch10GimbalActionState::Action;
+
+    Ch10GimbalActionState state;
+    const Action expectedActions[] = {
+        Action::Recenter,
+        Action::Pitch90,
+        Action::Recenter,
+        Action::Pitch90,
+    };
+    for (const Action expectedAction : expectedActions) {
+        QVERIFY(state.nextAction() == expectedAction);
+        if (expectedAction == Action::Recenter) {
+            state.recenterCommandDispatched();
+        } else {
+            state.pitch90CommandDispatched();
+        }
+    }
+    QVERIFY(state.nextAction() == Action::Recenter);
+
+    // Selecting an action is read-only. Without a dispatched event, merely
+    // reading the selection cannot advance it.
+    state.recenterCommandDispatched();
+    const Action selectedButNotDispatched = state.nextAction();
+    QVERIFY(selectedButNotDispatched == Action::Pitch90);
+    QVERIFY(state.nextAction() == selectedButNotDispatched);
+}
+
+void UniRcProtocolTest::sameFrameManualInputPrecedesCh10()
+{
+    using Action = Ch10GimbalActionState::Action;
+
+    UniRcChannelPolicy policy;
+    Ch10GimbalActionState state;
+    updatePolicy(policy, 1500, 1050);
+    state.recenterCommandDispatched();
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    auto result = policy.update(1399, 1500, 1950, 1750);
+    QVERIFY(result.manualAttitudeInputDetected);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 1);
+    QVERIFY(result.ch10Pressed);
+    state.manualAttitudeInputDetected();
+    QVERIFY(state.nextAction() == Action::Recenter);
+    state.recenterCommandDispatched();
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    result = policy.update(1400, 1600, 1500, 1050);
+    QVERIFY(!result.manualAttitudeInputDetected);
+    result = policy.update(1400, 1600, 1500, 1750);
+    QVERIFY(result.ch10Pressed);
+    QVERIFY(!result.manualAttitudeInputDetected);
+    QVERIFY(state.nextAction() == Action::Pitch90);
+    state.pitch90CommandDispatched();
+    // Recreate Pitch90 as the next action for the independent CH8 case.
+    state.recenterCommandDispatched();
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    policy.update(1500, 1500, 1500, 1050);
+    result = policy.update(1500, 1601, 1500, 1750);
+    QVERIFY(result.manualAttitudeInputDetected);
+    QVERIFY(result.ch10Pressed);
+    state.manualAttitudeInputDetected();
+    QVERIFY(state.nextAction() == Action::Recenter);
+}
+
+void UniRcProtocolTest::ch9DoesNotChangeGimbalAction()
+{
+    using Action = Ch10GimbalActionState::Action;
+
+    UniRcChannelPolicy policy;
+    Ch10GimbalActionState state;
+    state.recenterCommandDispatched();
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    auto result = policy.update(1400, 1600, 1500, 1050);
+    QVERIFY(!result.manualAttitudeInputDetected);
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    result = policy.update(1500, 1500, 1950, 1050);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, 1);
+    QVERIFY(!result.manualAttitudeInputDetected);
+    QVERIFY(state.nextAction() == Action::Pitch90);
+
+    result = policy.update(1600, 1400, 1050, 1050);
+    QVERIFY(result.zoomDirectionChanged);
+    QCOMPARE(result.zoomDirection, -1);
+    QVERIFY(!result.manualAttitudeInputDetected);
+    QVERIFY(state.nextAction() == Action::Pitch90);
+}
+
+void UniRcProtocolTest::invalidAttitudeValuesAreIgnored()
+{
+    const qint16 invalidValues[] = {0, 899, 2101};
+    for (const qint16 value : invalidValues) {
+        QVERIFY(!UniRcChannelPolicy::isManualAttitudeInput(value));
+
+        UniRcChannelPolicy policy;
+        auto result = policy.update(value, 1500, 1500, 1050);
+        QVERIFY(result.channelsValid);
+        QVERIFY(!result.manualAttitudeInputDetected);
+        result = policy.update(value, 1500, 1500, 1750);
+        QVERIFY(result.ch10Pressed);
+        QVERIFY(!result.manualAttitudeInputDetected);
+
+        UniRcChannelPolicy ch8Policy;
+        result = ch8Policy.update(1500, value, 1500, 1050);
+        QVERIFY(result.channelsValid);
+        QVERIFY(!result.manualAttitudeInputDetected);
+    }
 }
 
 void UniRcProtocolTest::policyRejectsUnreasonableValues()
 {
     UniRcChannelPolicy policy;
-    policy.update(1500, 1050);
-    auto result = policy.update(1950, 1050);
+    updatePolicy(policy, 1500, 1050);
+    auto result = updatePolicy(policy, 1950, 1050);
     QCOMPARE(result.zoomDirection, 1);
 
-    result = policy.update(899, 1050);
+    result = policy.update(1399, 1500, 899, 1050);
     QVERIFY(!result.channelsValid);
     QVERIFY(result.zoomDirectionChanged);
     QCOMPARE(result.zoomDirection, 0);
+    QVERIFY(!result.manualAttitudeInputDetected);
 
-    result = policy.update(1500, 2101);
+    result = policy.update(1500, 1601, 1500, 2101);
     QVERIFY(!result.channelsValid);
-    QVERIFY(!result.centerRequested);
+    QVERIFY(!result.ch10Pressed);
+    QVERIFY(!result.manualAttitudeInputDetected);
 
     // Both controls must observe their safe position again after invalid data.
-    result = policy.update(1950, 1950);
+    result = updatePolicy(policy, 1950, 1950);
     QVERIFY(result.channelsValid);
     QCOMPARE(result.zoomDirection, 0);
-    QVERIFY(!result.centerRequested);
-    policy.update(1500, 1050);
-    result = policy.update(1950, 1950);
+    QVERIFY(!result.ch10Pressed);
+    updatePolicy(policy, 1500, 1050);
+    result = updatePolicy(policy, 1950, 1950);
     QCOMPARE(result.zoomDirection, 1);
-    QVERIFY(result.centerRequested);
+    QVERIFY(result.ch10Pressed);
 }
 
 QTEST_APPLESS_MAIN(UniRcProtocolTest)

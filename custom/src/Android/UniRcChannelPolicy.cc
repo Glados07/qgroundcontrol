@@ -1,24 +1,25 @@
 /****************************************************************************
  *
- * Safety state machine for UniRC CH9 zoom and CH10 gimbal-centre input.
+ * Safety state machine for UniRC gimbal-related channel input.
  *
  ****************************************************************************/
 
 #include "UniRcChannelPolicy.h"
 
-UniRcChannelPolicy::Result UniRcChannelPolicy::update(qint16 channel9,
+UniRcChannelPolicy::Result UniRcChannelPolicy::update(qint16 channel7,
+                                                      qint16 channel8,
+                                                      qint16 channel9,
                                                       qint16 channel10,
                                                       bool zoomDirectionReversed)
 {
-    if (channel9 < MinimumReasonableValue
-        || channel9 > MaximumReasonableValue
-        || channel10 < MinimumReasonableValue
-        || channel10 > MaximumReasonableValue) {
+    if (!_isReasonableValue(channel9) || !_isReasonableValue(channel10)) {
         return linkLost();
     }
 
     Result result;
     result.channelsValid = true;
+    result.manualAttitudeInputDetected =
+        isManualAttitudeInput(channel7) || isManualAttitudeInput(channel8);
 
     int nextZoomDirection = 0;
     const bool zoomIsNeutral = channel9 >= ZoomOutThreshold
@@ -51,10 +52,23 @@ UniRcChannelPolicy::Result UniRcChannelPolicy::update(qint16 channel9,
         _buttonPressed = false;
     } else if (buttonIsPressed && !_buttonPressed) {
         _buttonPressed = true;
-        result.centerRequested = true;
+        result.ch10Pressed = true;
     }
 
     return result;
+}
+
+bool UniRcChannelPolicy::isManualAttitudeInput(qint16 value)
+{
+    return _isReasonableValue(value)
+           && (value < ManualAttitudeNeutralMinimum
+               || value > ManualAttitudeNeutralMaximum);
+}
+
+bool UniRcChannelPolicy::_isReasonableValue(qint16 value)
+{
+    return value >= MinimumReasonableValue
+           && value <= MaximumReasonableValue;
 }
 
 UniRcChannelPolicy::Result UniRcChannelPolicy::linkLost()

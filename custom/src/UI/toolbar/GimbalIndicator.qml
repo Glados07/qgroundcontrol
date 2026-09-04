@@ -157,7 +157,8 @@ Item {
         centerReplayDelay.stop()
     }
 
-    function _invokeOwnershipAction(controller, gimbal, action) {
+    function _invokeOwnershipAction(vehicle, controller, gimbal, action) {
+        var messagesSentBefore = Number(vehicle.messagesSent)
         _toolbarPostureDispatchInProgress = true
         try {
             switch (action.id) {
@@ -176,6 +177,26 @@ Item {
             }
         } finally {
             _toolbarPostureDispatchInProgress = false
+        }
+
+        if (!_gimbalCenterCoordinator
+                || !vehicle
+                || activeVehicle !== vehicle
+                || gimbalController !== controller
+                || activeGimbal !== gimbal
+                || Number(vehicle.messagesSent) === messagesSentBefore) {
+            return
+        }
+        switch (action.id) {
+        case "center":
+            _gimbalCenterCoordinator.noteRecenterCommandDispatched()
+            break
+        case "tilt90":
+            _gimbalCenterCoordinator.notePitch90CommandDispatched()
+            break
+        case "yawLock":
+            _gimbalCenterCoordinator.noteYawLockCommandDispatched()
+            break
         }
     }
 
@@ -270,7 +291,7 @@ Item {
             return
         }
 
-        _invokeOwnershipAction(controller, gimbal, action)
+        _invokeOwnershipAction(_pendingVehicle, controller, gimbal, action)
 
         // The popup handler synchronously invalidates this generation if RC
         // retakes control immediately before replay. Never auto-acquire again.
@@ -309,7 +330,7 @@ Item {
         if (hasOwnership
                 && (action.id !== "center"
                     || !_centerPrimerIsRequired(vehicle, gimbal))) {
-            _invokeOwnershipAction(controller, gimbal, action)
+            _invokeOwnershipAction(vehicle, controller, gimbal, action)
             return
         }
 
@@ -416,7 +437,7 @@ Item {
             _centerFinalManagerCompid = Number(gimbal.managerCompid.rawValue)
             _centerFinalPrimerKey = _centerPrimerKey(_pendingVehicle, gimbal)
         }
-        _invokeOwnershipAction(controller, gimbal, action)
+        _invokeOwnershipAction(_pendingVehicle, controller, gimbal, action)
         if (_pendingGeneration !== generation) {
             if (action.id === "center") {
                 _clearCenterFinalAckWait()
@@ -870,7 +891,7 @@ Item {
 
     Connections {
         target: _gimbalCenterCoordinator
-        function onCenterRequestStarted() {
+        function onGimbalActionRequestStarted() {
             if (control._pendingOwnershipAction !== null) {
                 control._clearPendingOwnershipAction()
             }

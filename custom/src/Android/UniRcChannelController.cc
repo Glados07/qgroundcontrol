@@ -677,6 +677,8 @@ void UniRcChannelController::_handleChannelPacket(
         return;
     }
 
+    const qint16 channel7 = channels.at(6);
+    const qint16 channel8 = channels.at(7);
     const qint16 channel9 = channels.at(8);
     const qint16 channel10 = channels.at(9);
     ++_channelFrameCount;
@@ -725,6 +727,8 @@ void UniRcChannelController::_handleChannelPacket(
 
     const UniRcChannelPolicy::Result result =
         _channelPolicy.update(
+            channel7,
+            channel8,
             channel9,
             channel10,
             _settings->uniRcZoomDirectionReversed()->rawValue().toBool());
@@ -748,15 +752,17 @@ void UniRcChannelController::_handleChannelPacket(
     _setChannelInputActive(true);
     _setLastError(QString());
 
+    // Manual CH7/CH8 posture input wins over a CH10 edge from the same frame.
+    // The inclusive [1400, 1600] neutral range absorbs linked switch jitter.
+    if (result.manualAttitudeInputDetected) {
+        _gimbalCenterCoordinator->noteManualAttitudeInput();
+    }
+
+    // CH9 remains an independent SIYI zoom path and never changes CH10 state.
     _applyZoomDirection(result.zoomDirection,
                         result.zoomDirectionChanged);
-    if (result.centerRequested) {
-        const bool accepted =
-            _gimbalCenterCoordinator
-            && _gimbalCenterCoordinator->requestCenter();
-        qCInfo(UniRcChannelLog)
-            << "UniRC CH10 press requested MAVLink gimbal center"
-            << "accepted" << accepted;
+    if (result.ch10Pressed && _gimbalCenterCoordinator) {
+        _gimbalCenterCoordinator->requestNextCh10Action();
     }
 }
 

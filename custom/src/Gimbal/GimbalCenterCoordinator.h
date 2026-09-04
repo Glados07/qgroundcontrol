@@ -1,10 +1,12 @@
 /****************************************************************************
  *
- * Reliable MAVLink gimbal-center sequencing used by custom input surfaces.
+ * Shared MAVLink gimbal posture sequencing and UniRC CH10 action state.
  *
  ****************************************************************************/
 
 #pragma once
+
+#include "Ch10GimbalActionState.h"
 
 #include <QtCore/QMetaObject>
 #include <QtCore/QObject>
@@ -32,12 +34,18 @@ public:
     bool dispatchInProgress() const { return _dispatchInProgress; }
 
     Q_INVOKABLE bool requestCenter();
+    Q_INVOKABLE bool requestNextCh10Action();
+    Q_INVOKABLE void noteRecenterCommandDispatched();
+    Q_INVOKABLE void notePitch90CommandDispatched();
+    Q_INVOKABLE void noteYawLockCommandDispatched();
+    void noteManualAttitudeInput();
     Q_INVOKABLE void cancel();
 
 signals:
     void busyChanged();
     void dispatchInProgressChanged();
     void centerRequestStarted();
+    void gimbalActionRequestStarted();
 
 private:
     enum class Phase {
@@ -53,9 +61,13 @@ private:
     void _ownershipChanged();
     void _mavCommandResult(int vehicleId, int targetComponent, int command, int ackResult, int failureCode);
     void _reviewRequest();
+    bool _beginRequest(Ch10GimbalActionState::Action action);
     void _sendPrimer();
     void _sendFinalCenter();
+    void _sendPitch90();
     void _finishRequest();
+    void _logNextCh10ActionChange(bool changed, const char *reason);
+    void _resetNextCh10Action(const char *reason);
     void _setBusy(bool busy);
     void _setDispatchInProgress(bool dispatchInProgress);
     void _bindObservedGimbal(Gimbal *gimbal);
@@ -79,6 +91,9 @@ private:
 
     QSet<QString> _primerRequiredKeys;
     QString _requestPrimerKey;
+    Ch10GimbalActionState _ch10ActionState;
+    Ch10GimbalActionState::Action _requestAction =
+        Ch10GimbalActionState::Action::Recenter;
     Phase _phase = Phase::Idle;
     bool _busy = false;
     bool _dispatchInProgress = false;
@@ -100,4 +115,5 @@ private:
     static constexpr float kPrimerPitchMin = -90.0f;
     static constexpr float kPrimerPitchMax = 0.0f;
     static constexpr float kPrimerPitchStep = 1.0f;
+    static constexpr float kPitch90Degrees = -90.0f;
 };
