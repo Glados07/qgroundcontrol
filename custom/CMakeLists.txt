@@ -511,6 +511,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/Gimbal/GimbalAzimuthPolicyTest.cc
         src/Gimbal/GimbalAzimuthPolicy.cc
         src/Gimbal/GimbalAzimuthPolicy.h
+        src/Gimbal/GimbalYawLockResolver.cc
+        src/Gimbal/GimbalYawLockResolver.h
     )
     target_include_directories(GimbalAzimuthPolicyTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal

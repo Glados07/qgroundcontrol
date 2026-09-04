@@ -14,6 +14,8 @@ class GimbalAzimuthPolicy {
         Invalid,
         ReportedEarthFrame,
         DeltaYaw,
+        YawLockReportedYawCompatibility,
+        YawLockVehicleHeadingCompatibility,
         VehicleHeadingFallback,
         LegacyEarthFrame,
         LegacyVehicleHeading,

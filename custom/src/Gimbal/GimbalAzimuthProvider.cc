@@ -29,7 +29,6 @@ constexpr quint8 kDeltaYawVelocityPayloadLength =
     static_cast<quint8>(MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS_MIN_LEN + (2 * sizeof(float)));
 constexpr qint64 kSampleTimeoutMs = 2000;
 constexpr int kStaleSampleCheckIntervalMs = 250;
-constexpr quint32 kDeviceRestartRollbackMs = 1000;
 
 bool hasSemanticExtensionValue(float value) {
     return std::isnan(value) || (std::isfinite(value) && ((value != 0.0F) || std::signbit(value)));
@@ -45,6 +44,21 @@ QString errorName(GimbalAzimuthPolicy::Error error) {
             return QStringLiteral("InvalidQuaternion");
         case GimbalAzimuthPolicy::Error::MissingEarthReference:
             return QStringLiteral("MissingEarthReference");
+    }
+
+    return QStringLiteral("Unknown");
+}
+
+QString lockSelectionName(GimbalYawLockResolver::Selection selection) {
+    switch (selection) {
+        case GimbalYawLockResolver::Selection::Undecided:
+            return QStringLiteral("Undecided");
+        case GimbalYawLockResolver::Selection::Standard:
+            return QStringLiteral("Standard");
+        case GimbalYawLockResolver::Selection::ReportedYaw:
+            return QStringLiteral("ReportedYaw");
+        case GimbalYawLockResolver::Selection::VehicleHeading:
+            return QStringLiteral("VehicleHeading");
     }
 
     return QStringLiteral("Unknown");
@@ -76,15 +90,16 @@ void GimbalAzimuthProvider::handleMavlinkMessage(Vehicle *vehicle, const mavlink
     }
 
     _trackVehicle(vehicle);
+    const qint64 receivedAtMs = _monotonicClock.elapsed();
 
     // The plugin observes messages before Vehicle updates its Facts. Remember
     // that at least one real heading-bearing packet has arrived so the Fact's
     // default value (0) is never mistaken for measured North.
     const bool fromFlightController = (message.sysid == vehicle->id()) && (message.compid == vehicle->compId());
-    if ((fromFlightController &&
-         ((message.msgid == MAVLINK_MSG_ID_ATTITUDE) || (message.msgid == MAVLINK_MSG_ID_ATTITUDE_QUATERNION))) ||
-        (message.msgid == MAVLINK_MSG_ID_HIGH_LATENCY) || (message.msgid == MAVLINK_MSG_ID_HIGH_LATENCY2)) {
-        _vehiclesWithHeadingTelemetry.insert(vehicle);
+    if (fromFlightController &&
+        ((message.msgid == MAVLINK_MSG_ID_ATTITUDE) || (message.msgid == MAVLINK_MSG_ID_ATTITUDE_QUATERNION) ||
+         (message.msgid == MAVLINK_MSG_ID_HIGH_LATENCY) || (message.msgid == MAVLINK_MSG_ID_HIGH_LATENCY2))) {
+        _vehicleHeadingTelemetryAtMs.insert(vehicle, receivedAtMs);
     }
 
     if (message.msgid != MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS) {
@@ -106,9 +121,12 @@ void GimbalAzimuthProvider::handleMavlinkMessage(Vehicle *vehicle, const mavlink
     VehicleSamples &vehicleSamples = _samples[vehicle];
     const quint16 key = _sampleKey(message.compid, status.gimbal_device_id);
     const auto previousIt = vehicleSamples.constFind(key);
-    const bool senderRestarted = previousIt != vehicleSamples.cend() && previousIt->timeBootMs != 0 &&
-                                 status.time_boot_ms != 0 && status.time_boot_ms < previousIt->timeBootMs &&
-                                 (previousIt->timeBootMs - status.time_boot_ms) > kDeviceRestartRollbackMs;
+    const bool previousFresh = previousIt != vehicleSamples.cend() && previousIt->receivedAtMs >= 0 &&
+                               (receivedAtMs - previousIt->receivedAtMs) <= kSampleTimeoutMs;
+    // A current value of zero is valid on the first packet after a restart.
+    // Only the previous zero is unsuitable as a rollback baseline.
+    const bool senderRestarted = previousIt != vehicleSamples.cend() &&
+                                 GimbalYawLockResolver::senderRestarted(previousIt->timeBootMs, status.time_boot_ms);
     const bool previouslySupported =
         !senderRestarted && previousIt != vehicleSamples.cend() && previousIt->deltaYawSupported;
     // A later non-zero extension (notably gimbal_device_id) can force an
@@ -141,14 +159,72 @@ void GimbalAzimuthProvider::handleMavlinkMessage(Vehicle *vehicle, const mavlink
     input.deltaYawAvailable = deltaYawSupported && std::isfinite(status.delta_yaw);
     input.deltaYawRadians = static_cast<double>(status.delta_yaw);
     input.vehicleHeadingAvailable =
-        _vehiclesWithHeadingTelemetry.contains(vehicle) && headingOk && std::isfinite(vehicleHeading);
+        _vehicleHeadingTelemetryAtMs.contains(vehicle) && headingOk && std::isfinite(vehicleHeading);
     input.vehicleHeadingDegrees = vehicleHeading;
 
     CachedSample sample;
-    sample.result = GimbalAzimuthPolicy::calculate(input);
+    if (!senderRestarted && previousFresh) {
+        sample.yawLockState = previousIt->yawLockState;
+    }
+
+    const GimbalAzimuthPolicy::Result standardResult = GimbalAzimuthPolicy::calculate(input);
+    GimbalAzimuthPolicy::Result reportedYawResult;
+    GimbalAzimuthPolicy::Result vehicleHeadingResult;
+    const bool lockCompatibilityEligible = input.yawInVehicleFrame && !input.yawInEarthFrame && input.yawLock;
+    if (lockCompatibilityEligible) {
+        GimbalAzimuthPolicy::Input reportedYawInput = input;
+        reportedYawInput.yawInVehicleFrame = false;
+        reportedYawInput.yawInEarthFrame = true;
+        reportedYawResult = GimbalAzimuthPolicy::calculate(reportedYawInput);
+
+        const auto headingTelemetryIt = _vehicleHeadingTelemetryAtMs.constFind(vehicle);
+        const bool recentHeadingTelemetry = headingTelemetryIt != _vehicleHeadingTelemetryAtMs.cend() &&
+                                            receivedAtMs >= headingTelemetryIt.value() &&
+                                            (receivedAtMs - headingTelemetryIt.value()) <= kSampleTimeoutMs;
+        if (recentHeadingTelemetry) {
+            GimbalAzimuthPolicy::Input vehicleHeadingInput = input;
+            vehicleHeadingInput.deltaYawSupported = false;
+            vehicleHeadingInput.deltaYawAvailable = false;
+            vehicleHeadingResult = GimbalAzimuthPolicy::calculate(vehicleHeadingInput);
+        }
+    }
+
+    GimbalYawLockResolver::Input resolverInput;
+    resolverInput.eligible = lockCompatibilityEligible;
+    resolverInput.standardResult = standardResult;
+    resolverInput.reportedYawResult = reportedYawResult;
+    resolverInput.vehicleHeadingResult = vehicleHeadingResult;
+    const GimbalYawLockResolver::Result resolved = GimbalYawLockResolver::update(sample.yawLockState, resolverInput);
+    sample.result = resolved.azimuth;
+    sample.lockCompatibilityEligible = lockCompatibilityEligible;
     sample.deltaYawSupported = deltaYawSupported;
     sample.timeBootMs = status.time_boot_ms;
-    sample.receivedAtMs = _monotonicClock.elapsed();
+    sample.receivedAtMs = receivedAtMs;
+
+    const bool sourceChanged =
+        senderRestarted || previousIt == vehicleSamples.cend() || previousIt->result.source != sample.result.source;
+    const bool lockSessionChanged = previousIt == vehicleSamples.cend() || senderRestarted || !previousFresh ||
+                                    previousIt->lockCompatibilityEligible != lockCompatibilityEligible;
+    if (sourceChanged || resolved.selectionChanged || lockSessionChanged) {
+        qCInfo(GimbalAzimuthProviderLog) << "Gimbal azimuth reference changed"
+                                         << "vehicle" << vehicle->id() << "source component" << message.compid
+                                         << "device id" << status.gimbal_device_id << "payload length" << message.len
+                                         << "flags" << status.flags << "yaw lock" << input.yawLock << "vehicle frame"
+                                         << input.yawInVehicleFrame << "earth frame" << input.yawInEarthFrame
+                                         << "delta supported" << input.deltaYawSupported << "delta yaw"
+                                         << input.deltaYawRadians << "heading available"
+                                         << input.vehicleHeadingAvailable << "vehicle heading"
+                                         << input.vehicleHeadingDegrees << "protocol reference"
+                                         << _sourceName(standardResult.source) << "protocol azimuth"
+                                         << standardResult.absoluteYawDegrees << "reported q yaw valid"
+                                         << reportedYawResult.valid << "reported q yaw"
+                                         << reportedYawResult.absoluteYawDegrees << "heading candidate valid"
+                                         << vehicleHeadingResult.valid << "heading candidate yaw"
+                                         << vehicleHeadingResult.absoluteYawDegrees << "lock resolver"
+                                         << lockSelectionName(resolved.selection) << "result valid"
+                                         << sample.result.valid << "reference" << _sourceName(sample.result.source)
+                                         << "azimuth" << sample.result.absoluteYawDegrees;
+    }
 
     const bool errorChanged = sample.result.error != GimbalAzimuthPolicy::Error::None &&
                               (previousIt == vehicleSamples.cend() || previousIt->result.error != sample.result.error);
@@ -237,7 +313,7 @@ void GimbalAzimuthProvider::_trackVehicle(Vehicle *vehicle) {
                     }
 
                     _samples.remove(trackedVehicle);
-                    _vehiclesWithHeadingTelemetry.remove(trackedVehicle);
+                    _vehicleHeadingTelemetryAtMs.remove(trackedVehicle);
                     if (trackedVehicle == _activeVehicle) {
                         _publishActiveSample();
                     }
@@ -246,7 +322,7 @@ void GimbalAzimuthProvider::_trackVehicle(Vehicle *vehicle) {
     connect(vehicle, &QObject::destroyed, this, [this, trackedVehicle]() {
         _samples.remove(trackedVehicle);
         _trackedVehicles.remove(trackedVehicle);
-        _vehiclesWithHeadingTelemetry.remove(trackedVehicle);
+        _vehicleHeadingTelemetryAtMs.remove(trackedVehicle);
     });
 }
 
@@ -328,6 +404,10 @@ QString GimbalAzimuthProvider::_sourceName(GimbalAzimuthPolicy::Source source) {
             return QStringLiteral("ReportedEarthFrame");
         case GimbalAzimuthPolicy::Source::DeltaYaw:
             return QStringLiteral("DeltaYaw");
+        case GimbalAzimuthPolicy::Source::YawLockReportedYawCompatibility:
+            return QStringLiteral("YawLockReportedYawCompatibility");
+        case GimbalAzimuthPolicy::Source::YawLockVehicleHeadingCompatibility:
+            return QStringLiteral("YawLockVehicleHeadingCompatibility");
         case GimbalAzimuthPolicy::Source::VehicleHeadingFallback:
             return QStringLiteral("VehicleHeadingFallback");
         case GimbalAzimuthPolicy::Source::LegacyEarthFrame:

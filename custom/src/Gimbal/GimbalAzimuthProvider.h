@@ -17,6 +17,7 @@
 #include <QtCore/QTimer>
 
 #include "GimbalAzimuthPolicy.h"
+#include "GimbalYawLockResolver.h"
 #include "MAVLinkLib.h"
 
 class Gimbal;
@@ -47,6 +48,8 @@ class GimbalAzimuthProvider final : public QObject {
    private:
     struct CachedSample {
         GimbalAzimuthPolicy::Result result;
+        GimbalYawLockResolver::State yawLockState;
+        bool lockCompatibilityEligible = false;
         bool deltaYawSupported = false;
         quint32 timeBootMs = 0;
         qint64 receivedAtMs = 0;
@@ -74,7 +77,7 @@ class GimbalAzimuthProvider final : public QObject {
 
     QHash<Vehicle *, VehicleSamples> _samples;
     QSet<Vehicle *> _trackedVehicles;
-    QSet<Vehicle *> _vehiclesWithHeadingTelemetry;
+    QHash<Vehicle *, qint64> _vehicleHeadingTelemetryAtMs;
     QElapsedTimer _monotonicClock;
     QTimer _staleSampleTimer;
 
