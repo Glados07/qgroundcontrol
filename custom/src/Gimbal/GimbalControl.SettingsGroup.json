@@ -32,11 +32,47 @@
         {
             "name": "zoomStep",
             "shortDesc": "Zoom step",
-            "longDesc": "Each tap sends the next legal absolute target and displays that target as soon as the command is sent successfully; newer taps immediately replace older in-flight targets. A hold becomes active after 420 ms, normally sends one native continuous-zoom start command, and advances the displayed legal target by qRound(total press duration / 600 ms) stops from its starting target. Native motion stops as soon as the timed target reaches the effective camera limit. If only the final legal interval remains when the hold starts, one monotonic absolute endpoint command is used instead of a very short native run. Normal release and cancellation both send an immediate native stop plus one bounded safety duplicate when native motion is active. A hold never sends repeated absolute-step commands or a post-release absolute correction. The recording-stream resolution determines the zoom capability: 4K is fixed at 1.0x, 2K supports 3.5x, 1080P supports 5.5x, and 720P supports 6.0x; valid device maximum feedback may only tighten that limit. The pulled-video resolution only confirms that a supported video session is available. Legal targets use the minimum-anchored step grid plus the exact effective maximum. With a 1.0x step, 2K uses 1.0/2.0/3.0/3.5, recording 1080P uses 1.0/2.0/3.0/4.0/5.0/5.5, and recording 720P uses 1.0/2.0/3.0/4.0/5.0/6.0 in both directions.",
             "type": "double",
             "units": "x",
             "min": 0.1,
             "max": 4.5,
+            "decimalPlaces": 1,
+            "default": 1.0
+        },
+        {
+            "name": "uniRcZoomDirectionReversed",
+            "shortDesc": "Reverse channel gimbal zoom control",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "name": "mt11Enabled",
+            "shortDesc": "Enable UniPod MT11 camera control",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "mt11SdkHost",
+            "shortDesc": "UniPod MT11 SDK UDP host",
+            "longDesc": "Controls UniPod MT11 camera commands only. This address is independent of RTSP URL 2 under Video settings.",
+            "type": "string",
+            "default": "192.168.144.24"
+        },
+        {
+            "name": "mt11SdkPort",
+            "shortDesc": "UniPod MT11 SDK UDP port",
+            "type": "uint32",
+            "min": 1,
+            "max": 65535,
+            "default": 37260
+        },
+        {
+            "name": "mt11ZoomStep",
+            "shortDesc": "UniPod MT11 zoom step",
+            "type": "double",
+            "units": "x",
+            "min": 0.1,
+            "max": 29.0,
             "decimalPlaces": 1,
             "default": 1.0
         },
@@ -49,11 +85,30 @@
         },
         {
             "name": "forceAndroidH265HardwareDecoder",
-            "shortDesc": "Force Android H.265 hardware decoder",
-            "longDesc": "On Android, register a low-latency hvc1-to-byte-stream adapter and prioritize a compatible vendor MediaCodec H.265 decoder. Software decoder ranks remain available for fallback. Restart QGC after changing this option.",
+            "shortDesc": "Require Android H.264/H.265 hardware decoders",
             "type": "bool",
             "default": true,
             "qgcRebootRequired": true
+        },
+        {
+            "name": "uniRcChannelControlEnabled",
+            "shortDesc": "Enable UniRC SDK",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "uniRcSdkInterface",
+            "shortDesc": "UniRC SDK interface",
+            "type": "uint32",
+            "enumStrings": "Bluetooth",
+            "enumValues": "0",
+            "default": 0
+        },
+        {
+            "name": "uniRcSdkBluetoothAddress",
+            "shortDesc": "UniRC SDK Bluetooth address",
+            "type": "string",
+            "default": "41:42:9E:3D:A5:D2"
         }
     ]
 }

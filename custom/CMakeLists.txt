@@ -66,6 +66,142 @@ if(ANDROID)
             PATTERN "local.properties" EXCLUDE
         )
 
+        # UniRC channel input uses the Android Bluetooth adapter as a Classic
+        # RFCOMM client. Qt requests the runtime permission; the corresponding
+        # platform declarations still have to be present in the APK manifest.
+        set(_qgc_android_manifest "${_qgc_final_android_dir}/AndroidManifest.xml")
+        if(NOT EXISTS "${_qgc_android_manifest}")
+            message(FATAL_ERROR "QGC: Generated Android package is missing AndroidManifest.xml")
+        endif()
+        file(READ "${_qgc_android_manifest}" _qgc_android_manifest_contents)
+        set(_qgc_android_permission_anchor "    <!-- %%INSERT_PERMISSIONS -->")
+        set(_qgc_bluetooth_manifest_injection "")
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH\""
+            _qgc_legacy_bluetooth_permission_position
+        )
+        if(_qgc_legacy_bluetooth_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH\" android:maxSdkVersion=\"30\" />"
+            )
+        elseif(NOT _qgc_android_manifest_contents MATCHES
+            "<uses-permission[^>]*android:name=\"android\\.permission\\.BLUETOOTH\"[^>]*android:maxSdkVersion=\"30\"[^>]*/>"
+        )
+            message(FATAL_ERROR
+                "QGC: Existing android.permission.BLUETOOTH must be limited to maxSdkVersion 30"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_ADMIN\""
+            _qgc_legacy_bluetooth_admin_permission_position
+        )
+        if(_qgc_legacy_bluetooth_admin_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_ADMIN\" android:maxSdkVersion=\"30\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.ACCESS_FINE_LOCATION\""
+            _qgc_legacy_bluetooth_location_permission_position
+        )
+        if(_qgc_legacy_bluetooth_location_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" android:maxSdkVersion=\"30\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_CONNECT\""
+            _qgc_bluetooth_connect_permission_position
+        )
+        if(_qgc_bluetooth_connect_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />"
+            )
+        endif()
+
+        string(FIND "${_qgc_android_manifest_contents}"
+            "android:name=\"android.permission.BLUETOOTH_SCAN\""
+            _qgc_bluetooth_scan_permission_position
+        )
+        if(_qgc_bluetooth_scan_permission_position EQUAL -1)
+            string(APPEND _qgc_bluetooth_manifest_injection
+                "\n    <uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" android:usesPermissionFlags=\"neverForLocation\" />"
+            )
+        endif()
+
+        if(_qgc_bluetooth_manifest_injection)
+            string(FIND "${_qgc_android_manifest_contents}"
+                "${_qgc_android_permission_anchor}"
+                _qgc_android_permission_anchor_position
+            )
+            if(_qgc_android_permission_anchor_position EQUAL -1)
+                message(FATAL_ERROR
+                    "QGC: AndroidManifest.xml is missing the permission insertion anchor"
+                )
+            endif()
+            string(REPLACE
+                "${_qgc_android_permission_anchor}"
+                "${_qgc_android_permission_anchor}${_qgc_bluetooth_manifest_injection}"
+                _qgc_android_manifest_contents
+                "${_qgc_android_manifest_contents}"
+            )
+            file(WRITE "${_qgc_android_manifest}" "${_qgc_android_manifest_contents}")
+        endif()
+
+        file(READ "${_qgc_android_manifest}" _qgc_android_manifest_validation)
+        if(NOT _qgc_android_manifest_validation MATCHES
+            "<uses-permission[^>]*android:name=\"android\\.permission\\.BLUETOOTH\"[^>]*android:maxSdkVersion=\"30\"[^>]*/>"
+        )
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing the maxSdkVersion 30 BLUETOOTH permission"
+            )
+        endif()
+        string(FIND "${_qgc_android_manifest_validation}"
+            "android:name=\"android.permission.BLUETOOTH_CONNECT\""
+            _qgc_generated_bluetooth_connect_permission_position
+        )
+        if(_qgc_generated_bluetooth_connect_permission_position EQUAL -1)
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing BLUETOOTH_CONNECT"
+            )
+        endif()
+        string(FIND "${_qgc_android_manifest_validation}"
+            "android:name=\"android.permission.BLUETOOTH_SCAN\""
+            _qgc_generated_bluetooth_scan_permission_position
+        )
+        if(_qgc_generated_bluetooth_scan_permission_position EQUAL -1)
+            message(FATAL_ERROR
+                "QGC: Generated AndroidManifest.xml is missing BLUETOOTH_SCAN"
+            )
+        endif()
+
+        # Qt's Android deployment invokes Gradle from a generated project. Keep the
+        # regular build cache, but disable configuration-cache reuse for the custom
+        # package so stale instrumented AGP classes cannot break APK packaging before
+        # the project build script is evaluated.
+        set(_qgc_gradle_properties "${_qgc_final_android_dir}/gradle.properties")
+        if(NOT EXISTS "${_qgc_gradle_properties}")
+            message(FATAL_ERROR "QGC: Generated Android package is missing gradle.properties")
+        endif()
+        file(READ "${_qgc_gradle_properties}" _qgc_gradle_properties_contents)
+        if(_qgc_gradle_properties_contents MATCHES "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*true")
+            string(REGEX REPLACE
+                "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*true"
+                "org.gradle.configuration-cache=false"
+                _qgc_gradle_properties_contents
+                "${_qgc_gradle_properties_contents}"
+            )
+            file(WRITE "${_qgc_gradle_properties}" "${_qgc_gradle_properties_contents}")
+        elseif(NOT _qgc_gradle_properties_contents MATCHES "org\\.gradle\\.configuration-cache[ \t]*=[ \t]*false")
+            file(APPEND "${_qgc_gradle_properties}"
+                "\n# Custom Android build stability\norg.gradle.configuration-cache=false\n"
+            )
+        endif()
+
         set(_qgc_usb_manager_overlay
             "${_qgc_final_android_dir}/src/org/mavlink/qgroundcontrol/QGCUsbSerialManager.java"
         )
@@ -101,6 +237,7 @@ endif()
 
 # Viewer3D 本地场景需要 Quick3D；AssetUtils 用于 OBJ/glTF/GLB 运行时加载。
 list(APPEND CUSTOM_QT_COMPONENTS
+    Bluetooth
     Quick3D
     Quick3DAssetUtils
 )
@@ -159,6 +296,32 @@ qt_add_qml_module(CustomModule
         src/QmlControls/FuelStatusIndicatorPage.qml
         src/QmlControls/ProximityRadarIndicatorPage.qml
         src/FlightDisplay/GeneratorBusVoltageAlert.qml
+    NO_PLUGIN
+)
+
+# QML types which extend the native FlightDisplay tree live in custom/src/FlightDisplay,
+# but use their own module so that upstream QGroundControl.FlightDisplay stays untouched.
+qt_add_library(CustomFlightDisplayModule STATIC)
+set_source_files_properties(
+    src/FlightDisplay/DualPipView.qml
+    PROPERTIES QT_RESOURCE_ALIAS DualPipView.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/FlyViewSecondaryVideo.qml
+    PROPERTIES QT_RESOURCE_ALIAS FlyViewSecondaryVideo.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
+    PROPERTIES QT_RESOURCE_ALIAS FlightDisplayViewSecondaryVideo.qml
+)
+qt_add_qml_module(CustomFlightDisplayModule
+    URI Custom.FlightDisplay
+    VERSION 1.0
+    RESOURCE_PREFIX /qml
+    QML_FILES
+        src/FlightDisplay/DualPipView.qml
+        src/FlightDisplay/FlyViewSecondaryVideo.qml
+        src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
     NO_PLUGIN
 )
 
@@ -234,6 +397,8 @@ set(CUSTOM_SOURCES
 
 set(CUSTOM_LIBRARIES
     CustomModule
+    CustomFlightDisplayModule
+    Qt6::Bluetooth
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
     ${CUSTOM_VIEWER3D_GOOGLE_LIBRARIES}
@@ -265,6 +430,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         src/Gimbal/A8MiniZoomPolicy.h
         src/Gimbal/SiyiProtocol.cc
         src/Gimbal/SiyiProtocol.h
+        src/Gimbal/ZoomStepPolicy.cc
+        src/Gimbal/ZoomStepPolicy.h
     )
     target_include_directories(SiyiProtocolTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
@@ -274,6 +441,30 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     add_custom_target(check_siyi_protocol
         COMMAND $<TARGET_FILE:SiyiProtocolTest>
         DEPENDS SiyiProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(Mt11ProtocolTest
+        test/Gimbal/Mt11ProtocolTest.cc
+        src/Gimbal/Mt11Protocol.cc
+        src/Gimbal/Mt11Protocol.h
+        src/Gimbal/Mt11ZoomPolicy.cc
+        src/Gimbal/Mt11ZoomPolicy.h
+        src/Gimbal/ZoomStepPolicy.cc
+        src/Gimbal/ZoomStepPolicy.h
+    )
+    target_include_directories(Mt11ProtocolTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(Mt11ProtocolTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME Mt11ProtocolTest COMMAND $<TARGET_FILE:Mt11ProtocolTest>)
+    add_custom_target(check_mt11_protocol
+        COMMAND $<TARGET_FILE:Mt11ProtocolTest>
+        DEPENDS Mt11ProtocolTest
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
@@ -312,6 +503,76 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     add_custom_target(check_gimbal_photo_capture_policy
         COMMAND $<TARGET_FILE:GimbalPhotoCapturePolicyTest>
         DEPENDS GimbalPhotoCapturePolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(GimbalAzimuthPolicyTest
+        test/Gimbal/GimbalAzimuthPolicyTest.cc
+        src/Gimbal/GimbalAzimuthPolicy.cc
+        src/Gimbal/GimbalAzimuthPolicy.h
+        src/Gimbal/GimbalYawLockResolver.cc
+        src/Gimbal/GimbalYawLockResolver.h
+    )
+    target_include_directories(GimbalAzimuthPolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(GimbalAzimuthPolicyTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalAzimuthPolicyTest COMMAND $<TARGET_FILE:GimbalAzimuthPolicyTest>)
+    add_custom_target(check_gimbal_azimuth_policy
+        COMMAND $<TARGET_FILE:GimbalAzimuthPolicyTest>
+        DEPENDS GimbalAzimuthPolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(UniRcProtocolTest
+        test/Android/UniRcProtocolTest.cc
+        src/Android/UniRcChannelPolicy.cc
+        src/Android/UniRcChannelPolicy.h
+        src/Android/UniRcProtocol.cc
+        src/Android/UniRcProtocol.h
+        src/Gimbal/Ch10GimbalActionState.h
+    )
+    target_include_directories(UniRcProtocolTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(UniRcProtocolTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME UniRcProtocolTest COMMAND $<TARGET_FILE:UniRcProtocolTest>)
+    add_custom_target(check_unirc_protocol
+        COMMAND $<TARGET_FILE:UniRcProtocolTest>
+        DEPENDS UniRcProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(AndroidH265DecoderRoutePolicyTest
+        test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderCapsPolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderCapsPolicy.h
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicy.h
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h
+    )
+    target_include_directories(AndroidH265DecoderRoutePolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/VideoManager/VideoReceiver/GStreamer
+    )
+    target_link_libraries(AndroidH265DecoderRoutePolicyTest PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(
+        NAME AndroidH265DecoderRoutePolicyTest
+        COMMAND $<TARGET_FILE:AndroidH265DecoderRoutePolicyTest>
+    )
+    add_custom_target(check_android_h265_decoder_route_policy
+        COMMAND $<TARGET_FILE:AndroidH265DecoderRoutePolicyTest>
+        DEPENDS AndroidH265DecoderRoutePolicyTest
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )

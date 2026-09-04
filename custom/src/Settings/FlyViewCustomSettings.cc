@@ -16,3 +16,4 @@ DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")
 }
 
 DECLARE_SETTINGSFACT(FlyViewCustomSettings, showHeadingCompassBar)
+DECLARE_SETTINGSFACT(FlyViewCustomSettings, showGimbalHeadingCompassBar)

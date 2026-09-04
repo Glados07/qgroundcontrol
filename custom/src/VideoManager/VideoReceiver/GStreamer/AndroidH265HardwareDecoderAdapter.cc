@@ -1,19 +1,22 @@
 /****************************************************************************
  *
- * Android H.265 MediaCodec adapter for QGC's hvc1 decoder input.
+ * Android H.265 MediaCodec adapter for hvc1 or native Annex-B/AU input.
  *
  ****************************************************************************/
 
 #include "AndroidH265HardwareDecoderAdapter.h"
 
+#include "AndroidH265DecoderCapsPolicy.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtCore/QtGlobal>
 
 #include <algorithm>
+#include <utility>
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 #include <gst/gst.h>
@@ -28,11 +31,24 @@ constexpr const char *kAdapterFactoryName = "qgcandroidh265hwdec";
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
 
+// Restore the A8 Mini compatibility path as the unambiguous Android H.265
+// preference. The wide gap keeps vendor factories with unusually high native
+// ranks from bypassing hvc1 -> Annex-B/AU normalization.
 constexpr guint kAdapterRank = GST_RANK_PRIMARY + 100;
-constexpr const char *kByteStreamCaps =
-    "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au";
 
 QByteArray s_hardwareDecoderFactoryName;
+QStringList s_registeredElementFactoryNames;
+
+struct AdapterRouteConfig {
+    QByteArray elementFactoryName;
+    QByteArray typeName;
+    QByteArray hardwareDecoderFactoryName;
+};
+
+// GType class_data must remain valid for the process lifetime. Static
+// GStreamer element registrations have the same lifetime, so these route
+// records are intentionally retained after startup.
+QList<AdapterRouteConfig *> s_alternativeAdapterRoutes;
 
 struct HardwareDecoderCandidate {
     QByteArray factoryName;
@@ -87,7 +103,18 @@ bool isVendorMediaCodecDecoder(GstElementFactory *factory)
         return false;
     }
 
-    const gchar *const factoryName = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
+    GstPluginFeature *const feature = GST_PLUGIN_FEATURE(factory);
+    GstPlugin *const plugin = gst_plugin_feature_get_plugin(feature);
+    const bool isAndroidMedia = plugin
+        && qstrcmp(gst_plugin_get_name(plugin), "androidmedia") == 0;
+    if (plugin) {
+        gst_object_unref(plugin);
+    }
+    if (!isAndroidMedia) {
+        return false;
+    }
+
+    const gchar *const factoryName = gst_plugin_feature_get_name(feature);
     return AndroidH265HardwareDecoderAdapter::isVendorHardwareDecoderFactoryName(factoryName);
 }
 
@@ -109,9 +136,10 @@ QString pluginAndFactoryName(GstElementFactory *factory)
     return result;
 }
 
-QByteArray findWorkingByteStreamHardwareDecoder()
+QList<HardwareDecoderCandidate> findByteStreamHardwareDecoderCandidates()
 {
-    GstCaps *const byteStreamCaps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const byteStreamCaps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!byteStreamCaps) {
         return {};
     }
@@ -155,21 +183,7 @@ QByteArray findWorkingByteStreamHardwareDecoder()
         return left.factoryName < right.factoryName;
     });
 
-    for (const HardwareDecoderCandidate &candidate : candidates) {
-        qCInfo(AndroidH265HardwareDecoderAdapterLog)
-            << "Preflighting Android H.265 Annex-B hardware candidate"
-            << candidate.displayName
-            << "lowLatencyVariant" << candidate.lowLatencyVariant
-            << "rank" << candidate.rank;
-        if (preflightHardwareDecoder(candidate.factoryName)) {
-            return candidate.factoryName;
-        }
-        qCWarning(AndroidH265HardwareDecoderAdapterLog)
-            << "Android H.265 hardware candidate failed preflight; trying the next candidate"
-            << candidate.displayName;
-    }
-
-    return {};
+    return candidates;
 }
 
 bool preflightHardwareDecoder(const QByteArray &factoryName)
@@ -192,7 +206,8 @@ bool preflightHardwareDecoder(const QByteArray &factoryName)
         return false;
     }
 
-    GstCaps *const caps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const caps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!caps) {
         gst_object_unref(bin);
         gst_object_unref(parser);
@@ -245,12 +260,16 @@ struct _GstQgcAndroidH265HardwareDecoder {
     GstElement *capsFilter;
     GstElement *decoder;
     GstElement *outputQueue;
+    GstPad *sinkGhostPad;
+    GstPad *srcGhostPad;
+    gboolean valid;
     gboolean inputCapsLogged;
     gboolean outputFrameLogged;
 };
 
 struct _GstQgcAndroidH265HardwareDecoderClass {
     GstBinClass parentClass;
+    const AdapterRouteConfig *routeConfig;
 };
 
 #define GST_TYPE_QGC_ANDROID_H265_HARDWARE_DECODER \
@@ -266,7 +285,9 @@ GstStaticPadTemplate s_sinkPadTemplate = GST_STATIC_PAD_TEMPLATE(
     "sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS("video/x-h265,stream-format=(string)hvc1"));
+    GST_STATIC_CAPS(
+        "video/x-h265,stream-format=(string)hvc1; "
+        "video/x-h265,stream-format=(string)byte-stream,alignment=(string)au"));
 
 GstStaticPadTemplate s_srcPadTemplate = GST_STATIC_PAD_TEMPLATE(
     "src",
@@ -294,7 +315,7 @@ GstPadProbeReturn logDecoderInputCaps(GstPad *, GstPadProbeInfo *info, gpointer 
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
         << "Android H.265 adapter selected actual decoder"
         << pluginAndFactoryName(factory)
-        << "hardware"
+        << "vendor MediaCodec candidate"
         << "negotiated sink caps" << (capsText ? capsText : "unknown");
 
     g_free(capsText);
@@ -326,7 +347,7 @@ GstPadProbeReturn logDecoderFirstOutputFrame(GstPad *pad, GstPadProbeInfo *info,
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
         << "Android H.265 decoder produced its first raw frame"
         << pluginAndFactoryName(factory)
-        << "hardware confirmed"
+        << "vendor MediaCodec candidate"
         << "glMemoryOutput" << glMemoryOutput
         << "bytes" << gst_buffer_get_size(buffer)
         << "pts" << static_cast<qulonglong>(GST_BUFFER_PTS(buffer))
@@ -380,92 +401,171 @@ bool linkDecoder(GstQgcAndroidH265HardwareDecoder *self, GstElement *decoder)
     return true;
 }
 
-bool addGhostPads(GstQgcAndroidH265HardwareDecoder *self)
+bool addUnboundGhostPads(GstQgcAndroidH265HardwareDecoder *self)
 {
-    GstPad *parserSinkPad = gst_element_get_static_pad(self->parser, "sink");
-    GstPad *queueSrcPad = gst_element_get_static_pad(self->outputQueue, "src");
-    if (!parserSinkPad || !queueSrcPad) {
-        gst_clear_object(&parserSinkPad);
-        gst_clear_object(&queueSrcPad);
-        return false;
-    }
-
     GstPadTemplate *const sinkTemplate =
         gst_element_class_get_pad_template(GST_ELEMENT_GET_CLASS(self), "sink");
     GstPadTemplate *const srcTemplate =
         gst_element_class_get_pad_template(GST_ELEMENT_GET_CLASS(self), "src");
     if (!sinkTemplate || !srcTemplate) {
-        gst_object_unref(parserSinkPad);
-        gst_object_unref(queueSrcPad);
-        return false;
-    }
-    GstPad *sinkGhostPad =
-        gst_ghost_pad_new_from_template("sink", parserSinkPad, sinkTemplate);
-    GstPad *srcGhostPad =
-        gst_ghost_pad_new_from_template("src", queueSrcPad, srcTemplate);
-
-    gst_object_unref(parserSinkPad);
-    gst_object_unref(queueSrcPad);
-
-    if (!sinkGhostPad || !srcGhostPad) {
-        gst_clear_object(&sinkGhostPad);
-        gst_clear_object(&srcGhostPad);
         return false;
     }
 
-    if (!gst_element_add_pad(GST_ELEMENT(self), sinkGhostPad)) {
-        gst_object_unref(sinkGhostPad);
-        gst_object_unref(srcGhostPad);
+    self->sinkGhostPad =
+        gst_ghost_pad_new_no_target_from_template("sink", sinkTemplate);
+    self->srcGhostPad =
+        gst_ghost_pad_new_no_target_from_template("src", srcTemplate);
+    if (!self->sinkGhostPad || !self->srcGhostPad) {
+        gst_clear_object(&self->sinkGhostPad);
+        gst_clear_object(&self->srcGhostPad);
         return false;
     }
-    if (!gst_element_add_pad(GST_ELEMENT(self), srcGhostPad)) {
-        gst_element_remove_pad(GST_ELEMENT(self), sinkGhostPad);
-        gst_object_unref(srcGhostPad);
+
+    if (!gst_element_add_pad(GST_ELEMENT(self), self->sinkGhostPad)) {
+        gst_clear_object(&self->sinkGhostPad);
+        gst_clear_object(&self->srcGhostPad);
+        return false;
+    }
+    if (!gst_element_add_pad(GST_ELEMENT(self), self->srcGhostPad)) {
+        gst_element_remove_pad(GST_ELEMENT(self), self->sinkGhostPad);
+        self->sinkGhostPad = nullptr;
+        gst_clear_object(&self->srcGhostPad);
         return false;
     }
 
     return true;
 }
 
+bool bindGhostPadTargets(GstQgcAndroidH265HardwareDecoder *self)
+{
+    if (!self->sinkGhostPad || !self->srcGhostPad
+        || !self->parser || !self->outputQueue) {
+        return false;
+    }
+
+    GstPad *parserSinkPad =
+        gst_element_get_static_pad(self->parser, "sink");
+    GstPad *queueSrcPad =
+        gst_element_get_static_pad(self->outputQueue, "src");
+    if (!parserSinkPad || !queueSrcPad) {
+        gst_clear_object(&parserSinkPad);
+        gst_clear_object(&queueSrcPad);
+        return false;
+    }
+
+    const bool sinkTargetSet = gst_ghost_pad_set_target(
+        GST_GHOST_PAD(self->sinkGhostPad), parserSinkPad);
+    const bool srcTargetSet = gst_ghost_pad_set_target(
+        GST_GHOST_PAD(self->srcGhostPad), queueSrcPad);
+    gst_object_unref(parserSinkPad);
+    gst_object_unref(queueSrcPad);
+
+    if (!sinkTargetSet || !srcTargetSet) {
+        (void) gst_ghost_pad_set_target(
+            GST_GHOST_PAD(self->sinkGhostPad), nullptr);
+        (void) gst_ghost_pad_set_target(
+            GST_GHOST_PAD(self->srcGhostPad), nullptr);
+        return false;
+    }
+
+    return true;
+}
+
+GstStateChangeReturn adapterChangeState(GstElement *element,
+                                        GstStateChange transition)
+{
+    auto *const self =
+        reinterpret_cast<GstQgcAndroidH265HardwareDecoder *>(element);
+    if (transition == GST_STATE_CHANGE_NULL_TO_READY && !self->valid) {
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Refusing to start an invalid Android H.265 adapter instance"
+            << GST_ELEMENT_NAME(element);
+        return GST_STATE_CHANGE_FAILURE;
+    }
+
+    auto *const parentClass = GST_ELEMENT_CLASS(
+        g_type_class_peek_parent(GST_ELEMENT_GET_CLASS(element)));
+    if (!parentClass || !parentClass->change_state) {
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Android H.265 adapter has no parent state-change handler";
+        return GST_STATE_CHANGE_FAILURE;
+    }
+    return parentClass->change_state(element, transition);
+}
+
 } // namespace
 
-static void gst_qgc_android_h265_hardware_decoder_class_init(
-    GstQgcAndroidH265HardwareDecoderClass *klass)
+namespace {
+
+void configureAdapterClass(GstQgcAndroidH265HardwareDecoderClass *klass,
+                           const AdapterRouteConfig *routeConfig)
 {
+    klass->routeConfig = routeConfig;
     GstElementClass *const elementClass = GST_ELEMENT_CLASS(klass);
     gst_element_class_set_static_metadata(
         elementClass,
         "QGC Android H.265 hardware decoder adapter",
         "Codec/Decoder/Video/Hardware",
-        "Converts hvc1 H.265 to Annex-B access units for Android vendor MediaCodec",
+        "Normalizes H.265 to Annex-B access units for Android vendor MediaCodec",
         "QGroundControl custom build");
     gst_element_class_add_static_pad_template(elementClass, &s_sinkPadTemplate);
     gst_element_class_add_static_pad_template(elementClass, &s_srcPadTemplate);
+    elementClass->change_state = adapterChangeState;
 }
 
-static void gst_qgc_android_h265_hardware_decoder_init(
-    GstQgcAndroidH265HardwareDecoder *self)
+void initializeAdapterInstance(
+    GstQgcAndroidH265HardwareDecoder *self,
+    const QByteArray &adapterFactoryName,
+    const QByteArray &hardwareDecoderFactoryName)
 {
-    self->parser = gst_element_factory_make("h265parse", "hvc1_to_annexb_parser");
-    self->capsFilter = gst_element_factory_make("capsfilter", "h265_annexb_caps");
-    self->outputQueue = gst_element_factory_make("queue", "latest_decoded_frame_queue");
+    self->parser = nullptr;
+    self->capsFilter = nullptr;
+    self->outputQueue = nullptr;
     self->decoder = nullptr;
+    self->sinkGhostPad = nullptr;
+    self->srcGhostPad = nullptr;
+    self->valid = FALSE;
     self->inputCapsLogged = FALSE;
     self->outputFrameLogged = FALSE;
 
+    // GstPadPresence is ALWAYS for both external pads. GObject instance
+    // construction cannot report failure, so publish unbound ghost pads before
+    // any fallible child construction and reject invalid instances at READY.
+    if (!addUnboundGhostPads(self)) {
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Unable to create required Android H.265 adapter ghost pads"
+            << adapterFactoryName;
+        return;
+    }
+
+    if (hardwareDecoderFactoryName.isEmpty()) {
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Android H.265 adapter has no bound vendor decoder factory"
+            << adapterFactoryName;
+        return;
+    }
+
+    self->parser = gst_element_factory_make("h265parse", "h265_annexb_normalizer");
+    self->capsFilter = gst_element_factory_make("capsfilter", "h265_annexb_caps");
+    self->outputQueue = gst_element_factory_make("queue", "latest_decoded_frame_queue");
+
     if (!self->parser || !self->capsFilter || !self->outputQueue) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
-            << "Unable to construct required Android H.265 adapter elements";
+            << "Unable to construct required Android H.265 adapter elements"
+            << "adapterFactory" << adapterFactoryName
+            << "decoderFactory" << hardwareDecoderFactoryName;
         gst_clear_object(&self->parser);
         gst_clear_object(&self->capsFilter);
         gst_clear_object(&self->outputQueue);
         return;
     }
 
-    GstCaps *const byteStreamCaps = gst_caps_from_string(kByteStreamCaps);
+    GstCaps *const byteStreamCaps = gst_caps_from_string(
+        AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps());
     if (!byteStreamCaps) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
-            << "Unable to create byte-stream/au caps for the Android H.265 adapter";
+            << "Unable to create byte-stream/au caps for the Android H.265 adapter"
+            << adapterFactoryName;
         gst_clear_object(&self->parser);
         gst_clear_object(&self->capsFilter);
         gst_clear_object(&self->outputQueue);
@@ -477,6 +577,12 @@ static void gst_qgc_android_h265_hardware_decoder_init(
     g_object_set(self->capsFilter,
                  "caps", byteStreamCaps,
                  nullptr);
+
+    // AndroidMedia's default ACCEPT_CAPS path performs a subset check. A
+    // missing framerate denotes an unconstrained value and is therefore not a
+    // subset of the decoder's finite framerate range. Keeping the same range
+    // on this internal filter preserves A8's fixed 25/1 while h265parse can
+    // negotiate 0/1 for MT11 streams which do not advertise a rate.
     gst_caps_unref(byteStreamCaps);
 
     // Decouple the decoder from a slow GL sink and keep only the newest raw
@@ -493,38 +599,148 @@ static void gst_qgc_android_h265_hardware_decoder_init(
     gst_bin_add_many(GST_BIN(self), self->parser, self->capsFilter, self->outputQueue, nullptr);
     if (!gst_element_link(self->parser, self->capsFilter)) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
-            << "Unable to link h265parse to the Annex-B caps filter";
+            << "Unable to link h265parse to the Annex-B caps filter"
+            << adapterFactoryName;
         return;
     }
 
     GstElement *hardwareDecoder = gst_element_factory_make(
-        s_hardwareDecoderFactoryName.constData(), "android_h265_hardware_decoder");
+        hardwareDecoderFactoryName.constData(), "android_h265_hardware_decoder");
     if (!hardwareDecoder) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
             << "Unable to instantiate vendor decoder"
-            << s_hardwareDecoderFactoryName
-            << "; decodebin3 will retain its external software fallback";
+            << hardwareDecoderFactoryName
+            << "for adapter" << adapterFactoryName;
         return;
     }
     if (!linkDecoder(self, hardwareDecoder)) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
             << "Unable to link vendor decoder"
-            << s_hardwareDecoderFactoryName
-            << "; decodebin3 will retain its external software fallback";
+            << hardwareDecoderFactoryName
+            << "for adapter" << adapterFactoryName;
         return;
     }
 
-    if (!addGhostPads(self)) {
+    // GstVideoReceiver's explicit route enumerates the static src pad before
+    // synchronizing element state. Its ALWAYS pad already exists; bind both
+    // targets only after the complete internal topology is ready.
+    if (!bindGhostPadTargets(self)) {
         qCCritical(AndroidH265HardwareDecoderAdapterLog)
-            << "Android H.265 adapter could not create its external pads";
+            << "Android H.265 adapter could not bind its external pad targets"
+            << adapterFactoryName;
         return;
     }
+
+    self->valid = TRUE;
 
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
-        << "Android H.265 adapter instance created; requested"
-        << s_hardwareDecoderFactoryName
-        << "actual" << pluginAndFactoryName(gst_element_get_factory(self->decoder))
-        << "hardware";
+        << "Android H.265 adapter instance created"
+        << "adapterFactory" << adapterFactoryName
+        << "requestedDecoder" << hardwareDecoderFactoryName
+        << "decoderInputContract"
+        << AndroidH265DecoderCapsPolicy::byteStreamAccessUnitCaps()
+        << "actualDecoder"
+        << pluginAndFactoryName(gst_element_get_factory(self->decoder))
+        << "vendor MediaCodec candidate";
+}
+
+void alternativeAdapterClassInit(gpointer classPointer,
+                                 gpointer classData)
+{
+    configureAdapterClass(
+        static_cast<GstQgcAndroidH265HardwareDecoderClass *>(classPointer),
+        static_cast<const AdapterRouteConfig *>(classData));
+}
+
+void alternativeAdapterInstanceInit(GTypeInstance *instance,
+                                    gpointer classPointer)
+{
+    auto *const self =
+        reinterpret_cast<GstQgcAndroidH265HardwareDecoder *>(instance);
+    const auto *const klass =
+        static_cast<const GstQgcAndroidH265HardwareDecoderClass *>(classPointer);
+    const AdapterRouteConfig *const routeConfig = klass->routeConfig;
+    if (!routeConfig) {
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Alternative Android H.265 adapter has no immutable route configuration";
+        initializeAdapterInstance(self, QByteArray(), QByteArray());
+        return;
+    }
+
+    initializeAdapterInstance(self,
+                              routeConfig->elementFactoryName,
+                              routeConfig->hardwareDecoderFactoryName);
+}
+
+bool registerAlternativeAdapterRoute(const HardwareDecoderCandidate &candidate,
+                                     int alternativeIndex)
+{
+    auto *const routeConfig = new AdapterRouteConfig;
+    routeConfig->elementFactoryName = QByteArray(kAdapterFactoryName)
+        + "-alt" + QByteArray::number(alternativeIndex);
+    routeConfig->typeName = "QgcAndroidH265HardwareDecoderAlternative"
+        + QByteArray::number(alternativeIndex);
+    routeConfig->hardwareDecoderFactoryName = candidate.factoryName;
+
+    const GTypeInfo typeInfo = {
+        sizeof(GstQgcAndroidH265HardwareDecoderClass),
+        nullptr,
+        nullptr,
+        alternativeAdapterClassInit,
+        nullptr,
+        routeConfig,
+        sizeof(GstQgcAndroidH265HardwareDecoder),
+        0,
+        alternativeAdapterInstanceInit,
+        nullptr,
+    };
+    const GType adapterType = g_type_register_static(
+        GST_TYPE_BIN,
+        routeConfig->typeName.constData(),
+        &typeInfo,
+        static_cast<GTypeFlags>(0));
+    if (adapterType == G_TYPE_INVALID
+        || !gst_element_register(nullptr,
+                                 routeConfig->elementFactoryName.constData(),
+                                 GST_RANK_NONE,
+                                 adapterType)) {
+        // The GType can retain class_data after registration. Keep the route
+        // record alive even when its element factory could not be published.
+        s_alternativeAdapterRoutes.append(routeConfig);
+        qCCritical(AndroidH265HardwareDecoderAdapterLog)
+            << "Failed to register alternative Android H.265 adapter route"
+            << routeConfig->elementFactoryName
+            << "decoder" << routeConfig->hardwareDecoderFactoryName;
+        return false;
+    }
+
+    s_alternativeAdapterRoutes.append(routeConfig);
+    s_registeredElementFactoryNames.append(
+        QString::fromUtf8(routeConfig->elementFactoryName));
+    qCInfo(AndroidH265HardwareDecoderAdapterLog)
+        << "Registered receiver-specific Android H.265 adapter"
+        << routeConfig->elementFactoryName
+        << "at rank" << GST_RANK_NONE
+        << "with internal vendor decoder"
+        << routeConfig->hardwareDecoderFactoryName
+        << "and hvc1 -> byte-stream/au conversion";
+    return true;
+}
+
+} // namespace
+
+static void gst_qgc_android_h265_hardware_decoder_class_init(
+    GstQgcAndroidH265HardwareDecoderClass *klass)
+{
+    configureAdapterClass(klass, nullptr);
+}
+
+static void gst_qgc_android_h265_hardware_decoder_init(
+    GstQgcAndroidH265HardwareDecoder *self)
+{
+    initializeAdapterInstance(self,
+                              QByteArray(kAdapterFactoryName),
+                              s_hardwareDecoderFactoryName);
 }
 
 #endif
@@ -548,15 +764,41 @@ bool AndroidH265HardwareDecoderAdapter::registerElement()
         return usable;
     }
 
-    const QByteArray hardwareFactoryName = findWorkingByteStreamHardwareDecoder();
-    if (hardwareFactoryName.isEmpty()) {
+    const QList<HardwareDecoderCandidate> hardwareCandidates =
+        findByteStreamHardwareDecoderCandidates();
+    if (hardwareCandidates.isEmpty()) {
         qCWarning(AndroidH265HardwareDecoderAdapterLog)
             << "No vendor Android MediaCodec H.265 decoder accepts Annex-B access units; "
                "the adapter was not registered";
         return false;
     }
 
-    s_hardwareDecoderFactoryName = hardwareFactoryName;
+    const int hardwareCandidateCount =
+        static_cast<int>(hardwareCandidates.size());
+    int preferredCandidateIndex = -1;
+    for (int index = 0; index < hardwareCandidateCount; ++index) {
+        const HardwareDecoderCandidate &candidate = hardwareCandidates.at(index);
+        qCInfo(AndroidH265HardwareDecoderAdapterLog)
+            << "Preflighting preferred Android H.265 Annex-B hardware candidate"
+            << candidate.displayName
+            << "lowLatencyVariant" << candidate.lowLatencyVariant
+            << "rank" << candidate.rank;
+        if (preflightHardwareDecoder(candidate.factoryName)) {
+            preferredCandidateIndex = index;
+            break;
+        }
+        qCWarning(AndroidH265HardwareDecoderAdapterLog)
+            << "Android H.265 hardware candidate failed preferred-route preflight; trying the next candidate"
+            << candidate.displayName;
+    }
+    if (preferredCandidateIndex < 0) {
+        qCWarning(AndroidH265HardwareDecoderAdapterLog)
+            << "No vendor Android MediaCodec H.265 decoder passed the preferred Annex-B adapter preflight";
+        return false;
+    }
+
+    s_hardwareDecoderFactoryName =
+        hardwareCandidates.at(preferredCandidateIndex).factoryName;
     if (!gst_element_register(nullptr,
                               kAdapterFactoryName,
                               kAdapterRank,
@@ -567,10 +809,27 @@ bool AndroidH265HardwareDecoderAdapter::registerElement()
         return false;
     }
 
+    s_registeredElementFactoryNames = {
+        QString::fromLatin1(kAdapterFactoryName),
+    };
     qCInfo(AndroidH265HardwareDecoderAdapterLog)
         << "Registered" << kAdapterFactoryName << "at rank" << kAdapterRank
         << "with internal vendor decoder" << s_hardwareDecoderFactoryName
         << "and hvc1 -> byte-stream/au conversion";
+
+    int alternativeIndex = 1;
+    for (int index = preferredCandidateIndex + 1;
+         index < hardwareCandidateCount;
+         ++index) {
+        // Preserve the proven A8 startup path exactly: only its preferred
+        // candidate is preflighted eagerly. Later compatible candidates are
+        // rank-NONE and are constructed only if one receiver needs recovery.
+        (void) registerAlternativeAdapterRoute(hardwareCandidates.at(index),
+                                               alternativeIndex++);
+    }
+    qCInfo(AndroidH265HardwareDecoderAdapterLog)
+        << "Registered ordered A8-style Android H.265 adapter routes"
+        << s_registeredElementFactoryNames;
     return true;
 #else
     return false;
@@ -591,6 +850,68 @@ const char *AndroidH265HardwareDecoderAdapter::selectedHardwareDecoderFactoryNam
 #endif
 }
 
+QStringList AndroidH265HardwareDecoderAdapter::registeredElementFactoryNames()
+{
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    return s_registeredElementFactoryNames;
+#else
+    return {};
+#endif
+}
+
+QStringList AndroidH265HardwareDecoderAdapter::alternativeElementFactoryNames()
+{
+    QStringList factories = registeredElementFactoryNames();
+    if (!factories.isEmpty()
+        && factories.constFirst() == QString::fromLatin1(kAdapterFactoryName)) {
+        factories.removeFirst();
+    }
+    return factories;
+}
+
+bool AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(
+    const QString &factoryName)
+{
+    return registeredElementFactoryNames().contains(factoryName);
+}
+
+QString AndroidH265HardwareDecoderAdapter::hardwareDecoderFactoryNameForElementFactory(
+    const QString &factoryName)
+{
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    if (factoryName == QString::fromLatin1(kAdapterFactoryName)) {
+        return QString::fromUtf8(s_hardwareDecoderFactoryName);
+    }
+    for (const AdapterRouteConfig *const routeConfig :
+         std::as_const(s_alternativeAdapterRoutes)) {
+        if (routeConfig
+            && factoryName == QString::fromUtf8(routeConfig->elementFactoryName)
+            && s_registeredElementFactoryNames.contains(factoryName)) {
+            return QString::fromUtf8(
+                routeConfig->hardwareDecoderFactoryName);
+        }
+    }
+#else
+    Q_UNUSED(factoryName)
+#endif
+    return {};
+}
+
+bool AndroidH265HardwareDecoderAdapter::adapterRouteContainsFactory(
+    const QString &adapterFactoryName,
+    const QString &reportedFactoryName)
+{
+    if (!isAdapterElementFactoryName(adapterFactoryName)
+        || reportedFactoryName.isEmpty()) {
+        return false;
+    }
+
+    return reportedFactoryName == adapterFactoryName
+        || reportedFactoryName
+            == hardwareDecoderFactoryNameForElementFactory(
+                   adapterFactoryName);
+}
+
 bool AndroidH265HardwareDecoderAdapter::isVendorHardwareDecoderFactoryName(
     const char *factoryName)
 {
@@ -601,6 +922,7 @@ bool AndroidH265HardwareDecoderAdapter::isVendorHardwareDecoderFactoryName(
     const QString name = QString::fromUtf8(factoryName).toLower();
     if (!name.startsWith(QStringLiteral("amcviddec-")) ||
         name.contains(QStringLiteral("secure")) ||
+        name.contains(QStringLiteral("soft")) ||
         name.contains(QStringLiteral("software")) ||
         name.contains(QStringLiteral("ffmpeg")) ||
         name.contains(QStringLiteral("swdec")) ||

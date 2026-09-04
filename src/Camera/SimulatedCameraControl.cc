@@ -26,7 +26,7 @@ SimulatedCameraControl::SimulatedCameraControl(Vehicle* vehicle, QObject* parent
 
     auto videoManager = VideoManager::instance();
     connect(videoManager, &VideoManager::recordingChanged, this, &SimulatedCameraControl::videoCaptureStatusChanged);
-    connect(videoManager, &VideoManager::hasVideo, this, &SimulatedCameraControl::infoChanged);
+    connect(videoManager, &VideoManager::hasVideoChanged, this, &SimulatedCameraControl::infoChanged);
 
     auto flyViewSettings = SettingsManager::instance()->flyViewSettings();
     connect(flyViewSettings->showSimpleCameraControl(), &Fact::rawValueChanged, this, &SimulatedCameraControl::infoChanged);

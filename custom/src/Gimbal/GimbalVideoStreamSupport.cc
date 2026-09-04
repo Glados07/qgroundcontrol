@@ -106,7 +106,6 @@ bool GimbalVideoStreamSupport::shouldFilterMavlinkMessage(GimbalControlSettings*
     }
 
     // 关闭自动流后丢弃相机上报的 URI，避免原生 VideoManager 进入不可编辑的自动模式。
-    const bool gimbalControlEnabled = settings->enabled()->rawValue().toBool();
     const bool useMavlinkAutoStream = settings->mavlinkAutoVideoStream()->rawValue().toBool();
-    return gimbalControlEnabled && !useMavlinkAutoStream;
+    return !useMavlinkAutoStream;
 }

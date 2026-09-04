@@ -19,8 +19,6 @@ import QGroundControl.ScreenTools
 Loader {
     id: root
 
-    implicitWidth: item ? item.implicitWidth : 0
-    implicitHeight: item ? item.implicitHeight : 0
     Layout.fillWidth: true
     active: viewer3DReady && viewer3DSettingsVisible()
     sourceComponent: viewer3DSettingsComponent

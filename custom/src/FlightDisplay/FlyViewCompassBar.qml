@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Horizontal heading compass bar for Fly View.
+ * Reusable horizontal direction compass bar for Fly View.
  *
  ****************************************************************************/
 
@@ -18,8 +18,10 @@ Item {
     implicitHeight: (_headingIndicatorHeight / 2) + _barHeight + (_pointerSize / 2)
 
     property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
+    property real directionDegrees: vehicle ? Number(vehicle.heading.rawValue) : NaN
+    property string indicatorPrefix: ""
 
-    readonly property real _rawHeading: vehicle ? Number(vehicle.heading.rawValue) : NaN
+    readonly property real _rawHeading: Number(directionDegrees)
     readonly property bool headingValid: isFinite(_rawHeading)
     readonly property real heading: headingValid ? _normalize(_rawHeading) : 0
     readonly property real _barHeight: ScreenTools.defaultFontPixelHeight * 1.5
@@ -43,6 +45,16 @@ Item {
         case 315: return "NW"
         default:  return ""
         }
+    }
+
+    function _indicatorText() {
+        var primaryText = headingValid
+                ? Math.round(heading) % 360 + "°"
+                : "---°"
+        if (indicatorPrefix.length > 0) {
+            primaryText = indicatorPrefix + " " + primaryText
+        }
+        return primaryText
     }
 
     QGCPalette {
@@ -88,8 +100,9 @@ Item {
         z: 1
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.max(headingLabel.implicitWidth + ScreenTools.defaultFontPixelWidth,
-                        ScreenTools.defaultFontPixelWidth * 4)
+        width: Math.min(root.width,
+                        Math.max(headingLabel.implicitWidth + ScreenTools.defaultFontPixelWidth,
+                                 ScreenTools.defaultFontPixelWidth * 4))
         height: root._headingIndicatorHeight
         radius: 2
         color: qgcPal.windowShadeDark
@@ -97,7 +110,10 @@ Item {
         QGCLabel {
             id: headingLabel
             anchors.centerIn: parent
-            text: root.headingValid ? Math.round(root.heading) % 360 + "°" : "---°"
+            width: Math.max(0, parent.width - ScreenTools.defaultFontPixelWidth)
+            text: root._indicatorText()
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
             color: qgcPal.text
             font.pointSize: ScreenTools.smallFontPointSize
             font.bold: true

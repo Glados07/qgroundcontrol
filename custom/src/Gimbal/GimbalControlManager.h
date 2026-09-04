@@ -37,6 +37,10 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(bool zoomStatusKnown READ zoomStatusKnown NOTIFY zoomStatusKnownChanged)
     Q_PROPERTY(bool zoomInAvailable READ zoomInAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomOutAvailable READ zoomOutAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInTapAvailable READ zoomInTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutTapAvailable READ zoomOutTapAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomInHoldAvailable READ zoomInHoldAvailable NOTIFY zoomAvailabilityChanged)
+    Q_PROPERTY(bool zoomOutHoldAvailable READ zoomOutHoldAvailable NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomControlsUnlocked READ zoomControlsUnlocked NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomCommandPending READ zoomCommandPending NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool zoomValueUncertain READ zoomValueUncertain NOTIFY zoomAvailabilityChanged)
@@ -69,6 +73,10 @@ public:
     bool zoomStatusKnown() const { return _zoomStatusKnown; }
     bool zoomInAvailable() const;
     bool zoomOutAvailable() const;
+    bool zoomInTapAvailable() const { return zoomInAvailable(); }
+    bool zoomOutTapAvailable() const { return zoomOutAvailable(); }
+    bool zoomInHoldAvailable() const { return zoomInAvailable(); }
+    bool zoomOutHoldAvailable() const { return zoomOutAvailable(); }
     bool zoomControlsUnlocked() const {
         return enabled() && _videoStreamAvailable && _maximumZoomKnown;
     }
@@ -108,6 +116,14 @@ public:
     Q_INVOKABLE bool toggleVideoRecording();
     Q_INVOKABLE bool requestCurrentZoom();
     Q_INVOKABLE bool requestCameraStatus();
+
+    /// Main-thread entry points for the UniRC CH9 continuous-zoom source.
+    /// They keep the physical wheel independent from the QML touch gesture so
+    /// one source cannot release or cancel the other source's native 0x05 run.
+    bool startUniRcZoom(int direction);
+    bool stopUniRcZoom();
+    bool cancelUniRcZoom();
+    bool uniRcZoomActive() const;
 
     /// Accepts the decoded main-stream size reported by the negotiated video
     /// sink. The caller must invoke this method on the manager's Qt thread.
@@ -186,6 +202,12 @@ private slots:
     void _handleRecordingCommandTimeout();
 
 private:
+    enum class ContinuousZoomOwner {
+        None,
+        Touch,
+        UniRc,
+    };
+
     enum class AlignmentAttemptResult {
         NotNeeded,
         CommandSent,
@@ -202,6 +224,9 @@ private:
     bool _heldZoomDisplayAtTerminal() const;
     bool _zoomPlanningReference(double* zoomLevel) const;
     bool _zoomDirectionAvailable(int direction) const;
+    bool _startZoomWithPressDuration(int direction,
+                                     int pressDurationMs,
+                                     ContinuousZoomOwner owner);
     bool _sendAlignmentCorrection(double targetZoom, double sourceZoom);
     bool _sendCurrentZoomQuery(bool startOperationDeadline);
     void _cancelOutstandingZoomQuery();
@@ -337,6 +362,7 @@ private:
     int _stableZoomDirection = 0;
     bool _continuousZoomActive = false;
     int _continuousZoomDirection = 0;
+    ContinuousZoomOwner _continuousZoomOwner = ContinuousZoomOwner::None;
     double _heldZoomStartTarget = kMinZoom;
     double _heldZoomLastTarget = kMinZoom;
     int _heldZoomInitialPressDurationMs = kHeldZoomPressThresholdMs;

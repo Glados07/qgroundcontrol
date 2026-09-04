@@ -31,6 +31,17 @@ Item {
     property var    activeGimbal:               gimbalController ? gimbalController.activeGimbal : null
     property bool   multiGimbalSetup:           gimbalController && gimbalController.gimbals.count > 1
     property bool   joystickButtonsAvailable:   activeVehicle && activeVehicle.joystickEnabled
+    readonly property var _gimbalCenterCoordinator: QGroundControl.corePlugin
+                                                     && QGroundControl.corePlugin.gimbalCenterCoordinator !== undefined
+                                                     ? QGroundControl.corePlugin.gimbalCenterCoordinator
+                                                     : null
+    readonly property var _gimbalAzimuthProvider: QGroundControl.corePlugin
+                                                  && QGroundControl.corePlugin.gimbalAzimuthProvider !== undefined
+                                                  ? QGroundControl.corePlugin.gimbalAzimuthProvider
+                                                  : null
+    readonly property real _gimbalAbsoluteYaw: _gimbalAzimuthProvider && _gimbalAzimuthProvider.valid
+                                                ? Number(_gimbalAzimuthProvider.absoluteYaw)
+                                                : NaN
 
     property var    margins:                    ScreenTools.defaultFontPixelWidth
     property var    panelRadius:                ScreenTools.defaultFontPixelWidth * 0.5
@@ -146,7 +157,8 @@ Item {
         centerReplayDelay.stop()
     }
 
-    function _invokeOwnershipAction(controller, gimbal, action) {
+    function _invokeOwnershipAction(vehicle, controller, gimbal, action) {
+        var messagesSentBefore = Number(vehicle.messagesSent)
         _toolbarPostureDispatchInProgress = true
         try {
             switch (action.id) {
@@ -165,6 +177,26 @@ Item {
             }
         } finally {
             _toolbarPostureDispatchInProgress = false
+        }
+
+        if (!_gimbalCenterCoordinator
+                || !vehicle
+                || activeVehicle !== vehicle
+                || gimbalController !== controller
+                || activeGimbal !== gimbal
+                || Number(vehicle.messagesSent) === messagesSentBefore) {
+            return
+        }
+        switch (action.id) {
+        case "center":
+            _gimbalCenterCoordinator.noteRecenterCommandDispatched()
+            break
+        case "tilt90":
+            _gimbalCenterCoordinator.notePitch90CommandDispatched()
+            break
+        case "yawLock":
+            _gimbalCenterCoordinator.noteYawLockCommandDispatched()
+            break
         }
     }
 
@@ -259,7 +291,7 @@ Item {
             return
         }
 
-        _invokeOwnershipAction(controller, gimbal, action)
+        _invokeOwnershipAction(_pendingVehicle, controller, gimbal, action)
 
         // The popup handler synchronously invalidates this generation if RC
         // retakes control immediately before replay. Never auto-acquire again.
@@ -270,6 +302,9 @@ Item {
     }
 
     function _dispatchOwnershipAction(action) {
+        if (_gimbalCenterCoordinator) {
+            _gimbalCenterCoordinator.cancel()
+        }
         var vehicle = activeVehicle
         var controller = gimbalController
         var gimbal = activeGimbal
@@ -295,7 +330,7 @@ Item {
         if (hasOwnership
                 && (action.id !== "center"
                     || !_centerPrimerIsRequired(vehicle, gimbal))) {
-            _invokeOwnershipAction(controller, gimbal, action)
+            _invokeOwnershipAction(vehicle, controller, gimbal, action)
             return
         }
 
@@ -318,6 +353,14 @@ Item {
             controller.acquireGimbalControl()
         }
         _schedulePendingOwnershipCheck()
+    }
+
+    function _requestCenter() {
+        if (_gimbalCenterCoordinator) {
+            _gimbalCenterCoordinator.requestCenter()
+        } else {
+            _dispatchOwnershipAction({id: "center"})
+        }
     }
 
     function _handleCenterPrimerResult(vehicleId, targetComponent, command, ackResult, failureCode) {
@@ -394,7 +437,7 @@ Item {
             _centerFinalManagerCompid = Number(gimbal.managerCompid.rawValue)
             _centerFinalPrimerKey = _centerPrimerKey(_pendingVehicle, gimbal)
         }
-        _invokeOwnershipAction(controller, gimbal, action)
+        _invokeOwnershipAction(_pendingVehicle, controller, gimbal, action)
         if (_pendingGeneration !== generation) {
             if (action.id === "center") {
                 _clearCenterFinalAckWait()
@@ -491,11 +534,14 @@ Item {
                     QGCButton {
                         property var callbackList: [
                            {"yawLock":      function(){ control._dispatchOwnershipAction({id: "yawLock", value: !activeGimbal.yawLock}) } },
-                           {"center":       function(){ control._dispatchOwnershipAction({id: "center"}) }                                },
+                           {"center":       function(){ control._requestCenter() }                                                        },
                            {"tilt90":       function(){ control._dispatchOwnershipAction({id: "tilt90"}) }                                },
                            // PointHome is a Vehicle ROI command, not a direct
                            // gimbal posture command, so it bypasses ownership.
                            {"pointHome":    function(){
+                                if (control._gimbalCenterCoordinator) {
+                                    control._gimbalCenterCoordinator.cancel()
+                                }
                                 if (control._pendingOwnershipAction !== null) {
                                     control._clearPendingOwnershipAction()
                                 }
@@ -504,6 +550,9 @@ Item {
                            {"retract":      function(){ control._dispatchOwnershipAction({id: "retract"}) }                               },
                            // This button changes its action depending on gimbal being under control or not
                            {"acqControl":   function(){
+                                if (control._gimbalCenterCoordinator) {
+                                    control._gimbalCenterCoordinator.cancel()
+                                }
                                 if (control._pendingOwnershipAction !== null) {
                                     control._clearPendingOwnershipAction()
                                 }
@@ -826,7 +875,10 @@ Item {
         QGCLabel {
             id:                     panLabel
             text:                   activeGimbal ?
-                                        gimbalTelemetryLayout.showAzimuth ? (qsTr("Az: ") + activeGimbal.absoluteYaw.rawValue.toFixed(1)) :
+                                        gimbalTelemetryLayout.showAzimuth ?
+                                            (isFinite(control._gimbalAbsoluteYaw)
+                                                ? (qsTr("Az: ") + control._gimbalAbsoluteYaw.toFixed(1))
+                                                : (qsTr("Az: ") + "--")) :
                                             (qsTr("Y: ") + activeGimbal.bodyYaw.rawValue.toFixed(1)) :
                                                 ""
         }
@@ -835,6 +887,16 @@ Item {
     MouseArea {
         anchors.fill:   parent
         onClicked:      mainWindow.showIndicatorDrawer(gimbalControlsPage, control)
+    }
+
+    Connections {
+        target: _gimbalCenterCoordinator
+        function onGimbalActionRequestStarted() {
+            if (control._pendingOwnershipAction !== null) {
+                control._clearPendingOwnershipAction()
+            }
+            control._clearCenterFinalAckWait()
+        }
     }
 
     Connections {
@@ -883,11 +945,17 @@ Item {
         property bool isPopupOpen:  false
         target:                     gimbalController
         function onShowAcquireGimbalControlPopup() {
+            var coordinatedDispatch = control._gimbalCenterCoordinator
+                    && control._gimbalCenterCoordinator.dispatchInProgress
             if (control._pendingOwnershipAction !== null
-                    || control._toolbarPostureDispatchInProgress) {
+                    || control._toolbarPostureDispatchInProgress
+                    || coordinatedDispatch) {
                 // The command lost ownership between the stable check and
                 // synchronous dispatch, or a toolbar acquisition is pending.
                 // Suppress this toolbar-only prompt.
+                if (coordinatedDispatch) {
+                    control._gimbalCenterCoordinator.cancel()
+                }
                 if (control._pendingOwnershipAction !== null) {
                     control._clearPendingOwnershipAction()
                 }

@@ -16,6 +16,7 @@ import QGroundControl
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
 import QGroundControl.Controls
+import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.AppSettings
 
@@ -36,6 +37,10 @@ SettingsPage {
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
     property var    _gimbalControlSettings:     QGroundControl.corePlugin.gimbalControlSettings
+    property var    _videoCustomSettings:       QGroundControl.corePlugin.videoCustomSettings
+    property var    _dualVideoManager:          QGroundControl.corePlugin.dualVideoManager
+
+    QGCPalette { id: qgcPal }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
@@ -55,14 +60,44 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Connection")
-        visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP | _requiresUDPUrl)
+        headingDescription: _isRTSP
+                            ? qsTr("Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.")
+                            : ""
+        visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP || _requiresUDPUrl)
 
         LabelledFactTextField {
             Layout.fillWidth:           true
             textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("RTSP URL")
+            label:                      qsTr("RTSP URL 1")
             fact:                       _videoSettings.rtspUrl
             visible:                    _isRTSP && _videoSettings.rtspUrl.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("RTSP URL 2")
+            fact:                       _videoCustomSettings.secondaryRtspUrl
+            visible:                    _isRTSP
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.")
+            visible: _isRTSP
+            wrapMode: Text.WordWrap
+            font.pointSize: ScreenTools.smallFontPointSize
+            opacity: 0.72
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.")
+            visible: _isRTSP && _dualVideoManager
+                     && _dualVideoManager.duplicateSource
+            wrapMode: Text.WordWrap
+            font.pointSize: ScreenTools.smallFontPointSize
+            color: qgcPal.warningText
         }
 
         LabelledFactTextField {
@@ -82,17 +117,17 @@ SettingsPage {
         }
     }
 
-    // 独立设置组不受 MAVLink 自动流对原生 Video Source/Connection 设置组的禁用状态影响。
+    // Keep integration controls independent from MAVLink auto-stream locking
+    // of the native Video Source and Connection groups.
     SettingsGroupLayout {
-        Layout.fillWidth: true
-        heading: qsTr("Video Stream Integration")
-        headingDescription: qsTr("Controls MAVLink video source selection and Android H.265 hardware decoding.")
+        Layout.fillWidth:       true
+        heading:                qsTr("Video Stream Integration")
+        headingDescription: qsTr("Controls MAVLink video source selection and Android H.264/H.265 hardware decoding.")
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
             text: qsTr("Use MAVLink automatic video stream")
             fact: _gimbalControlSettings.mavlinkAutoVideoStream
-            enabled: _gimbalControlSettings.enabled.rawValue
         }
 
         QGCLabel {
@@ -105,17 +140,8 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Force hardware decoding for Android H.265")
+            text: qsTr("Require hardware decoding for Android H.264/H.265")
             fact: _gimbalControlSettings.forceAndroidH265HardwareDecoder
-        }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("Uses vendor MediaCodec for H.265 when available; otherwise keeps software decoding.") + " "
-                  + qsTr("Restart QGC after changing this option.")
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            opacity: 0.72
         }
     }
 
@@ -155,8 +181,8 @@ SettingsPage {
     }
 
     SettingsGroupLayout {
-        Layout.fillWidth: true
-        heading:            qsTr("Local Video Storage")
+        Layout.fillWidth:       true
+        heading:                qsTr("Local Video Storage")
 
         FactCheckBoxSlider {
             Layout.fillWidth: true

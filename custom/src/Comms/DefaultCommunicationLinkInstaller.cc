@@ -21,8 +21,8 @@ Q_LOGGING_CATEGORY(DefaultCommunicationLinkLog, "gcs.custom.communicationlink")
 namespace {
 
 const QString kDefaultLinkName = QStringLiteral("local");
-const QString kDefaultHost = QStringLiteral("192.168.144.125");
-constexpr quint16 kDefaultRemotePort = 14550;
+const QString kDefaultHost = QStringLiteral("192.168.144.20");
+constexpr quint16 kDefaultRemotePort = 19856;
 
 // Use a stable source port by default for Ethernet MAVLink paths whose peer
 // keeps a learned GCS UDP endpoint. This is only the initial value: once the

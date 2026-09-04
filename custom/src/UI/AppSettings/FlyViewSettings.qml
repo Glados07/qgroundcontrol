@@ -27,6 +27,7 @@ SettingsPage {
     property var    _settingsManager:                   QGroundControl.settingsManager
     property var    _flyViewSettings:                   _settingsManager.flyViewSettings
     property var    _flyViewCustomSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
+    property var    _gimbalControlSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.gimbalControlSettings : null
     property var    _mavlinkActionsSettings:            _settingsManager.mavlinkActionsSettings
     property Fact   _virtualJoystick:                   _settingsManager.appSettings.virtualJoystick
     property Fact   _virtualJoystickAutoCenterThrottle: _settingsManager.appSettings.virtualJoystickAutoCenterThrottle
@@ -35,6 +36,7 @@ SettingsPage {
     property Fact   _showAdditionalIndicatorsCompass:   _flyViewSettings.showAdditionalIndicatorsCompass
     property Fact   _lockNoseUpCompass:                 _flyViewSettings.lockNoseUpCompass
     property Fact   _showHeadingCompassBar:             _flyViewCustomSettings ? _flyViewCustomSettings.showHeadingCompassBar : null
+    property Fact   _showGimbalHeadingCompassBar:       _flyViewCustomSettings ? _flyViewCustomSettings.showGimbalHeadingCompassBar : null
     property Fact   _guidedMinimumAltitude:             _flyViewSettings.guidedMinimumAltitude
     property Fact   _guidedMaximumAltitude:             _flyViewSettings.guidedMaximumAltitude
     property Fact   _maxGoToLocationDistance:           _flyViewSettings.maxGoToLocationDistance
@@ -221,7 +223,8 @@ SettingsPage {
         heading:            qsTr("Instrument Panel")
         visible:            _showAdditionalIndicatorsCompass.visible ||
                             _lockNoseUpCompass.visible ||
-                            Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible)
+                            Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible) ||
+                            Boolean(_showGimbalHeadingCompassBar && _showGimbalHeadingCompassBar.visible)
 
         Loader {
             id:                 headingCompassBarToggleLoader
@@ -232,8 +235,22 @@ SettingsPage {
             visible:            active
 
             sourceComponent: FactCheckBoxSlider {
-                text:           qsTr("Show Heading Compass Bar")
+                text:           qsTr("Show Vehicle Heading Compass Bar")
                 fact:           _showHeadingCompassBar
+            }
+        }
+
+        Loader {
+            id:                 gimbalHeadingCompassBarToggleLoader
+            Layout.fillWidth:   true
+            Layout.preferredHeight: item ? item.implicitHeight : 0
+            Layout.minimumHeight:   item ? item.implicitHeight : 0
+            active:             _showGimbalHeadingCompassBar !== null
+            visible:            active
+
+            sourceComponent: FactCheckBoxSlider {
+                text:           qsTr("Show Gimbal Heading Compass Bar")
+                fact:           _showGimbalHeadingCompassBar
             }
         }
 
@@ -252,6 +269,29 @@ SettingsPage {
         }
     }
 
+    // Camera SDK controls belong directly below Instrument Panel. Keeping this
+    // before the potentially tall 3D View group also makes the zoom-step fields
+    // visible without scrolling through the Viewer3D settings first.
+    Loader {
+        id:                 gimbalControlSettingsGroupLoader
+        Layout.fillWidth:   true
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+        Layout.minimumHeight:   item ? item.implicitHeight : 0
+        active:             _gimbalControlSettings !== null && _gimbalControlSettings !== undefined
+        visible:            active
+        source:             Qt.resolvedUrl("GimbalControlSettingsGroup.qml")
+
+        onLoaded: {
+            item.gimbalControlSettings = _gimbalControlSettings
+        }
+
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                console.warn("Gimbal control settings group failed to load:", source)
+            }
+        }
+    }
+
     // Viewer3D 设置组独立加载，便于后续继续移植或替换 3D 模块。
     Loader {
         id:                 viewer3DSettingsGroupLoader
@@ -267,18 +307,4 @@ SettingsPage {
         }
     }
 
-    // 思翼云台缩放设置组放在 3D View 设置下方，保持 Viewer3D 和 Gimbal 两个模块边界清晰。
-    Loader {
-        id:                 gimbalControlSettingsGroupLoader
-        Layout.fillWidth:   true
-        Layout.preferredHeight: item ? item.implicitHeight : 0
-        Layout.minimumHeight:   item ? item.implicitHeight : 0
-        source:             "qrc:/Custom/qml/QGroundControl/AppSettings/GimbalControlSettingsGroup.qml"
-
-        onStatusChanged: {
-            if (status === Loader.Error) {
-                console.warn("Gimbal control settings group failed to load:", source)
-            }
-        }
-    }
 }
