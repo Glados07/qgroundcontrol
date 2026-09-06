@@ -762,6 +762,11 @@ void UniRcChannelController::_handleChannelPacket(
     _applyZoomDirection(result.zoomDirection,
                         result.zoomDirectionChanged);
     if (result.ch10Pressed && _gimbalCenterCoordinator) {
+        qCInfo(UniRcChannelLog)
+            << "UniRC CH10 pressed" << "CH7" << channel7 << "CH8" << channel8
+            << "CH9" << channel9 << "CH10" << channel10
+            << "manualAttitudeInput" << result.manualAttitudeInputDetected
+            << "gimbalActionBusy" << _gimbalCenterCoordinator->busy();
         _gimbalCenterCoordinator->requestNextCh10Action();
     }
 }

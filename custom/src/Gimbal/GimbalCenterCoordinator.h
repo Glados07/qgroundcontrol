@@ -75,6 +75,8 @@ private:
     void _clearRequestConnections();
     bool _requestContextIsCurrent() const;
 
+    // Last reported status only; requests additionally require a fresh
+    // successful CONFIGURE result before any posture command is dispatched.
     static bool _hasConfirmedOwnership(const Gimbal *gimbal);
     static QString _primerKey(const Vehicle *vehicle, Gimbal *gimbal);
 
@@ -97,7 +99,8 @@ private:
     Phase _phase = Phase::Idle;
     bool _busy = false;
     bool _dispatchInProgress = false;
-    bool _acquireSent = false;
+    bool _acquireAccepted = false;
+    std::uint64_t _requestActionRevision = 0;
     quint64 _requestGeneration = 0;
     int _requestVehicleId = -1;
     int _requestManagerCompid = -1;
@@ -110,6 +113,7 @@ private:
     static constexpr int kPrimerSettleMs = 400;
     static constexpr int kFinalAckTimeoutMs = 4000;
     static constexpr int kGimbalManagerPitchYawCommand = 1000;
+    static constexpr int kGimbalManagerConfigureCommand = 1001;
     static constexpr int kMavResultAccepted = 0;
     static constexpr int kCommandResultOnlyFailureCode = 0;
     static constexpr float kPrimerPitchMin = -90.0f;

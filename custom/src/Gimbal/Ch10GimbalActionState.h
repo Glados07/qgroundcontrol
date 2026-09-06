@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 class Ch10GimbalActionState
 {
 public:
@@ -15,6 +17,18 @@ public:
     };
 
     Action nextAction() const { return _nextAction; }
+    std::uint64_t revision() const { return _revision; }
+
+    // An asynchronous ACK must not overwrite a newer manual/toolbar/reset
+    // event, even if that event did not change the enum's value.
+    bool commandAccepted(Action action, std::uint64_t requestRevision)
+    {
+        if (requestRevision != _revision) {
+            return false;
+        }
+        return _setNextAction(action == Action::Recenter
+                                 ? Action::Pitch90 : Action::Recenter);
+    }
 
     bool recenterCommandDispatched() { return _setNextAction(Action::Pitch90); }
     bool pitch90CommandDispatched() { return _setNextAction(Action::Recenter); }
@@ -25,6 +39,7 @@ public:
 private:
     bool _setNextAction(Action action)
     {
+        ++_revision;
         if (_nextAction == action) {
             return false;
         }
@@ -33,4 +48,5 @@ private:
     }
 
     Action _nextAction = Action::Recenter;
+    std::uint64_t _revision = 0;
 };

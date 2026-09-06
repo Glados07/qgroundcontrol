@@ -79,6 +79,7 @@ private slots:
     void manualAttitudeDeadband();
     void gimbalActionStateTransitions();
     void gimbalActionStateAlternatesOnlyAfterDispatch();
+    void gimbalActionAckPreservesNewerEvents();
     void sameFrameManualInputPrecedesCh10();
     void ch9DoesNotChangeGimbalAction();
     void invalidAttitudeValuesAreIgnored();
@@ -458,6 +459,37 @@ void UniRcProtocolTest::gimbalActionStateAlternatesOnlyAfterDispatch()
     const Action selectedButNotDispatched = state.nextAction();
     QVERIFY(selectedButNotDispatched == Action::Pitch90);
     QVERIFY(state.nextAction() == selectedButNotDispatched);
+}
+
+void UniRcProtocolTest::gimbalActionAckPreservesNewerEvents()
+{
+    using Action = Ch10GimbalActionState::Action;
+    Ch10GimbalActionState state;
+    QVERIFY(state.commandAccepted(Action::Recenter, state.revision()));
+    QCOMPARE(state.nextAction(), Action::Pitch90);
+    QVERIFY(state.commandAccepted(Action::Pitch90, state.revision()));
+    QCOMPARE(state.nextAction(), Action::Recenter);
+
+    auto revision = state.revision();
+    QVERIFY(!state.manualAttitudeInputDetected()); // Same enum, newer event.
+    QVERIFY(!state.commandAccepted(Action::Recenter, revision));
+    QCOMPARE(state.nextAction(), Action::Recenter);
+
+    revision = state.revision();
+    state.yawLockCommandDispatched();
+    QVERIFY(!state.commandAccepted(Action::Recenter, revision));
+    revision = state.revision();
+    state.pitch90CommandDispatched();
+    QVERIFY(!state.commandAccepted(Action::Recenter, revision));
+    revision = state.revision();
+    state.reset();
+    QVERIFY(!state.commandAccepted(Action::Recenter, revision));
+
+    state.recenterCommandDispatched();
+    revision = state.revision();
+    state.recenterCommandDispatched();
+    QVERIFY(!state.commandAccepted(Action::Pitch90, revision));
+    QCOMPARE(state.nextAction(), Action::Pitch90);
 }
 
 void UniRcProtocolTest::sameFrameManualInputPrecedesCh10()

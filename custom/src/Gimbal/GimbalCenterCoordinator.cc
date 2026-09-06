@@ -112,7 +112,8 @@ bool GimbalCenterCoordinator::_beginRequest(
     _requestManagerCompid = gimbal->managerCompid()->rawValue().toInt();
     _requestPrimerKey = _primerKey(vehicle, gimbal);
     _requestAction = action;
-    _acquireSent = false;
+    _acquireAccepted = false;
+    _requestActionRevision = _ch10ActionState.revision();
     ++_requestGeneration;
 
     _requestConnections.append(connect(vehicle, &Vehicle::mavCommandResult,
@@ -127,33 +128,29 @@ bool GimbalCenterCoordinator::_beginRequest(
         emit centerRequestStarted();
     }
 
+    if (!_busy || !_requestContextIsCurrent()) {
+        return false;
+    }
+
     const bool hasOwnership = _hasConfirmedOwnership(gimbal);
-    if (!hasOwnership) {
-        if ((_requestAction == Ch10GimbalActionState::Action::Recenter)
-            && !_requestPrimerKey.isEmpty()) {
-            _primerRequiredKeys.insert(_requestPrimerKey);
-        }
-        _phase = Phase::WaitingForOwnership;
-        _requestTimeout.start();
-        _acquireSent = true;
-        controller->acquireGimbalControl();
-        QTimer::singleShot(0, this, &GimbalCenterCoordinator::_reviewRequest);
-        return true;
+    if (!hasOwnership
+        && (_requestAction == Ch10GimbalActionState::Action::Recenter)
+        && !_requestPrimerKey.isEmpty()) {
+        _primerRequiredKeys.insert(_requestPrimerKey);
     }
 
-    if (_requestAction == Ch10GimbalActionState::Action::Pitch90) {
-        _sendPitch90();
-        return true;
-    }
-
-    if (_primerRequiredKeys.contains(_requestPrimerKey)) {
-        _phase = Phase::WaitingForPrimerAck;
-        _requestTimeout.start();
-        _sendPrimer();
-        return true;
-    }
-
-    _sendFinalCenter();
+    // GIMBAL_MANAGER_STATUS is asynchronous. RC can take control before its
+    // next update reaches QGC, even when the local CH7/CH8 state deadband is
+    // satisfied. Reassert ownership once per explicit action and require this
+    // CONFIGURE's successful result; cached ownership alone is insufficient.
+    _phase = Phase::WaitingForOwnership;
+    _requestTimeout.start();
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action request" << _requestGeneration
+        << "target" << _requestPrimerKey
+        << "action" << (action == Ch10GimbalActionState::Action::Recenter ? "recenter" : "pitch-90")
+        << "cachedOwnership" << hasOwnership << "acquire-command" << kGimbalManagerConfigureCommand;
+    controller->acquireGimbalControl();
     return true;
 }
 
@@ -162,6 +159,8 @@ void GimbalCenterCoordinator::cancel()
     if (!_busy) {
         return;
     }
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action cancelled" << _requestGeneration << "phase" << static_cast<int>(_phase);
     _finishRequest();
 }
 
@@ -252,12 +251,31 @@ void GimbalCenterCoordinator::_mavCommandResult(int vehicleId, int targetCompone
     if (!_busy
         || (vehicleId != _requestVehicleId)
         || (targetComponent != _requestManagerCompid)
-        || (command != kGimbalManagerPitchYawCommand)) {
+        || ((command != kGimbalManagerPitchYawCommand)
+            && (command != kGimbalManagerConfigureCommand))) {
         return;
     }
 
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action ACK" << _requestGeneration << "target" << _requestPrimerKey
+        << "command" << command << "result" << ackResult << "failureCode" << failureCode
+        << "phase" << static_cast<int>(_phase);
     const bool accepted = (ackResult == kMavResultAccepted)
                           && (failureCode == kCommandResultOnlyFailureCode);
+    if (command == kGimbalManagerConfigureCommand) {
+        if (_phase == Phase::WaitingForOwnership) {
+            if (!accepted) {
+                cancel();
+                return;
+            }
+            _acquireAccepted = true;
+            // Native ownership properties are updated separately. Review only
+            // after all notifications from the current event have completed.
+            QTimer::singleShot(0, this, &GimbalCenterCoordinator::_reviewRequest);
+        }
+        return;
+    }
+
     if (_phase == Phase::WaitingForPrimerAck) {
         if (!accepted) {
             cancel();
@@ -269,6 +287,11 @@ void GimbalCenterCoordinator::_mavCommandResult(int vehicleId, int targetCompone
     }
 
     if (_phase == Phase::WaitingForFinalAck) {
+        if (accepted) {
+            _logNextCh10ActionChange(
+                _ch10ActionState.commandAccepted(_requestAction, _requestActionRevision),
+                "final-command-accepted");
+        }
         if (accepted
             && (_requestAction == Ch10GimbalActionState::Action::Recenter)
             && !_requestPrimerKey.isEmpty()) {
@@ -287,19 +310,17 @@ void GimbalCenterCoordinator::_reviewRequest()
         cancel();
         return;
     }
-    if (!_hasConfirmedOwnership(_requestGimbal)) {
-        if (!_acquireSent) {
-            _acquireSent = true;
-            _requestController->acquireGimbalControl();
-        }
+    if (!_acquireAccepted || !_hasConfirmedOwnership(_requestGimbal)) {
         return;
     }
 
     if (_requestAction == Ch10GimbalActionState::Action::Pitch90) {
         _sendPitch90();
-    } else {
+    } else if (_primerRequiredKeys.contains(_requestPrimerKey)) {
         _phase = Phase::WaitingForPrimerAck;
         _sendPrimer();
+    } else {
+        _sendFinalCenter();
     }
 }
 
@@ -320,6 +341,8 @@ void GimbalCenterCoordinator::_sendPrimer()
                                  : boundedPitch - kPrimerPitchStep;
 
     _phase = Phase::WaitingForPrimerAck;
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action dispatch" << _requestGeneration << "primer pitch" << primerPitch;
     _setDispatchInProgress(true);
     _requestController->sendPitchBodyYaw(primerPitch, 0.0f, false);
     _setDispatchInProgress(false);
@@ -338,6 +361,8 @@ void GimbalCenterCoordinator::_sendFinalCenter()
     const quint64 requestGeneration = _requestGeneration;
     const QPointer<Vehicle> requestVehicle = _requestVehicle;
     const uint messagesSentBefore = requestVehicle->messagesSent();
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action dispatch" << _requestGeneration << "final pitch" << 0;
     _setDispatchInProgress(true);
     _requestController->centerGimbal();
     _setDispatchInProgress(false);
@@ -354,7 +379,6 @@ void GimbalCenterCoordinator::_sendFinalCenter()
         cancel();
         return;
     }
-    noteRecenterCommandDispatched();
 
     // A matching command result may be emitted synchronously (for example a
     // duplicate-command rejection), so only arm the timer if the request is
@@ -376,6 +400,8 @@ void GimbalCenterCoordinator::_sendPitch90()
     const quint64 requestGeneration = _requestGeneration;
     const QPointer<Vehicle> requestVehicle = _requestVehicle;
     const uint messagesSentBefore = requestVehicle->messagesSent();
+    qCInfo(GimbalCenterCoordinatorLog)
+        << "Gimbal action dispatch" << _requestGeneration << "final pitch" << kPitch90Degrees;
     _setDispatchInProgress(true);
     _requestController->sendPitchBodyYaw(kPitch90Degrees, 0.0f);
     _setDispatchInProgress(false);
@@ -386,13 +412,15 @@ void GimbalCenterCoordinator::_sendPitch90()
     }
     const bool commandDispatched =
         requestVehicle->messagesSent() != messagesSentBefore;
-    if (commandDispatched) {
-        notePitch90CommandDispatched();
-    } else {
+    if (!commandDispatched) {
         cancel();
         return;
     }
-    _finishRequest();
+    // Keep the same final-ACK transaction as Center. Dispatch is not success:
+    // a denied/timed-out Pitch90 must remain the next action for a later press.
+    if (_busy && (_phase == Phase::WaitingForFinalAck)) {
+        _finalAckTimeout.start();
+    }
 }
 
 void GimbalCenterCoordinator::_finishRequest()
@@ -408,7 +436,8 @@ void GimbalCenterCoordinator::_finishRequest()
     _requestVehicleId = -1;
     _requestManagerCompid = -1;
     _requestAction = Ch10GimbalActionState::Action::Recenter;
-    _acquireSent = false;
+    _acquireAccepted = false;
+    _requestActionRevision = 0;
     _phase = Phase::Idle;
     _setDispatchInProgress(false);
     _setBusy(false);

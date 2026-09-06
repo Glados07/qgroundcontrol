@@ -526,6 +526,31 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    # Compile the production coordinator against test-only transport/telemetry
+    # doubles. Never add these include directories to the application target.
+    qt_add_executable(GimbalCenterCoordinatorTest
+        test/Gimbal/GimbalCenterCoordinatorTest.cc
+        test/Gimbal/CoordinatorStubs/TestDoubles.h
+        src/Gimbal/GimbalCenterCoordinator.cc
+        src/Gimbal/GimbalCenterCoordinator.h
+        src/Gimbal/Ch10GimbalActionState.h
+        src/Android/UniRcChannelPolicy.cc
+        src/Android/UniRcChannelPolicy.h
+    )
+    target_include_directories(GimbalCenterCoordinatorTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/CoordinatorStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+    )
+    target_link_libraries(GimbalCenterCoordinatorTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalCenterCoordinatorTest COMMAND $<TARGET_FILE:GimbalCenterCoordinatorTest>)
+    add_custom_target(check_gimbal_center_coordinator
+        COMMAND $<TARGET_FILE:GimbalCenterCoordinatorTest>
+        DEPENDS GimbalCenterCoordinatorTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
     qt_add_executable(UniRcProtocolTest
         test/Android/UniRcProtocolTest.cc
         src/Android/UniRcChannelPolicy.cc
