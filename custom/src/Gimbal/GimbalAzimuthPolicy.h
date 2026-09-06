@@ -10,12 +10,20 @@
 
 class GimbalAzimuthPolicy {
    public:
+    // Used only when neither MAVLink yaw-frame bit is present. Explicit frame
+    // declarations always take precedence over this installation setting.
+    enum class LegacyYawReference {
+        Protocol = 0,
+        VehicleHeading = 1,
+        EarthNorth = 2,
+    };
+
     enum class Source {
         Invalid,
         ReportedEarthFrame,
         DeltaYaw,
-        YawLockReportedYawCompatibility,
-        YawLockVehicleHeadingCompatibility,
+        ConfiguredLegacyVehicleHeading,
+        ConfiguredLegacyEarthFrame,
         VehicleHeadingFallback,
         LegacyEarthFrame,
         LegacyVehicleHeading,
@@ -34,6 +42,7 @@ class GimbalAzimuthPolicy {
         bool yawInVehicleFrame = false;
         bool yawInEarthFrame = false;
         bool yawLock = false;
+        LegacyYawReference legacyYawReference = LegacyYawReference::Protocol;
 
         // Availability is deliberately separate from support. MAVLink 2
         // extension fields may decode to zero when they were not transmitted.

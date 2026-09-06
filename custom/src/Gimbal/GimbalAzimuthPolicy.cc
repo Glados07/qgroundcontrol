@@ -111,7 +111,10 @@ GimbalAzimuthPolicy::Result GimbalAzimuthPolicy::calculate(const Input& input) {
         return result;
     }
 
-    const bool vehicleFrame = input.yawInVehicleFrame || !input.yawLock;
+    const bool configuredLegacy = !input.yawInVehicleFrame && !input.yawInEarthFrame;
+    const bool configuredVehicle = configuredLegacy && input.legacyYawReference == LegacyYawReference::VehicleHeading;
+    const bool configuredEarth = configuredLegacy && input.legacyYawReference == LegacyYawReference::EarthNorth;
+    const bool vehicleFrame = input.yawInVehicleFrame || configuredVehicle || (!configuredEarth && !input.yawLock);
     if (vehicleFrame) {
         // Explicit frame flags opt in to delta_yaw. With no explicit frame,
         // MAVLink requires the legacy yaw-lock interpretation and delta_yaw
@@ -129,7 +132,9 @@ GimbalAzimuthPolicy::Result GimbalAzimuthPolicy::calculate(const Input& input) {
                 earthFromVehicle(reportedQuaternion, input.vehicleHeadingDegrees * kDegreesToRadians);
             result.absoluteYawDegrees = wrap180(quaternionYawDegrees(earthQuaternion));
             result.valid = true;
-            result.source = input.yawInVehicleFrame ? Source::VehicleHeadingFallback : Source::LegacyVehicleHeading;
+            result.source = input.yawInVehicleFrame ? Source::VehicleHeadingFallback
+                            : configuredVehicle     ? Source::ConfiguredLegacyVehicleHeading
+                                                    : Source::LegacyVehicleHeading;
             return result;
         }
 
@@ -137,11 +142,13 @@ GimbalAzimuthPolicy::Result GimbalAzimuthPolicy::calculate(const Input& input) {
         return result;
     }
 
-    // No explicit frame flags and yaw-lock set is the MAVLink legacy earth
-    // frame. delta_yaw is intentionally ignored in this branch.
+    // Either the configured legacy frame is Earth, or protocol interpretation
+    // of a legacy YAW_LOCK packet selects Earth. Never infer a frame from which
+    // candidate happens to move less: a yaw command and base motion are not
+    // distinguishable from that evidence alone.
     result.valid = true;
     result.absoluteYawDegrees = wrap180(quaternionYawDegrees(reportedQuaternion));
-    result.source = Source::LegacyEarthFrame;
+    result.source = configuredEarth ? Source::ConfiguredLegacyEarthFrame : Source::LegacyEarthFrame;
     return result;
 }
 

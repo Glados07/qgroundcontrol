@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/control`
 
-最后更新：2026-09-04
+最后更新：2026-09-06
 
 ## 1. 当前开发进度
 
@@ -32,7 +32,7 @@
 - **已有实测基础与最新日志边界**：Ubuntu 24.04 下MT11可由QGC软件解码正常显示；用户也在同一Android遥控器的UniGCS中用同一通信链路同时显示A8与MT11，已排除物理链路、endpoint和设备码流整体不可用。2026-08-31 10:03的拔USB本地日志进一步完成Android分层定位：MT11已经成功经过 `config-interval=-1` parser和bootstrap gate，完整VPS/SPS/PPS+IRAP被放行；其送往decoder的CAPS为 `byte-stream/AU, parsed=true, 1920x1080, Main, Level 4.1`，但没有 `framerate`，随后在AMC sink CAPS事件、Surface及MediaCodec configure之前稳定报 `not-negotiated (-4)`。同一APK中的A8实际AMC sink CAPS含固定 `25/1`，并继续出现Surface、decoder首输出和sink首帧；resource_manager同时证明两个Qualcomm HEVC实例可并存。GStreamer 1.22.12 AndroidMedia HEVC sink模板要求有限的framerate范围，而默认 `ACCEPT_CAPS`使用subset判断；缺失字段表示该字段不受约束，因而不是有限范围的子集。这将失败精确闭环到AndroidMedia sink CAPS接受阶段，而不是网络、双实例资源、参数集、Surface或解码输出阶段；Level 4.1和两路共同出现的c2d颜色warning也不是根因。
 - **功能边界**：底部条仍由活动飞行器 `Vehicle.heading` 表示机头航向；顶部条读取顶部MAVLink云台栏同一个 `activeVehicle.gimbalController.activeGimbal`，只显示由custom姿态Provider换算出的世界坐标方位角，不再显示 `bodyYaw`/`REL` 相对机头副值。它们都是QGC遥测可视化，不是视频码流OSD，也不表示航点方向、航线偏差或下一航段。顶部条不读取A8 Mini/MT11私有SDK，不与右侧相机选择器或相机工作模式联动；云台不提供有效MAVLink姿态反馈时不伪造角度。
 
-- **本轮云台方位角日志根因与修正**：2026-09-04附件日志确认目标云台的Follow为 `flags=12`、Lock为 `flags=28`，切换时只增加 `YAW_LOCK`；两种状态的 `YAW_IN_VEHICLE_FRAME/YAW_IN_EARTH_FRAME` 均为false，日志也没有让Provider建立 `delta_yaw`支持的语义证据。旧Provider却只让“显式Vehicle+Lock”进入Resolver，因此该设备的兼容条件恒为false：Follow按 `heading+yaw(q)` 得到 `-126.738°`，首个Lock直接按legacy Earth的 `yaw(q)` 得到 `-171.387°`，在q本身只变 `0.351°`时人为产生 `44.649°`跳变。当前继续不修改原生 `src`，也不改 `GimbalAzimuthPolicy`标准公式；Provider/Resolver新增 `LegacyNoFrame`模式，同时计算协议候选 `yaw(q)`和近期航向候选 `heading+yaw(q)`。同一路由且距Lock不超过1秒的Follow结果只在边界作为连续性证据：候选须落在8°内并领先至少5°；其中非标准VehicleHeading还要求原始 `yaw(q)`跨边界变化不超过3°，避免切锁同时拨yaw时把真实指令隐藏。首选VehicleHeading后的一秒guard只允许在q稍后重映射时以3°近距证据纠正回Standard，不做Standard→VehicleHeading反向覆盖。无前序Follow时继续用8°/5°基座运动学习。显式Earth与Follow公式不变，显式Vehicle兼容逻辑保留，仅Standard为DeltaYaw且有2秒内heading时才存在第三候选。不同路由的状态互不串用；各路由只因自身超时、发送端重启、整机断链或解锁而清除。日志实值、标准legacy Earth反例、切锁同时yaw、过渡参考有效时的延迟换frame、冷启动锁定、基座转动、解锁连续及模糊证据均已加入回归，MSVC + QtTest 5.14兼容harness为57 passed、0 failed、0 skipped；Provider的一秒计时边界、完整Qt 6/Android构建与目标云台新APK复测仍待完成。
+- **本轮云台方位角根因与修正（2026-09-06）**：9月4日版的运动稳定性Resolver仍会把异步到达的云台q与飞控heading误判为参考系变化，既可能持续重锚而永远达不到8°学习阈值，也可能在已选 `heading+q` 后错误切回直接q。本轮删除该Resolver，按反馈消息的显式frame或用户配置确定公式。无frame位时新增全局 `FlyView/gimbalLegacyYawReference`：0按MAVLink协议、1相对机体航向、2相对地理北向；本custom项目缺省1，跟随/锁定均为 `wrap(heading+yaw(q))`，但这是当前产品可修改的接入配置，不是由Lock标志推导的普遍规律。9月4日边界日志能证明旧计算从 `heading+q` 切到q产生44.649°跳变，不能独自证明整段锁定过程中q的实际参考系。另用独立 `GimbalHeadingTelemetry` 保存原始heading值及各来源接收时间，消除旧Fact整数取整、四元数显示偏移以及共享新鲜度误用；heading到达、消息285到达或反馈参考系设置改变均立即重算。当前验证范围和目标Android待验收项见文末。
 
 - **本轮 Android MT11 黑屏的程序根因与修复**：8月31日新日志证明上一版的参数集防御已经正常工作但仍然黑屏：gate明确放行完整VPS/SPS/PPS+IRAP，Qualcomm HEVC element也已实例化，失败却发生在decoder sink收到CAPS之前。MT11的decoder-facing `video/x-h265` CAPS缺少 `framerate`；在GStreamer CAPS语义中，缺失字段表示该字段不受约束。GStreamer 1.22.12为AndroidMedia HEVC decoder声明 `framerate=[0/1,2147483647/1]`，默认 `ACCEPT_CAPS`又以待接受CAPS是否为allowed CAPS子集进行判断，因此“无framerate”的更宽CAPS被拒绝并向上游形成 `not-negotiated (-4)`。A8携带固定 `25/1`，是该范围的子集，所以同一MediaCodec链路可继续配置和出帧。修复新增纯策略 `AndroidH265DecoderCapsPolicy`，让首选和所有替代custom adapter内部的 `h265parse -> capsfilter -> MediaCodec` 共用 `parsed=true + byte-stream/AU + framerate完整范围`；已知A8仍固定25/1，未知MT11由正常协商得到0/1。修复不删除Level 4.1、不改写码流或时间戳，也不把MT11伪装成A8。
 - **根因结论与验收边界**：`codec_data=0`、decoder晚挂和参数集时序是旧日志下合理的中间假设，但8月31日完整bootstrap release已经证明它们不是本版持续黑屏的充分根因；相关parser/gate仍作为无CSD防御保留。新APK必须先看到adapter实例日志中的 `decoderInputContract` 包含 `framerate=(fraction)[0/1,2147483647/1]`，再在同一MT11 generation看到实际AMC sink CAPS（预期未知率为0/1，或设备后来提供的固定实际率）、Surface/MediaCodec configure、decoder首输出和sink首帧；A8实际AMC sink CAPS仍必须为25/1。当前环境只能完成纯策略构建测试，不能实例化AndroidMedia或目标MediaCodec；完整Qt 6.8.3 Android arm64构建和真机四阶段画面验收之前，不能把代码级修正写成真机已显示。
@@ -130,11 +130,11 @@
 
 - 从 `custom-example` 选择性移植横向航向条、中央数值框和固定指针，不移植右下圆形罗盘、姿态仪及其无关资源。同一个 `FlyViewCompassBar.qml` 同时用于底部飞行器航向和顶部云台指向，避免复制方位滚动算法。
 - 底部条读取活动飞行器 `Vehicle.heading.rawValue`；顶部条跟随MAVLink `gimbalController.activeGimbal`，只显示custom `GimbalAzimuthProvider.absoluteYaw` 和 `Gimbal`前缀，不再显示 `bodyYaw`、`REL`或其他相对机头副值。两者均显示 N、NE、E、SE、S、SW、W、NW；绘制组件将注入的主值归一化到 `[0°, 360°)`。
-- 顶部世界方位角的Policy先按消息坐标系解释：显式Earth frame取 `yaw(q)`；显式Vehicle frame且 `delta_yaw`有效时取 `yaw(q_delta_yaw × q)`，否则回退为 `yaw(q) + Vehicle.heading`；无显式frame位时按旧协议由 `YAW_LOCK` 选择Earth/Vehicle frame，并按规范忽略 `delta_yaw`。由于目标真机在无frame位的Lock中仍持续上报机体系q，Provider/Resolver只在该模糊状态下以同路由Follow连续性和后续基座运动，在标准 `yaw(q)` 与 `yaw(q)+Vehicle.heading`之间判别；证据不足不覆盖标准结果。航向锁定表示维持进入锁定时的世界朝向，不表示强制指向正北；转动基座时，正确方位角应只在控制误差和传感器误差范围内小幅波动。
+- 顶部方位角始终相对地系北向。Policy确定性解释反馈：显式Earth frame直接取 `yaw(q)`；显式Vehicle frame且delta有效时取 `yaw(q_delta_yaw × q)`，否则取 `wrap(yaw(q)+heading)`。两个frame位均未设置时使用 `gimbalLegacyYawReference`：按协议则Follow加heading、Lock直接q；相对机体则两个模式都加heading；相对地理北向则两个模式都直接q。无frame位始终忽略delta；显式frame优先，冲突标志拒绝。本custom项目默认“相对机体航向”，通用Policy输入仍默认“按MAVLink协议”。公式不依据某个候选是否暂时稳定来改变，锁内操作yaw仍实时改变方位。航向锁定维持进入锁定时的世界朝向，并非指向正北。
 - 使用 11 个相对方位 Label 实现连续滚动和 359°/0° 跨界，替代示例的 720 个 Label，降低 Android 上每次航向更新的 QML 重算量。
-- `FlyView/showHeadingCompassBar` 与新增 `FlyView/showGimbalHeadingCompassBar` 均为持久化 bool Fact，默认关闭、无需重启且切换立即生效；两个开关都位于 Application Settings -> Fly View -> Instrument Panel，界面文案分别为“显示飞行器航向罗盘条”和“显示云台指向罗盘条”。两键独立保存，新键缺失时仅使用 `false`，不覆盖旧底部开关。
+- `FlyView/showHeadingCompassBar` 与 `FlyView/showGimbalHeadingCompassBar` 是独立持久化bool Fact，默认关闭。新增 `FlyView/gimbalLegacyYawReference` 为uint32枚举，项目默认1：0“按MAVLink协议”、1“相对机体航向”、2“相对地理北向”。三项位于 Application Settings -> Fly View -> Instrument Panel，立即生效、无需重启，已有保存值不被默认值覆盖。参考系选择作用于所有未上报两个frame位的MAVLink云台，描述的是输入反馈q的参考系；输出方位始终相对北向，显式frame消息不受此项覆盖。
 - `FlyViewCustomLayer` 通过两个显式 custom QRC Loader 复用同一罗盘组件。底部条保持 `50 × defaultFontPixelWidth` 首选宽度，仅按Fly View屏幕边界收窄，不受PIP/虚拟摇杆/右下仪表角落inset反复扣减，并只合并 `bottomEdgeCenterInset`。顶部条从 `parentToolInsets.topEdgeCenterInset + margin` 向下排列，宽度及 `x` 在左侧 `leftEdgeTopInset`、右侧 `max(rightEdgeTopInset, rightTopReserve)` 与屏幕边界构成的安全区内钳制；`FlyView.qml` 将 `_rightPanelWidth` 注入 `rightTopReserve`，右侧面板暂未可见时也保留不重叠宽度。显示时只合并 `topEdgeCenterInset`。母线低压告警位于顶部条占用区之下，不与云台指向值重叠。
-- 顶部条的最终门禁为overlay可见、用户开关打开、活动Vehicle及 `activeGimbal` 存在、`vehicleLinkManager.communicationLost=false`，且Provider已经为该Vehicle/manager/device收到并算出有限、2秒内的新鲜世界方位角；条件不足时整条隐藏，不以0°/N伪造角度。所有依赖飞控heading的标准或兼容路径都要求2秒内收到真实heading承载消息，既不能把Fact初始0误当作真北，也不能在航向遥测停止后无限沿用旧Fact；整机链路丢失会清除该Vehicle的姿态和heading有效状态。这是只读MAVLink反馈层，不发送云台命令，不依赖A8/MT11私有SDK的在线状态，也不跟随右侧A8/MT11相机控制栏选中项。
+- 顶部条的最终门禁为overlay可见、开关打开、活动Vehicle及activeGimbal存在、链路有效，且Provider取得该路由2秒内有限方位。需要heading时必须有同Vehicle的2秒内有效原始样本。GimbalHeadingTelemetry分别缓存ATTITUDE、QUATERNION、高延迟三类来源（HIGH_LATENCY/2共用高延迟项）；前两者选最新测量，都过期才回退高延迟。坏数据不刷新时间，断链清空缓存。顶部不使用显示Fact初始0、整数舍入或repr_offset，也不依赖SDK相机选择。
 - 普通地图主视图、视频主视图和 Viewer3D 使用同一 custom overlay；QGC 原生全屏视频模式会隐藏整个 custom overlay，因此上下两条罗盘和母线告警均随之隐藏。当前仅完成代码和静态验证，不代表目标遥控器与真实MAVLink云台的角度、布局或性能已验收。
 
 ### 1.6 Android 遥控器默认界面缩放（代码已集成，待净安装验证）
@@ -214,7 +214,7 @@
 3. Application Settings 的 General、Fly View、Video 页面和顶部工具栏 `GimbalIndicator.qml` 由项目在 custom 显式接管并保存同名覆盖；其他没有差异、也不需要项目接管的 QML 继续使用 `src`。
 4. 与 `src/Viewer3D` 相同的公共实现由 `custom/CMakeLists.txt` 或 `custom.qrc` 直接引用，不在 custom 保存副本。
 5. custom同名 QML 覆盖使用 `/Custom/qml` 前缀；新增的双视频复合类型由 `Custom.FlightDisplay`模块生成到 `/qml/Custom/FlightDisplay`；Viewer3D 独立模块仍使用 `/qml/Viewer3D`。
-6. 设置 Fact 名和 QSettings 分组保持稳定，升级程序不会丢失已有 Viewer3D、Gimbal、Fly View 飞行器航向罗盘和链路设置；新云台指向键缺失时单独使用 `false`，不改写旧 `FlyView/showHeadingCompassBar`。
+6. 设置Fact名和QSettings分组保持稳定，已有Viewer3D、Gimbal、Fly View开关和链路值继续保留。缺失的云台罗盘开关独立使用false；缺失的gimbalLegacyYawReference使用项目默认1，不覆盖已保存的0/1/2选择。
 7. 复杂协议、坐标转换和跨模块行为使用中文注释；普通布局和赋值不增加无意义注释。
 8. Android 构建先在构建目录合并原生 `android` 模板和 `custom/android` overlay，Gradle 只编译合并结果；不把两个 Java 源目录同时加入 source set，避免同包同类冲突。源码树和Git均不得保存 `.gradle`生成缓存；custom构建关闭configuration cache但保留普通build cache。
 9. 根目录 `translations/qgc_json_zh_CN.ts` 仅保留本次已登记的元数据枚举翻译修正；枚举项必须使用ASCII逗号并与source项数一一对应。除该项外，项目新增或覆盖文案继续进入 `custom/translations`，不得借翻译修正扩大原生目录改动范围。
@@ -274,6 +274,12 @@ custom/
     Gimbal/
       A8MiniZoomPolicy.h
       A8MiniZoomPolicy.cc
+      GimbalAzimuthPolicy.h
+      GimbalAzimuthPolicy.cc
+      GimbalAzimuthProvider.h
+      GimbalAzimuthProvider.cc
+      GimbalHeadingTelemetry.h
+      GimbalHeadingTelemetry.cc
       Ch10GimbalActionState.h
       ZoomStepPolicy.h
       ZoomStepPolicy.cc
@@ -383,6 +389,10 @@ custom/
     Android/
       UniRcProtocolTest.cc
     Gimbal/
+      GimbalAzimuthPolicyTest.cc
+      GimbalAzimuthProviderTest.cc
+      GimbalHeadingTelemetryTest.cc
+      AzimuthStubs/
       GimbalMediaSessionPolicyTest.cc
       GimbalPhotoCapturePolicyTest.cc
       Mt11ProtocolTest.cc
@@ -405,7 +415,7 @@ custom/
 
 | 文件 | 详细作用 |
 |---|---|
-| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集各custom C++、QML模块、资源和翻译，并继续通过目录递归收集GStreamer生产源码。Bluetooth被列为custom必需Qt组件并显式链接 `Qt6::Bluetooth`，不依赖原生Bluetooth Link开关的偶然传递。桌面 `QGC_BUILD_TESTING` 构建创建既有协议/媒体/UniRC测试、纯Qt `AndroidH265DecoderRoutePolicyTest`，以及包含 `GimbalAzimuthPolicy`与 `GimbalYawLockResolver`的 `GimbalAzimuthPolicyTest`/`check_gimbal_azimuth_policy`。Android configure仍把根 `android`模板复制到build目录后用 `custom/android`同路径覆盖，并只编译唯一合并源目录；生成副本注入Android 12+的 `BLUETOOTH_SCAN/CONNECT`，以及仅限API 30及以下的 `BLUETOOTH/BLUETOOTH_ADMIN/ACCESS_FINE_LOCATION`，再校验Manifest、USB管理器和媒体库overlay。UniRC本身改为按MAC直连后不启动发现器，但根工程默认启用的原生Bluetooth Link仍具有设备发现能力，因此不能仅因设置页删除扫描按钮就移除全应用的SCAN/旧版定位声明。旧Bluetooth关闭状态helper及其marker校验已删除。没有修改根 `android/AndroidManifest.xml`。外部WGS84样例目录不参与构建或安装。 |
+| `custom/CMakeLists.txt` | custom 构建总入口。向根工程注入 `QGC_CUSTOM_BUILD`、`CUSTOMHEADER=CustomPlugin.h` 和 `CUSTOMCLASS=CustomPlugin`，收集各custom C++、QML模块、资源和翻译，并继续通过目录递归收集GStreamer生产源码。Bluetooth被列为custom必需Qt组件并显式链接 `Qt6::Bluetooth`，不依赖原生Bluetooth Link开关的偶然传递。桌面 `QGC_BUILD_TESTING` 构建创建既有协议/媒体/UniRC测试、纯Qt `AndroidH265DecoderRoutePolicyTest`，以及 `GimbalAzimuthPolicyTest`、`GimbalHeadingTelemetryTest`、`GimbalAzimuthProviderTest`，对应check_gimbal_azimuth_policy、check_gimbal_heading_telemetry、check_gimbal_azimuth_provider。Provider测试编译真实生产实现与固定版本MAVLink头，只在该测试目标注入QObject替身；测试分支先通过CPM请求工程相同固定包，后续src构建复用。Android configure仍把根 `android`模板复制到build目录后用 `custom/android`同路径覆盖，并只编译唯一合并源目录；生成副本注入Android 12+的 `BLUETOOTH_SCAN/CONNECT`，以及仅限API 30及以下的 `BLUETOOTH/BLUETOOTH_ADMIN/ACCESS_FINE_LOCATION`，再校验Manifest、USB管理器和媒体库overlay。UniRC本身改为按MAC直连后不启动发现器，但根工程默认启用的原生Bluetooth Link仍具有设备发现能力，因此不能仅因设置页删除扫描按钮就移除全应用的SCAN/旧版定位声明。旧Bluetooth关闭状态helper及其marker校验已删除。没有修改根 `android/AndroidManifest.xml`。外部WGS84样例目录不参与构建或安装。 |
 | `custom/custom.qrc` | custom RCC运行时资源清单，共68个 `<file>`；本轮继续注册同路径 `FlyView.qml`覆盖、`MT11CameraControl.qml`及共享 `GimbalCameraControl.qml/GimbalZoomControl.qml`，并打包 `VideoCustom.SettingsGroup.json`。`DualPipView.qml`、`FlyViewSecondaryVideo.qml` 和 `FlightDisplayViewSecondaryVideo.qml`不在本QRC重复打包，而由 `Custom.FlightDisplay`模块注册为可导入类型；`GimbalIndicator.qml` 与 `ProximityRadarIndicator.qml` 仍以 `QGroundControl/Toolbar/...` alias覆盖原生工具栏资源。URL拦截器只在 `/Custom/qml`候选实际存在时重定向；本文件只决定覆盖资源URL，不编译C++、不保存设置值。Fuel与Proximity Radar详情页由 `Custom.Widgets`注册，翻译 `.qm`由CMake生成，外部WGS84样例不在本QRC中。 |
 | `custom/cmake/CustomOverrides.cmake` | 根工程配置阶段读取的产品能力开关。固定 `QGC_APP_NAME=Custom-QGroundControl` 以保持应用标识和既有 QSettings 路径；关闭原生 Viewer3D后端，防止它与 custom Viewer3D 类和设置产生重复符号；关闭APM dialect/plugin/factory，并关闭原生PX4 Factory，让 custom Factory成为PX4固件插件的唯一创建入口。它只决定编译内容和插件选择，不在这里检查具体 `MAV_TYPE`。 |
 
@@ -448,12 +458,12 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | `custom/src/Gimbal/GimbalCenterCoordinator.h` | 顶部Center与UniRC CH10共用的姿态事务对象，集中持有唯一CH10状态、活动Vehicle/Controller/Gimbal身份、CONFIGURE确认标志及动作revision。沿用10秒请求、400 ms Center预激活稳定和4秒最终ACK定时器；Center及Pitch90都保留busy直至最终结果。 |
 | `custom/src/Gimbal/GimbalCenterCoordinator.cc` | 每个新请求都复用 `acquireGimbalControl()` 申请一次控制权，即使缓存仍为已拥有；同时满足匹配的1001成功ACK与无冲突的本地ownership状态后才继续。Center保留必要的非零pitch预激活及400 ms稳定，再调用 `centerGimbal()`；Pitch90仍调用 `sendPitchBodyYaw(-90, 0)`。`messagesSent`仅用于无链路/未派发检查，最终1000 Accepted且failureCode=0才提交下一动作；拒绝/超时/本地重复不推进。新增请求、派发和ACK事件日志，不增加自动重试，也不屏蔽拒绝弹窗。切换/销毁目标取消事务并复位Recenter。 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`及 `CoordinatorStubs/` | 编译真实协调器和通道策略，使用仅测试目标可见的Vehicle/Gimbal/控制器替身注入控制权缓存滞后、ACK顺序/失败/重复、无链路、超时和目标切换。测试替身不编入应用，不能代替真实MAVLink编码、Android或飞控验收。 |
-| `custom/src/Gimbal/GimbalAzimuthPolicy.h` | 声明无QObject依赖的云台方位角标准计算输入、结果、来源与错误类型。输入明确区分Earth/Vehicle frame位、legacy `YAW_LOCK`、`delta_yaw`是否被设备支持/当前是否有效，以及飞控heading回退是否有效；结果只输出世界方位角，不保留罗盘不再使用的相对角API。另登记 `YawLockReportedYawCompatibility` 与 `YawLockVehicleHeadingCompatibility` 两个来源，供独立兼容解析器明确标记最终修正路径。 |
-| `custom/src/Gimbal/GimbalAzimuthPolicy.cc` | 校验并归一化MAVLink `[w,x,y,z]` 四元数，按 `q_earth=q_delta_yaw×q_vehicle` 完成显式坐标系转换，并把角度规范到 `[-180°,180°)`。显式Vehicle frame优先使用有限 `delta_yaw`、缺失时回退飞控heading；显式Earth frame直接输出上报yaw；legacy消息按 `YAW_LOCK`判定且强制忽略delta；两个frame位冲突、四元数非法或缺少地系参考时不猜测有效值。该纯函数保持MAVLink标准语义，不因锁定位单独把显式Vehicle q改成Earth q。 |
-| `custom/src/Gimbal/GimbalYawLockResolver.h` | 声明无QObject依赖、可按单一Vehicle/source/device独立保存的锁定坐标系兼容状态。`CompatibilityMode`明确区分None、显式Vehicle锁定和无frame位legacy锁定；输入接收Policy标准候选、直接 `yaw(q)`、独立 `yaw(q)+Vehicle.heading`，以及短时Follow世界方位/原始q双参考，输出本次选择及是否切换。状态只保存当前模式、选择、候选有效性与运动锚，不保存或冻结云台目标角。纯helper统一把 `YAW_LOCK/frame flags`映射为模式，并判断 `time_boot_ms`超过1秒的回退；当前值0仍是设备重启后的合法时间。 |
-| `custom/src/Gimbal/GimbalYawLockResolver.cc` | 显式Vehicle+Lock保留原运动一致性解析；仅当Standard来源为DeltaYaw且存在近期heading时，VehicleHeading才作为ReportedYaw之外的第三候选。无frame位+Lock新增LegacyNoFrame双候选：Standard为规范直接 `yaw(q)`，VehicleHeading为厂商仍发送机体系q时的 `yaw(q)+recent heading`，不把与Standard重复的ReportedYaw加入运动比较。Legacy边界候选须距上一世界方位≤8°并领先≥5°；VehicleHeading额外要求当前原始q距上一Follow原始q≤3°。一秒guard只允许已选VehicleHeading在自身跳≥8°、Standard距旧世界方位≤3°且领先≥5°时纠正回Standard，防止摇杆运动触发Standard→兼容覆盖。无参考或证据模糊时采用协议结果并继续以8°/5°运动学习；所有候选共同移动≥3°才重建锚。来源/模式/候选集合改变时重建，heading过期时VehicleHeading立即回Standard；解锁、超时、重启、断链或reset清除选择。 |
-| `custom/src/Gimbal/GimbalAzimuthProvider.h` | 声明由 `CustomPlugin`持有的只读QObject Provider，向QML公开 `valid`、`absoluteYaw`、`usingDeltaYaw`和 `referenceSource`。缓存按Vehicle及MAVLink source component/reported device id隔离，保存消息/设备启动时间、delta支持、`YAW_LOCK`、原始q、兼容模式、各自Resolver状态，以及同一路由legacy Follow→Lock的世界方位/原始q参考、参考采样时刻和Lock边界时刻；Timer统一执行2秒姿态新鲜度门禁。它只服务顶部显示，不替换原生Gimbal对象，也不发送命令。 |
-| `custom/src/Gimbal/GimbalAzimuthProvider.cc` | 观察消息285并解码flags、q、`delta_yaw`、`delta_yaw_velocity`与 `gimbal_device_id`。后置非零device id会迫使前面的默认0进入payload，所以长度本身不能证明delta支持；只有显式frame消息中的delta/delta速度出现有限非零、负零或NaN等语义非默认值才首次证明，随后同一路由/启动周期粘性保持。Provider只把2秒内真实heading交给所有Policy/Resolver heading路径，防止初始0和陈旧Fact。它总是另算直接q用于边界证据，再计算Policy Standard：显式Vehicle+Lock使用直接q候选，并仅在Standard为DeltaYaw且heading新鲜时构造第三候选；LegacyNoFrame保留Standard直接q，同时强制Vehicle frame、禁用delta构造独立q+heading。仅同路由、有效、未锁定且距首个Lock≤1秒的上一Follow能建立参考；参考采样时刻与Lock窗口起点分开保存，guard从Lock起完整保持一秒。不同路由不会串用，单一路由自身超时、启动时间回退或整机断链才丢弃旧参考/选择。日志记录compatibility mode、近期heading、世界/原始q过渡参考、各候选和最终来源。活动结果仍优先精确manager/device路由。 |
+| `custom/src/Gimbal/GimbalAzimuthPolicy.h` | 声明无QObject依赖的确定性云台方位输入、结果、来源和错误。输入区分显式Earth/Vehicle frame、legacy YAW_LOCK、delta支持/有效性、原始heading有效性和 `LegacyYawReference` 枚举；通用Input默认按MAVLink协议。结果只输出地系方位。项目反馈参考系设置只影响无显式frame消息；冲突flags仍拒绝。 |
+| `custom/src/Gimbal/GimbalAzimuthPolicy.cc` | 校验四元数并执行确定性坐标变换：显式Earth直接q，显式Vehicle优先有效delta、否则q+heading；无frame位按LegacyYawReference确定协议/机体/地系分支，始终忽略delta。不依据运动稳定性或锁内指令选择参考系，不保存目标角；归一化和无效输入检查统一留在纯策略。 |
+| `custom/src/Gimbal/GimbalHeadingTelemetry.h` | 声明独立于QObject/MAVLink解码的原始heading缓存。Quaternion、Attitude、HighLatency三类来源各自保存度数、接收时刻和可用boot时刻，HIGH_LATENCY两版本共用第三项。前两类取最新测量，均无2秒内样本时才回退高延迟。 |
+| `custom/src/Gimbal/GimbalHeadingTelemetry.cc` | 接收Provider已解码的度数，校验数值/接收及boot次序并独立老化三类样本。ATTITUDE/QUATERNION有可比较boot时钟时选较新测量，否则选较新接收；同测量时刻优选四元数。非法或重复/乱序测量不延长旧值寿命；单位和四元数转换由Provider负责。原GimbalYawLockResolver已删除。 |
+| `custom/src/Gimbal/GimbalAzimuthProvider.h` | 声明CustomPlugin持有的只读QObject Provider，向QML公开 `valid`、`absoluteYaw`、`usingDeltaYaw`、`referenceSource`。按Vehicle及source component/reported device id隔离缓存原始云台样本、接收/启动时间和delta支持；每Vehicle独立持有GimbalHeadingTelemetry。保留原始输入用于heading更新、Fact改动和超时重算，不再持有Resolver选择、运动锚或Follow→Lock参考。 |
+| `custom/src/Gimbal/GimbalAzimuthProvider.cc` | 只读解码消息285与飞控原始heading：ATTITUDE弧度保留小数，QUATERNION经Policy解析且不施加显示repr_offset，HIGH_LATENCY/2分别按0.01°/2°转换。原始航向交给GimbalHeadingTelemetry；heading、285到达及设置变化均重算，Timer复核2秒有效性。消息285非零boot重复/小乱序拒绝且不续新鲜度，正常uint32回绕和恒0时间戳可接收；重启大回退清该路由旧delta证据。delta支持仍须显式frame消息出现语义非默认值证明，payload长度不能单独证明。按精确manager/device选路；日志输出flags、配置、原始q、所选heading及年龄与最终方位，断链清缓存。 |
 | `custom/test/Android/UniRcProtocolTest.cc` | 桌面纯QtTest回归，覆盖4/20 Hz及停止请求精确字节、PDF中CRC自洽的完整0x42回包向量、CTRL/CMD/32字节/16路小端解析、分片/粘包、噪声、坏CRC及伪长度重同步；继续覆盖CH9首次回中arm、默认/反向方向、1475/1525边界、失联后重新arm和CH10释放到按下沿，并新增单枚举转换、四次交替、未提交不切换、CH7/CH8分别在1399/1400/1500/1600/1601的闭区间死区、异常值忽略、CH9不参与、同帧手动输入先于CH10。设置Fact、Android配对/RFCOMM、真实Vehicle/Gimbal、A8 UDP、MAVLink ACK和硬件动作仍必须由静态/集成/真机验收覆盖。 |
 
 ### 4.3 PX4 FirmwarePlugin 与 AutoPilotPlugin
@@ -522,7 +532,10 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 | `custom/test/Gimbal/Mt11ProtocolTest.cc` | MT11纯协议与策略QtTest，本轮由9个扩展为11个业务slot；原有用例覆盖帧、CRC、0x05/0x0F/0x16/0x18倍率格式、1～30x tap门禁、step 2.0的1/3/…/29/30精确边界及对称返回、Target对齐、165.1物理端点、0x10/0x11三工作模式。新增用例精确比对0x20 type 0/1/2请求完整帧，解析录像流H.265 3840×2160和主流H.264 1920×1080的type/codec/宽LE/高LE/码率LE/fps，并拒绝非法type、codec、宽高和长度。已用独立Qt5 harness实际运行13 passed、0 failed（11个业务slot加init/cleanup）；当前无Qt 6构建目录。该测试仍不覆盖Manager的两次0x20确认、450/150/100 ms及4.5秒Timer、真实UDP、Qt Quick截图或真机工作模式切换。 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc` | 独立QtTest状态策略回归。覆盖无SD/SDK依赖的本地启动、external录像只释放不停止、confirmed owned关闭、未确认provisional取消等待、迟到确认后的补偿停止、expected stop不重启、pending幂等、码流与blocked门控、采用/确认已有实际录像、排除相机乐观状态的capturing，以及无SDK时只凭本地码流即可启用录像按钮。它不替代真实文件系统、GStreamer和Android设备测试。 |
 | `custom/test/Gimbal/GimbalPhotoCapturePolicyTest.cc` | 独立QtTest照片尺寸策略回归，共11个业务slot。覆盖720P/1080P/2K/4K与DPR 1/1.5/2/2.625换算、4096×2160输出对16:9实时帧的四色角完整性和左右各128像素黑边、分数DPR误差修正、无深拷贝及无效输入拒绝；另覆盖协商源1920×1080与PIP 640×360、DPR 2时反算逻辑target 960×540，协商尺寸→implicit源尺寸→渲染物理尺寸的回退顺序，以及4096×2160/2160×4096方向无关上限与超界拒绝。已用独立Qt5 harness实际运行13 passed、0 failed（11个业务slot加init/cleanup）；当前无Qt 6构建目录。该纯策略测试不替代Qt Quick真实离屏渲染、5秒Timer/generation/窗口生命周期、线程池、JPEG/QSaveFile失败、Android GPU内存和MediaStore真机测试。 |
-| `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc` | 云台方位角纯QtTest回归。既有覆盖包括显式Vehicle的delta/heading、显式Earth、legacy标准语义、冲突flags、四元数/参考异常、角度边界，以及显式Vehicle Resolver的错误frame、冻结delta、三候选持续纠正、8°/5°判据、锁内摇杆、heading过期、非法样本、±180°、解锁/reset和启动时间回退。新增用真实日志值保护根因门控与数值链：`flags 12→28`分类为Follow→LegacyNoFrame Lock，H=45°时-126.738°→-126.387°只变0.351°，基座再转45°保持并连续解锁；另覆盖合规legacy Earth、切锁同时yaw令原始q变化6°时不得用兼容候选隐藏指令、过渡参考有效时的延迟换frame纠正、冷启动学习及航向接近0的模糊证据。当前使用MSVC + QtTest 5.14.2兼容harness实际运行57 passed、0 failed、0 skipped；正式Qt 6目标为 `check_gimbal_azimuth_policy`。该测试不覆盖Provider的一秒计时边界，也不替代Provider/CustomPlugin完整编译、消息接线、多云台路由或目标云台真机验证。 |
+| `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc` | 纯QtTest覆盖显式frame/delta、legacy三种参考系的Follow/Lock公式、flags12/28历史边界、锁内yaw、慢速分包基座转动及旧公式错误翻转。正式目标check_gimbal_azimuth_policy，9月6日MSVC/Qt5兼容harness实测50 passed。 |
+| `custom/test/Gimbal/GimbalHeadingTelemetryTest.cc` | 单独回归有限原始度数、最新测量选择、独立2秒新鲜度、重复/乱序不续时、非有限消息及高延迟来源回退；不承担MAVLink单位或四元数解码测试。正式目标check_gimbal_heading_telemetry，9月6日兼容harness实测14 passed。 |
+| `custom/test/Gimbal/GimbalAzimuthProviderTest.cc` | 编译真实Provider与固定MAVLink提交19f9955598af9a9181064619bd2e3c04bd2d848a的encode/decode，外围QObject由test-only替身提供。逐包覆盖285/heading次序、设置即时重算、路由、启动时间门禁、新鲜度、原始小数/HL单位和repr_offset边界；正式目标check_gimbal_azimuth_provider，9月6日兼容harness实测14 passed。此项不代替完整QGC/Qt6/Android集成验收。 |
+| `custom/test/Gimbal/AzimuthStubs/` | 方位角Provider测试专用QObject外围替身和同名include薄头。只注入该测试的include目录，不进入生产应用目标；MAVLink消息由真实固定版本头定义。 |
 
 A8 Mini完整缩放调用链为：`VideoReceiver`解码当前视频 -> 真实首帧CAPS或最终 `GstVideoInfo` 隐式尺寸 -> 无直接结果时使用稳定1秒的 `VideoManager::videoSize` -> 受支持拉流只建立A8视频会话门控 -> 0x20查询 `stream_type=0`卡录分辨率并映射基础上限 -> 合法0x16只以较小值安全收紧 -> `A8MiniZoomPolicy`以薄包装委托通用 `ZoomStepPolicy`生成1.0x起始的唯一min锚网格，并保留A8专属的有效精确上限追加 -> tap立即发送同表相邻一档0x0f并在成功后显示目标 -> 共享QML显式420 ms Timer成立后，A8 Manager通常只发送一次0x05方向命令，按总按压时长每600 ms更新同方向合法显示目标并在端点立即停止 -> 普通release调用 `stopZoom()`，取消、隐藏、后台、Manager切换和销毁调用 `cancelZoom()`；按住时轻微移出仍保留捕获，release outside停止hold但不发tap。活动0x05路径都会发送0停止，且hold结束不发送0x0f反向归整。若hold起步目标已是端点，则只发一次同方向端点0x0f而不进入0x05。0x18实际反馈独立保存，不覆盖A8当前目标倍率；整条卡录分辨率/时间目标链只属于A8。
 
@@ -569,14 +582,14 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/QmlControls/FuelStatusIndicatorPage.qml` | Fuel 顶部指示器点击后创建的详情页。输入为活动飞行器 `fuelStatus` Fact，按燃料类型选择 ml 或 MPa，显示剩余比例、剩余量、最大量、已消耗量、流量和温度；它只负责详情展示，不决定工具栏图标是否出现。该类型由精简的 `Custom.Widgets` QML 模块注册，创建入口在 `FuelStatusIndicator.qml`。 |
 | `custom/src/QmlControls/ProximityRadarIndicatorPage.qml` | Proximity Radar工具栏入口点击后的详情页。通过required `radarData`接收十方向Fact及5.0 m判断函数，只Repeater显示有效方向、原生值与单位，告警行文字变红；它不计算飞行器避障动作，也不保存阈值设置。 |
 | `custom/src/QmlControls/Viewer3D/Models3D/qmldir` | 声明 `Viewer3D.Models3D` QML 模块，并把 `CameraLightModel`、`Line3D`、`External3DMap`、`Viewer3DModel`、`Viewer3DVehicleItems`、`Waypoint3DModel` 六个类型映射到对应 QML。`CameraLightModel`、`Line3D`、`Waypoint3DModel` 继续由 QRC 引用原生源码，另外三个带项目差异的场景类型映射到 custom 文件。它只解决 `import Viewer3D.Models3D` 后的类型发现，不创建场景、不加载模型，也不保存设置；`QGroundControl.Viewer3D` 是 C++ 类型模块，不能与本模块名混用。 |
-| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 定义两个独立罗盘开关的Fact元数据：底部 `showHeadingCompassBar` 和顶部 `showGimbalHeadingCompassBar` 均为bool、缺省 `false`、无需重启。两者分别保存为 `FlyView/showHeadingCompassBar` 和 `FlyView/showGimbalHeadingCompassBar`；新键缺失不会覆盖旧值。元数据不绘制罗盘，也不保存遥测角度。 |
-| `custom/src/Settings/FlyViewCustomSettings.h` | 声明 `FlyViewCustomSettings : SettingsGroup`，并通过 `DEFINE_SETTINGFACT(showHeadingCompassBar)` 与 `DEFINE_SETTINGFACT(showGimbalHeadingCompassBar)` 生成两个稳定 `Fact*` Q_PROPERTY、延迟创建指针和访问器。该类只表达用户显示意愿，不包含Vehicle/Gimbal选择、角度计算或绘制代码。 |
-| `custom/src/Settings/FlyViewCustomSettings.cc` | 实现上述SettingsGroup：`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，但把两个用户值写入原生 `FlyView` QSettings分组；注册reference-only QML类型并分别使用 `DECLARE_SETTINGSFACT` 延迟创建两个Fact。实例由 `CustomPlugin` 创建并暴露为 `QGroundControl.corePlugin.flyViewCustomSettings`。 |
+| `custom/src/Settings/FlyViewCustom.SettingsGroup.json` | 定义两个默认false的罗盘开关及uint32 `gimbalLegacyYawReference`：0按MAVLink协议、1相对机体航向、2相对地理北向，custom项目默认1。三项存入FlyView分组、即时生效；参考系配置仅影响缺失显式frame的反馈，输出始终相对北向，不保存遥测角度。 |
+| `custom/src/Settings/FlyViewCustomSettings.h` | 声明FlyViewCustomSettings及三个稳定Fact接口：showHeadingCompassBar、showGimbalHeadingCompassBar、gimbalLegacyYawReference。该类只持有用户配置，不参与活动云台选择和角度计算。 |
+| `custom/src/Settings/FlyViewCustomSettings.cc` | 使用独立元数据 `:/json/FlyViewCustom.SettingsGroup.json`，通过 `DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")`把三个用户值保存到FlyView分组；注册reference-only QML类型并延迟创建Fact。CustomPlugin创建实例并暴露为corePlugin.flyViewCustomSettings，Provider订阅参考系Fact变化。 |
 | `custom/src/Settings/VideoCustom.SettingsGroup.json` | 只定义通用第二路URL Fact `secondaryRtspUrl`：缺省 `rtsp://192.168.144.24:8554/video1`，空值禁用Video 2。元数据不含MT11型号或传输偏好语义，不创建receiver，也不把标准 `rtsp://` 改写为其他scheme。 |
 | `custom/src/Settings/VideoCustomSettings.h` | 声明 `VideoCustomSettings : SettingsGroup` 及唯一的 `secondaryRtspUrl` `Fact*` Q_PROPERTY，作为QML、QSettings、`CustomPlugin`与 `DualVideoManager` 之间的稳定通用第二路视频设置接口。 |
 | `custom/src/Settings/VideoCustomSettings.cc` | 使用 `DECLARE_SETTINGGROUP(VideoCustom, "Video")` 把 `secondaryRtspUrl` 写入原生 `[Video]` 分组。新键不存在时才读取旧 `[GimbalControl]/mt11RtspUrl`：旧值精确为历史出厂默认 `rtsp://192.168.144.25:8554/video1` 时转成 `rtsp://192.168.144.24:8554/video1`，其他自定义值和空字符串原样复制。已有新值绝不覆盖，旧键也不删除，保持升降级安全。旧版本遗留的 `[Video]/primaryRtspTcpOnly` 与 `[Video]/secondaryRtspTcpOnly` 不在本类注册或读取，也不主动迁移、覆盖或删除。 |
 | `custom/src/UI/AppSettings/GeneralSettings.qml` | Application Settings -> General 的同路径 custom 覆盖页。完整保留原生 Language、Color Scheme、GCS位置流、音频、Android SD Card、清除设置、数据路径、Units和Brand Image。UI Scaling直接绑定原生整数 `appFontPointSize`，按 `appFontPointSize / ScreenTools.platformFontPointSize × 100` 四舍五入显示，`-`/`+` 每次修改1 pt并由原生 `SettingsFact` 保存；页面本身不写缺省值。`SettingsFact` 构造期间先调用 `CustomPlugin::adjustSettingMetaData()` 把 Android raw default改为12 pt，再读取已有QSettings或该缺省值，因此未打开本页面也会生效；非Android默认仍为100%。 |
-| `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生Fly View设置，在Instrument Panel中以独立Loader显示 `Show Vehicle Heading Compass Bar`/“显示飞行器航向罗盘条”和 `Show Gimbal Heading Compass Bar`/“显示云台指向罗盘条”，各自绑定对应Fact并即时生效。Instrument Panel正下方仍以单层Loader固定加载Gimbal组，再加载Viewer3D组；父页缓存设置对象并在 `onLoaded` 注入。Gimbal Loader的首选/最小高度取自 `item.implicitHeight`，所以子QML若发生致命创建错误，`item=null`会使整组高度折叠为0；`onStatusChanged`只负责记录通用加载警告，修复应落在报错的子QML。当前source解析与设置对象注入链路有效，相机设置入口不依赖云台在线。 |
+| `custom/src/UI/AppSettings/FlyViewSettings.qml` | 保留原生Fly View设置，在Instrument Panel内以独立Loader提供两个罗盘开关及 `LabelledFactComboBox`反馈偏航参考系选择，并说明该配置由所有无frame位的云台共享、输出仍相对北向。选择器直接使用Fact枚举，不对var子对象写分组model。此项不依赖相机SDK设置/在线状态。Gimbal Camera与Viewer3D继续由后续独立Loader承载；子项创建失败时Loader按item.implicitHeight折叠并记录原有错误。 |
 | `custom/src/UI/AppSettings/VideoSettings.qml` | Application Settings -> Video 的同路径覆盖页。保留原生Video Source、Connection、播放设置和Local Video Storage；当选择RTSP源时，在同一 `Connection` 组内将原生 `[Video]/rtspUrl` 标记为 `RTSP URL 1`，将 `[Video]/secondaryRtspUrl` 标记为 `RTSP URL 2`。界面不再显示传输开关；URL 2提示只说明它使用独立receiver且留空会禁用，原生Auto策略由程序行为和本说明记录。程序始终保留标准 `rtsp://` 地址且不设置 `rtspsrc.protocols`。第二路为空时不显示Video 2；URL 2与配置中的URL 1或主receiver当前实际URI相同时显示警告并由Manager禁用重复接收器。五个顶层 `SettingsGroupLayout` 已删除固定preferredWidth、maximumWidth和逐组对齐约束，恢复原生 `SettingsPage` 自适应居中内容区；URL输入仍保留约40个默认字体字符的首选宽度，不再被50字符硬上限压缩。MediaCodec大段说明QGCLabel已删除，页面只保留简短硬解开关。Local Video Storage继续提供共享 `localMediaStorageEnabled`，只控制A8/MT11各自本地附加支路，不关闭相机SD动作；实际双路receiver、相机命令、录像、截图和解码策略由对应Manager执行。 |
 | `custom/src/UI/AppSettings/Viewer3DSettingsGroup.qml` | 由父页Loader加载的Viewer3D设置面板；依赖Loader自身item隐式尺寸和父页Layout计算高度，不再向Qt 6只读的 `implicitWidth/implicitHeight`赋值，消除附件中的 `Invalid property assignment: implicitHeight is a read-only property`。其14个Fact、模式互斥、文件导入和Clear语义不变。 |
 | `custom/src/UI/AppSettings/GimbalControlSettingsGroup.qml` | 根节点直接为 `ColumnLayout`，运行时只创建一个标题为“云台相机”的 `SettingsGroupLayout`外框；内部依次组织A8/MT11独立Zoom Step、仅Android可见的 `UniRC SDK`区、SIYI A8 Mini SDK和UniPod MT11 SDK，不嵌套设置卡片。UniRC区只保留缺省开启的启用开关、当前仅Bluetooth一项的SDK接口、可编辑缺省MAC及CH1～CH16自适应网格；接口使用公开 `model/currentIndex` 的 `LabelledComboBox`显示元数据翻译“蓝牙”，激活后按同索引写回Fact的 `enumValues`，枚举值仍为0。不得对 `LabelledFactComboBox`通过 `var comboBox`写 `comboBox.model`：目标Qt运行时若拒绝该分组属性赋值，会使整个组件创建失败，父Loader因 `item=null`折叠为0高度。通道delegate使用固定CH标签宽度和半个默认字符宽度的间隔，数值不再被推到单元格最右侧。SIYI A8 Mini区保留仅Android可见且缺省关闭的“通道进行云台缩放控制是否反向”。 |
@@ -585,7 +598,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | `custom/src/UI/toolbar/ProximityRadarIndicator.qml` | `CustomFirmwarePlugin::toolIndicators()` 插入GPS之后的工具栏组件。读取活动飞行器 `distanceSensors` 的前/前右/右/后右/后/后左/左/前左/上/下十个方向，任一Fact有效即显示；任一有效距离小于固定5.0 m阈值时图标变红并以400 ms淡入淡出闪烁。点击打开详情页；无遥测时隐藏。它只做告警呈现，不发送避障指令。 |
 | `custom/src/UI/toolbar/Images/FuelIcon.svg` | Fuel 顶部指示器使用的气瓶矢量图形，只提供可缩放轮廓，不包含状态逻辑；由 `custom.qrc` 注册为 `qrc:/custom/img/FuelIcon.svg`，`FuelStatusIndicator.qml` 根据主题对其着色和显示。 |
 
-双罗盘的文件连接关系固定为：`FlyViewCustom.SettingsGroup.json` 定义两个开关元数据 -> `FlyViewCustomSettings.h/.cc` 创建、读取、保存并向QML暴露 -> `FlyViewSettings.qml` 提供两个独立用户开关 -> `CustomPlugin::mavlinkMessage()`把消息285交给 `GimbalAzimuthProvider` -> Provider按Vehicle/source/device调用 `GimbalAzimuthPolicy`取得标准世界方位，并在显式Vehicle Lock或无frame位Legacy Lock路径交给 `GimbalYawLockResolver`做候选一致性兼容 -> `FlyView.qml` 向custom overlay注入右上安全预留 -> `FlyViewCustomLayer.qml` 分别组合Vehicle heading门禁和Provider/activeGimbal/链路门禁 -> 两个Loader复用 `FlyViewCompassBar.qml` 绘制。顶部 `GimbalIndicator` 的Az也读取同一Provider。右侧A8/MT11相机选择器不在这条设置或遥测链中；任何单一文件都不能独立完成完整功能。
+双罗盘的文件连接关系固定为：`FlyViewCustom.SettingsGroup.json`定义显示开关与legacy反馈参考系 -> `FlyViewCustomSettings`保存并暴露Fact -> `FlyViewSettings.qml`提供设置 -> `CustomPlugin::mavlinkMessage()`把云台消息285和原始heading消息交给 `GimbalAzimuthProvider` -> `GimbalHeadingTelemetry`保存各来源值和时刻 -> Provider按路由与设置调用 `GimbalAzimuthPolicy`执行确定性公式 -> `FlyViewCustomLayer.qml`组合新鲜度、activeGimbal和链路门禁 -> `FlyViewCompassBar.qml`绘制。heading更新和设置变化也立即重算；顶部 `GimbalIndicator` 的Az读取同一Provider。`FlyView.qml`继续注入右上布局预留；右侧A8/MT11相机选择器不在该遥测或设置链中。
 
 ### 4.8 Viewer3D C++ 扩展
 
@@ -671,8 +684,8 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 | 文件 | 详细作用 |
 |---|---|
 | `custom/translations/README.md` | 面向翻译维护者说明英文模板与 locale TS 的区别、为什么不提交生成的 `.qm`、如何运行更新脚本以及使用 Qt Linguist 人工复核/翻译的流程。它是维护文档，不被应用读取，也不提供任何运行时译文。 |
-| `custom/translations/custom.ts` | 英文源字符串模板。保留既有云台、双视频、双罗盘及后台UniRC运行错误source，并同步 `UniRC SDK`、SDK接口、Bluetooth单项枚举、MAC、16通道网格和A8 CH9方向反转所需文本；设置页扫描候选、配对备注和诊断摘要source随对应UI删除。当前为21个context、185条message，全部保持unfinished模板；Qt `lrelease`可验证XML/目录结构，正式QM仍由项目Qt 6构建生成。 |
-| `custom/translations/custom_zh_CN.ts` | 简体中文locale目录，与英文模板保持完全相同的21个context、185条message及context/source pair集合；`Reverse channel gimbal zoom control`在QML和元数据context均翻译为“通道进行云台缩放控制是否反向”。全部185条均finished，0条unfinished、0条空译文。翻译完成只证明目录一致性，不替代Android按MAC自动连接或反向缩放真机验收。 |
+| `custom/translations/custom.ts` | 英文源字符串模板，保留既有云台、双视频、双罗盘和UniRC文本，新增legacy反馈偏航参考系标签、共享配置说明以及三项元数据枚举。与中文目录保持相同context/source集合；英文保持unfinished模板，正式QM由项目Qt 6构建生成。 |
+| `custom/translations/custom_zh_CN.ts` | 与英文模板保持相同context/source集合。新增“旧协议云台反馈偏航参考系”及“按MAVLink协议,相对机体航向,相对地理北向”枚举，枚举分隔使用英文逗号，解释共享范围和北向输出。中文条目均为完整译文；目录一致性不代表目标Android页面已完成视觉验收。 |
 | `custom/translations/custom-lupdate.sh` | Bash 翻译维护脚本：优先使用 `LUPDATE` 环境变量指定的工具，否则从 `PATH` 查找 Qt 6 `lupdate`；先扫描 `custom/src` 更新 `custom.ts`，再更新所有 `custom_*.ts`，并用 `-no-obsolete` 清理失效条目。它只更新 TS，不生成 `.qm`，新增/unfinished 条目仍需人工翻译和复核。 |
 | `translations/qgc_json_zh_CN.ts` | 原生JSON元数据简体中文目录的受控数据修正。`ChibiOS,NuttX`和 `apmVehicleType` 五项都使用ASCII逗号，后者精确翻译为 `多旋翼,直升机,固定翼,地面车辆,水下航行器`，使译文拆分数与source一致并消除FactMetaData enum mismatch；不改变Fact值、固件筛选或custom翻译统计。 |
 
@@ -795,6 +808,7 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 |---|---|---|
 | `showHeadingCompassBar` | bool / `false` | 显示飞行界面底部中央的飞行器航向罗盘；保存为 `FlyView/showHeadingCompassBar`，切换后立即生效，无需重启。 |
 | `showGimbalHeadingCompassBar` | bool / `false` | 显示飞行界面顶部的MAVLink活动云台指向罗盘；保存为 `FlyView/showGimbalHeadingCompassBar`，切换后立即生效，无需重启。 |
+| `gimbalLegacyYawReference` | uint32 / `1` | 旧协议云台反馈偏航参考系：0按MAVLink协议、1相对机体航向、2相对地理北向。存入FlyView分组，作用于所有无frame位云台，改动立即重算；显式frame优先，输出始终相对北向。 |
 
 使用流程：
 
@@ -804,35 +818,37 @@ General -> UI Scaling 使用 custom 同路径覆盖页，但仍绑定原生整�
 4. 顶部条跟随顶部MAVLink云台栏选中的 `gimbalController.activeGimbal`，只显示 `Gimbal n°` 世界方位角。该值来自 `GimbalAzimuthProvider.absoluteYaw`，不再直接读取原生 `Gimbal.absoluteYaw`，也不再显示 `REL`/`bodyYaw` 相对角；链路丢失、无活动云台或Provider结果无效时整条隐藏。
 5. 顶部工具栏选择显示Az时也读取同一Provider，因此工具栏 `Az` 与罗盘中央数值使用同一计算结果；切换activeGimbal时，两处按Vehicle、manager component和device id共同切换。切换右侧A8 Mini/MT11相机控制栏不得改变数据源。该功能不读取两套私有SDK，也不根据已发送的控制命令猜测云台角度。
 
-方位角始终先按 `GIMBAL_DEVICE_ATTITUDE_STATUS.flags` 做MAVLink标准计算；Resolver只处理两种锁定兼容范围：显式Vehicle+Lock的frame/delta异常，以及两个frame位均未设置时无法从单包判断q实际参考系的LegacyNoFrame Lock。跟随和显式Earth不进入Resolver。内部统一输出 `[-180°, 180°)`，罗盘绘制时再等价归一化为 `[0°, 360°)`：
+方位角输出始终相对地理北向，反馈q的参考系由消息声明或明确配置决定。内部统一为 `[-180°, 180°)`，罗盘等价显示为 `[0°, 360°)`；`wrap`只处理360°环绕，不改变朝向：
 
-| 消息情况 | 世界方位角计算 | 兼容行为 |
+| 反馈条件 | 航向跟随时 | 航向锁定时 |
 |---|---|---|
-| 明确设置 `YAW_IN_EARTH_FRAME` | `azimuth = yaw(q_earth)` | 四元数已经相对地理北向，不叠加飞控heading。 |
-| 明确设置 `YAW_IN_VEHICLE_FRAME`，且 `delta_yaw`可用 | `q_earth = q_delta_yaw × q_vehicle`，`azimuth = yaw(q_earth)` | 标准候选优先采用云台消息自己给出的地/机体系关系。跟随状态直接使用该结果。 |
-| 明确设置 `YAW_IN_VEHICLE_FRAME`，但 `delta_yaw`缺失或NaN | `azimuth = wrap(yaw(q_vehicle) + Vehicle.heading)` | 标准候选保持旧设备和当前正常跟随设备的原生兼容路径。跟随状态直接使用该结果。 |
-| 明确设置 `YAW_IN_VEHICLE_FRAME + YAW_LOCK`，但连续样本证明q实际已是地系 | `azimuth = yaw(q_reported)` | 目标设备兼容路径；不再把飞控heading或错误delta重复叠加到已是世界方位的q。最终来源为 `YawLockReportedYawCompatibility`。 |
-| 明确设置 `YAW_IN_VEHICLE_FRAME + YAW_LOCK`，q仍为机体系但已支持的delta冻结/错误 | `azimuth = wrap(yaw(q_reported) + recent Vehicle.heading)` | 仅在标准来源为DeltaYaw且2秒内有真实飞控heading时参与比较；最终来源为 `YawLockVehicleHeadingCompatibility`。 |
-| 两个frame位都未设置，`YAW_LOCK=0` | `azimuth = wrap(yaw(q_reported) + Vehicle.heading)` | Policy按MAVLink legacy Follow处理并严格忽略 `delta_yaw`；Resolver不介入。 |
-| 两个frame位都未设置，`YAW_LOCK=1` | 标准候选为 `yaw(q_reported)` | Policy按MAVLink legacy Earth语义处理并忽略delta；Resolver另构造 `wrap(yaw(q_reported)+recent Vehicle.heading)`。同路由Follow世界方位连续、原始q也在3°内连续，或后续8°/5°运动证据明确时可选择后者，来源为 `YawLockVehicleHeadingCompatibility`；证据不足保留标准，不能把所有legacy设备固定加heading。 |
-| 两个新frame位同时设置、四元数非法，或Vehicle frame又没有任何地系参考 | 结果无效 | 不猜测坐标系；罗盘隐藏，工具栏Az显示 `--`。 |
+| 显式 `YAW_IN_EARTH_FRAME` | `yaw(q)` | `yaw(q)` |
+| 显式 `YAW_IN_VEHICLE_FRAME` 且delta有效 | `yaw(q_delta_yaw × q)` | `yaw(q_delta_yaw × q)` |
+| 显式Vehicle但delta不可用 | `wrap(heading+yaw(q))` | `wrap(heading+yaw(q))` |
+| 无frame位，设置“按MAVLink协议”(0) | `wrap(heading+yaw(q))` | `yaw(q)` |
+| 无frame位，设置“相对机体航向”(1，项目默认) | `wrap(heading+yaw(q))` | `wrap(heading+yaw(q))` |
+| 无frame位，设置“相对地理北向”(2) | `yaw(q)` | `yaw(q)` |
 
-`YAW_LOCK`只表示云台维持当前地系朝向，不表示自动转向0°正北。例如进入锁定时指向72°，随后转动飞控/基座，理想方位角仍应约为72°；此时云台相对机头的角度会反向变化，但该相对角不再呈现在罗盘上。跟随状态下，如果云台相对机头角不变，飞控/基座转动会使世界方位角随之变化；摇杆改变云台yaw时，世界方位角按上述坐标变换同步变化。pitch的变化由同一姿态四元数描述，但本横向罗盘只绘制yaw方位角。
+无frame位时均忽略delta；显式frame优先于设置，两位同时设置拒绝。需要heading却没有新鲜有效样本时，结果无效，工具栏Az为 `--`、罗盘隐藏。设置变更立即重算已缓存的有效姿态，无需重启或再等消息285。该项作用于所有legacy云台，不是当前SDK相机的私有选项；同时接入不同legacy参考系的设备不能用一个共享值分别表达，需统一发送端约定或让设备明确上报frame。
 
-2026-09-04附件日志已经把本机问题收敛为确定链路，而不是先前推测的显式Vehicle/delta异常：实际发送端为component 154、payload device id 0；Follow `flags=12`、Lock `flags=28`，两者的Vehicle/Earth frame位均为false，日志没有让Provider建立delta支持的语义证据。旧Provider的门控是 `yawInVehicleFrame && !yawInEarthFrame && yawLock`，所以Lock始终不进入Resolver。14:04:46.386的Follow为heading 45°、最终 `-126.738°`，可反推q约 `-171.738°`；14:04:48.139首个Lock q为 `-171.387°`，q只变0.351°，旧代码却从Follow的 `heading+q`切为Lock的直接q，显示跳变44.649°，恰好接近被移除的飞控航向45°。当前修正不改变Policy标准语义，而把LegacyNoFrame Lock纳入独立判别：
+`YAW_LOCK`表示维持进入锁定时的地系朝向，不表示转向正北。例如已锁定在72°，机体从20°转到30°时，机体系反馈q yaw应从52°变为42°，两帧方位均为72°；如果反馈本身是地系q，则两帧均直接报告72°。跟随时q相对机体不动而机体转动，方位随heading变化；摇杆改变yaw会改变真实方位，不能靠保留旧方位掩盖该动作。pitch也由四元数提供，但横向罗盘只绘制yaw，不拿pitch简单相加。heading是飞控对地系北向的估计，依赖该估计的标定质量与云台安装参考一致性。
 
-1. Provider每份消息都先取得直接ReportedYaw=`yaw(q)`，再按Policy计算Standard。显式Vehicle Lock仍可比较Standard、ReportedYaw及在Standard为DeltaYaw时独立的VehicleHeading=`yaw(q)+recent heading`；LegacyNoFrame Lock只比较Standard=`yaw(q)`和强制按Vehicle frame重新计算的VehicleHeading=`yaw(q)+recent heading`，不把数值重复的ReportedYaw当成第三个运动候选。
-2. 同一Vehicle/source component/device id的上一份样本必须有效、为Follow且距首个Lock不超过1秒，才能成为Legacy边界参考。首个候选须距上一世界方位≤8°并领先另一候选≥5°；非标准VehicleHeading还须当前ReportedYaw与上一Follow原始q相差≤3°。日志实值的原始q只变0.351°，VehicleHeading为 `-126.387°`、距前值0.351°，Standard为 `-171.387°`、距前值44.649°，所以首帧选择VehicleHeading。合规legacy Earth发送端把q改为地系时由Standard获胜；若切锁同时yaw使原始q移动超过3°，即使q+heading偶然更接近旧显示，也不得用它隐藏真实指令。
-3. Provider分别保存Follow参考采样时刻和首个Lock时刻，确保参考靠近边界且guard从Lock起完整保持一秒。guard只允许已选VehicleHeading在相对Follow参考跳≥8°，而Standard仍在3°内并领先≥5°时纠正回Standard，用于flag先到、q随后重映射；不允许仅靠旧参考从Standard反向覆盖为VehicleHeading。该参考不冻结数值。没有前序Follow、航向不新鲜、原始q不连续或候选优势不足时先采用协议Standard，随后仍可通过“其他候选移动≥8°、获胜候选领先≥5°”的基座运动证据学习。
-4. Standard、ReportedYaw、VehicleHeading选择均持续复核；候选共同移动至少3°时按相机/摇杆运动重建锚。模式、标准来源或候选有效集合改变时重建，heading过期且正在使用VehicleHeading时立即回Standard。解锁立即恢复标准Follow公式并清除选择。状态按Vehicle/source/device隔离，不同路由间不串用；每一路由只在自身消息超过2秒、`time_boot_ms`明显回退或整机断链后丢弃连续性参考和已学选择。
+9月4日日志的直接证据是component154/device0在Follow发送flags12、Lock发送flags28，两种frame位均未设置；H=45°时，Follow显示-126.738°，首Lock q=-171.387°。相邻q仅变0.351°，旧程序却因公式从H+q切成q跳44.649°。这证明那次切换显示链有不连续，不能仅凭边界值断言整个锁定段的反馈q必然属于机体系。本项目默认“相对机体航向”是针对当前产品接入的显式可改配置；标准legacy设备应选择“按MAVLink协议”，始终上报地系q的设备应选择“相对地理北向”。
 
-若有合格的Follow世界方位和原始q双连续性，LegacyNoFrame Lock通常不必先转动8°即可正确选源；冷启动时已经处于Lock则仍需保持物理朝向、不拨yaw摇杆并让基座形成足够运动。日志类别 `qgc.custom.gimbal.azimuth` 会在模式、会话或选源变化时打印 `compatibility mode/recent heading/protocol reference/protocol azimuth/reported q yaw/heading candidate/transition reference/transition raw q/lock resolver/reference/azimuth`。本机目标路径应在 `flags 28`看到 `compatibility mode LegacyNoFrame`、`lock resolver VehicleHeading`、`reference YawLockVehicleHeadingCompatibility`，且基座转动时最终azimuth基本不变；合规legacy Earth应看到Standard/`LegacyEarthFrame`。显式Vehicle异常仍可能得到ReportedYaw或VehicleHeading兼容来源。若Legacy始终Undecided，应检查是否冷启动锁定、近期heading、原始q的3°连续性、基座转量与5°优势；没有 `YAW_LOCK` 时Resolver按设计不启用，而“没有显式Vehicle位”不再是排除条件。
+9月6日代码复核又确认9月4日版Resolver存在两个独立确定故障，说明“候选角度更稳定”不足以识别反馈参考系：
+
+1. 缓慢且异步的基座转动可产生 `(H20,q50) -> (H20,q46) -> (H28,q42) -> (H28,q38) -> (H36,q34)`。旧规则见两个候选共同移动至少3°就重建运动锚，于是每次尚未累计到8°就重置，始终无法从直接q转到正确H+q；锁定显示可长期跟着机体转。当前固定为机体参考时，同步完整样本始终为70°，中间分包最多体现真实遥测相位差。
+2. 已选H+q时，`(H40,q30)`输出70°，后续q先到 `(H40,q20)`输出60°，heading再到 `(H50,q20)`应恢复70°。旧Resolver可能因为q候选暂时不动而误翻回Standard，最终显示20°。此时数据没有换参考系，改变的是消息到达顺序。当前代码始终按配置计算，并在heading到达时立即重算到70°。
+
+本轮删除 `GimbalYawLockResolver.*`、3°重锚、8°/5°运动阈值、Follow边界连续性和一秒guard。没有重新学习或锁定初始值的阶段，冷启动已经Lock、模式切换、慢速转动与锁内摇杆均直接服从同一反馈参考系约定。显式frame也不再被“更稳定的候选”覆盖。
+
+原始heading另由 `GimbalHeadingTelemetry`保存。ATTITUDE与ATTITUDE_QUATERNION分别保留自己的有效值、接收时间和可用的飞控boot时间；同一boot时钟可比较时取测量更新者，无法比较时取接收更新者，相同测量时刻才优先四元数。两类高分辨率来源均无2秒内有效样本时才回退高延迟来源，HIGH_LATENCY/2共用一个缓存项。旧实现从Vehicle显示Fact取值会混入整数舍入，且某个新到包可错误延长另一个旧值的寿命；现在直接解码原始数值、各自独立老化，非法样本不刷新时间。仍需在真机日志核对flags、配置值、原始q yaw、所选heading来源/值/年龄及最终方位；不再以旧 `lock resolver`或 `YawLockVehicleHeadingCompatibility`作为验收依据。
 
 实现从 `custom-example/FlyViewCustomLayer.qml` 中选择性提取横向航向条。示例通过720个 `QGCLabel` 切换可见性模拟滚动，本实现使用以当前45°区间为基准的11个相对方位Label，保持359°/0°连续过渡并降低Android QML更新开销。底部实例保持 `50 × defaultFontPixelWidth` 首选宽度，仅在整个Fly View不足时按屏幕margin收窄，不再被PIP/摇杆/右下仪表的单侧inset从左右重复扣减；显示时只扩展 `bottomEdgeCenterInset`。顶部实例从原生 `topEdgeCenterInset + toolsMargin` 下方开始，安全左边界为 `leftEdgeTopInset + toolsMargin`，安全右边界为 `max(rightEdgeTopInset,rightTopReserve) + toolsMargin`；宽度在该区间收窄，x在居中位置与左右边界之间钳制，显示时只扩展 `topEdgeCenterInset`。燃料电池母线告警使用原定位与“新top inset + 2个默认字高”的较大值，确保在云台条下方。两条都不放置 `DeadMouseArea`，不吞掉地图拖动、滚轮缩放、PIP调整或Android触摸手势。
 
 custom同路径 `FlyView.qml` 延续原生全屏语义：Video 1或Video 2全屏时都隐藏工具栏、三视图PIP、WidgetLayer和custom overlay，所以上下双罗盘与母线告警均不显示；退出全屏后按各自开关和遥测门禁恢复。普通Map/Video 1/Video 2居中切换和Viewer3D不改变云台数据源。顶部条尚需在目标遥控器与真实MAVLink云台上验证角度、activeGimbal切换、遥测断链和横竖屏布局，不能由QML静态检查扩大为真机通过。
 
-custom Provider逐帧接收 `GIMBAL_DEVICE_ATTITUDE_STATUS`，为每个Vehicle/manager/device保存单调接收时间，并每250毫秒检查一次；活动样本超过2秒未更新时同时令顶部工具栏Az无效并隐藏顶部罗盘，下一份消息也从新的Resolver状态开始。整机 `vehicleLinkManager.communicationLost` 会立即清除该Vehicle缓存；恢复通信后必须重新收到消息285，需要标准heading回退或VehicleHeading兼容候选时还必须收到本次连接的新heading遥测。云台姿态与飞控heading分别按各自接收时间检查2秒新鲜度，不能根据角度值是否变化判断，因为静止设备可持续上报相同值；heading超时后所有依赖它的路径先变为无效，而不是继续使用旧Fact。
+custom Provider逐帧接收 `GIMBAL_DEVICE_ATTITUDE_STATUS`，为每个Vehicle/source/device保留原始输入及单调接收时间，并每250毫秒复核。活动姿态超过2秒时顶部Az显示无效、顶部罗盘隐藏；heading每个来源独立按2秒失效，ATTITUDE与QUATERNION取更新的有效测量，二者均无新鲜样本时才回退HIGH_LATENCY/HIGH_LATENCY2。坏heading包不刷新旧有效样本时间。ATTITUDE保留弧度转度的小数，QUATERNION使用原始四元数且不施加repr_offset；HIGH_LATENCY按0.01°、HIGH_LATENCY2按2°解码。有效heading到达立即重算仍新鲜的姿态；两条流本身无共同精确采样时刻，运动中仍可能有遥测相位差，但不会再因相位差切换参考系。断链清空姿态及航向，重连后重新取得所需反馈。 消息285的非零boot重复或小乱序不接受、不刷新姿态年龄；正常uint32回绕及设备恒0时间戳仍可处理。大幅boot回退按设备重启处理，清除该路由之前建立的delta支持证据。
 
 `delta_yaw` 是MAVLink 2扩展字段，规范要求显式frame消息将它设为正确值或NaN；但线上没有单独的字段present位，且后置的非零 `gimbal_device_id` 会让未填写的默认0与合规的首次合法0产生完全相同的字节，接收端无法同时无条件识别两者。为优先保持用户已确认正常的旧跟随路径，Auto策略不把“payload长度够且值为+0”单独当作支持证据，而要求显式frame消息中的delta或delta速度至少出现一次有限非零值、负零或NaN等语义非默认值；之后在同一Vehicle/source/device及同一设备启动周期内保持支持，所以已经确认支持后的合法0仍按delta路径计算。尚未证明支持的全零样本保守走heading兼容回退；当基座转动使正确delta变为非零时会自动切换并保持。设备端应按规范在未知时发送NaN、已知时发送正确delta，真机验收需覆盖“首次全零尚未证明”“非零建立支持”“随后回到零仍用delta”三阶段。
 
@@ -1206,7 +1222,10 @@ QGCApplication
         -> count非零或无效时完全不修改现有通信链路
         -> 仅在count=0时创建默认local：本地14550 -> 192.168.144.125:14550
      -> Viewer3DSettings / External3DMapManager / CustomViewer3DManager
-     -> FlyViewCustomSettings（FlyView/showHeadingCompassBar + showGimbalHeadingCompassBar）
+     -> FlyViewCustomSettings（FlyView下两个罗盘开关 + gimbalLegacyYawReference）
+     -> GimbalAzimuthProvider（消息285 + 原始heading + legacy反馈配置）
+        -> GimbalHeadingTelemetry选择最新有效测量
+        -> GimbalAzimuthPolicy按声明/配置确定性换算北向方位
       -> GimbalControlSettings / GimbalControlManager
          -> enabled时立即启动后台2秒探测，不依赖activeVehicle或QML可见
          -> localMediaStorageEnabled默认true且即时生效，独立于思翼SD卡/SDK状态
@@ -1559,9 +1578,9 @@ Android Gradle缓存规范：源码目录 `android/.gradle` 已从Git索引移�
 23. 拔出最后一个串口设备后再插入，旧 driver 不得残留；拒绝权限后拔插并改为允许，应能恢复枚举和连接。
 24. QGC 前后台切换和 Activity 重建后 receiver 仍能收到新拔插事件；思翼内置视频 USB 与飞控同时存在时，只有串口设备进入 QGC 端口列表。
 25. 先由思翼地面站或串口工具独占飞控端口，确认 QGC 明确记录 open 失败；关闭占用方后重新连接，QGC 无需杀进程即可成功。
-26. 分别清除 `FlyView/showHeadingCompassBar` 和 `FlyView/showGimbalHeadingCompassBar` 后启动，两个开关必须均默认关闭；用户可独立开启/关闭任一条且界面立即响应，重启QGC后各自保持选择。用旧版只保存 `showHeadingCompassBar=true` 的设置升级时，底部条必须继续打开，新顶部条仍为false，不得覆盖旧键。设置页文案必须明确区分“飞行器航向”与“云台指向”。
+26. 两个罗盘开关默认false、独立持久化，即时切换不覆盖旧值。gimbalLegacyYawReference缺省1，界面与中英翻译提供0/1/2三项，修改后顶部Az与罗盘立即使用新公式；重启保留选择。确认提示说明所有无frame位云台共享该输入参考系配置，SDK相机关闭或离线仍能修改，显式frame不受选择覆盖。
 27. 底部条使用模拟或真机Vehicle heading覆盖 N/NE/E/SE/S/SW/W/NW及359° -> 0° -> 1°；中央数值、固定指针和移动方位必须一致，无活动Vehicle或heading=NaN时不显示伪造0°/N。顶部条必须使用真实或可控MAVLink `GIMBAL_DEVICE_ATTITUDE_STATUS`验收：中央只显示 `Gimbal <方位角>°`，不得再出现 `REL`或第二角度；该主值与顶部栏 `Az`使用同一Provider结果，并在-1°/0°/359°边界连续归一。
-28. 顶部条必须通过门禁与坐标系矩阵：开关打开但无Vehicle、无activeGimbal、`vehicleLinkManager.communicationLost=true`或Provider方位角无效时隐藏。显式Earth直接核对q yaw；显式Vehicle分别核对有效delta（含已确认支持后的0）优先和缺失/NaN时heading回退；没有真实飞控heading前不得使用Fact初始0；冲突frame位必须拒绝。无frame位必须分开验收：Follow `flags=12`继续为 `heading+q`且忽略delta；Lock `flags=28`必须进入LegacyNoFrame。先复现日志实值H=45°、Follow q=-171.738°、Lock q=-171.387°，首个Lock应选择 `YawLockVehicleHeadingCompatibility`并由-126.738°到-126.387°仅变0.351°，不得跳到-171.387°；随后把基座转到H=90°并令q反向为143.613°，物理朝向不变时罗盘和顶部Az仍应约-126.387°，解锁回Follow也应连续。反例必须让合规legacy发送端在Lock把q改为地系-126.387°，确认保留Standard/`LegacyEarthFrame`而不重复加45°；再在切锁同时施加yaw，使新原始q相对Follow变化大于3°但q+heading仍落在8°窗口内，必须保持Standard而不能隐藏指令。另验证flag先到、q后一包换frame时一秒guard只从VehicleHeading纠正到Standard，不能从Standard反向覆盖；航向接近0或优势不足5°时不猜测。应用启动时已经Lock且无Follow参考时，首包允许Standard/Undecided，基座形成至少8°可区分运动后再学习。显式Vehicle继续覆盖ReportedYaw、冻结delta的VehicleHeading以及合规Standard三类，候选需8°运动与5°优势；锁内拨yaw后方位必须继续变化。多云台切换必须按精确Vehicle/manager/device隔离且路由间不串用；切回仍新鲜的旧路由允许继续该路由自身状态。A8/MT11私有SDK、视频模式与RTSP不得影响数据源。每一路由的消息285停发超过2秒、heading超过2秒、整机断链或 `time_boot_ms`明显回退后不得复用参考/选择。真机日志必须保存flags、compatibility mode、recent heading、protocol/reported/heading候选、世界/原始q transition reference、resolver选择及最终azimuth，并确认活动路由为预期manager/device；事件日志不是逐帧输出，连续基座转动的稳定性应同时以罗盘/顶部Az观察或专门连续采样核对。
+28. 顶部条按8.2完整公式矩阵验收：显式Earth/Vehicle优先，delta含已确认后的0、缺失/NaN、冲突位与非法q都要覆盖；无frame位在三种设置中分别测试Follow和Lock。项目默认机体参考时，flags12→28沿H45/q-171.738→H45/q-171.387应由-126.738°到-126.387°，再H90/q143.613保持-126.387°；冷启动Lock和慢速基座转动无需先形成8°学习。分包(H40,q30)→(H40,q20)→(H50,q20)应为70°→60°→70°，不得切成20°；锁内摇杆改变q时方位必须响应，不冻结。合规legacy Earth发送端选择协议或地理北向并核对不重复加H。heading消息到达、设置改变都要立即重算；原始小数角、repr_offset不影响北向、ATTITUDE/QUATERNION最新测量选择、各来源2秒超时和HL单位均需覆盖。无活动路由/断链/285超时/所需heading全部超时则无效；Vehicle/source/device切换不串缓存。保存原始q、heading来源/值/年龄、flags、参考系设置和最终azimuth；两条流的相位差允许短暂误差，停止转动后必须按同一公式收敛，不以旧Resolver选择日志验收。
 29. 在地图主窗口、Video 1/Video 2主窗口、三路PIP互换、虚拟摇杆、右下仪表、Viewer3D、横竖屏、小屏和目标遥控器86%缩放下分别验收底部 `bottomEdgeCenterInset` 和顶部 `topEdgeCenterInset`。底部条在PIP 10%→75%拖拽和右下仪表宽度变化时不得缩成点/短条；顶部条必须在左上工具、右上面板和 `rightTopReserve` 安全区内钳制，不越界、不被截断，母线低压告警必须在其下方而不重叠。两条区域的地图拖动/缩放和PIP调整必须仍有效；Video 1/Video 2全屏时上下两条与告警都按overlay语义隐藏，退出后恢复。Android H.265连续播放期间同时改变Vehicle heading和Gimbal yaw，不得产生可见新增卡顿或持续帧率下降。
 30. 在采用 14 pt 平台基准的目标 Android 遥控器上清除应用数据或净安装 APK，首次进入 Application Settings -> General 时 UI Scaling 应显示 86%，运行中的 `appFontPointSize` Fact 应为整数 12 pt。
 31. 在 Android 上使用原生 `-`/`+` 修改整数点数并重启 QGC、覆盖安装保留数据的新 APK，必须保持用户值而不是恢复 86%；执行“清除全部设置”后才恢复 12 pt 缺省值。分别净安装 Ubuntu、Windows、macOS/iOS 构建，默认应保持原生 100%。
@@ -1690,13 +1709,13 @@ Proximity Radar不显示时，先检查活动Vehicle的 `distanceSensors` 十方
 
 同分辨率断流重连应立即发起0x18查询，不能等2秒后才接受第一次操作；该查询不再打印应用逐包日志，需通过抓包或重新建立的倍率状态验证。紧邻应用退出出现的 `PhotoVideoControl.qml`中 `cameraManager/currentCameraInstance`空对象警告来自QGC原生相机面板销毁时序，不参与custom缩放状态机，也不是本次锁定原因。
 
-`FlyViewCompassBar.qml` 不加入原生FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 为上下两个Loader使用同一 `qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCompassBar.qml` 显式加载。两条都不显示时，先检查 `Fly View compass bar failed to load` 或 `Fly View gimbal compass bar failed to load`，再确认custom.qrc已重新编译。底部条还要求活动Vehicle且 `Vehicle.heading` 为有限数；顶部条则要求活动Vehicle/活动MAVLink Gimbal、链路未丢失且 `absoluteYaw` 为有限数。A8/MT11 SDK在线不会解锁该门禁；云台条被右侧面板挤压或母线告警重叠时，核对 `leftEdgeTopInset/rightEdgeTopInset/topEdgeCenterInset`、`rightTopReserve` 和目标屏幕缩放。若云台角度停住但飞控其他遥测仍正常，先在MAVLink Inspector或抓包中确认 `GIMBAL_DEVICE_ATTITUDE_STATUS` 是否仍持续到达；原生Gimbal当前没有该子流的新鲜度时间戳，所以仅云台姿态断流不会触发本条隐藏。
+`FlyViewCompassBar.qml` 不加入原生FlightDisplay qmldir，而由 `FlyViewCustomLayer.qml` 两个Loader用同一custom QRC显式加载。条不显示时先检查Loader错误及custom.qrc是否重建。顶部需要活动MAVLink Gimbal、链路有效、消息285和所需heading各自新鲜。SDK在线不解锁顶部门禁。角度错误时先检查Instrument Panel的“旧协议云台反馈偏航参考系”与发送端约定，再对比flags、原始q yaw和原始heading；公式不会靠机体运动自动学习。姿态子流停发超过2秒会令顶部Az无效并隐藏罗盘，即使飞控其他遥测仍正常。布局问题继续核对top inset、rightTopReserve及屏幕缩放。
 
 常用静态检查：
 
 ```powershell
 rg --files custom
-rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|showGimbalHeadingCompassBar|GimbalAzimuthProvider|GimbalAzimuthPolicy|GimbalYawLockResolver|absoluteYaw|rightTopReserve|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|ZoomStepPolicy|Mt11ZoomPolicy|A8MiniZoomPolicy|Mt11Protocol|Mt11Sdk|Mt11ControlManager|setVideoMode|videoModeKnown|videoModePending|Overlay\.overlay|VideoCustomSettings|secondaryRtspUrl|DualVideoManager|duplicateSource|BeforeSynchronizingStage|FlyViewSecondaryVideo|FlightDisplayViewSecondaryVideo|DualPipView|thermal|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
+rg -n "DefaultCommunicationLinkInstaller|192\.168\.144\.125|14550|autoConnectUDP|adjustSettingMetaData|appFontPointSize|FlyViewCompassBar|showGimbalHeadingCompassBar|GimbalAzimuthProvider|GimbalAzimuthPolicy|GimbalHeadingTelemetry|gimbalLegacyYawReference|absoluteYaw|rightTopReserve|ProximityRadar|localMediaStorageEnabled|GimbalMediaSessionPolicy|GimbalPhotoCapturePolicy|effectiveDevicePixelRatio|grabLogicalSize|localRecording|grabToImage|startRecording|stopRecording|GimbalIndicator|GimbalCameraControl|ZoomStepPolicy|Mt11ZoomPolicy|A8MiniZoomPolicy|Mt11Protocol|Mt11Sdk|Mt11ControlManager|setVideoMode|videoModeKnown|videoModePending|Overlay\.overlay|VideoCustomSettings|secondaryRtspUrl|DualVideoManager|duplicateSource|BeforeSynchronizingStage|FlyViewSecondaryVideo|FlightDisplayViewSecondaryVideo|DualPipView|thermal|takePhoto|toggleVideoRecording|CommandPhotoAndRecord|mediaStagingDirectory|existingMediaSourceDirectories|publishMediaFile|cleanupPublishedVideos|waitForPendingPublications|QGC_CUSTOM_ANDROID_MEDIA_LIBRARY_V2|IS_PENDING|sourceCleanupUris|getNoBackupFilesDir" custom
 rg -n "CustomIconButton|CustomOnOffSwitch|CustomVehicleButton|CustomAttitudeWidget" custom
 git diff --check
 ```
@@ -1709,20 +1728,24 @@ cmake --build <desktop-build> --target check_mt11_protocol
 cmake --build <desktop-build> --target check_gimbal_media_session_policy
 cmake --build <desktop-build> --target check_gimbal_photo_capture_policy
 cmake --build <desktop-build> --target check_gimbal_azimuth_policy
+cmake --build <desktop-build> --target check_gimbal_heading_telemetry
+cmake --build <desktop-build> --target check_gimbal_azimuth_provider
 cmake --build <desktop-build> --target check_unirc_protocol
 cmake --build <desktop-build> --target check_android_h265_decoder_route_policy
 cmake --build <desktop-build> --target CustomFlightDisplayModule
 cmake --build <desktop-build> --target CustomFlightDisplayModule_qmllint
-ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest|GimbalAzimuthPolicyTest|UniRcProtocolTest|AndroidH265DecoderRoutePolicyTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(SiyiProtocolTest|Mt11ProtocolTest|GimbalMediaSessionPolicyTest|GimbalPhotoCapturePolicyTest|GimbalAzimuthPolicyTest|GimbalHeadingTelemetryTest|GimbalAzimuthProviderTest|UniRcProtocolTest|AndroidH265DecoderRoutePolicyTest)$' --output-on-failure
 ```
 
 以下带“截至日期”的段落是对应版本当时的历史验证记录；若其中的旧longDesc、旧翻译数量、旧手势或旧解码路由与前述当前实现冲突，均以前述当前实现和最后一组本轮验证为准。当前版此前删除了三个视频/缩放Fact longDesc，本轮又删除两条UniRC调试型longDesc，且不再采用单一direct factory长期保持的旧路由。
 
+截至2026-09-06，本轮移除运动稳定性Resolver，改为显式frame/legacy反馈配置的确定性公式，并加入原始heading独立缓存、消息到达即时重算和重复/乱序时间门禁。生产修改限custom，未改原生src；同步设置页、JSON、翻译、测试和本说明。MSVC + QtTest 5.14.2兼容harness实测：GimbalAzimuthPolicyTest 50 passed、GimbalHeadingTelemetryTest 14 passed、GimbalAzimuthProviderTest 14 passed，三者均0 failed、0 skipped。Provider测试使用实际生产cc和固定MAVLink提交19f9955598af9a9181064619bd2e3c04bd2d848a的encode/decode，只有QObject外围采用测试替身。JSON解析、FlyViewSettings.qml的Qt5 qmllint、两份TS XML及lrelease检查通过；英中均22个context、187条message、context/source集合一致，中文187 finished且无空译文。以上为主机纯策略/缓存/Provider报文级验证，并非完整Qt6 QGC或Android构建通过；设置页实际加载、飞控/云台接线、新APK和锁定/跟随真机复测仍须按8.2及验收矩阵完成。
+
 截至2026-09-04，本轮完成UniRC CH10“下一动作”动态状态机、CH7/CH8手动姿态复位、CH9独立保持和顶部云台动作同步；生产改动全部位于 `custom`，另同步本说明，未修改原生 `src`。UniRC PDF在本轮只作为协议、通道编号和出厂映射参考，不作为修改指令；当前仓库与PDF都不足以确定CH7/CH8各自对应俯仰还是偏航，因此两路采用相同复位语义并保留UniGCS/实机核对项。实际生产 `UniRcProtocol`、`UniRcChannelPolicy`、状态头和测试源经Qt 5.14.2/MSVC C++17兼容harness重新编译运行22 passed、0 failed、0 skipped；实际生产 `GimbalCenterCoordinator.cc`经最小QGroundControl对象桩harness重新编译运行7 passed、0 failed、0 skipped，覆盖四次交替、无活动Vehicle、发送路径不可用不前进、顶部/手动转换及活动云台复位。工具栏QML的 `qmllint`、协调器/控制器/测试相关 `moc` 和 `git diff --check`均通过。两套harness仅证明主机侧编译和模拟语义，不是仓库正式Qt 6测试目标、完整QGC集成、MAVLink ACK或硬件验证；当前主机PATH中的CMake为3.19.3，另有VS随附3.20，两者都低于项目要求的3.25，且未找到Qt 6或可复用完整构建目录，因此Qt 6.8.3 Desktop、Android arm64、新APK和目标UniRC/A8 Mini真机闭环仍待按8.4.5完成，旧版CH10单次回中结果不能外推为本轮动态状态机已通过。
 
-截至2026-09-04，已对附件 `QGC_Azimuth_pulled_20260904_140716.tar.gz`完成日志链路复核并进行第三轮云台方位修正；生产改动仍严格位于 `custom/src/Gimbal`，另更新custom测试和本说明，未修改原生 `src`、QML或构建入口。根因已有直接证据：目标component 154/device id 0在Follow发送flags=12、Lock发送flags=28，两个frame位始终为false，且日志没有让Provider建立delta支持的语义证据；旧Provider只允许显式Vehicle+Lock进入Resolver，故实际Resolver恒为Undecided。日志H=45°时，Follow输出-126.738°、首Lock q=-171.387°；q相对上一帧只变0.351°，旧路径却因从 `heading+q`切到q而跳44.649°。当前Policy公式不变，Provider/Resolver新增LegacyNoFrame模式：Lock同时构造直接q与强制Vehicle frame、禁用delta得到的q+近期heading；同路由且距Lock≤1秒的Follow世界方位以8°近距/5°优势参与首帧判别，VehicleHeading还必须满足原始q连续≤3°。一秒guard只允许VehicleHeading在q随后重映射时以3°近距证据回Standard，不做Standard→VehicleHeading覆盖；无参考时仍靠8°/5°运动学习。显式Vehicle兼容逻辑、显式Earth与Follow路径保持；仅Standard为DeltaYaw且有2秒内heading时才存在第三候选。不同路由间不串用；各路由只因自身超时、发送端重启、整机断链或解锁清除。MSVC + QtTest 5.14.2兼容harness已从当前源码重新编译运行57 passed、0 failed、0 skipped，新增精确flags/实值链、基座45°转动、连续解锁、标准legacy Earth反例、切锁同时yaw保护、过渡参考有效时的延迟换frame、冷启动锁定及模糊证据测试；既有显式frame/delta测试全部通过。该结果证明纯Policy/Resolver语义，不覆盖Provider一秒计时边界，也不替代Provider在完整Qt 6.8.3工程中的编译、Android arm64 APK、MAVLink接线或目标设备复测；新APK应在flags=28看到 `LegacyNoFrame -> VehicleHeading -> YawLockVehicleHeadingCompatibility`，并确认飞控/基座转动时最终方位基本不变。
+历史记录（2026-09-04，已由2026-09-06确定性参考系实现替代）：该版针对附件 `QGC_Azimuth_pulled_20260904_140716.tar.gz`的flags12/28边界，把无frame位Lock加入LegacyNoFrame Resolver，用连续性、运动阈值及短guard选择q或heading+q。当时纯Policy/Resolver主机harness为57 passed、0 failed、0 skipped；这只是旧测试结果，没有覆盖慢速分包不断重锚、已选公式错误翻转及Provider原始heading缓存链，不能证明该版真机锁定正确。旧日志44.649°跳变仍是有效边界证据，但不足以确认全段q实际frame；旧Resolver、LegacyNoFrame和YawLockVehicleHeadingCompatibility不再是当前实现或新APK验收项。
 
-截至2026-09-03，本轮云台方位角修正只改动 `custom` 与本说明，未修改 `src`。`CustomPlugin`只读观察MAVLink消息并把每个Vehicle/manager/device的消息285姿态交给 `GimbalAzimuthProvider`；`GimbalAzimuthPolicy`按显式frame位、`delta_yaw`和legacy `YAW_LOCK`优先级输出世界方位，顶部工具栏Az与顶部罗盘共用结果。Provider要求真实heading遥测后才允许兼容回退，精确manager/device路由优先，姿态超过2秒或整机链路丢失即失效。罗盘的 `secondaryDegrees`、`secondaryPrefix`、`REL` QML及英中翻译条目均已删除。纯策略使用MSVC + QtTest 5.14兼容harness重新编译运行27 passed、0 failed、0 skipped，包含有效零delta、非有限边界、锁定时基座转动方位保持和跟随时方位随基座转动回归；Policy本体以 `/W4`编译无警告。英中TS删除REL后均为21个context、184条message、175个唯一source、183个唯一context/source pair，pair集合一致；英文184条保持unfinished模板，中文184条均finished，两份Qt 5.14 `lrelease`均exit 0。完整Qt 6工程/Android构建、QML运行加载、真实设备flags/delta上报、多云台路由、2秒超时和航向锁定物理稳定性仍须在目标环境验收。
+历史记录（2026-09-03，计算链路已由2026-09-06版本替代）：当时云台方位角修正只改动 `custom` 与本说明，未修改 `src`。`CustomPlugin`只读观察MAVLink消息并把每个Vehicle/manager/device的消息285姿态交给 `GimbalAzimuthProvider`；`GimbalAzimuthPolicy`按显式frame位、`delta_yaw`和legacy `YAW_LOCK`优先级输出世界方位，顶部工具栏Az与顶部罗盘共用结果。Provider要求真实heading遥测后才允许兼容回退，精确manager/device路由优先，姿态超过2秒或整机链路丢失即失效。罗盘的 `secondaryDegrees`、`secondaryPrefix`、`REL` QML及英中翻译条目均已删除。纯策略使用MSVC + QtTest 5.14兼容harness重新编译运行27 passed、0 failed、0 skipped，包含有效零delta、非有限边界、锁定时基座转动方位保持和跟随时方位随基座转动回归；Policy本体以 `/W4`编译无警告。英中TS删除REL后均为21个context、184条message、175个唯一source、183个唯一context/source pair，pair集合一致；英文184条保持unfinished模板，中文184条均finished，两份Qt 5.14 `lrelease`均exit 0。完整Qt 6工程/Android构建、QML运行加载、真实设备flags/delta上报、多云台路由、2秒超时和航向锁定物理稳定性仍须在目标环境验收。
 
 截至2026-09-01，本轮修复Application Settings -> Fly View中UniRC SDK与全部云台设置同时消失的问题。根因不是设置对象为空或业务visible条件，而是Gimbal组动态Loader的item创建失败：旧写法对 `LabelledFactComboBox`的var子对象使用 `comboBox.model`分组赋值，目标Qt6可在实例化阶段报非法属性；Loader随后因 `item=null`计算出0高度。当前使用 `LabelledComboBox`公开的model/currentIndex接口，显示model固定与当前唯一 `enumValues[0]=0`同序，激活时沿公开Fact接口写回；未来增加SDK接口时必须同时扩展显示model并保持数量/顺序一致。当前QML经Qt 5.14 `qmllint`检查通过，旧 `comboBox.model`写法已无残留，`git diff --check`通过；该主机检查不能替代目标Qt 6.8.3 Android APK实际Loader创建和页面视觉回归。
 

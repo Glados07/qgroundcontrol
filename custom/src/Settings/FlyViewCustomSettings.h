@@ -19,4 +19,5 @@ public:
 
     DEFINE_SETTINGFACT(showHeadingCompassBar)
     DEFINE_SETTINGFACT(showGimbalHeadingCompassBar)
+    DEFINE_SETTINGFACT(gimbalLegacyYawReference)
 };

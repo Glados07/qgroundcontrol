@@ -17,11 +17,12 @@
 #include <QtCore/QTimer>
 
 #include "GimbalAzimuthPolicy.h"
-#include "GimbalYawLockResolver.h"
+#include "GimbalHeadingTelemetry.h"
 #include "MAVLinkLib.h"
 
 class Gimbal;
 class GimbalController;
+class Fact;
 class Vehicle;
 
 class GimbalAzimuthProvider final : public QObject {
@@ -32,7 +33,7 @@ class GimbalAzimuthProvider final : public QObject {
     Q_PROPERTY(QString referenceSource READ referenceSource NOTIFY attitudeChanged)
 
    public:
-    explicit GimbalAzimuthProvider(QObject *parent = nullptr);
+    explicit GimbalAzimuthProvider(Fact *legacyYawReference, QObject *parent = nullptr);
     ~GimbalAzimuthProvider() override;
 
     bool valid() const { return _valid; }
@@ -47,21 +48,15 @@ class GimbalAzimuthProvider final : public QObject {
 
    private:
     struct CachedSample {
+        GimbalAzimuthPolicy::Input input;
         GimbalAzimuthPolicy::Result result;
-        GimbalYawLockResolver::State yawLockState;
-        GimbalYawLockResolver::CompatibilityMode lockCompatibilityMode = GimbalYawLockResolver::CompatibilityMode::None;
-        bool yawLock = false;
-        bool deltaYawSupported = false;
-        bool reportedYawValid = false;
-        double reportedYawDegrees = 0.0;
-        bool transitionReferenceValid = false;
-        double transitionReferenceYawDegrees = 0.0;
-        bool transitionReportedYawReferenceValid = false;
-        double transitionReportedYawReferenceDegrees = 0.0;
-        qint64 transitionReferenceAtMs = -1;
-        qint64 transitionStartedAtMs = -1;
+        quint8 sourceComponentId = 0;
+        quint8 deviceId = 0;
+        quint8 payloadLength = 0;
+        quint16 flags = 0;
         quint32 timeBootMs = 0;
         qint64 receivedAtMs = 0;
+        qint64 diagnosticAtMs = -1;
     };
 
     using VehicleSamples = QHash<quint16, CachedSample>;
@@ -72,6 +67,10 @@ class GimbalAzimuthProvider final : public QObject {
     void _clearActiveBindings();
     void _clearActiveGimbalBindings();
     void _trackVehicle(Vehicle *vehicle);
+    bool _handleHeadingTelemetry(Vehicle *vehicle, const mavlink_message_t &message, qint64 receivedAtMs);
+    void _refreshVehicleSamples(Vehicle *vehicle, qint64 nowMs);
+    void _recalculateSample(Vehicle *vehicle, CachedSample &sample, qint64 nowMs, bool forceLog = false);
+    void _setLegacyYawReference(int reference);
     void _publishActiveSample();
     void _publishResult(const GimbalAzimuthPolicy::Result *result);
 
@@ -86,7 +85,8 @@ class GimbalAzimuthProvider final : public QObject {
 
     QHash<Vehicle *, VehicleSamples> _samples;
     QSet<Vehicle *> _trackedVehicles;
-    QHash<Vehicle *, qint64> _vehicleHeadingTelemetryAtMs;
+    QHash<Vehicle *, GimbalHeadingTelemetry> _vehicleHeadingTelemetry;
+    GimbalAzimuthPolicy::LegacyYawReference _legacyYawReference = GimbalAzimuthPolicy::LegacyYawReference::Protocol;
     QElapsedTimer _monotonicClock;
     QTimer _staleSampleTimer;
 

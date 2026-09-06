@@ -511,8 +511,8 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/Gimbal/GimbalAzimuthPolicyTest.cc
         src/Gimbal/GimbalAzimuthPolicy.cc
         src/Gimbal/GimbalAzimuthPolicy.h
-        src/Gimbal/GimbalYawLockResolver.cc
-        src/Gimbal/GimbalYawLockResolver.h
+        src/Gimbal/GimbalHeadingTelemetry.cc
+        src/Gimbal/GimbalHeadingTelemetry.h
     )
     target_include_directories(GimbalAzimuthPolicyTest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
@@ -547,6 +547,52 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     add_custom_target(check_gimbal_center_coordinator
         COMMAND $<TARGET_FILE:GimbalCenterCoordinatorTest>
         DEPENDS GimbalCenterCoordinatorTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(GimbalHeadingTelemetryTest
+        test/Gimbal/GimbalHeadingTelemetryTest.cc
+        src/Gimbal/GimbalHeadingTelemetry.cc
+        src/Gimbal/GimbalHeadingTelemetry.h
+    )
+    target_include_directories(GimbalHeadingTelemetryTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal)
+    target_link_libraries(GimbalHeadingTelemetryTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalHeadingTelemetryTest COMMAND $<TARGET_FILE:GimbalHeadingTelemetryTest>)
+    add_custom_target(check_gimbal_heading_telemetry
+        COMMAND $<TARGET_FILE:GimbalHeadingTelemetryTest>
+        DEPENDS GimbalHeadingTelemetryTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    # custom is configured before src/MAVLink. Request the same pinned CPM
+    # package here for real wire-message tests; CPM reuses it for the app.
+    CPMAddPackage(
+        NAME mavlink
+        GIT_REPOSITORY ${QGC_MAVLINK_GIT_REPO}
+        GIT_TAG ${QGC_MAVLINK_GIT_TAG}
+    )
+    qt_add_executable(GimbalAzimuthProviderTest
+        test/Gimbal/GimbalAzimuthProviderTest.cc
+        test/Gimbal/AzimuthStubs/TestDoubles.h
+        src/Gimbal/GimbalAzimuthProvider.cc
+        src/Gimbal/GimbalAzimuthProvider.h
+        src/Gimbal/GimbalAzimuthPolicy.cc
+        src/Gimbal/GimbalAzimuthPolicy.h
+        src/Gimbal/GimbalHeadingTelemetry.cc
+        src/Gimbal/GimbalHeadingTelemetry.h
+    )
+    target_include_directories(GimbalAzimuthProviderTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/AzimuthStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+        ${mavlink_SOURCE_DIR}
+    )
+    target_link_libraries(GimbalAzimuthProviderTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalAzimuthProviderTest COMMAND $<TARGET_FILE:GimbalAzimuthProviderTest>)
+    add_custom_target(check_gimbal_azimuth_provider
+        COMMAND $<TARGET_FILE:GimbalAzimuthProviderTest>
+        DEPENDS GimbalAzimuthProviderTest
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )
