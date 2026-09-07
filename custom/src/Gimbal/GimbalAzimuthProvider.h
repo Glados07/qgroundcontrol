@@ -22,7 +22,6 @@
 
 class Gimbal;
 class GimbalController;
-class Fact;
 class Vehicle;
 
 class GimbalAzimuthProvider final : public QObject {
@@ -33,7 +32,7 @@ class GimbalAzimuthProvider final : public QObject {
     Q_PROPERTY(QString referenceSource READ referenceSource NOTIFY attitudeChanged)
 
    public:
-    explicit GimbalAzimuthProvider(Fact *legacyYawReference, QObject *parent = nullptr);
+    explicit GimbalAzimuthProvider(QObject *parent = nullptr);
     ~GimbalAzimuthProvider() override;
 
     bool valid() const { return _valid; }
@@ -70,7 +69,6 @@ class GimbalAzimuthProvider final : public QObject {
     bool _handleHeadingTelemetry(Vehicle *vehicle, const mavlink_message_t &message, qint64 receivedAtMs);
     void _refreshVehicleSamples(Vehicle *vehicle, qint64 nowMs);
     void _recalculateSample(Vehicle *vehicle, CachedSample &sample, qint64 nowMs, bool forceLog = false);
-    void _setLegacyYawReference(int reference);
     void _publishActiveSample();
     void _publishResult(const GimbalAzimuthPolicy::Result *result);
 
@@ -86,7 +84,6 @@ class GimbalAzimuthProvider final : public QObject {
     QHash<Vehicle *, VehicleSamples> _samples;
     QSet<Vehicle *> _trackedVehicles;
     QHash<Vehicle *, GimbalHeadingTelemetry> _vehicleHeadingTelemetry;
-    GimbalAzimuthPolicy::LegacyYawReference _legacyYawReference = GimbalAzimuthPolicy::LegacyYawReference::Protocol;
     QElapsedTimer _monotonicClock;
     QTimer _staleSampleTimer;
 

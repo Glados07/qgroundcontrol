@@ -258,6 +258,9 @@ def main():
             labels = sorted((item for item in tile.childItems()
                              if item.metaObject().indexOfProperty("text") >= 0), key=lambda item: item.x())
             assert len(labels) == 2
+            assert QQmlProperty.read(labels[0], "font.bold"), "Channel names must remain bold"
+            assert labels[0].opacity() == 1, "Channel names must retain full contrast"
+            assert labels[0].property("color") == QColor("#000000" if light else "#ffffff")
             assert labels[0].x() + labels[0].width() <= labels[1].x(), "Channel name and value must not overlap"
             assert labels[1].property("text") == "1500", "Channel value binding changed"
         count = 0
@@ -304,14 +307,23 @@ def main():
     core.app["useChecklist"].set_value(old)
 
     combo_row = next(item for item in descendants(root)
-                     if "FlyViewFactComboBox" in item.metaObject().className())
+                     if "FlyViewComboBox" in item.metaObject().className()
+                     and item.property("label") == Chinese.labels["SDK Interface"])
     combo = next(item for item in descendants(combo_row)
-                 if item.metaObject().className().startswith("FactComboBox"))
-    assert QMetaObject.invokeMethod(combo, "activated", Qt.DirectConnection, Q_ARG(int, 1))
-    assert core.fly_custom["gimbalLegacyYawReference"].get_value() == 1
+                 if item.metaObject().className().startswith("QGCComboBox"))
+    # The remaining SDK selector has one legal entry. Seed only the test double
+    # with an invalid stored value to verify activation writes back that entry.
+    core.gimbal["uniRcSdkInterface"].set_value(-1)
+    assert QMetaObject.invokeMethod(combo, "activated", Qt.DirectConnection, Q_ARG(int, 0))
+    assert core.gimbal["uniRcSdkInterface"].get_value() == 0
 
-    # Feedback direction is a fixed product convention, not a user setting.
+    # Legacy frame and direction are fixed product conventions, not settings.
+    assert set(core.fly_custom) == {"showHeadingCompassBar", "showGimbalHeadingCompassBar"}
+    assert "gimbalLegacyYawReference" not in core.fly_custom
     assert "gimbalLegacyYawReversed" not in core.fly_custom
+    assert not any(item.metaObject().indexOfProperty("label") >= 0
+                   and item.property("label") == "Legacy gimbal feedback yaw frame"
+                   for item in descendants(root)), "Removed legacy feedback frame selector reappeared"
     assert not any("FlyViewFactSwitch" in item.metaObject().className()
                    and item.property("text") == "Reverse legacy vehicle-frame yaw feedback"
                    for item in descendants(root)), "Removed feedback direction switch reappeared"

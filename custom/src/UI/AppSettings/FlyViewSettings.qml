@@ -37,7 +37,6 @@ FlyViewSettingsPage {
     property Fact   _lockNoseUpCompass:                 _flyViewSettings.lockNoseUpCompass
     property Fact   _showHeadingCompassBar:             _flyViewCustomSettings ? _flyViewCustomSettings.showHeadingCompassBar : null
     property Fact   _showGimbalHeadingCompassBar:       _flyViewCustomSettings ? _flyViewCustomSettings.showGimbalHeadingCompassBar : null
-    property Fact   _gimbalLegacyYawReference:          _flyViewCustomSettings ? _flyViewCustomSettings.gimbalLegacyYawReference : null
     property Fact   _guidedMinimumAltitude:             _flyViewSettings.guidedMinimumAltitude
     property Fact   _guidedMaximumAltitude:             _flyViewSettings.guidedMaximumAltitude
     property Fact   _maxGoToLocationDistance:           _flyViewSettings.maxGoToLocationDistance
@@ -224,8 +223,7 @@ FlyViewSettingsPage {
         visible:            _showAdditionalIndicatorsCompass.visible ||
                             _lockNoseUpCompass.visible ||
                             Boolean(_showHeadingCompassBar && _showHeadingCompassBar.visible) ||
-                            Boolean(_showGimbalHeadingCompassBar && _showGimbalHeadingCompassBar.visible) ||
-                            Boolean(_gimbalLegacyYawReference && _gimbalLegacyYawReference.visible)
+                            Boolean(_showGimbalHeadingCompassBar && _showGimbalHeadingCompassBar.visible)
 
         Loader {
             id:                 headingCompassBarToggleLoader
@@ -260,30 +258,6 @@ FlyViewSettingsPage {
             text:               qsTr("Show additional heading indicators on Compass")
             visible:            _showAdditionalIndicatorsCompass.visible
             fact:               _showAdditionalIndicatorsCompass
-        }
-
-        Loader {
-            id:                 gimbalLegacyYawReferenceLoader
-            Layout.fillWidth:   true
-            Layout.preferredHeight: item ? item.implicitHeight : 0
-            Layout.minimumHeight:   item ? item.implicitHeight : 0
-            active:             _gimbalLegacyYawReference !== null
-            visible:            active && _gimbalLegacyYawReference.visible
-
-            sourceComponent: FlyViewFactComboBox {
-                label:          qsTr("Legacy gimbal feedback yaw frame")
-                fact:           _gimbalLegacyYawReference
-            }
-        }
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            Layout.minimumWidth: 0
-            visible:            gimbalLegacyYawReferenceLoader.visible
-            wrapMode:           Text.Wrap
-            font.pointSize:     ScreenTools.smallFontPointSize
-            opacity:            0.75
-            text:               qsTr("Shared by all gimbals without yaw frame flags. Choose the feedback reference; azimuth always points relative to Earth North.")
         }
 
         FlyViewFactSwitch {

@@ -425,9 +425,8 @@ void CustomPlugin::_ensureFlyViewCustomSettings()
 
 void CustomPlugin::_ensureGimbalAzimuthProvider()
 {
-    _ensureFlyViewCustomSettings();
     if (!_gimbalAzimuthProvider) {
-        _gimbalAzimuthProvider = new GimbalAzimuthProvider(_flyViewCustomSettings->gimbalLegacyYawReference(), this);
+        _gimbalAzimuthProvider = new GimbalAzimuthProvider(this);
     }
 }
 

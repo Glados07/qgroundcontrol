@@ -138,7 +138,7 @@ ColumnLayout {
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("CH%1").arg(index + 1)
                         font.pointSize: ScreenTools.smallFontPointSize
-                        opacity: 0.75
+                        font.bold: true
                     }
 
                     QGCLabel {

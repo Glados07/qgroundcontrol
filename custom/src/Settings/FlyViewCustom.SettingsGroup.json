@@ -15,15 +15,6 @@
             "longDesc": "Show the active MAVLink gimbal direction at the top center of Fly View.",
             "type": "bool",
             "default": false
-        },
-        {
-            "name": "gimbalLegacyYawReference",
-            "shortDesc": "Legacy gimbal feedback yaw frame",
-            "longDesc": "Shared by all MAVLink gimbals whose attitude feedback omits both yaw frame flags. Select the reference used by the reported yaw; displayed azimuth always remains relative to Earth North. Explicit yaw frame flags take precedence.",
-            "type": "uint32",
-            "enumStrings": "MAVLink protocol,Vehicle heading,Earth North",
-            "enumValues": "0,1,2",
-            "default": 1
         }
     ]
 }

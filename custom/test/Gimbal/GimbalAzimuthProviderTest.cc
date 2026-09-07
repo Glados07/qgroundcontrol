@@ -5,7 +5,7 @@
  ****************************************************************************/
 
 #include <QtCore/QLoggingCategory>
-#include <QtTest/QSignalSpy>
+#include <QtCore/QPointer>
 #include <QtTest/QTest>
 #include <algorithm>
 #include <array>
@@ -95,14 +95,14 @@ class GimbalAzimuthProviderTest : public QObject {
                            "qgc.custom.gimbal.azimuth.info=false"));
     }
     void cleanup() { MultiVehicleManager::instance()->setActiveVehicle(nullptr); }
-    void followsAndLocksWithoutChangingConfiguredFrame();
+    void followsAndLocksWithFixedLegacyFrame();
     void usesUnroundedHeadingAndRefreshesOnHeadingArrival();
-    void settingChangesRecalculateExistingSample();
+    void constructorHonorsQObjectParent();
     void reversedFeedbackReplaysRecordedSamples();
-    void fixedFeedbackConventionOnlyAppliesToConfiguredLegacyVehicleFrame();
+    void fixedFeedbackConventionNeedsHeadingInBothModes();
     void reversedFeedbackDoesNotOverrideExplicitFrames();
     void reversedFeedbackPreservesFreshnessGuards();
-    void explicitFramesOverrideLegacySetting();
+    void explicitFramesOverrideFixedLegacyConvention();
     void isolatesVehicleComponentAndDeviceRoutes();
     void highLatencyUnits_data();
     void highLatencyUnits();
@@ -113,11 +113,10 @@ class GimbalAzimuthProviderTest : public QObject {
     void ignoresReplayedGimbalSamplesButAcceptsZeroTimestamps();
 };
 
-void GimbalAzimuthProviderTest::followsAndLocksWithoutChangingConfiguredFrame() {
+void GimbalAzimuthProviderTest::followsAndLocksWithFixedLegacyFrame() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
 
     provider.handleMavlinkMessage(&vehicle, headingMessage(45.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(171.738, 12));
@@ -148,8 +147,7 @@ void GimbalAzimuthProviderTest::followsAndLocksWithoutChangingConfiguredFrame() 
 void GimbalAzimuthProviderTest::usesUnroundedHeadingAndRefreshesOnHeadingArrival() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     QCOMPARE(vehicle.heading()->rawValue().toDouble(), 45.0);
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
     QVERIFY(!provider.valid());
@@ -159,29 +157,21 @@ void GimbalAzimuthProviderTest::usesUnroundedHeadingAndRefreshesOnHeadingArrival
     QVERIFY(azimuthEquals(provider, 36.125));
 }
 
-void GimbalAzimuthProviderTest::settingChangesRecalculateExistingSample() {
-    Vehicle vehicle;
-    MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
-    provider.handleMavlinkMessage(&vehicle, headingMessage(45.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0, 28));
-    QVERIFY(azimuthEquals(provider, 35.0));
-    legacyReference.setRawValue(2);
-    QVERIFY(azimuthEquals(provider, 10.0));
-    legacyReference.setRawValue(0);
-    QVERIFY(azimuthEquals(provider, 10.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0, 12));
-    QVERIFY(azimuthEquals(provider, 55.0));
-    legacyReference.setRawValue(2);
-    QVERIFY(azimuthEquals(provider, 10.0));
+void GimbalAzimuthProviderTest::constructorHonorsQObjectParent() {
+    QPointer<GimbalAzimuthProvider> provider;
+    {
+        QObject owner;
+        provider = new GimbalAzimuthProvider(&owner);
+        QCOMPARE(provider->parent(), &owner);
+        QVERIFY(owner.children().contains(provider.data()));
+    }
+    QVERIFY(provider.isNull());
 }
 
 void GimbalAzimuthProviderTest::reversedFeedbackReplaysRecordedSamples() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(4.75517));
     provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(
         {8.20792e-05F, -0.300543F, 0.953768F, 1.9889e-05F}));
@@ -207,40 +197,35 @@ void GimbalAzimuthProviderTest::reversedFeedbackReplaysRecordedSamples() {
     QVERIFY(azimuthEquals(provider, -107.096));
 }
 
-void GimbalAzimuthProviderTest::fixedFeedbackConventionOnlyAppliesToConfiguredLegacyVehicleFrame() {
+void GimbalAzimuthProviderTest::fixedFeedbackConventionNeedsHeadingInBothModes() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 28));
+    QVERIFY(!provider.valid());
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 12));
+    QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
     QVERIFY(azimuthEquals(provider, 50.0));
     QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeadingReversed"));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 12));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 28));
     QVERIFY(azimuthEquals(provider, 50.0));
     QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeadingReversed"));
 
-    // Only the reference-frame setting remains user-configurable. The product's
-    // feedback direction is fixed for reference 1 in both follow and lock modes.
-    QSignalSpy changed(&provider, &GimbalAzimuthProvider::attitudeChanged);
-    legacyReference.setRawValue(2);
-    QVERIFY(azimuthEquals(provider, 20.0));
-    QVERIFY(!changed.isEmpty());
-    legacyReference.setRawValue(0);
-    QVERIFY(azimuthEquals(provider, 90.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 28));
-    QVERIFY(azimuthEquals(provider, 20.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 12));
-    QVERIFY(azimuthEquals(provider, 90.0));
-    legacyReference.setRawValue(1);
+    // The product has no user-configurable frame or direction: lock/follow use
+    // the same fixed heading-minus-feedback contract for legacy messages.
+    provider.handleMavlinkMessage(&vehicle, headingMessage(160.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(110.0, 28));
     QVERIFY(azimuthEquals(provider, 50.0));
+    provider.handleMavlinkMessage(&vehicle, headingMessage(250.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(110.0, 12));
+    QVERIFY(azimuthEquals(provider, 140.0));
 }
 
 void GimbalAzimuthProviderTest::reversedFeedbackDoesNotOverrideExplicitFrames() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 28 | GIMBAL_DEVICE_FLAGS_YAW_IN_EARTH_FRAME));
     QVERIFY(azimuthEquals(provider, 20.0));
@@ -264,8 +249,7 @@ void GimbalAzimuthProviderTest::reversedFeedbackDoesNotOverrideExplicitFrames() 
 void GimbalAzimuthProviderTest::reversedFeedbackPreservesFreshnessGuards() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
@@ -286,16 +270,14 @@ void GimbalAzimuthProviderTest::reversedFeedbackPreservesFreshnessGuards() {
     QVERIFY(azimuthEquals(provider, 54.0));
 }
 
-void GimbalAzimuthProviderTest::explicitFramesOverrideLegacySetting() {
+void GimbalAzimuthProviderTest::explicitFramesOverrideFixedLegacyConvention() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(23.5, 28 | GIMBAL_DEVICE_FLAGS_YAW_IN_EARTH_FRAME));
     QVERIFY(azimuthEquals(provider, 23.5));
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
     QVERIFY(azimuthEquals(provider, 23.5));
-    legacyReference.setRawValue(2);
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0, 28 | GIMBAL_DEVICE_FLAGS_YAW_IN_VEHICLE_FRAME));
     QVERIFY(azimuthEquals(provider, 80.0));
 }
@@ -307,8 +289,7 @@ void GimbalAzimuthProviderTest::isolatesVehicleComponentAndDeviceRoutes() {
     Gimbal secondDevice(2, 154);
     first.gimbalController()->setActiveGimbal(&firstDevice);
     MultiVehicleManager::instance()->setActiveVehicle(&first);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&first, headingMessage(40.0));
     provider.handleMavlinkMessage(&first, gimbalMessage(10.0, 28, 1, 154, 1));
     QVERIFY(azimuthEquals(provider, 30.0));
@@ -344,8 +325,7 @@ void GimbalAzimuthProviderTest::highLatencyUnits() {
     QFETCH(double, expectedHeading);
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     mavlink_message_t message{};
     if (version2) {
         mavlink_high_latency2_t status{};
@@ -364,8 +344,7 @@ void GimbalAzimuthProviderTest::highLatencyUnits() {
 void GimbalAzimuthProviderTest::quaternionIgnoresDisplayOffset() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(135.0));
     provider.handleMavlinkMessage(&vehicle, quaternionHeadingMessage(45.625, 90.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
@@ -375,8 +354,7 @@ void GimbalAzimuthProviderTest::quaternionIgnoresDisplayOffset() {
 void GimbalAzimuthProviderTest::invalidTelemetryDoesNotRenewFreshness() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, quaternionHeadingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
@@ -400,8 +378,7 @@ void GimbalAzimuthProviderTest::invalidTelemetryDoesNotRenewFreshness() {
 void GimbalAzimuthProviderTest::gimbalExpiryIsIndependentOfHeading() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
     QVERIFY(azimuthEquals(provider, 30.0));
@@ -419,8 +396,7 @@ void GimbalAzimuthProviderTest::gimbalExpiryIsIndependentOfHeading() {
 void GimbalAzimuthProviderTest::reconnectRequiresNewHeadingAndGimbal() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
     QVERIFY(azimuthEquals(provider, 30.0));
@@ -437,8 +413,7 @@ void GimbalAzimuthProviderTest::reconnectRequiresNewHeadingAndGimbal() {
 void GimbalAzimuthProviderTest::ignoresReplayedGimbalSamplesButAcceptsZeroTimestamps() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
-    Fact legacyReference{1};
-    GimbalAzimuthProvider provider(&legacyReference);
+    GimbalAzimuthProvider provider;
     const auto older = gimbalMessage(10.0);
     const auto newer = gimbalMessage(20.0);
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));

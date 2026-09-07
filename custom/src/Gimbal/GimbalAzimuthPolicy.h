@@ -11,7 +11,8 @@
 class GimbalAzimuthPolicy {
    public:
     // Used only when neither MAVLink yaw-frame bit is present. Explicit frame
-    // declarations always take precedence over this installation setting.
+    // declarations always take precedence over this legacy input contract.
+    // The custom provider fixes this contract; it is not a user setting.
     enum class LegacyYawReference {
         Protocol = 0,
         VehicleHeading = 1,

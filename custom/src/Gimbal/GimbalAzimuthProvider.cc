@@ -73,12 +73,7 @@ bool senderRestarted(quint32 previous, quint32 current) {
 
 }  // namespace
 
-GimbalAzimuthProvider::GimbalAzimuthProvider(Fact *legacyYawReference, QObject *parent) : QObject(parent) {
-    if (legacyYawReference) {
-        _setLegacyYawReference(legacyYawReference->rawValue().toInt());
-        connect(legacyYawReference, &Fact::rawValueChanged, this,
-                [this](const QVariant &value) { _setLegacyYawReference(value.toInt()); });
-    }
+GimbalAzimuthProvider::GimbalAzimuthProvider(QObject *parent) : QObject(parent) {
     _monotonicClock.start();
     _staleSampleTimer.setInterval(kStaleSampleCheckIntervalMs);
     _staleSampleTimer.setTimerType(Qt::CoarseTimer);
@@ -216,27 +211,6 @@ bool GimbalAzimuthProvider::_handleHeadingTelemetry(Vehicle *vehicle, const mavl
     }
 }
 
-void GimbalAzimuthProvider::_setLegacyYawReference(int reference) {
-    using Reference = GimbalAzimuthPolicy::LegacyYawReference;
-    const Reference next = reference == static_cast<int>(Reference::VehicleHeading) ? Reference::VehicleHeading
-                           : reference == static_cast<int>(Reference::EarthNorth)   ? Reference::EarthNorth
-                                                                                    : Reference::Protocol;
-    if (_legacyYawReference == next) {
-        return;
-    }
-    _legacyYawReference = next;
-    if (!_monotonicClock.isValid()) {
-        return;
-    }
-    const qint64 nowMs = _monotonicClock.elapsed();
-    for (auto vehicleIt = _samples.begin(); vehicleIt != _samples.end(); ++vehicleIt) {
-        for (auto sampleIt = vehicleIt->begin(); sampleIt != vehicleIt->end(); ++sampleIt) {
-            _recalculateSample(vehicleIt.key(), sampleIt.value(), nowMs, true);
-        }
-    }
-    _publishActiveSample();
-}
-
 void GimbalAzimuthProvider::_refreshVehicleSamples(Vehicle *vehicle, qint64 nowMs) {
     const auto vehicleIt = _samples.find(vehicle);
     if (vehicleIt == _samples.end()) {
@@ -253,11 +227,11 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
         headingIt != _vehicleHeadingTelemetry.cend() ? headingIt->heading(nowMs) : GimbalHeadingTelemetry::Sample{};
     sample.input.vehicleHeadingAvailable = heading.valid;
     sample.input.vehicleHeadingDegrees = heading.yawDegrees;
-    sample.input.legacyYawReference = _legacyYawReference;
-    // Fixed custom-product feedback convention, verified against the A8 Mini
-    // capture. This is not a user setting or an inference from yaw-lock.
-    // The policy limits it to configured legacy vehicle-frame feedback;
-    // explicit MAVLink frames and protocol/Earth references are unaffected.
+    // Fixed custom-product legacy feedback contract: vehicle reference with
+    // reversed yaw, as observed in the A8 Mini capture. Neither this frame nor
+    // its direction is a user setting or inferred from yaw-lock. Explicit
+    // MAVLink frame declarations still take precedence in the policy.
+    sample.input.legacyYawReference = GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading;
     sample.input.legacyYawReversed = true;
     const bool fresh = nowMs >= sample.receivedAtMs && nowMs - sample.receivedAtMs <= kSampleTimeoutMs;
     const auto next = fresh ? GimbalAzimuthPolicy::calculate(sample.input) : GimbalAzimuthPolicy::Result{};
@@ -268,7 +242,7 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
         qCInfo(GimbalAzimuthProviderLog) << "Gimbal azimuth reference changed"
                                          << "vehicle" << vehicle->id() << "source component" << sample.sourceComponentId
                                          << "device id" << sample.deviceId << "flags" << sample.flags
-                                         << "legacy yaw reference" << static_cast<int>(_legacyYawReference)
+                                         << "legacy yaw reference" << static_cast<int>(sample.input.legacyYawReference)
                                          << "legacy yaw reversed" << sample.input.legacyYawReversed
                                          << "yaw lock" << sample.input.yawLock << "reference"
                                          << _sourceName(next.source) << "result valid" << next.valid << "error"
@@ -286,7 +260,7 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
             << "Gimbal azimuth sample"
             << "vehicle" << vehicle->id() << "source component" << sample.sourceComponentId << "device id"
             << sample.deviceId << "payload length" << sample.payloadLength << "flags" << sample.flags << "yaw lock"
-            << sample.input.yawLock << "legacy yaw reference" << static_cast<int>(_legacyYawReference)
+            << sample.input.yawLock << "legacy yaw reference" << static_cast<int>(sample.input.legacyYawReference)
             << "gimbal boot ms" << sample.timeBootMs << "gimbal received ms" << sample.receivedAtMs << "gimbal age ms"
             << nowMs - sample.receivedAtMs << "raw q" << sample.input.quaternion[0] << sample.input.quaternion[1]
             << sample.input.quaternion[2] << sample.input.quaternion[3] << "reported q yaw" << direct.absoluteYawDegrees

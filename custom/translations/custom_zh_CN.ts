@@ -92,38 +92,6 @@
         <source>Show Gimbal Heading Compass Bar</source>
         <translation>显示云台指向罗盘条</translation>
     </message>
-    <message>
-        <location filename="../src/UI/AppSettings/FlyViewSettings.qml"/>
-        <source>Legacy gimbal feedback yaw frame</source>
-        <translation>旧协议云台反馈偏航参考系</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/FlyViewSettings.qml"/>
-        <source>Shared by all gimbals without yaw frame flags. Choose the feedback reference; azimuth always points relative to Earth North.</source>
-        <translation>所有未上报偏航坐标系标志的云台共用此项。请选择反馈角度的参考系；显示的方位角始终相对于地理北向。</translation>
-    </message>
-</context>
-<context>
-    <name>FlyViewCustom.SettingsGroup.json</name>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[gimbalLegacyYawReference].shortDesc, </extracomment>
-        <location filename="../src/Settings/FlyViewCustom.SettingsGroup.json"/>
-        <source>Legacy gimbal feedback yaw frame</source>
-        <translation>旧协议云台反馈偏航参考系</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[gimbalLegacyYawReference].longDesc, </extracomment>
-        <location filename="../src/Settings/FlyViewCustom.SettingsGroup.json"/>
-        <source>Shared by all MAVLink gimbals whose attitude feedback omits both yaw frame flags. Select the reference used by the reported yaw; displayed azimuth always remains relative to Earth North. Explicit yaw frame flags take precedence.</source>
-        <translation>所有姿态反馈均未设置两种偏航坐标系标志的MAVLink云台共用此项。请选择上报偏航角所用的参考系；显示的方位角始终相对于地理北向。消息中的显式偏航坐标系标志优先。</translation>
-    </message>
-    <message>
-        <extracomment>.QGC.MetaData.Facts[gimbalLegacyYawReference].enumStrings, </extracomment>
-        <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
-        <location filename="../src/Settings/FlyViewCustom.SettingsGroup.json"/>
-        <source>MAVLink protocol,Vehicle heading,Earth North</source>
-        <translation>按MAVLink协议,相对机体航向,相对地理北向</translation>
-    </message>
 </context>
 <context>
     <name>FlyViewCustomLayer</name>
