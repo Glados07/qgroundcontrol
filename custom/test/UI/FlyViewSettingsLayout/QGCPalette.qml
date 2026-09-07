@@ -4,14 +4,23 @@ QtObject {
     enum Theme { Light, Dark }
     property bool colorGroupEnabled: true
     property int globalTheme: layoutTestStyle.light ? QGCPalette.Light : QGCPalette.Dark
-    property color window: layoutTestStyle.light ? "#f4f6f8" : "#151a21"
-    property color windowShade: layoutTestStyle.light ? "#ffffff" : "#202731"
-    property color groupBorder: layoutTestStyle.light ? "#dce2e9" : "#36414e"
-    property color text: !colorGroupEnabled ? "#818b99" : layoutTestStyle.light ? "#202b39" : "#e4eaf1"
-    property color button: layoutTestStyle.light ? "#e9eef4" : "#303b49"
-    property color primaryButton: "#438be4"
-    property color buttonBorder: groupBorder
-    property color buttonText: text
-    property color buttonHighlight: primaryButton
-    property color buttonHighlightText: "#ffffff"
+    // Mirror src/QmlControls/QGCPalette.cc so previews use the native frame/background.
+    property color window: layoutTestStyle.light ? "#ffffff" : "#222222"
+    property color windowShade: layoutTestStyle.light ? "#d9d9d9" : "#333333"
+    property color groupBorder: layoutTestStyle.light ? "#bbbbbb" : "#707070"
+    property color text: layoutTestStyle.light
+                         ? (colorGroupEnabled ? "#000000" : "#9d9d9d")
+                         : (colorGroupEnabled ? "#ffffff" : "#707070")
+    property color button: layoutTestStyle.light ? "#ffffff" : (colorGroupEnabled ? "#626270" : "#707070")
+    property color primaryButton: colorGroupEnabled ? "#8cb3be" : "#585858"
+    property color buttonBorder: layoutTestStyle.light
+                                 ? (colorGroupEnabled ? "#d9d9d9" : "#ffffff")
+                                 : (colorGroupEnabled ? "#adadb8" : "#707070")
+    property color buttonText: layoutTestStyle.light
+                               ? (colorGroupEnabled ? "#000000" : "#9d9d9d")
+                               : (colorGroupEnabled ? "#ffffff" : "#a6a6a6")
+    property color buttonHighlight: layoutTestStyle.light
+                                    ? (colorGroupEnabled ? "#946120" : "#e4e4e4")
+                                    : (colorGroupEnabled ? "#fff291" : "#3a3a3a")
+    property color buttonHighlightText: !colorGroupEnabled ? "#2c2c2c" : layoutTestStyle.light ? "#ffffff" : "#000000"
 }

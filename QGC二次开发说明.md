@@ -854,7 +854,11 @@ custom Provider逐帧接收 `GIMBAL_DEVICE_ATTITUDE_STATUS`，为每个Vehicle/s
 
 #### 8.2.1 方位角突变的离线真机日志采集（2026-09-07）
 
-用户反馈锁定状态的方位角仍变化且突变，本轮仅补齐复现采集流程，不再修改参考系策略、默认值或显示算法；上一轮主机测试通过不能等同于真机锁定方位正确。按用户要求，采集脚本 `gimbal-azimuth-capture.sh`、详细流程 `gimbal-azimuth-capture.md` 和主机验证脚本 `GimbalAzimuthCaptureTest.sh` 统一存放在 `F:\VM\_Shared`，不纳入本地Git仓库；仓库仅保留本节开发说明。在 Ubuntu 对应共享目录中，USB 连接时运行 `bash ./gimbal-azimuth-capture.sh start`，待设备端进程及真实写入验证通过后拔 USB 测试；测试完先正常断开所有飞控并等至少5秒使遥测保存，再接 USB 运行 `bash ./gimbal-azimuth-capture.sh finish`。脚本仅重启QGC带入日志参数和采集日志，不清应用数据、不删设备备份、不改通信配置。
+用户反馈锁定状态的方位角仍变化且突变，本轮仅补齐复现采集流程，不再修改参考系策略、默认值或显示算法；上一轮主机测试通过不能等同于真机锁定方位正确。按用户要求，采集脚本 `gimbal-azimuth-capture.sh`、详细流程 `gimbal-azimuth-capture.md` 和主机验证脚本 `GimbalAzimuthCaptureTest.sh` 统一存放在 `F:\VM_Shared`，不纳入本地Git仓库；仓库仅保留本节开发说明。在 Ubuntu 中USB连接时运行 `bash ~/VM_Shared/gimbal-azimuth-capture.sh start`，无需输入START、参考系、型号或版本；包版本自动采集，当前参考系从计算样本读取。待真实写盘验证通过后拔USB测试，结束先正常断开所有飞控并等至少5秒使遥测保存，再接USB运行 `bash ~/VM_Shared/gimbal-azimuth-capture.sh finish`。脚本重启QGC带入日志参数，不清应用数据、不删设备备份、不改通信配置；开始前应先正常断开飞控以保留上一段遥测。
+
+9月7日采集启动失败只打印 `alias nohup='nohup '`，这是旧脚本 `command -v` 的结果，不能据此确定设备端退出原因。修订使用绝对Android工具路径，独立worker写自身PID/启动时间后exec logcat，启动、独立二次写盘验证和收尾统一按boot ID、启动时间和本会话完整输出路径核验，不再依赖包装器的 `$!` 或要求comm精确等于logcat。失败显示退出码/stderr并尝试自动保存诊断，旧失败会话保留后自动继续；正常记录且QGC进程未变时重复start不重启。7类主机模拟测试及脚本语法检查通过，但不能据此确认目标ROM失败的唯一根因或真机拔线测试已通过。
+
+随后11:25:56自动保存包将退出17定位为文件缓冲导致的启动验证误报：logcat已执行、stderr为空，主日志恰好4096字节，包含11:24:22.285的完整BEGIN，但末尾11:24:28.219的END截断；recovery ring含完整BEGIN和END，且程序尚未进入QGC启动阶段。旧脚本把单标记5秒内未从用户态缓冲写出误判为logcat未运行，紧接着SIGTERM丢弃尾部缓冲。外置脚本现在为BEGIN/独立CHECK/END共用helper：标记后发送约16 KiB有界诊断填充，只有标记在当前会话实际文件中出现才通过，END验证后才停止；只检查真实存在的轮转文件。不使用sync替代用户态flush，也不拿ring标记冒充文件写入。新增共享目录 `GimbalAzimuthMarkerTest.sh`直接执行helper的块缓冲回归，测试文件继续不纳入Git。这是采集失败的修正，尚无新的云台方位角复现数据，不能据此宣称方位角算法根因已查明。
 
 现有 `GimbalAzimuthProviderLog` 使用普通 `Q_LOGGING_CATEGORY`，分类为 `qgc.custom.gimbal.azimuth`，没有登记到原生GUI分类表；连续计算样本使用debug且最多每200毫秒输出。原生 `--logging:full`只额外打开 `*Log.debug`，不能覆盖默认关闭的 `qgc.*.debug`，因此采集必须用冒号形式的精确分类启动参数，同时开启 `--log-output` 写 `QGCConsole`。Qt 6.8.3 Android通过 `applicationArguments`传入，不能依赖仅debuggable APK接受的 `extraappparams`。
 
@@ -1021,11 +1025,11 @@ UniRC V1.0第73～75页把 `BLUE*` 设备描述为QGC可扫描连接、在Window
 
 Android 12及以上Manifest声明 `BLUETOOTH_SCAN`和 `BLUETOOTH_CONNECT`；Android 11及以下保留受 `maxSdkVersion=30`限制的 `BLUETOOTH`、`BLUETOOTH_ADMIN`和定位权限。UniRC控制器通过Qt `QBluetoothPermission::Access`取得Nearby devices访问后只按MAC连接，不调用设备发现；SCAN声明还服务于根工程默认启用的原生Bluetooth Link，不能与UniRC设置页扫描按钮等同。代码只检查Bluetooth是否开启，不再读取系统Bluetooth关闭证据，不访问字符设备，不调用JNI状态helper，也没有termios、flock、TIOCEXCL、ioctl或UART占用探测。旧 `UniRcSerialAccessPolicy.*`、`QGCCustomBluetoothState*.java`及Java策略测试均已删除。
 
-**飞行视图设置页自适应排版（2026-09-07）。** 此页不再沿用原生 `SettingsPage` 按子项implicitWidth决定整页宽度的规则，改用custom局部 `FlyViewSettingsPage`：内容宽度始终为右侧可用视口减去两侧留白，仅纵向滚动，长说明、文件路径和下拉选项不能撑宽整页。`FlyViewSettingsSection`统一卡片背景、边框、标题和间距；`FlyViewSettingsRow`宽屏标签/控件左右对齐，窄屏上下排列，长标签允许单词内换行；下拉框当前值省略显示，弹出选项在边界内换行。输入框、下拉框和开关继续复用原生Fact控件，保留校验、单位、保存和整行点击行为。
+**飞行视图设置页自适应排版（2026-09-07）。** 此页不再沿用原生 `SettingsPage` 按子项implicitWidth决定整页宽度的规则，改用custom局部 `FlyViewSettingsPage`：内容区在右侧可用视口内水平居中，最大宽度为100个默认字体像素宽，窄屏自动缩至视口减去两侧留白，仅纵向滚动，长说明、文件路径和下拉选项不能撑宽整页。`FlyViewSettingsSection`采用原生 `SettingsGroupLayout` 的透明底框、主题 `groupBorder` 细边框和圆角，不再增加灰色卡片填充，并统一标题和间距；`FlyViewSettingsRow`宽屏标签/控件左右对齐，窄屏上下排列，长标签允许单词内换行；下拉框当前值省略显示，弹出选项在边界内换行。输入框、下拉框和开关继续复用原生Fact控件，保留校验、单位、保存和整行点击行为。
 
 云台区保留顶部变焦步长，UniRC、A8 Mini和MT11改为清晰分组；A8/MT11宽屏并排、窄屏堆叠，CH1～CH16按实际可用宽度自适应1～4列（取代之前固定手机/桌面或两/三列的排版描述）。SDK启用、MAC、实时值断流显示 `--`、CH9反向、CH10控制和设置默认值不变。3D设置复用相同排版，文件选择及Google/外部模型互斥逻辑保留。只修改此页及其custom局部组件，其他应用设置页和原生 `src` 未改。
 
-验证使用PySide6/Qt 6.10.2离屏加载真实custom资源及原生Fact控件，在320、480、800、1200像素视口、150%字体、深浅色测试配色下检查布局；另核对开关、下拉框、文本编辑的Fact写入及3D来源切换。可重复脚本见 [布局冒烟测试说明](custom/test/UI/FlyViewSettingsLayout/README.md)，预览图在本地 `debug/flyview-settings-layout/screenshots`。应用服务、部分基础控件和配色使用测试替身；截图不是完整QGC或Android真机截图，本轮未进行Qt 6.8.3完整应用/Android APK构建。
+验证使用PySide6/Qt 6.10.2离屏加载真实custom资源及原生Fact控件，在320、480、800、1200、1920像素视口、150%字体、深浅主题下检查布局，验证内容限宽居中、窄屏收缩以及全部分组透明填充和1像素细边框；另核对开关、下拉框、文本编辑的Fact写入及3D来源切换。可重复脚本见 [布局冒烟测试说明](custom/test/UI/FlyViewSettingsLayout/README.md)，预览图在本地 `debug/flyview-settings-layout/screenshots`。应用服务、部分基础控件和配色使用测试替身，配色值与当前原生QGC定义对齐；截图不是完整QGC或Android真机截图，本轮未进行Qt 6.8.3完整应用/Android APK构建。
 
 #### 8.4.3 0x42协议与Bluetooth生命周期
 

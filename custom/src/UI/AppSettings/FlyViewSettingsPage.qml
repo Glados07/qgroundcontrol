@@ -12,6 +12,7 @@ Item {
     default property alias contentItem: mainLayout.data
     readonly property real pageMargin: ScreenTools.defaultFontPixelWidth
                                        * (width < ScreenTools.defaultFontPixelWidth * 60 ? 1.5 : 3)
+    readonly property real contentMaximumWidth: ScreenTools.defaultFontPixelWidth * 100
 
     QGCPalette { id: qgcPal }
 
@@ -26,10 +27,12 @@ Item {
         ColumnLayout {
             id: mainLayout
             objectName: "flyViewSettingsContent"
-            x: root.pageMargin
+            x: (flickable.width - width) / 2
             y: root.pageMargin
+            // Center a readable, font-scaled column; shrink it to fit narrow viewports.
             // Never derive page width from a long label, path or combo model.
-            width: Math.max(0, flickable.width - root.pageMargin * 2)
+            width: Math.min(root.contentMaximumWidth,
+                            Math.max(0, flickable.width - root.pageMargin * 2))
             spacing: ScreenTools.defaultFontPixelHeight * 1.25
         }
     }

@@ -24,7 +24,7 @@ from PySide6.QtCore import (QObject, Property, QResource, Signal, Slot, QUrl,
                             QPoint, QPointF, QTranslator, QMetaObject, Q_ARG,
                             Qt, qInstallMessageHandler)
 from PySide6.QtGui import QGuiApplication, QColor, QFontDatabase
-from PySide6.QtQml import (qmlRegisterType, qmlRegisterSingletonType,
+from PySide6.QtQml import (QQmlProperty, qmlRegisterType, qmlRegisterSingletonType,
                            qmlRegisterSingletonInstance)
 from PySide6.QtQuick import QQuickItem, QQuickView
 from PySide6.QtTest import QTest
@@ -218,16 +218,31 @@ def main():
 
     cases = [(320, 700, 1.0, False), (480, 800, 1.0, False),
              (800, 700, 1.0, False), (1200, 850, 1.0, False),
-             (800, 700, 1.5, False), (1200, 850, 1.0, True)]
+             (1920, 1080, 1.0, False), (800, 700, 1.5, False),
+             (1920, 1080, 1.5, False), (1200, 850, 1.0, True)]
     for width, height, scale, light in cases:
         style.scale_value, style.light_value = scale, light
         style.changed.emit()
-        view.setColor(QColor("#f4f6f8" if light else "#151a21"))
+        view.setColor(QColor("#ffffff" if light else "#222222"))
         view.resize(width, height)
         settle()
         assert abs(flick.property("contentWidth") - width) < 1
-        assert abs(content.width() + 2 * root.property("pageMargin") - width) < 1
+        margin = root.property("pageMargin")
+        maximum_width = root.property("contentMaximumWidth")
+        assert abs(maximum_width - 8 * scale * 100) < 1, "Content width limit must scale with the font"
+        expected_width = min(maximum_width, max(0, width - 2 * margin))
+        assert abs(content.width() - expected_width) < 1, (width, content.width(), expected_width)
+        left_margin = content.x()
+        right_margin = width - content.x() - content.width()
+        assert abs(left_margin - right_margin) < 1, (width, left_margin, right_margin)
+        assert left_margin >= margin - 1 and right_margin >= margin - 1
         assert content.height() > 0
+        backgrounds = root.findChildren(QQuickItem, "flyViewSettingsSectionBackground")
+        assert backgrounds, "Missing section backgrounds"
+        for background in backgrounds:
+            assert background.property("color").alpha() == 0, "Section background must not add a shaded fill"
+            assert QQmlProperty.read(background, "border.width") == 1, "Native section outline must remain one pixel wide"
+            assert QQmlProperty.read(background, "border.color").alpha() > 0, "Section outline must remain visible"
         count = 0
         for item in descendants(content):
             if not item.isVisible() or item.width() <= 0:
@@ -251,7 +266,8 @@ def main():
         flick.setProperty("contentY", min(position, flick.property("contentHeight") - height))
         settle()
         assert view.grabWindow().save(str(output / f"{prefix}-gimbal.png"))
-        print(f"PASS {prefix}: {count} visible layout items fit the viewport")
+        print(f"PASS {prefix}: {count} layout items fit centered {content.width():g}px content; "
+              f"{len(backgrounds)} transparent, outlined sections")
 
     # The new wrappers must keep the original Fact write-through semantics.
     flick.setProperty("contentY", 0)

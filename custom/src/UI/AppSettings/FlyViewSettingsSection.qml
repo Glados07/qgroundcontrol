@@ -51,12 +51,15 @@ ColumnLayout {
     }
 
     Rectangle {
+        objectName: "flyViewSettingsSectionBackground"
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         implicitHeight: contentLayout.implicitHeight + root.padding * 2
-        radius: ScreenTools.defaultFontPixelHeight * 0.6
-        color: sectionPalette.windowShade
+        radius: ScreenTools.defaultFontPixelHeight / 2
+        // Match native SettingsGroupLayout without adding a shaded card fill.
+        color: "transparent"
         border.color: sectionPalette.groupBorder
+        border.width: 1
 
         ColumnLayout {
             id: contentLayout
