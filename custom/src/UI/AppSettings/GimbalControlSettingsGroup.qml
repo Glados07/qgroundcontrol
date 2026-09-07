@@ -122,12 +122,15 @@ ColumnLayout {
                 model: 16
 
                 delegate: Rectangle {
+                    objectName: "uniRcChannelTile"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: 1
                     implicitHeight: ScreenTools.defaultFontPixelHeight * 2.2
                     radius: ScreenTools.defaultFontPixelHeight / 3
                     color: channelPalette.window
+                    border.color: channelPalette.groupBorder
+                    border.width: 1
 
                     QGCLabel {
                         anchors.left: parent.left

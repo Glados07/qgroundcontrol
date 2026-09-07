@@ -243,6 +243,23 @@ def main():
             assert background.property("color").alpha() == 0, "Section background must not add a shaded fill"
             assert QQmlProperty.read(background, "border.width") == 1, "Native section outline must remain one pixel wide"
             assert QQmlProperty.read(background, "border.color").alpha() > 0, "Section outline must remain visible"
+        channel_grid = root.findChild(QQuickItem, "uniRcChannelGrid")
+        # Repeater delegates belong to the visual tree, not necessarily the QObject tree.
+        channel_tiles = [item for item in descendants(channel_grid)
+                         if item.objectName() == "uniRcChannelTile"]
+        assert len(channel_tiles) == 16, ("Every RC channel must have its own tile", len(channel_tiles))
+        for tile in channel_tiles:
+            assert tile.isVisible() and tile.width() > 0 and tile.height() > 0
+            assert tile.property("color") == QColor("#ffffff" if light else "#222222"), "Channel tiles must retain the native page background"
+            assert QQmlProperty.read(tile, "border.width") == 1, "Each channel needs a separate outline"
+            assert QQmlProperty.read(tile, "border.color") == QColor("#bbbbbb" if light else "#707070")
+            point = tile.mapToItem(channel_grid, QPointF(0, 0))
+            assert point.x() >= -1 and point.x() + tile.width() <= channel_grid.width() + 1
+            labels = sorted((item for item in tile.childItems()
+                             if item.metaObject().indexOfProperty("text") >= 0), key=lambda item: item.x())
+            assert len(labels) == 2
+            assert labels[0].x() + labels[0].width() <= labels[1].x(), "Channel name and value must not overlap"
+            assert labels[1].property("text") == "1500", "Channel value binding changed"
         count = 0
         for item in descendants(content):
             if not item.isVisible() or item.width() <= 0:
@@ -266,8 +283,12 @@ def main():
         flick.setProperty("contentY", min(position, flick.property("contentHeight") - height))
         settle()
         assert view.grabWindow().save(str(output / f"{prefix}-gimbal.png"))
+        position = channel_grid.mapToItem(content, QPointF(0, 0)).y() - 40 * scale
+        flick.setProperty("contentY", max(0, min(position, flick.property("contentHeight") - height)))
+        settle()
+        assert view.grabWindow().save(str(output / f"{prefix}-channels.png"))
         print(f"PASS {prefix}: {count} layout items fit centered {content.width():g}px content; "
-              f"{len(backgrounds)} transparent, outlined sections")
+              f"{len(backgrounds)} transparent, outlined sections; 16 separately outlined channels")
 
     # The new wrappers must keep the original Fact write-through semantics.
     flick.setProperty("contentY", 0)

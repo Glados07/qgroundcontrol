@@ -6,6 +6,9 @@ The production page and local responsive components are loaded from the actual
 produces screenshots. It verifies centered content with a font-scaled maximum
 width, narrow-screen shrink-to-fit, and transparent section backgrounds with
 one-pixel outlines matching the native settings style.
+All 16 RC channels must retain separate outlined tiles, a white background in
+the light theme, and non-overlapping channel names and values; dedicated channel
+grid screenshots are also saved.
 It also checks switch/text/combo Fact write-through and 3D source switching.
 
 Native `FactTextField`, `FactComboBox`, `FactCheckBoxSlider`, `QGCComboBox`,
