@@ -23,7 +23,7 @@ import QGroundControl.Palette
 import QGroundControl.Controllers
 import QGroundControl.AppSettings
 
-SettingsPage {
+FlyViewSettingsPage {
     property var    _settingsManager:                   QGroundControl.settingsManager
     property var    _flyViewSettings:                   _settingsManager.flyViewSettings
     property var    _flyViewCustomSettings:             QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
@@ -51,11 +51,11 @@ SettingsPage {
         return fileModel
     }
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth:   true
         heading:            qsTr("General")
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             id:                 useCheckList
             Layout.fillWidth:   true
             text:               qsTr("Use Preflight Checklist")
@@ -64,7 +64,7 @@ SettingsPage {
             property Fact _useChecklist:      _settingsManager.appSettings.useChecklist
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Enforce Preflight Checklist")
             fact:               _enforceChecklist
@@ -73,14 +73,14 @@ SettingsPage {
             property Fact _enforceChecklist: _settingsManager.appSettings.enforceChecklist
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Enable Multi-Vehicle Panel")
             fact:               _enableMultiVehiclePanel
             visible:            _enableMultiVehiclePanel.visible
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Keep Map Centered On Vehicle")
             fact:               _keepMapCenteredOnVehicle
@@ -88,7 +88,7 @@ SettingsPage {
             property Fact _keepMapCenteredOnVehicle: _flyViewSettings.keepMapCenteredOnVehicle
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Show Telemetry Log Replay Status Bar")
             fact:               _showLogReplayStatusBar
@@ -96,7 +96,7 @@ SettingsPage {
             property Fact _showLogReplayStatusBar: _flyViewSettings.showLogReplayStatusBar
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Show simple camera controls (DIGICAM_CONTROL)")
             visible:            _showDumbCameraControl.visible
@@ -105,7 +105,7 @@ SettingsPage {
             property Fact _showDumbCameraControl: _flyViewSettings.showSimpleCameraControl
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Update return to home position based on device location.")
             fact:               _updateHomePosition
@@ -114,42 +114,42 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth:   true
         heading:            qsTr("Guided Commands")
         visible:            _guidedMinimumAltitude.visible || _guidedMaximumAltitude.visible ||
                             _maxGoToLocationDistance.visible || _forwardFlightGoToLocationLoiterRad.visible ||
                             _goToLocationRequiresConfirmInGuided.visible
 
-        LabelledFactTextField {
+        FlyViewFactTextField {
             Layout.fillWidth:   true
             label:              qsTr("Minimum Altitude")
             fact:               _guidedMinimumAltitude
             visible:            fact.visible
         }
 
-        LabelledFactTextField {
+        FlyViewFactTextField {
             Layout.fillWidth:   true
             label:              qsTr("Maximum Altitude")
             fact:               _guidedMaximumAltitude
             visible:            fact.visible
         }
 
-        LabelledFactTextField {
+        FlyViewFactTextField {
             Layout.fillWidth:   true
             label:              qsTr("Go To Location Max Distance")
             fact:               _maxGoToLocationDistance
             visible:            fact.visible
         }
 
-        LabelledFactTextField {
+        FlyViewFactTextField {
             Layout.fillWidth:   true
             label:              qsTr("Loiter Radius in Forward Flight Guided Mode")
             fact:               _forwardFlightGoToLocationLoiterRad
             visible:            fact.visible
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Require Confirmation for Go To Location in Guided Mode")
             fact:               _goToLocationRequiresConfirmInGuided
@@ -157,13 +157,12 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth:       true
-        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 35
         heading:                qsTr("MAVLink Actions")
         headingDescription:     qsTr("Action JSON files should be created in the '%1' folder.").arg(QGroundControl.settingsManager.appSettings.mavlinkActionsSavePath)
 
-        LabelledComboBox {
+        FlyViewComboBox {
             Layout.fillWidth:   true
             label:              qsTr("Fly View Actions")
             model:              mavlinkActionList()
@@ -176,7 +175,7 @@ SettingsPage {
             }
         }
 
-        LabelledComboBox {
+        FlyViewComboBox {
             Layout.fillWidth:   true
             label:              qsTr("Joystick Actions")
             model:              mavlinkActionList()
@@ -190,19 +189,19 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth:   true
         heading:            qsTr("Virtual Joystick")
         visible:            _virtualJoystick.visible || _virtualJoystickAutoCenterThrottle.visible || _virtualJoystickLeftHandedMode.visible
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Enabled")
             visible:            _virtualJoystick.visible
             fact:               _virtualJoystick
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Auto-Center Throttle")
             visible:            _virtualJoystickAutoCenterThrottle.visible
@@ -210,7 +209,7 @@ SettingsPage {
             fact:               _virtualJoystickAutoCenterThrottle
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Left-Handed Mode (swap sticks)")
             visible:            _virtualJoystickLeftHandedMode.visible
@@ -219,7 +218,7 @@ SettingsPage {
         }
     }
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth:   true
         heading:            qsTr("Instrument Panel")
         visible:            _showAdditionalIndicatorsCompass.visible ||
@@ -236,7 +235,7 @@ SettingsPage {
             active:             _showHeadingCompassBar !== null
             visible:            active
 
-            sourceComponent: FactCheckBoxSlider {
+            sourceComponent: FlyViewFactSwitch {
                 text:           qsTr("Show Vehicle Heading Compass Bar")
                 fact:           _showHeadingCompassBar
             }
@@ -250,13 +249,13 @@ SettingsPage {
             active:             _showGimbalHeadingCompassBar !== null
             visible:            active
 
-            sourceComponent: FactCheckBoxSlider {
+            sourceComponent: FlyViewFactSwitch {
                 text:           qsTr("Show Gimbal Heading Compass Bar")
                 fact:           _showGimbalHeadingCompassBar
             }
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Show additional heading indicators on Compass")
             visible:            _showAdditionalIndicatorsCompass.visible
@@ -271,7 +270,7 @@ SettingsPage {
             active:             _gimbalLegacyYawReference !== null
             visible:            active && _gimbalLegacyYawReference.visible
 
-            sourceComponent: LabelledFactComboBox {
+            sourceComponent: FlyViewFactComboBox {
                 label:          qsTr("Legacy gimbal feedback yaw frame")
                 fact:           _gimbalLegacyYawReference
             }
@@ -279,12 +278,15 @@ SettingsPage {
 
         QGCLabel {
             Layout.fillWidth:   true
+            Layout.minimumWidth: 0
             visible:            gimbalLegacyYawReferenceLoader.visible
-            wrapMode:           Text.WordWrap
+            wrapMode:           Text.Wrap
+            font.pointSize:     ScreenTools.smallFontPointSize
+            opacity:            0.75
             text:               qsTr("Shared by all gimbals without yaw frame flags. Choose the feedback reference; azimuth always points relative to Earth North.")
         }
 
-        FactCheckBoxSlider {
+        FlyViewFactSwitch {
             Layout.fillWidth:   true
             text:               qsTr("Lock Compass Nose-Up")
             visible:            _lockNoseUpCompass.visible
@@ -298,6 +300,7 @@ SettingsPage {
     Loader {
         id:                 gimbalControlSettingsGroupLoader
         Layout.fillWidth:   true
+        Layout.minimumWidth: 0
         Layout.preferredHeight: item ? item.implicitHeight : 0
         Layout.minimumHeight:   item ? item.implicitHeight : 0
         active:             _gimbalControlSettings !== null && _gimbalControlSettings !== undefined
@@ -319,6 +322,7 @@ SettingsPage {
     Loader {
         id:                 viewer3DSettingsGroupLoader
         Layout.fillWidth:   true
+        Layout.minimumWidth: 0
         Layout.preferredHeight: item ? item.implicitHeight : 0
         Layout.minimumHeight:   item ? item.implicitHeight : 0
         source:             "qrc:/Custom/qml/QGroundControl/AppSettings/Viewer3DSettingsGroup.qml"

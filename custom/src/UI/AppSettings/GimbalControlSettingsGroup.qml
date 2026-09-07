@@ -10,13 +10,18 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
 ColumnLayout {
     id: root
 
     Layout.fillWidth: true
-    spacing: ScreenTools.defaultFontPixelHeight
+    Layout.minimumWidth: 0
+    spacing: ScreenTools.defaultFontPixelHeight * 1.25
+    property bool showUniRcSettings: Qt.platform.os === "android"
+
+    QGCPalette { id: channelPalette }
 
     property var gimbalControlSettings: QGroundControl.corePlugin
                                                 ? QGroundControl.corePlugin.gimbalControlSettings
@@ -25,7 +30,7 @@ ColumnLayout {
                                                 ? QGroundControl.corePlugin.uniRcChannelController
                                                 : null
 
-    SettingsGroupLayout {
+    FlyViewSettingsSection {
         Layout.fillWidth: true
         heading: qsTr("Gimbal Camera")
 
@@ -41,139 +46,150 @@ ColumnLayout {
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: ScreenTools.isMobile ? 1 : 2
+                columns: width >= ScreenTools.defaultFontPixelWidth * 72 ? 2 : 1
                 columnSpacing: ScreenTools.defaultFontPixelWidth * 2
                 rowSpacing: ScreenTools.defaultFontPixelHeight / 2
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     label: qsTr("A8 Mini")
                     fact: root.gimbalControlSettings.zoomStep
                     enabled: root.gimbalControlSettings.enabled.rawValue
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     label: qsTr("MT11")
                     fact: root.gimbalControlSettings.mt11ZoomStep
                     enabled: root.gimbalControlSettings.mt11Enabled.rawValue
                 }
             }
         }
+    }
 
-        ColumnLayout {
+    FlyViewSettingsSection {
+        objectName: "uniRcSettingsSection"
+        heading: qsTr("UniRC SDK")
+        visible: root.showUniRcSettings
+
+        FlyViewFactSwitch {
             Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelHeight / 2
-            visible: Qt.platform.os === "android"
+            text: qsTr("Enabled")
+            fact: root.gimbalControlSettings.uniRcChannelControlEnabled
+        }
 
-            QGCLabel {
-                Layout.fillWidth: true
-                text: qsTr("UniRC SDK")
-                wrapMode: Text.WordWrap
-                font.bold: true
-            }
+        FlyViewComboBox {
+            Layout.fillWidth: true
+            label: qsTr("SDK Interface")
+            model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
+            currentIndex: root.gimbalControlSettings.uniRcSdkInterface.enumIndex
+            enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
 
-            FactCheckBoxSlider {
-                Layout.fillWidth: true
-                text: qsTr("Enabled")
-                fact: root.gimbalControlSettings.uniRcChannelControlEnabled
-            }
-
-            LabelledComboBox {
-                Layout.fillWidth: true
-                label: qsTr("SDK Interface")
-                model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
-                currentIndex: root.gimbalControlSettings.uniRcSdkInterface.enumIndex
-                enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
-
-                onActivated: (index) => {
-                    const interfaceFact = root.gimbalControlSettings.uniRcSdkInterface
-                    if (index >= 0 && index < interfaceFact.enumValues.length) {
-                        interfaceFact.value = interfaceFact.enumValues[index]
-                    }
-                }
-            }
-
-            LabelledFactTextField {
-                Layout.fillWidth: true
-                label: qsTr("SDK Bluetooth Address")
-                fact: root.gimbalControlSettings.uniRcSdkBluetoothAddress
-                enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
-            }
-
-            QGCLabel {
-                Layout.fillWidth: true
-                text: qsTr("Channel Values")
-                font.bold: true
-            }
-
-            GridLayout {
-                Layout.fillWidth: true
-                columns: root.width >= ScreenTools.defaultFontPixelWidth * 60 ? 3 : 2
-                columnSpacing: ScreenTools.defaultFontPixelWidth * 3
-                rowSpacing: ScreenTools.defaultFontPixelHeight / 2
-
-                Repeater {
-                    model: 16
-
-                    delegate: RowLayout {
-                        Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth / 2
-
-                        QGCLabel {
-                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 4.5
-                            text: qsTr("CH%1").arg(index + 1)
-                            font.bold: true
-                        }
-
-                        QGCLabel {
-                            font.family: ScreenTools.fixedFontFamily
-                            text: root.uniRcChannelController
-                                  && root.uniRcChannelController.sdkRouteActive
-                                  && root.uniRcChannelController.channelValues
-                                  && root.uniRcChannelController.channelValues.length > index
-                                  ? root.uniRcChannelController.channelValues[index]
-                                  : "--"
-                        }
-                    }
+            onActivated: (index) => {
+                const interfaceFact = root.gimbalControlSettings.uniRcSdkInterface
+                if (index >= 0 && index < interfaceFact.enumValues.length) {
+                    interfaceFact.value = interfaceFact.enumValues[index]
                 }
             }
         }
 
-        ColumnLayout {
+        FlyViewFactTextField {
             Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+            label: qsTr("SDK Bluetooth Address")
+            fact: root.gimbalControlSettings.uniRcSdkBluetoothAddress
+            enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+        }
 
-            QGCLabel {
-                Layout.fillWidth: true
-                text: qsTr("SIYI A8 Mini Gimbal Camera")
-                wrapMode: Text.WordWrap
-                font.bold: true
+        QGCLabel {
+            Layout.fillWidth: true
+            text: qsTr("Channel Values")
+            font.bold: true
+        }
+
+        GridLayout {
+            objectName: "uniRcChannelGrid"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            columns: width >= ScreenTools.defaultFontPixelWidth * 90 ? 4
+                     : width >= ScreenTools.defaultFontPixelWidth * 60 ? 3
+                     : width >= ScreenTools.defaultFontPixelWidth * 30 ? 2 : 1
+            columnSpacing: ScreenTools.defaultFontPixelWidth
+            rowSpacing: ScreenTools.defaultFontPixelHeight / 2
+
+            Repeater {
+                model: 16
+
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
+                    implicitHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                    radius: ScreenTools.defaultFontPixelHeight / 3
+                    color: channelPalette.window
+
+                    QGCLabel {
+                        anchors.left: parent.left
+                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("CH%1").arg(index + 1)
+                        font.pointSize: ScreenTools.smallFontPointSize
+                        opacity: 0.75
+                    }
+
+                    QGCLabel {
+                        anchors.right: parent.right
+                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.family: ScreenTools.fixedFontFamily
+                        text: root.uniRcChannelController
+                              && root.uniRcChannelController.sdkRouteActive
+                              && root.uniRcChannelController.channelValues
+                              && root.uniRcChannelController.channelValues.length > index
+                              ? root.uniRcChannelController.channelValues[index]
+                              : "--"
+                    }
+                }
             }
+        }
+    }
 
-            FactCheckBoxSlider {
+    GridLayout {
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        columns: width >= ScreenTools.defaultFontPixelWidth * 100 ? 2 : 1
+        columnSpacing: ScreenTools.defaultFontPixelHeight
+        rowSpacing: ScreenTools.defaultFontPixelHeight * 1.25
+
+        FlyViewSettingsSection {
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            heading: qsTr("SIYI A8 Mini Gimbal Camera")
+
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text: qsTr("Enabled")
                 fact: root.gimbalControlSettings.enabled
             }
 
-            FactCheckBoxSlider {
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text: qsTr("Reverse channel gimbal zoom control")
                 fact: root.gimbalControlSettings.uniRcZoomDirectionReversed
-                visible: Qt.platform.os === "android"
+                visible: root.showUniRcSettings
                 enabled: root.gimbalControlSettings.enabled.rawValue
                          && root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label: qsTr("SDK Host")
                 fact: root.gimbalControlSettings.sdkHost
                 enabled: root.gimbalControlSettings.enabled.rawValue
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label: qsTr("SDK Port")
                 fact: root.gimbalControlSettings.sdkPort
@@ -181,31 +197,25 @@ ColumnLayout {
             }
         }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+        FlyViewSettingsSection {
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            heading: qsTr("UniPod MT11 Gimbal Camera")
 
-            QGCLabel {
-                Layout.fillWidth: true
-                text: qsTr("UniPod MT11 Gimbal Camera")
-                wrapMode: Text.WordWrap
-                font.bold: true
-            }
-
-            FactCheckBoxSlider {
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text: qsTr("Enabled")
                 fact: root.gimbalControlSettings.mt11Enabled
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label: qsTr("SDK Host")
                 fact: root.gimbalControlSettings.mt11SdkHost
                 enabled: root.gimbalControlSettings.mt11Enabled.rawValue
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label: qsTr("SDK Port")
                 fact: root.gimbalControlSettings.mt11SdkPort

@@ -16,6 +16,14 @@
         <file alias="QGroundControl/Toolbar/GimbalIndicator.qml">src/UI/toolbar/GimbalIndicator.qml</file>
         <file alias="QGroundControl/AppSettings/GeneralSettings.qml">src/UI/AppSettings/GeneralSettings.qml</file>
         <file alias="QGroundControl/AppSettings/FlyViewSettings.qml">src/UI/AppSettings/FlyViewSettings.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewSettingsPage.qml">src/UI/AppSettings/FlyViewSettingsPage.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewSettingsSection.qml">src/UI/AppSettings/FlyViewSettingsSection.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewSettingsRow.qml">src/UI/AppSettings/FlyViewSettingsRow.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewFactTextField.qml">src/UI/AppSettings/FlyViewFactTextField.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewComboBox.qml">src/UI/AppSettings/FlyViewComboBox.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewComboBoxDelegate.qml">src/UI/AppSettings/FlyViewComboBoxDelegate.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewFactComboBox.qml">src/UI/AppSettings/FlyViewFactComboBox.qml</file>
+        <file alias="QGroundControl/AppSettings/FlyViewFactSwitch.qml">src/UI/AppSettings/FlyViewFactSwitch.qml</file>
         <file alias="QGroundControl/AppSettings/VideoSettings.qml">src/UI/AppSettings/VideoSettings.qml</file>
         <file alias="QGroundControl/AppSettings/Viewer3DSettingsGroup.qml">src/UI/AppSettings/Viewer3DSettingsGroup.qml</file>
         <file alias="QGroundControl/AppSettings/GimbalControlSettingsGroup.qml">src/UI/AppSettings/GimbalControlSettingsGroup.qml</file>

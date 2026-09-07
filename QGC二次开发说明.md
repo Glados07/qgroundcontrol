@@ -852,6 +852,14 @@ custom Provider逐帧接收 `GIMBAL_DEVICE_ATTITUDE_STATUS`，为每个Vehicle/s
 
 `delta_yaw` 是MAVLink 2扩展字段，规范要求显式frame消息将它设为正确值或NaN；但线上没有单独的字段present位，且后置的非零 `gimbal_device_id` 会让未填写的默认0与合规的首次合法0产生完全相同的字节，接收端无法同时无条件识别两者。为优先保持用户已确认正常的旧跟随路径，Auto策略不把“payload长度够且值为+0”单独当作支持证据，而要求显式frame消息中的delta或delta速度至少出现一次有限非零值、负零或NaN等语义非默认值；之后在同一Vehicle/source/device及同一设备启动周期内保持支持，所以已经确认支持后的合法0仍按delta路径计算。尚未证明支持的全零样本保守走heading兼容回退；当基座转动使正确delta变为非零时会自动切换并保持。设备端应按规范在未知时发送NaN、已知时发送正确delta，真机验收需覆盖“首次全零尚未证明”“非零建立支持”“随后回到零仍用delta”三阶段。
 
+#### 8.2.1 方位角突变的离线真机日志采集（2026-09-07）
+
+用户反馈锁定状态的方位角仍变化且突变，本轮仅补齐复现采集流程，不再修改参考系策略、默认值或显示算法；上一轮主机测试通过不能等同于真机锁定方位正确。按用户要求，采集脚本 `gimbal-azimuth-capture.sh`、详细流程 `gimbal-azimuth-capture.md` 和主机验证脚本 `GimbalAzimuthCaptureTest.sh` 统一存放在 `F:\VM\_Shared`，不纳入本地Git仓库；仓库仅保留本节开发说明。在 Ubuntu 对应共享目录中，USB 连接时运行 `bash ./gimbal-azimuth-capture.sh start`，待设备端进程及真实写入验证通过后拔 USB 测试；测试完先正常断开所有飞控并等至少5秒使遥测保存，再接 USB 运行 `bash ./gimbal-azimuth-capture.sh finish`。脚本仅重启QGC带入日志参数和采集日志，不清应用数据、不删设备备份、不改通信配置。
+
+现有 `GimbalAzimuthProviderLog` 使用普通 `Q_LOGGING_CATEGORY`，分类为 `qgc.custom.gimbal.azimuth`，没有登记到原生GUI分类表；连续计算样本使用debug且最多每200毫秒输出。原生 `--logging:full`只额外打开 `*Log.debug`，不能覆盖默认关闭的 `qgc.*.debug`，因此采集必须用冒号形式的精确分类启动参数，同时开启 `--log-output` 写 `QGCConsole`。Qt 6.8.3 Android通过 `applicationArguments`传入，不能依赖仅debuggable APK接受的 `extraappparams`。
+
+地面不解锁测试必须人工确认MavlinkSettings中的 `telemetrySave` 和 `telemetrySaveNotArmed`均开启，否则Android可能根本不录，或在正常断开后删掉未解锁临时日志。最终同时交付计算日志、完整原始 `.tlog`、本次参考系选项/运行版本和分阶段物理朝向记录。计算日志用于核对q、所选原始heading/来源/年龄、flags、配置与输出；tlog保留原始有效MAVLink收包，用于填补200毫秒节流窗口并核对seq、boot、乱序与双流到达顺序。采集完成必须报告缺少样本/遥测或logger中断，不能把“压缩包成功生成”当作根因已经查明。当前环境没有连接目标Android设备，实际断USB持续记录及该ROM的目录访问仍需用户本次测试验证。
+
 ### 8.3 Gimbal 与视频参数
 
 #### 8.3.1 思翼私有SDK相机控制与视频
@@ -1012,6 +1020,12 @@ UniGCS：遥控SDK -> Bluetooth
 UniRC V1.0第73～75页把 `BLUE*` 设备描述为QGC可扫描连接、在Windows侧表现为标准串行设备；QGC原生 `BluetoothLink`也使用Classic RFCOMM和标准Serial Port UUID。因此custom控制器复用同一Qt连接模式，但建立独立socket，不把SDK字节交给 `LinkManager/MAVLinkProtocol`。SDK章节没有单独声明UUID、RFCOMM channel或本机Android角色，所以“标准Serial Port UUID可用”仍是必须由真机日志确认的实现假设；若返回 `ServiceNotFound`，应向思翼确认服务UUID/通道，而不是修改0x42 CRC或通道索引。
 
 Android 12及以上Manifest声明 `BLUETOOTH_SCAN`和 `BLUETOOTH_CONNECT`；Android 11及以下保留受 `maxSdkVersion=30`限制的 `BLUETOOTH`、`BLUETOOTH_ADMIN`和定位权限。UniRC控制器通过Qt `QBluetoothPermission::Access`取得Nearby devices访问后只按MAC连接，不调用设备发现；SCAN声明还服务于根工程默认启用的原生Bluetooth Link，不能与UniRC设置页扫描按钮等同。代码只检查Bluetooth是否开启，不再读取系统Bluetooth关闭证据，不访问字符设备，不调用JNI状态helper，也没有termios、flock、TIOCEXCL、ioctl或UART占用探测。旧 `UniRcSerialAccessPolicy.*`、`QGCCustomBluetoothState*.java`及Java策略测试均已删除。
+
+**飞行视图设置页自适应排版（2026-09-07）。** 此页不再沿用原生 `SettingsPage` 按子项implicitWidth决定整页宽度的规则，改用custom局部 `FlyViewSettingsPage`：内容宽度始终为右侧可用视口减去两侧留白，仅纵向滚动，长说明、文件路径和下拉选项不能撑宽整页。`FlyViewSettingsSection`统一卡片背景、边框、标题和间距；`FlyViewSettingsRow`宽屏标签/控件左右对齐，窄屏上下排列，长标签允许单词内换行；下拉框当前值省略显示，弹出选项在边界内换行。输入框、下拉框和开关继续复用原生Fact控件，保留校验、单位、保存和整行点击行为。
+
+云台区保留顶部变焦步长，UniRC、A8 Mini和MT11改为清晰分组；A8/MT11宽屏并排、窄屏堆叠，CH1～CH16按实际可用宽度自适应1～4列（取代之前固定手机/桌面或两/三列的排版描述）。SDK启用、MAC、实时值断流显示 `--`、CH9反向、CH10控制和设置默认值不变。3D设置复用相同排版，文件选择及Google/外部模型互斥逻辑保留。只修改此页及其custom局部组件，其他应用设置页和原生 `src` 未改。
+
+验证使用PySide6/Qt 6.10.2离屏加载真实custom资源及原生Fact控件，在320、480、800、1200像素视口、150%字体、深浅色测试配色下检查布局；另核对开关、下拉框、文本编辑的Fact写入及3D来源切换。可重复脚本见 [布局冒烟测试说明](custom/test/UI/FlyViewSettingsLayout/README.md)，预览图在本地 `debug/flyview-settings-layout/screenshots`。应用服务、部分基础控件和配色使用测试替身；截图不是完整QGC或Android真机截图，本轮未进行Qt 6.8.3完整应用/Android APK构建。
 
 #### 8.4.3 0x42协议与Bluetooth生命周期
 

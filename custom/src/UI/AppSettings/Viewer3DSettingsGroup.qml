@@ -110,37 +110,31 @@ Loader {
     Component {
         id: viewer3DSettingsComponent
 
-        SettingsGroupLayout {
+        FlyViewSettingsSection {
             Layout.fillWidth: true
             heading:          qsTr("3D View")
 
-            QGCCheckBoxSlider {
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text:             qsTr("Enabled")
-                checked:          factRaw(root.enabledFact, false)
+                fact:             root.enabledFact
                 visible:          factVisible(root.enabledFact)
-
-                onClicked: setFactValue(root.enabledFact, checked)
             }
 
-            QGCCheckBoxSlider {
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text:             qsTr("Use Google 3D Maps")
-                checked:          factRaw(root.useGoogle3DMapSourceFact, false)
+                fact:             root.useGoogle3DMapSourceFact
                 enabled:          factRaw(root.enabledFact, false)
                 visible:          factVisible(root.useGoogle3DMapSourceFact)
-
-                onClicked: setFactValue(root.useGoogle3DMapSourceFact, checked)
             }
 
-            QGCCheckBoxSlider {
+            FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text:             qsTr("Use External 3D Model Map")
-                checked:          factRaw(root.useExternal3DMapSourceFact, false)
+                fact:             root.useExternal3DMapSourceFact
                 enabled:          factRaw(root.enabledFact, false) && !factRaw(root.useGoogle3DMapSourceFact, false)
                 visible:          factVisible(root.useExternal3DMapSourceFact) && !factRaw(root.useGoogle3DMapSourceFact, false)
-
-                onClicked: setFactValue(root.useExternal3DMapSourceFact, checked)
             }
 
             Connections {
@@ -161,7 +155,7 @@ Loader {
                 }
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label:            qsTr("Google 3D Maps API Key")
                 fact:             root.google3DMapsApiKeyFact
@@ -175,14 +169,9 @@ Loader {
                 enabled:          factRaw(root.enabledFact, false) && factRaw(root.useExternal3DMapSourceFact, false) && !factRaw(root.useGoogle3DMapSourceFact, false)
                 visible:          factRaw(root.useExternal3DMapSourceFact, false) && !factRaw(root.useGoogle3DMapSourceFact, false)
 
-                RowLayout {
+                FlyViewSettingsRow {
                     Layout.fillWidth: true
-                    spacing:          ScreenTools.defaultFontPixelWidth
-
-                    QGCLabel {
-                        wrapMode: Text.WordWrap
-                        text:     qsTr("External 3D Model File:")
-                    }
+                    label:            qsTr("External 3D Model File:")
 
                     QGCTextField {
                         id:               external3DMapFileTextField
@@ -190,6 +179,7 @@ Loader {
                         unitsLabel:       ""
                         showUnits:        false
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         readOnly:         true
                         text:             factRaw(root.external3DMapFilePathFact, "")
                     }
@@ -242,47 +232,48 @@ Loader {
 
                 QGCLabel {
                     Layout.fillWidth: true
-                    wrapMode:         Text.WordWrap
+                    Layout.minimumWidth: 0
+                    wrapMode:         Text.Wrap
                     visible:          root.external3DMapManagerReady && root.external3DMapManager.lastImportStatus.length > 0
                     text:             root.external3DMapManagerReady ? root.external3DMapManager.lastImportStatus : ""
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("Origin Latitude")
                     fact:             root.external3DMapOriginLatFact
                     visible:          factVisible(root.external3DMapOriginLatFact)
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("Origin Longitude")
                     fact:             root.external3DMapOriginLonFact
                     visible:          factVisible(root.external3DMapOriginLonFact)
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("Origin Altitude")
                     fact:             root.external3DMapOriginAltFact
                     visible:          factVisible(root.external3DMapOriginAltFact)
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("Model Unit To Meters")
                     fact:             root.external3DMapUnitToMetersFact
                     visible:          factVisible(root.external3DMapUnitToMetersFact)
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("Model Scale")
                     fact:             root.external3DMapScaleFact
                     visible:          factVisible(root.external3DMapScaleFact)
                 }
 
-                LabelledFactTextField {
+                FlyViewFactTextField {
                     Layout.fillWidth: true
                     label:            qsTr("North/Yaw Angle")
                     fact:             root.external3DMapYawFact
@@ -296,14 +287,9 @@ Loader {
                 enabled:          factRaw(root.enabledFact, false) && !factRaw(root.useGoogle3DMapSourceFact, false) && !factRaw(root.useExternal3DMapSourceFact, false)
                 visible:          !factRaw(root.useGoogle3DMapSourceFact, false) && !factRaw(root.useExternal3DMapSourceFact, false)
 
-                RowLayout {
+                FlyViewSettingsRow {
                     Layout.fillWidth: true
-                    spacing:          ScreenTools.defaultFontPixelWidth
-
-                    QGCLabel {
-                        wrapMode: Text.WordWrap
-                        text:     qsTr("3D Map File:")
-                    }
+                    label:            qsTr("3D Map File:")
 
                     QGCTextField {
                         id:               osmFileTextField
@@ -311,6 +297,7 @@ Loader {
                         unitsLabel:       ""
                         showUnits:        false
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         readOnly:         true
                         text:             factRaw(root.osmFilePathFact, "")
                     }
@@ -356,7 +343,7 @@ Loader {
                 }
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label:            qsTr("Average Building Level Height")
                 fact:             root.buildingLevelHeightFact
@@ -364,7 +351,7 @@ Loader {
                 visible:          factVisible(root.buildingLevelHeightFact) && !factRaw(root.useGoogle3DMapSourceFact, false) && !factRaw(root.useExternal3DMapSourceFact, false)
             }
 
-            LabelledFactTextField {
+            FlyViewFactTextField {
                 Layout.fillWidth: true
                 label:            qsTr("Vehicles Altitude Bias")
                 fact:             root.altitudeBiasFact
