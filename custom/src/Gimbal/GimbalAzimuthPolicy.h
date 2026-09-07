@@ -23,6 +23,7 @@ class GimbalAzimuthPolicy {
         ReportedEarthFrame,
         DeltaYaw,
         ConfiguredLegacyVehicleHeading,
+        ConfiguredLegacyVehicleHeadingReversed,
         ConfiguredLegacyEarthFrame,
         VehicleHeadingFallback,
         LegacyEarthFrame,
@@ -43,6 +44,10 @@ class GimbalAzimuthPolicy {
         bool yawInEarthFrame = false;
         bool yawLock = false;
         LegacyYawReference legacyYawReference = LegacyYawReference::Protocol;
+        // Installation-specific feedback direction, not a yaw-lock rule.
+        // Applies only to configured VehicleHeading with neither frame bit.
+        // Standard MAVLink inputs remain unchanged (default false).
+        bool legacyYawReversed = false;
 
         // Availability is deliberately separate from support. MAVLink 2
         // extension fields may decode to zero when they were not transmitted.

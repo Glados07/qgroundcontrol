@@ -289,6 +289,12 @@ def main():
     assert QMetaObject.invokeMethod(combo, "activated", Qt.DirectConnection, Q_ARG(int, 1))
     assert core.fly_custom["gimbalLegacyYawReference"].get_value() == 1
 
+    # Feedback direction is a fixed product convention, not a user setting.
+    assert "gimbalLegacyYawReversed" not in core.fly_custom
+    assert not any("FlyViewFactSwitch" in item.metaObject().className()
+                   and item.property("text") == "Reverse legacy vehicle-frame yaw feedback"
+                   for item in descendants(root)), "Removed feedback direction switch reappeared"
+
     host_row = next(item for item in descendants(root)
                     if "FlyViewFactTextField" in item.metaObject().className()
                     and item.property("label") == Chinese.labels["SDK Host"])

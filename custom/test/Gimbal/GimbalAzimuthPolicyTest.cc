@@ -74,6 +74,15 @@ class GimbalAzimuthPolicyTest : public QObject {
     void configuredVehicleHandlesAlternatingHeadingPackets();
     void configuredVehicleKeepsFrameAfterHeadingCatchesUp();
     void configuredVehicleFollowTracksBaseRotation();
+    void reversedLegacyReplaysRecordedLockRotation();
+    void reversedLegacyReplaysSecondRecordedLockRotation();
+    void reversedLegacyKeepsModeTransitionContinuous();
+    void reversedLegacyFollowAndYawCommandsRemainLive();
+    void reversedLegacyPreservesBearingAcrossFullBaseTurn();
+    void reversedLegacyHandlesPitchRollAndQuaternionSign();
+    void reversedLegacyDoesNotOverrideOtherFrames_data();
+    void reversedLegacyDoesNotOverrideOtherFrames();
+    void reversedLegacyStillRequiresValidInputs();
     void configuredEarthIgnoresHeadingAndLockMode();
     void configuredYawCommandsChangeLockedBearing();
     void legacyPitchChangesDoNotChangeAzimuth();
@@ -387,6 +396,210 @@ void GimbalAzimuthPolicyTest::configuredVehicleKeepsLoggedLockTransitionContinuo
     QCOMPARE(follow.source, GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeading);
     QCOMPARE(locked.source, follow.source);
     QCOMPARE(unlocked.source, follow.source);
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyReplaysRecordedLockRotation() {
+    // Actual WXYZ samples from 2026-09-07 at 12:00:26.642 and 12:00:42.343.
+    // Both reported flags=28 (locked, no explicit frame) and roll near 180.
+    // Rounded log angles are NOT substituted for the recorded quaternion.
+    auto before = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, true, 4.75517, 0.0);
+    before.quaternion = {8.20792e-05, -0.300543, 0.953768, 1.9889e-05};
+    auto after = before;
+    after.vehicleHeadingDegrees = 312.904;
+    after.quaternion = {6.03497e-05, 0.115557, 0.993301, 9.94521e-06};
+
+    const auto oldBefore = GimbalAzimuthPolicy::calculate(before);
+    const auto oldAfter = GimbalAzimuthPolicy::calculate(after);
+    QVERIFY(oldBefore.valid);
+    QVERIFY(oldAfter.valid);
+    QVERIFY(anglesEqual(oldBefore.absoluteYawDegrees, -140.26438104076586));
+    QVERIFY(anglesEqual(oldAfter.absoluteYawDegrees, 119.63249588800605));
+    const double oldChange = GimbalAzimuthPolicy::wrap180(oldAfter.absoluteYawDegrees - oldBefore.absoluteYawDegrees);
+    QVERIFY(anglesEqual(oldChange, -100.10312307122809));
+
+    before.legacyYawReversed = true;
+    after.legacyYawReversed = true;
+    const auto correctedBefore = GimbalAzimuthPolicy::calculate(before);
+    const auto correctedAfter = GimbalAzimuthPolicy::calculate(after);
+    QVERIFY(correctedBefore.valid);
+    QVERIFY(correctedAfter.valid);
+    QVERIFY(anglesEqual(correctedBefore.absoluteYawDegrees, 149.77472104076586));
+    QVERIFY(anglesEqual(correctedAfter.absoluteYawDegrees, 146.17550411199395));
+    QCOMPARE(correctedBefore.source, GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeadingReversed);
+    QCOMPARE(correctedAfter.source, correctedBefore.source);
+    // The real input still contains drift and asynchronous sampling; the fix
+    // removes the double addition, it does not falsely freeze the measurement.
+    const double correctedChange =
+        GimbalAzimuthPolicy::wrap180(correctedAfter.absoluteYawDegrees - correctedBefore.absoluteYawDegrees);
+    QVERIFY(anglesEqual(correctedChange, -3.59921692877191));
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyKeepsModeTransitionContinuous() {
+    auto input = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, false, 15.0369, 0.0);
+    input.quaternion = {0.162811, -0.275937, 0.946095, 0.0474903};
+    input.legacyYawReversed = true;
+    const auto follow = GimbalAzimuthPolicy::calculate(input);
+    input.yawLock = true;
+    const auto locked = GimbalAzimuthPolicy::calculate(input);
+    input.yawLock = false;
+    const auto unlocked = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(follow.valid);
+    QVERIFY(locked.valid);
+    QVERIFY(unlocked.valid);
+    QVERIFY(anglesEqual(follow.absoluteYawDegrees, 162.51741333969877));
+    QVERIFY(anglesEqual(locked.absoluteYawDegrees, follow.absoluteYawDegrees));
+    QVERIFY(anglesEqual(unlocked.absoluteYawDegrees, follow.absoluteYawDegrees));
+    QCOMPARE(follow.source, GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeadingReversed);
+    QCOMPARE(locked.source, follow.source);
+    QCOMPARE(unlocked.source, follow.source);
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyReplaysSecondRecordedLockRotation() {
+    // Second independent locked base rotation, 12:00:57.885 -> 12:01:04.135.
+    // The raw heading changes +63.5991 degrees, crossing geographic north.
+    auto before = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, true, 311.902, 0.0);
+    before.quaternion = {3.56248e-06, -0.0773886, -0.997001, -1.94334e-05};
+    auto after = before;
+    after.vehicleHeadingDegrees = 15.5011;
+    after.quaternion = {0.000176855, -0.460539, 0.88764, -7.46735e-06};
+    const auto oldBefore = GimbalAzimuthPolicy::calculate(before);
+    const auto oldAfter = GimbalAzimuthPolicy::calculate(after);
+    QVERIFY(oldBefore.valid);
+    QVERIFY(oldAfter.valid);
+    QVERIFY(anglesEqual(oldAfter.absoluteYawDegrees - oldBefore.absoluteYawDegrees, 127.31981703480322));
+    before.legacyYawReversed = true;
+    after.legacyYawReversed = true;
+    const auto correctedBefore = GimbalAzimuthPolicy::calculate(before);
+    const auto correctedAfter = GimbalAzimuthPolicy::calculate(after);
+    QVERIFY(correctedBefore.valid);
+    QVERIFY(correctedAfter.valid);
+    QVERIFY(anglesEqual(correctedBefore.absoluteYawDegrees, 140.77895611773295));
+    QVERIFY(anglesEqual(correctedAfter.absoluteYawDegrees, 140.65733908292975));
+    QVERIFY(anglesEqual(correctedAfter.absoluteYawDegrees - correctedBefore.absoluteYawDegrees, -0.12161703480320));
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyFollowAndYawCommandsRemainLive() {
+    auto input = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, false, 30.0, 20.0);
+    input.legacyYawReversed = true;
+    const auto initial = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(initial.valid);
+    QVERIFY(anglesEqual(initial.absoluteYawDegrees, 10.0));
+    input.vehicleHeadingDegrees += 90.0;
+    const auto rotatedBase = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(rotatedBase.valid);
+    QVERIFY(anglesEqual(rotatedBase.absoluteYawDegrees, 100.0));
+
+    // A joystick-induced feedback change must remain visible in either mode.
+    for (const bool locked : {false, true}) {
+        input.yawLock = locked;
+        input.quaternion = quaternionFromEulerDegrees(180.0, 19.5, 45.0);
+        const auto yawCommand = GimbalAzimuthPolicy::calculate(input);
+        QVERIFY(yawCommand.valid);
+        QVERIFY(anglesEqual(yawCommand.absoluteYawDegrees, 75.0));
+        QCOMPARE(yawCommand.source, GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeadingReversed);
+    }
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyPreservesBearingAcrossFullBaseTurn() {
+    auto input = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, true, 0.0, 0.0);
+    input.legacyYawReversed = true;
+    constexpr double worldYaw = 173.875;
+    for (int step = 0; step <= 720; ++step) {
+        input.vehicleHeadingDegrees = GimbalAzimuthPolicy::wrap180(-175.625 + step * 0.5);
+        // Reversed feedback increases WITH base heading for a locked camera.
+        input.quaternion = quaternionFromEulerDegrees(
+            180.0, 19.53, GimbalAzimuthPolicy::wrap180(input.vehicleHeadingDegrees - worldYaw));
+        const auto result = GimbalAzimuthPolicy::calculate(input);
+        QVERIFY(result.valid);
+        QVERIFY(anglesEqual(result.absoluteYawDegrees, worldYaw));
+    }
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyHandlesPitchRollAndQuaternionSign() {
+    auto input = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, true, 0.125, 179.875);
+    input.legacyYawReversed = true;
+    for (const double roll : {0.0, 37.0, 180.0, -180.0}) {
+        for (const double pitch : {-80.0, -19.53, 0.0, 19.53, 80.0}) {
+            input.quaternion = quaternionFromEulerDegrees(roll, pitch, 179.875);
+            const auto beforeSignChange = GimbalAzimuthPolicy::calculate(input);
+            QVERIFY(beforeSignChange.valid);
+            QVERIFY(anglesEqual(beforeSignChange.absoluteYawDegrees, -179.75));
+            for (double &component : input.quaternion) {
+                component *= -4.5;
+            }
+            const auto afterSignChange = GimbalAzimuthPolicy::calculate(input);
+            QVERIFY(afterSignChange.valid);
+            QVERIFY(anglesEqual(afterSignChange.absoluteYawDegrees, beforeSignChange.absoluteYawDegrees));
+        }
+    }
+    input.quaternion = quaternionFromEulerDegrees(180.0, 19.53, -179.875);
+    const auto acrossBoundary = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(acrossBoundary.valid);
+    QVERIFY(anglesEqual(acrossBoundary.absoluteYawDegrees, -180.0));
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyDoesNotOverrideOtherFrames_data() {
+    QTest::addColumn<int>("reference");
+    QTest::addColumn<bool>("locked");
+    QTest::addColumn<int>("frame");
+    QTest::addColumn<bool>("delta");
+    QTest::addColumn<double>("expectedYaw");
+    QTest::newRow("protocol-follow") << 0 << false << 0 << true << 90.0;
+    QTest::newRow("protocol-lock") << 0 << true << 0 << true << 20.0;
+    QTest::newRow("configured-earth-follow") << 2 << false << 0 << true << 20.0;
+    QTest::newRow("configured-earth-lock") << 2 << true << 0 << true << 20.0;
+    QTest::newRow("explicit-earth-follow") << 1 << false << 64 << true << 20.0;
+    QTest::newRow("explicit-earth-lock") << 1 << true << 64 << true << 20.0;
+    QTest::newRow("explicit-vehicle-fallback-follow") << 1 << false << 32 << false << 90.0;
+    QTest::newRow("explicit-vehicle-fallback-lock") << 1 << true << 32 << false << 90.0;
+    QTest::newRow("explicit-vehicle-delta-follow") << 1 << false << 32 << true << 150.0;
+    QTest::newRow("explicit-vehicle-delta-lock") << 1 << true << 32 << true << 150.0;
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyDoesNotOverrideOtherFrames() {
+    QFETCH(int, reference);
+    QFETCH(bool, locked);
+    QFETCH(int, frame);
+    QFETCH(bool, delta);
+    QFETCH(double, expectedYaw);
+    auto input = legacyInput(static_cast<GimbalAzimuthPolicy::LegacyYawReference>(reference), locked, 70.0, 20.0);
+    input.quaternion = quaternionFromEulerDegrees(180.0, 19.53, 20.0);
+    input.yawInVehicleFrame = frame == 32;
+    input.yawInEarthFrame = frame == 64;
+    input.deltaYawSupported = delta;
+    input.deltaYawAvailable = delta;
+    input.deltaYawRadians = 130.0 * kDegreesToRadians;
+    const auto standard = GimbalAzimuthPolicy::calculate(input);
+    input.legacyYawReversed = true;
+    const auto reversed = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(standard.valid);
+    QVERIFY(reversed.valid);
+    QVERIFY(anglesEqual(reversed.absoluteYawDegrees, expectedYaw));
+    QVERIFY(anglesEqual(reversed.absoluteYawDegrees, standard.absoluteYawDegrees));
+    QCOMPARE(reversed.source, standard.source);
+}
+
+void GimbalAzimuthPolicyTest::reversedLegacyStillRequiresValidInputs() {
+    auto input = legacyInput(GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading, true, 70.0, 20.0);
+    input.legacyYawReversed = true;
+    input.vehicleHeadingAvailable = false;
+    const auto missingHeading = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(!missingHeading.valid);
+    QCOMPARE(missingHeading.error, GimbalAzimuthPolicy::Error::MissingEarthReference);
+    input.vehicleHeadingAvailable = true;
+    input.vehicleHeadingDegrees = std::numeric_limits<double>::quiet_NaN();
+    QVERIFY(!GimbalAzimuthPolicy::calculate(input).valid);
+    input.vehicleHeadingDegrees = 70.0;
+    input.quaternion = {0.0, 0.0, 0.0, 0.0};
+    const auto invalidQuaternion = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(!invalidQuaternion.valid);
+    QCOMPARE(invalidQuaternion.error, GimbalAzimuthPolicy::Error::InvalidQuaternion);
+    input.quaternion = quaternionFromEulerDegrees(180.0, 19.53, 20.0);
+    input.yawInEarthFrame = true;
+    input.yawInVehicleFrame = true;
+    const auto conflictingFrames = GimbalAzimuthPolicy::calculate(input);
+    QVERIFY(!conflictingFrames.valid);
+    QCOMPARE(conflictingFrames.error, GimbalAzimuthPolicy::Error::ConflictingFrameFlags);
 }
 
 void GimbalAzimuthPolicyTest::configuredVehicleKeepsBearingDuringDenseBaseRotation() {

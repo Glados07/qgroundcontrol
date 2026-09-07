@@ -254,6 +254,11 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
     sample.input.vehicleHeadingAvailable = heading.valid;
     sample.input.vehicleHeadingDegrees = heading.yawDegrees;
     sample.input.legacyYawReference = _legacyYawReference;
+    // Fixed custom-product feedback convention, verified against the A8 Mini
+    // capture. This is not a user setting or an inference from yaw-lock.
+    // The policy limits it to configured legacy vehicle-frame feedback;
+    // explicit MAVLink frames and protocol/Earth references are unaffected.
+    sample.input.legacyYawReversed = true;
     const bool fresh = nowMs >= sample.receivedAtMs && nowMs - sample.receivedAtMs <= kSampleTimeoutMs;
     const auto next = fresh ? GimbalAzimuthPolicy::calculate(sample.input) : GimbalAzimuthPolicy::Result{};
     const bool changed = forceLog || sample.result.source != next.source || sample.result.valid != next.valid ||
@@ -264,6 +269,7 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
                                          << "vehicle" << vehicle->id() << "source component" << sample.sourceComponentId
                                          << "device id" << sample.deviceId << "flags" << sample.flags
                                          << "legacy yaw reference" << static_cast<int>(_legacyYawReference)
+                                         << "legacy yaw reversed" << sample.input.legacyYawReversed
                                          << "yaw lock" << sample.input.yawLock << "reference"
                                          << _sourceName(next.source) << "result valid" << next.valid << "error"
                                          << errorName(next.error) << "azimuth" << next.absoluteYawDegrees;
@@ -284,6 +290,12 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
             << "gimbal boot ms" << sample.timeBootMs << "gimbal received ms" << sample.receivedAtMs << "gimbal age ms"
             << nowMs - sample.receivedAtMs << "raw q" << sample.input.quaternion[0] << sample.input.quaternion[1]
             << sample.input.quaternion[2] << sample.input.quaternion[3] << "reported q yaw" << direct.absoluteYawDegrees
+            << "legacy yaw reversed" << sample.input.legacyYawReversed << "applied yaw sign"
+            << (next.source == GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeadingReversed ? -1 : 1)
+            << "heading plus reported yaw"
+            << GimbalAzimuthPolicy::wrap180(heading.yawDegrees + direct.absoluteYawDegrees)
+            << "heading minus reported yaw"
+            << GimbalAzimuthPolicy::wrap180(heading.yawDegrees - direct.absoluteYawDegrees)
             << "heading valid" << heading.valid << "heading source" << headingSourceName(heading.source)
             << "raw heading" << heading.yawDegrees << "heading received ms" << heading.receivedAtMs << "heading age ms"
             << heading.ageMs << "display heading" << vehicle->heading()->rawValue() << "delta supported"
@@ -458,6 +470,8 @@ QString GimbalAzimuthProvider::_sourceName(GimbalAzimuthPolicy::Source source) {
             return QStringLiteral("DeltaYaw");
         case GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeading:
             return QStringLiteral("ConfiguredLegacyVehicleHeading");
+        case GimbalAzimuthPolicy::Source::ConfiguredLegacyVehicleHeadingReversed:
+            return QStringLiteral("ConfiguredLegacyVehicleHeadingReversed");
         case GimbalAzimuthPolicy::Source::ConfiguredLegacyEarthFrame:
             return QStringLiteral("ConfiguredLegacyEarthFrame");
         case GimbalAzimuthPolicy::Source::VehicleHeadingFallback:

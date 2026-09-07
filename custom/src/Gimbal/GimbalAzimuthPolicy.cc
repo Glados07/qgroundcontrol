@@ -128,6 +128,19 @@ GimbalAzimuthPolicy::Result GimbalAzimuthPolicy::calculate(const Input& input) {
         }
 
         if (useVehicleHeading) {
+            if (configuredVehicle && input.legacyYawReversed) {
+                // Some legacy installations report positive feedback yaw
+                // opposite to MAVLink's vehicle yaw. Correct that scalar
+                // convention before adding the earth heading, in BOTH modes.
+                // Do not conjugate q: with roll near 180 degrees, its inverse
+                // does not simply negate the optical-axis azimuth. Nor does
+                // a large roll alone establish the feedback convention.
+                result.absoluteYawDegrees =
+                    wrap180(input.vehicleHeadingDegrees - quaternionYawDegrees(reportedQuaternion));
+                result.valid = true;
+                result.source = Source::ConfiguredLegacyVehicleHeadingReversed;
+                return result;
+            }
             const Quaternion earthQuaternion =
                 earthFromVehicle(reportedQuaternion, input.vehicleHeadingDegrees * kDegreesToRadians);
             result.absoluteYawDegrees = wrap180(quaternionYawDegrees(earthQuaternion));
