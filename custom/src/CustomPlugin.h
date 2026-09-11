@@ -20,6 +20,7 @@ class DualVideoManager;
 class FlyViewCustomSettings;
 class GimbalAzimuthProvider;
 class GimbalCenterCoordinator;
+class GimbalModeController;
 class GimbalControlManager;
 class GimbalControlSettings;
 class Mt11ControlManager;
@@ -39,6 +40,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalAzimuthProvider.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlManager.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalCenterCoordinator.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/GimbalModeController.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/Mt11ControlManager.h")
     Q_MOC_INCLUDE("custom/src/Settings/VideoCustomSettings.h")
@@ -52,6 +54,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_PROPERTY(QObject *gimbalControlSettings READ gimbalControlSettings CONSTANT)
     Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
     Q_PROPERTY(QObject *gimbalCenterCoordinator READ gimbalCenterCoordinator CONSTANT)
+    Q_PROPERTY(QObject *gimbalModeController READ gimbalModeController CONSTANT)
     Q_PROPERTY(QObject *mt11ControlManager READ mt11ControlManager CONSTANT)
     Q_PROPERTY(QObject *videoCustomSettings READ videoCustomSettings CONSTANT)
     Q_PROPERTY(QObject *dualVideoManager READ dualVideoManager CONSTANT)
@@ -91,6 +94,7 @@ public:
     GimbalControlManager *gimbalControlManagerObject();
     QObject *gimbalCenterCoordinator();
     GimbalCenterCoordinator *gimbalCenterCoordinatorObject();
+    QObject *gimbalModeController();
     QObject *mt11ControlManager();
     Mt11ControlManager *mt11ControlManagerObject();
     QObject *videoCustomSettings();
@@ -107,6 +111,7 @@ private:
     void _ensureGimbalControlSettings();
     void _ensureGimbalControlManager();
     void _ensureGimbalCenterCoordinator();
+    void _ensureGimbalModeController();
     void _ensureMt11ControlManager();
     void _ensureVideoCustomSettings();
     void _ensureDualVideoManager();
@@ -124,6 +129,7 @@ private:
     GimbalControlSettings *_gimbalControlSettings = nullptr;
     GimbalControlManager *_gimbalControlManager = nullptr;
     GimbalCenterCoordinator *_gimbalCenterCoordinator = nullptr;
+    GimbalModeController *_gimbalModeController = nullptr;
     Mt11ControlManager *_mt11ControlManager = nullptr;
     VideoCustomSettings *_videoCustomSettings = nullptr;
     DualVideoManager *_dualVideoManager = nullptr;

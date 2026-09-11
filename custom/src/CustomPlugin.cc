@@ -13,6 +13,7 @@
 #include "FactMetaData.h"
 #include "Gimbal/GimbalAzimuthProvider.h"
 #include "Gimbal/GimbalCenterCoordinator.h"
+#include "Gimbal/GimbalModeController.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
@@ -189,6 +190,7 @@ void CustomPlugin::init()
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureGimbalCenterCoordinator();
+    _ensureGimbalModeController();
     _ensureUniRcChannelController();
     _ensureMt11ControlManager();
     _ensureVideoCustomSettings();
@@ -317,6 +319,12 @@ GimbalAzimuthProvider *CustomPlugin::gimbalAzimuthProviderObject()
 QObject *CustomPlugin::gimbalCenterCoordinator()
 {
     return gimbalCenterCoordinatorObject();
+}
+
+QObject *CustomPlugin::gimbalModeController()
+{
+    _ensureGimbalModeController();
+    return _gimbalModeController;
 }
 
 GimbalCenterCoordinator *CustomPlugin::gimbalCenterCoordinatorObject()
@@ -449,6 +457,14 @@ void CustomPlugin::_ensureGimbalCenterCoordinator()
 {
     if (!_gimbalCenterCoordinator) {
         _gimbalCenterCoordinator = new GimbalCenterCoordinator(this);
+    }
+}
+
+void CustomPlugin::_ensureGimbalModeController()
+{
+    if (!_gimbalModeController) {
+        _ensureGimbalControlManager();
+        _gimbalModeController = new GimbalModeController(_gimbalControlManager, this);
     }
 }
 

@@ -8,6 +8,8 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QPointer>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
 
@@ -27,10 +29,14 @@ public:
     bool requestCurrentZoom();
     bool requestRecordingStreamParameters();
     bool requestCameraSystemStatus();
+    // Separate, correlated read-only query; ordinary camera polling stays unchanged.
+    bool requestGimbalMode(quint64 requestId);
+    void cancelGimbalModeRequest();
     bool takePhoto();
     bool toggleVideoRecording();
 
 signals:
+    void gimbalModeReceived(quint64 requestId, quint8 mode);
     void manualZoomReceived(double zoomLevel);
     void absoluteZoomFeedbackReceived(bool accepted);
     void maximumZoomReceived(double zoomLevel);
@@ -63,4 +69,7 @@ private:
     quint16 _port = 37260;
     double _minimumZoom = 1.0;
     double _maximumZoom = 5.5;
+    QPointer<QUdpSocket> _modeSocket;
+    quint64 _modeRequestId = 0;
+    QElapsedTimer _modeRequestAge;
 };

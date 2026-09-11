@@ -1003,4 +1003,19 @@
         <translation>为第二个独立视频窗口提供视频流。留空可禁用第二路视频流。</translation>
     </message>
 </context>
+<context>
+    <name>GimbalIndicator</name>
+    <message>
+        <source>Mode syncing</source>
+        <translation>模式同步中</translation>
+    </message>
+    <message>
+        <source>Syncing &lt;br&gt; mode</source>
+        <translation>模式&lt;br&gt;同步中</translation>
+    </message>
+    <message>
+        <source>FPV</source>
+        <translation>FPV</translation>
+    </message>
+</context>
 </TS>

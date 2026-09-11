@@ -597,6 +597,40 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    qt_add_executable(GimbalModeControllerTest
+        test/Gimbal/GimbalModeControllerTest.cc
+        test/Gimbal/ModeStubs/TestDoubles.h
+        src/Gimbal/GimbalModeController.cc
+        src/Gimbal/GimbalModeController.h
+    )
+    target_include_directories(GimbalModeControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/ModeStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+        ${mavlink_SOURCE_DIR}
+    )
+    target_link_libraries(GimbalModeControllerTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalModeControllerTest COMMAND $<TARGET_FILE:GimbalModeControllerTest>)
+
+    qt_add_executable(SiyiModeQueryTest
+        test/Gimbal/SiyiModeQueryTest.cc
+        src/Gimbal/SiyiSdk.cc
+        src/Gimbal/SiyiSdk.h
+        src/Gimbal/SiyiProtocol.cc
+        src/Gimbal/SiyiProtocol.h
+    )
+    target_include_directories(SiyiModeQueryTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/ModeStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(SiyiModeQueryTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME SiyiModeQueryTest COMMAND $<TARGET_FILE:SiyiModeQueryTest>)
+    add_custom_target(check_gimbal_mode_sync
+        COMMAND $<TARGET_FILE:GimbalModeControllerTest>
+        COMMAND $<TARGET_FILE:SiyiModeQueryTest>
+        DEPENDS GimbalModeControllerTest SiyiModeQueryTest
+        USES_TERMINAL
+    )
+
     qt_add_executable(UniRcProtocolTest
         test/Android/UniRcProtocolTest.cc
         src/Android/UniRcChannelPolicy.cc

@@ -116,6 +116,8 @@ public:
     Q_INVOKABLE bool toggleVideoRecording();
     Q_INVOKABLE bool requestCurrentZoom();
     Q_INVOKABLE bool requestCameraStatus();
+    bool requestGimbalMode(quint64 requestId);
+    void cancelGimbalModeRequest();
 
     /// Main-thread entry points for the UniRC CH9 continuous-zoom source.
     /// They keep the physical wheel independent from the QML touch gesture so
@@ -142,6 +144,8 @@ public:
                                              const QString& outputFile);
 
 signals:
+    void gimbalModeReceived(quint64 requestId, quint8 mode);
+    void gimbalModeEndpointChanged();
     void enabledChanged();
     void currentZoomChanged();
     void zoomStepChanged();

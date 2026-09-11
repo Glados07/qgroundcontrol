@@ -1003,4 +1003,19 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>GimbalIndicator</name>
+    <message>
+        <source>Mode syncing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Syncing &lt;br&gt; mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FPV</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/control`
 
-最后更新：2026-09-07
+最后更新：2026-09-11
 
 ## 1. 当前开发进度
 
@@ -26,6 +26,8 @@
 12. UniRC 10 Pro 内置SDK蓝牙的CH9拨轮变倍，以及CH10回中/俯仰90°动态动作。
 
 各模块当前所处阶段如下：
+
+- **2026-09-11 顶部云台重连模式同步修复（主机回归通过，待Android真机验收）**：新增独立 `GimbalModeController`。本产品A8链路的模式通过只读SIYI `0x0A`实际运动模式查询确认；不再用legacy姿态反馈的锁定位或默认false冒充真实模式。重连/超时显示“模式同步中”，收到有效反馈后统一更新状态文字、切换按钮和原生yawLock；不自动发送锁定/跟随命令。方位角Policy、Provider、原始heading及罗盘算法完全不改。具体绑定边界、测试与验收见8.3.4。
 
 - **已集成**：Viewer3D、思翼云台、Fuel、Proximity Radar、默认通信链路和 PX4 定制均已接入 `custom` 构建、资源及运行链路。
 - **代码已集成，待目标遥控器真机回归验收**：本轮A8 Mini缩放、双路本地媒体、UniPod MT11私有SDK与三种工作模式、通用独立第二路RTSP、三视图、双罗盘条、Android界面缩放、严格厂商MediaCodec策略和USB串口管理均已进入当前工作树。Android H.265按receiver/URI冻结packetization：A8继续使用已验证的 `hvc1/AU -> qgcandroidh265hwdec -> h265parse(config-interval=-1) -> byte-stream/AU -> 厂商MediaCodec`；MT11保持native `byte-stream/AU`，无CSD路径仍保留上游参数集重发和完整Annex-B bootstrap门禁作为晚挂防御。本轮在custom adapter内部增加统一decoder-facing CAPS合同：`parsed=true, stream-format=byte-stream, alignment=au, framerate=[0/1,2147483647/1]`，并由候选发现、READY预检和每个首选/替代adapter实例共同使用。A8上游已有的固定 `25/1` 与该范围相交后保持不变；MT11未声明帧率时可合法协商未知帧率 `0/1`，不伪造25/30 fps、不改码流、rank、factory或A8启动顺序。失败恢复表仍按输入格式隔离，不改全局rank、不使用 `avdec_h265`。完整Android APK构建、MT11在URL 1/2的真机首帧、A8+MT11双路持续播放仍须按第12章验收。
@@ -294,6 +296,8 @@ custom/
       GimbalPhotoCapturePolicy.cc
       GimbalControlSettings.h
       GimbalControlSettings.cc
+      GimbalModeController.h
+      GimbalModeController.cc
       GimbalVideoStreamSupport.h
       GimbalVideoStreamSupport.cc
       SiyiProtocol.h
@@ -393,6 +397,10 @@ custom/
       GimbalAzimuthProviderTest.cc
       GimbalHeadingTelemetryTest.cc
       AzimuthStubs/
+      GimbalModeControllerTest.cc
+      SiyiModeQueryTest.cc
+      GimbalModeUiTest.py
+      ModeStubs/
       GimbalMediaSessionPolicyTest.cc
       GimbalPhotoCapturePolicyTest.cc
       Mt11ProtocolTest.cc
@@ -498,6 +506,8 @@ V2注册表还与 `getNoBackupFilesDir()/qgc_custom_public_media_v2.install` 安
 本轮已在 custom 保存同路径 `FlyView.qml` 以接入三视图；无项目差异的 `FlyViewWidgetLayer.qml` 和 `FlyViewToolStrip.qml` 仍直接复用 `src`，工具条动作差异继续由上表 `FlyViewToolStripActionList.qml` 覆盖。
 
 ### 4.5 Gimbal 后端
+
+2026-09-11新增模式同步文件：`custom/src/Gimbal/GimbalModeController.{h,cc}`管理活动Vehicle/Controller/Gimbal身份、未知/跟随/锁定/FPV状态、查询代次及有效期，独立于方位角Provider。`SiyiSdk`新增隔离本地UDP端口的只读模式查询，`GimbalControlManager`只转接请求和带代次的反馈；原相机控制socket及全部SiyiProtocol封包不变。`CustomPlugin`负责创建和QML入口。测试位于 `custom/test/Gimbal/GimbalModeControllerTest.cc`、`SiyiModeQueryTest.cc`、`ModeStubs/`和 `GimbalModeUiTest.py`，替身只进入测试目标，不编入应用。详细契约见8.3.4。
 
 | 文件 | 详细作用 |
 |---|---|
@@ -1010,6 +1020,26 @@ MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | 
 | `MNT_MODE_OUT` | `MAVLink Gimbal Protocol v2` |
 
 需要同时使用RC通道和顶部MAVLink姿态栏时使用 `MNT_MODE_IN=Auto (0)`；若只允许地面站控制可改为 `MAVLink Gimbal Protocol v2 (4)`，若只允许RC则改为 `RC (1)`，修改后按PX4要求重启。PX4官方说明见 [Gimbal Configuration](https://docs.px4.io/v1.15/en/advanced/gimbal_control)。TELEM2参数只负责飞控与云台的MAVLink集成，是飞行任务/姿态控制场景的推荐配置，不是思翼私有合并栏的前置条件。custom的tap 0x0f、hold 0x05、拍照、录像和状态查询全部由电脑或遥控器直接发往 `192.168.144.25:37260/UDP`；纯云台无飞控时仍可使用，RTSP播放、私有SDK控制和飞控MAVLink是彼此独立的三条链路。
+
+#### 8.3.4 重连后的云台实际模式同步（2026-09-11）
+
+用户已确认当前跟随/锁定两种方位角都正常；本次只处理“云台实际仍锁定，但重连后顶部显示偏航跟随、按钮显示偏航锁定”。原生 `GimbalController::_handleGimbalDeviceAttitudeStatus`仅把285消息的 `YAW_LOCK`位赋给布尔值，顶部无未知/时效状态；管理器281的flags及SDK实际运动模式未参与真实状态对账。默认false只能解释初始化，不能独自解释正常接收后持续错误；当前没有新增重连实测包，不能断言发送端错误标志与接收时序中哪一种是该次触发因素。修复将本产品的实际模式确认从这条legacy标志链中独立出来，并记录反馈冲突供真机闭环。
+
+实现与边界：
+
+1. `GimbalModeController`由CustomPlugin创建。模式为Unknown、Follow、Locked、FPV；断联、所有链路移除、Vehicle重建/切换、activeGimbal或其路由变化、SDK端点/启用变化时撤销查询代次并清除确认状态。不从QSettings恢复上次点击模式，不依据方位角运动推断锁定，不重放模式命令。
+2. **产品固定绑定，不是自动识别**：现有日志的manager信息明确为component1管理device154；本产品顶部A8使用 `manager=1/device=154`，SDK端点取现有A8 `sdkHost/sdkPort`。只有一个Vehicle、一个MAVLink云台且A8 SDK启用时才能把该端点反馈用于这条路由。右侧选中A8还是MT11不参与绑定，绝不取MT11 Manager状态。该A8路由在SDK关闭/不可达或多Vehicle/多MAVLink云台时保持Unknown，不回退到已存在歧义的legacy锁定位。若后续接线、device id或设备拓扑变化，必须明确扩展绑定，不能把154当成通用SIYI型号识别。
+3. A8查询使用 `0x0A`配置状态中的 `gimbal_motion_mode`，0=Lock、1=Follow、2=FPV，其他值为Unknown；定义参见[SIYI A8 mini官方手册的配置查询](https://siyi.biz/siyi_file/A8%20mini/A8%20mini%20User%20Manual%20v1.6.pdf)。沿用现有SiyiProtocol的序号0请求字节，不要求固件回显事务序号。每次只读查询建立独立临时本地UDP端口，与缩放/拍照/录像和普通相机状态轮询的socket隔离；只接受当前socket、配置IP/端口、CRC合法、ACK、CMD=0x0A、完整payload且1.5秒内的响应。一次查询只提交一次；取消/完成后旧端口保留4秒并丢弃回包，避免在有效期内被新查询立即复用。查询代次同时约束Vehicle/云台会话，旧槽或旧响应不能确认新连接。
+4. 每250 ms复核，通常每2秒只读查询一次，3.5秒没有有效模式反馈则Unknown。点击顶部Yaw Lock/Follow确实派发后立即撤销旧确认，等待至少400 ms再查询实际结果；命令ACK或本地messagesSent只用于派发判断，不直接把目标当实际状态。模式未知时顶部文字及切换按钮显示“模式同步中”，切换按钮禁用；已确认锁定时显示“偏航锁定”且按钮为切换到跟随，跟随时相反，FPV单独显示。
+5. 确认模式同时通过原生公开 `Gimbal::setYawLock`同步给当前Gimbal，避免仅改QML但原生速率控制仍读取错误模式。新鲜A8 SDK确认有效期间，285到达或其锁定位变化不会覆盖它。281管理器flags只做诊断，不视为硬件实际执行证明；其协议含义见[MAVLink GIMBAL_MANAGER_STATUS](https://mavlink.io/en/messages/common.html#GIMBAL_MANAGER_STATUS)。未知状态不编造新的原生模式，本轮只门控顶部模式切换，不新增全局RC/摇杆控制拦截。
+6. 非本产品A8路由继续按标准285的锁定位确认，严格匹配Vehicle、manager/device或独立component/device0；不把别的云台当回退。重复/小乱序的非零boot时间戳不延长确认寿命；未知时只请求285消息，不发送姿态或控制权命令。
+7. **方位角链路不变**：`GimbalAzimuthPolicy.*`、`GimbalAzimuthProvider.*`、`GimbalHeadingTelemetry.*`以及罗盘的公式与数据源均无修改；不改入站285的flags/q/heading，不改pitch或原生姿态转换。顶部Az仍来自原Provider，模式显示改读新Controller。所有实现/测试/翻译位于custom，原生src未修改。
+
+诊断类别为 `qgc.custom.gimbal.mode`。模式变化记录Vehicle/manager/device、模式和来源；debug记录SDK请求/回复、原始281标志；SDK实际模式与285不一致时每2秒最多记录一条包含原始flags、boot和实际模式的warning。需要详细对比时在现有 `--logging:`类别列表追加 `qgc.custom.gimbal.mode`；本次未改外置抓取脚本，也未把采集工具加入Git。
+
+验证：新增 `GimbalModeControllerTest`与 `SiyiModeQueryTest`已接入custom/CMakeLists的桌面测试和 `check_gimbal_mode_sync`目标。主机使用Qt 5.14.2/MSVC编译生产模式Controller（仅外围QObject依赖替身）及生产SiyiSdk/SiyiProtocol（真实loopback UDP），覆盖实际Lock/285 Follow冲突、断联恢复、相同sysid新Vehicle、SDK端点变化、旧响应、模式未知/Follow/Lock/FPV/非法值、超时、多Vehicle/多云台隔离、标准路由及对象销毁；原SiyiProtocol回归同时通过。PySide6/Qt 6运行 `python custom/test/Gimbal/GimbalModeUiTest.py`，从实际GimbalIndicator提取模式绑定，8个状态/按钮场景通过；这是绑定级测试，不是完整工具栏或Android渲染验收。未修改的3组方位角回归再次通过。
+
+真机验收仍必须在重新构建的Android APK上完成：A8 SDK端点可达且启用；锁定后断开/重连，仅等待同步、不点击模式按钮，确认顶部恢复锁定且实物未动；跟随模式同样测试；连续往返至少5次，补测QGC冷启动时设备已经锁定、切换模式后再重连，以及单独断开/恢复SDK但保留飞控连接。SDK断开期间应显示同步中，恢复后显示实际模式。确认右侧A8/MT11切换不影响顶部模式，且两种模式下原方位角表现保持不变。当前环境未完成Qt 6 Android整包构建，也没有遥控器/云台现场，不能把主机测试通过写成真机问题已闭环。
 
 ### 8.4 UniRC 10 Pro CH9拨轮变倍与CH10回中/俯仰90°动态切换
 
