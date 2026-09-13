@@ -1282,6 +1282,15 @@ bool GimbalControlManager::requestGimbalMode(quint64 requestId)
     return _sdk->requestGimbalMode(requestId);
 }
 
+bool GimbalControlManager::setGimbalYawLock(bool locked)
+{
+    if (!enabled()) {
+        return false;
+    }
+    _configureSdkEndpoint();
+    return _sdk->setGimbalYawLock(locked);
+}
+
 void GimbalControlManager::cancelGimbalModeRequest()
 {
     _sdk->cancelGimbalModeRequest();

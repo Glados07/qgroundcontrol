@@ -32,6 +32,7 @@ public:
     // Separate, correlated read-only query; ordinary camera polling stays unchanged.
     bool requestGimbalMode(quint64 requestId);
     void cancelGimbalModeRequest();
+    bool setGimbalYawLock(bool locked);
     bool takePhoto();
     bool toggleVideoRecording();
 

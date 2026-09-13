@@ -43,6 +43,13 @@ QByteArray SiyiProtocol::toggleVideoRecordingPacket()
     return _photoAndRecordPacket(kToggleVideoRecordingFunction);
 }
 
+QByteArray SiyiProtocol::gimbalYawLockPacket(bool locked)
+{
+    // A8 mini SDK 0x0C: 3 = Motion Lock, 4 = Motion Follow.
+    // These are absolute mode selections, not a toggle or an angle target.
+    return _photoAndRecordPacket(locked ? 3 : 4);
+}
+
 QByteArray SiyiProtocol::absoluteZoomPacket(double zoomLevel)
 {
     if (!qIsFinite(zoomLevel) || zoomLevel < 1.0 || zoomLevel > 30.0) {

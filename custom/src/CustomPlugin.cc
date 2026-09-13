@@ -465,6 +465,9 @@ void CustomPlugin::_ensureGimbalModeController()
     if (!_gimbalModeController) {
         _ensureGimbalControlManager();
         _gimbalModeController = new GimbalModeController(_gimbalControlManager, this);
+        _ensureGimbalCenterCoordinator();
+        connect(_gimbalCenterCoordinator, &GimbalCenterCoordinator::gimbalActionRequestStarted,
+                _gimbalModeController, &GimbalModeController::cancelModeCommand);
     }
 }
 

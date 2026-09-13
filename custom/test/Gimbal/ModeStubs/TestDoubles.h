@@ -3,6 +3,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QVariant>
+#include <functional>
 
 class Fact : public QObject {
     Q_OBJECT
@@ -31,6 +32,12 @@ public:
     Fact *deviceId() { return &_device; }
     Fact *managerCompid() { return &_manager; }
     bool yawLock() const { return _locked; }
+    bool gimbalHaveControl() const { return haveControl; }
+    bool gimbalOthersHaveControl() const { return othersHaveControl; }
+    void setPitchRate(float rate) { pitchRate = rate; }
+    void setYawRate(float rate) { yawRate = rate; }
+    bool haveControl = true, othersHaveControl = false;
+    float pitchRate = 0, yawRate = 0;
     void setYawLock(bool locked) { if (locked != _locked) { _locked = locked; emit yawLockChanged(); } }
 signals:
     void yawLockChanged();
@@ -44,6 +51,9 @@ public:
     Gimbal *activeGimbal() const { return _active; }
     QmlObjectListModel *gimbals() { return &_gimbals; }
     void setActiveGimbal(Gimbal *gimbal) { _active = gimbal; emit activeGimbalChanged(); }
+    void sendRate() { ++rateSends; if (onSend) onSend(); }
+    int rateSends = 0;
+    std::function<void()> onSend;
 signals:
     void activeGimbalChanged();
 private:
@@ -66,11 +76,26 @@ private:
 class Vehicle : public QObject {
     Q_OBJECT
 public:
-    explicit Vehicle(int id = 1) : _id(id) {}
+    enum MavCmdResultFailureCode_t {
+        MavCmdResultCommandResultOnly,
+        MavCmdResultFailureNoResponseToCommand,
+        MavCmdResultFailureDuplicateCommand,
+    };
+    explicit Vehicle(int id = 1) : _id(id) {
+        _controller.onSend = [this]() { ++sentCount; commandPending = true; };
+    }
     int id() const { return _id; }
     int compId() const { return 1; }
     GimbalController *gimbalController() { return &_controller; }
     VehicleLinkManager *vehicleLinkManager() { return &_links; }
+    uint messagesSent() const { return sentCount; }
+    bool isMavCommandPending(int, MAV_CMD) const { return commandPending; }
+    void ack(int result = MAV_RESULT_ACCEPTED, int failure = 0, int component = 1) {
+        commandPending = false;
+        emit mavCommandResult(_id, component, MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW, result, failure);
+    }
+    uint sentCount = 0;
+    bool commandPending = false;
     void sendMavCommand(int, MAV_CMD command, bool, float param1) {
         ++queryCount;
         lastCommand = command;
@@ -81,6 +106,7 @@ public:
     float lastParam = 0;
 signals:
     void mavlinkMessageReceived(const mavlink_message_t &message);
+    void mavCommandResult(int vehicleId, int component, int command, int result, int failure);
 private:
     int _id;
     GimbalController _controller;
@@ -106,6 +132,15 @@ public:
     void setEnabled(bool enabled) { _enabled = enabled; emit enabledChanged(); }
     bool requestGimbalMode(quint64 requestId) { lastRequest = requestId; ++queries; return true; }
     void cancelGimbalModeRequest() { ++cancels; }
+    bool setGimbalYawLock(bool locked) {
+        ++modeWrites;
+        lastTargetLocked = locked;
+        if (writeSucceeds && applyModeWrite) physicalMode = locked ? 0 : 1;
+        return writeSucceeds;
+    }
+    int modeWrites = 0;
+    quint8 physicalMode = 0;
+    bool lastTargetLocked = true, writeSucceeds = true, applyModeWrite = true;
     quint64 lastRequest = 0;
     int queries = 0, cancels = 0;
 signals:

@@ -118,6 +118,8 @@ public:
     Q_INVOKABLE bool requestCameraStatus();
     bool requestGimbalMode(quint64 requestId);
     void cancelGimbalModeRequest();
+    // Only the mode coordinator calls this after route/ownership/ACK checks.
+    bool setGimbalYawLock(bool locked);
 
     /// Main-thread entry points for the UniRC CH9 continuous-zoom source.
     /// They keep the physical wheel independent from the QML touch gesture so

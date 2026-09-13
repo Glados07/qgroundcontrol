@@ -23,6 +23,8 @@ class GimbalModeController final : public QObject
     Q_PROPERTY(bool yawLocked READ yawLocked NOTIFY modeChanged)
     Q_PROPERTY(int mode READ mode NOTIFY modeChanged)
     Q_PROPERTY(QObject *gimbal READ gimbal NOTIFY modeChanged)
+    Q_PROPERTY(bool commandPending READ commandPending NOTIFY commandPendingChanged)
+    Q_PROPERTY(quint32 sessionRevision READ sessionRevision NOTIFY sessionChanged)
 
 public:
     enum Mode { Unknown, Follow, Locked, Fpv };
@@ -32,10 +34,18 @@ public:
     bool yawLocked() const { return _mode == Locked; }
     int mode() const { return _mode; }
     QObject *gimbal() const;
-    Q_INVOKABLE void noteModeCommandDispatched();
+    bool commandPending() const { return _commandPhase != Idle; }
+    quint32 sessionRevision() const { return _sessionRevision; }
+    // Called with the click-time target after the toolbar's ownership gate.
+    // The click-time session is mandatory; telemetry expiry is NOT a new session.
+    Q_INVOKABLE bool requestYawLock(bool locked, quint32 sessionRevision);
+    Q_INVOKABLE void cancelModeCommand();
 
 signals:
     void modeChanged();
+    void commandPendingChanged();
+    void commandFailed(const QString &reason);
+    void sessionChanged();
 
 private:
     void _bindVehicle(Vehicle *vehicle);
@@ -46,6 +56,10 @@ private:
     void _handleSdkMode(quint64 requestId, quint8 mode);
     void _publish(Mode mode, const char *source);
     void _applyToNative();
+    void _handleCommandResult(int vehicleId, int component, int command, int result, int failure);
+    void _finishCommand(const QString &error = QString());
+    void _confirmCommand();
+    bool _haveControl() const;
     bool _connected() const;
     bool _isProductA8Route() const;
     bool _canQueryA8() const;
@@ -67,6 +81,12 @@ private:
     qint64 _lastConflictLogAt = -10000;
     quint32 _deviceBootMs = 0;
     quint64 _requestId = 0;
+    quint32 _sessionRevision = 0;
     bool _requestPending = false;
     bool _lastCanQueryA8 = false;
+    enum CommandPhase { Idle, AwaitingAck, AwaitingFeedback };
+    CommandPhase _commandPhase = Idle;
+    bool _targetLocked = false;
+    int _commandComponent = -1;
+    qint64 _commandDeadline = 0;
 };

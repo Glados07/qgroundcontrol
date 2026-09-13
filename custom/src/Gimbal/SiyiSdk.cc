@@ -193,6 +193,11 @@ bool SiyiSdk::toggleVideoRecording()
     return _sendPacket(SiyiProtocol::toggleVideoRecordingPacket());
 }
 
+bool SiyiSdk::setGimbalYawLock(bool locked)
+{
+    return _sendPacket(SiyiProtocol::gimbalYawLockPacket(locked));
+}
+
 void SiyiSdk::_readPendingDatagrams()
 {
     while (_socket.hasPendingDatagrams()) {

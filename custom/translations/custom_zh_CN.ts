@@ -1006,6 +1006,18 @@
 <context>
     <name>GimbalIndicator</name>
     <message>
+        <source>Switching &lt;br&gt; mode</source>
+        <translation>模式&lt;br&gt;切换中</translation>
+    </message>
+    <message>
+        <source>Gimbal mode</source>
+        <translation>云台模式</translation>
+    </message>
+    <message>
+        <source>Gimbal control acquisition timed out. Mode command was not sent.</source>
+        <translation>获取云台控制权超时，模式指令未发送。</translation>
+    </message>
+    <message>
         <source>Mode syncing</source>
         <translation>模式同步中</translation>
     </message>
@@ -1016,6 +1028,53 @@
     <message>
         <source>FPV</source>
         <translation>FPV</translation>
+    </message>
+</context>
+<context>
+    <name>GimbalModeController</name>
+    <message>
+        <source>Gimbal mode change cancelled: connection or gimbal changed.</source>
+        <translation>连接或云台已变化，模式切换已取消。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled: control was lost.</source>
+        <translation>云台控制权已丢失，模式切换已取消。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode change failed: no flight controller acknowledgement.</source>
+        <translation>模式切换失败：未收到飞控确认。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode change was not confirmed by the gimbal. Check the connection and retry.</source>
+        <translation>未收到云台已切换模式的确认，请检查连接后重试。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode command not sent: control or the A8 connection is unavailable.</source>
+        <translation>模式指令未发送：未获得控制权或A8连接不可用。</translation>
+    </message>
+    <message>
+        <source>Another gimbal command is pending. Release the stick and retry.</source>
+        <translation>另一条云台指令尚未完成，请松开摇杆后重试。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode command could not be sent.</source>
+        <translation>云台模式指令发送失败。</translation>
+    </message>
+    <message>
+        <source>Flight controller rejected the gimbal mode command (result %1, failure %2).</source>
+        <translation>飞控未接受云台模式指令（结果 %1，错误 %2）。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled: control or connection was lost.</source>
+        <translation>控制权或连接已丢失，模式切换已取消。</translation>
+    </message>
+    <message>
+        <source>A8 mode command could not be sent.</source>
+        <translation>A8模式指令发送失败。</translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled by another gimbal action.</source>
+        <translation>其他云台操作已取消本次模式切换。</translation>
     </message>
 </context>
 </TS>

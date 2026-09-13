@@ -1,5 +1,6 @@
 /****************************************************************************
- * Read-only mode synchronization. No quaternion, heading or setpoint changes.
+ * Confirmed mode synchronization and explicit user-requested mode changes.
+ * No quaternion/heading conversion or position setpoints.
  ****************************************************************************/
 #include "GimbalModeController.h"
 
@@ -20,6 +21,9 @@ Q_LOGGING_CATEGORY(GimbalModeLog, "qgc.custom.gimbal.mode")
 namespace {
 constexpr qint64 kModeTimeoutMs = 3500;
 constexpr qint64 kQueryIntervalMs = 2000;
+constexpr qint64 kCommandAckTimeoutMs = 5000;
+constexpr qint64 kCommandFeedbackTimeoutMs = 5000;
+constexpr qint64 kCommandSettleMs = 400;
 }
 
 GimbalModeController::GimbalModeController(GimbalControlManager *camera, QObject *parent)
@@ -77,6 +81,8 @@ void GimbalModeController::_bindVehicle(Vehicle *vehicle)
                                        [this]() { _bindVehicle(nullptr); });
         _vehicleConnections << connect(_vehicle, &Vehicle::mavlinkMessageReceived,
                                        this, &GimbalModeController::_handleMessage);
+        _vehicleConnections << connect(_vehicle, &Vehicle::mavCommandResult,
+                                       this, &GimbalModeController::_handleCommandResult);
         if (auto *links = _vehicle->vehicleLinkManager()) {
             _vehicleConnections << connect(links, &VehicleLinkManager::communicationLostChanged,
                                            this, [this](bool) { _reset(); });
@@ -120,6 +126,10 @@ void GimbalModeController::_bindGimbal()
 
 void GimbalModeController::_reset()
 {
+    ++_sessionRevision;
+    const bool cancelledCommand = commandPending();
+    _commandPhase = Idle;
+    _commandComponent = -1;
     ++_requestId;
     _requestPending = false;
     if (_camera) {
@@ -132,8 +142,16 @@ void GimbalModeController::_reset()
     _queryNotBefore = 0;
     _lastCanQueryA8 = false;
     _publish(Unknown, "session reset");
+    if (cancelledCommand) {
+        _finishCommand(tr("Gimbal mode change cancelled: connection or gimbal changed."));
+    }
     // Also notify a route change when the old and new states are both Unknown.
     emit modeChanged();
+    // Also invalidate QML actions that have not reached requestYawLock yet.
+    // This must not be tied to known(): ordinary sample expiry is harmless
+    // to an explicit intent within the SAME connection/endpoint/route.
+    emit sessionChanged();
+    qCDebug(GimbalModeLog) << "Gimbal mode session reset" << "session" << _sessionRevision;
 }
 
 bool GimbalModeController::_connected() const
@@ -164,12 +182,20 @@ bool GimbalModeController::_canQueryA8() const
 void GimbalModeController::_poll()
 {
     if (!_connected()) {
-        if (_sampleAt >= 0 || _requestPending || known()) {
+        if (_sampleAt >= 0 || _requestPending || known() || commandPending()) {
             _reset();
         }
         return;
     }
     const qint64 now = _clock.elapsed();
+    if (commandPending() && !_haveControl()) {
+        _finishCommand(tr("Gimbal mode change cancelled: control was lost."));
+    }
+    if (commandPending() && now >= _commandDeadline) {
+        _finishCommand(_commandPhase == AwaitingAck
+            ? tr("Gimbal mode change failed: no flight controller acknowledgement.")
+            : tr("Gimbal mode change was not confirmed by the gimbal. Check the connection and retry."));
+    }
     if (_isProductA8Route()) {
         const bool canQuery = _canQueryA8();
         if (canQuery != _lastCanQueryA8) {
@@ -180,7 +206,8 @@ void GimbalModeController::_poll()
             _publish(Unknown, "A8 endpoint unavailable or ambiguous route");
             return;
         }
-        if (now >= _queryNotBefore && now - _lastQueryAt >= kQueryIntervalMs) {
+        if (_commandPhase != AwaitingAck && now >= _queryNotBefore
+            && now - _lastQueryAt >= kQueryIntervalMs) {
             if (_requestPending) {
                 qCDebug(GimbalModeLog) << "Gimbal mode query has no valid reply"
                                      << "request" << _requestId;
@@ -192,7 +219,7 @@ void GimbalModeController::_poll()
                                  << "manager" << 1 << "device" << 154
                                  << "request" << _requestId << "sent" << _requestPending;
         }
-    } else if (!known() && now - _lastQueryAt >= kQueryIntervalMs) {
+    } else if ((!known() || _commandPhase == AwaitingFeedback) && now - _lastQueryAt >= kQueryIntervalMs) {
         _lastQueryAt = now;
         const uint device = _gimbal->deviceId()->rawValue().toUInt();
         const uint manager = _gimbal->managerCompid()->rawValue().toUInt();
@@ -216,6 +243,7 @@ void GimbalModeController::_handleSdkMode(quint64 requestId, quint8 mode)
                          << "manager" << 1 << "device" << 154
                          << "request" << requestId << "motionMode" << mode;
     _publish(_sampleMode, "SIYI 0x0A");
+    _confirmCommand();
 }
 
 void GimbalModeController::_handleMessage(const mavlink_message_t &message)
@@ -270,6 +298,7 @@ void GimbalModeController::_handleMessage(const mavlink_message_t &message)
     _sampleMode = locked ? Locked : Follow;
     _sampleAt = _clock.elapsed();
     _publish(_sampleMode, "MAVLink 285");
+    _confirmCommand();
 }
 
 void GimbalModeController::_publish(Mode mode, const char *source)
@@ -288,18 +317,157 @@ void GimbalModeController::_publish(Mode mode, const char *source)
 
 void GimbalModeController::_applyToNative()
 {
-    if (_connected() && known() && _sampleAt >= 0
-        && _clock.elapsed() - _sampleAt <= kModeTimeoutMs
-        && (!_isProductA8Route() || _canQueryA8()) && _gimbal->yawLock() != yawLocked()) {
-        _gimbal->setYawLock(yawLocked());
+    const bool fresh = known() && _sampleAt >= 0 && _clock.elapsed() - _sampleAt <= kModeTimeoutMs;
+    // While a user command is in flight, old actual-state feedback must not
+    // put native rate commands back into the previous mode. UI still uses
+    // only confirmed feedback, never this desired-mode latch.
+    const bool locked = commandPending() ? _targetLocked : yawLocked();
+    if (_connected() && (commandPending() || fresh)
+        && (!_isProductA8Route() || _canQueryA8()) && _gimbal->yawLock() != locked) {
+        _gimbal->setYawLock(locked);
     }
 }
 
-void GimbalModeController::noteModeCommandDispatched()
+bool GimbalModeController::_haveControl() const
 {
-    _reset();
-    // This is not an optimistic mode update. Wait for command propagation,
-    // then obtain a new reply; ACK alone does not confirm physical execution.
-    _queryNotBefore = _clock.elapsed() + 400;
+    return _connected() && _gimbal->gimbalHaveControl() && !_gimbal->gimbalOthersHaveControl();
+}
+
+bool GimbalModeController::requestYawLock(bool locked, quint32 sessionRevision)
+{
+    if (sessionRevision != _sessionRevision) {
+        qCWarning(GimbalModeLog) << "Gimbal mode stale action rejected"
+            << "clickSession" << sessionRevision << "currentSession" << _sessionRevision;
+        emit commandFailed(tr("Gimbal mode change cancelled: connection or gimbal changed."));
+        return false;
+    }
+    if (commandPending()) {
+        return false;
+    }
+    if (!_haveControl() || (_isProductA8Route() && !_canQueryA8())) {
+        emit commandFailed(tr("Gimbal mode command not sent: control or the A8 connection is unavailable."));
+        return false;
+    }
+    const int component = _gimbal->managerCompid()->rawValue().toInt();
+    if (_vehicle->isMavCommandPending(component, MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW)) {
+        emit commandFailed(tr("Another gimbal command is pending. Release the stick and retry."));
+        return false;
+    }
+
+    // Do not re-test known() here: ownership acquisition can outlast the SDK
+    // sample. The queued user intent is an explicit bool, not a fresh toggle.
+    ++_requestId;
+    _requestPending = false;
+    if (_camera) {
+        _camera->cancelGimbalModeRequest();
+    }
     _lastCanQueryA8 = _canQueryA8();
+    _targetLocked = locked;
+    _commandComponent = component;
+    _commandDeadline = _clock.elapsed() + kCommandAckTimeoutMs;
+    _commandPhase = AwaitingAck;
+    qCInfo(GimbalModeLog) << "Gimbal mode command requested" << "vehicle" << _vehicle->id()
+        << "manager" << component << "device" << _gimbal->deviceId()->rawValue()
+        << "targetLocked" << locked << "confirmedMode" << _mode << "session" << _sessionRevision;
+    _applyToNative();
+    // Native sendRate with zero rates sends NAN position targets and stops
+    // its 500 ms rate timer. Do not reuse legacy body/earth yaw position Facts
+    // for a mode-only change, or leave an old rate command repeating.
+    _gimbal->setPitchRate(0.f);
+    _gimbal->setYawRate(0.f);
+    const auto sent = _vehicle->messagesSent();
+    _controller->sendRate();
+    if (_vehicle && _vehicle->messagesSent() == sent && commandPending()) {
+        _finishCommand(tr("Gimbal mode command could not be sent."));
+        return false;
+    }
+    emit commandPendingChanged();
+    return true;
+}
+
+void GimbalModeController::_handleCommandResult(int vehicleId, int component, int command, int result, int failure)
+{
+    if (_commandPhase != AwaitingAck || !_vehicle || vehicleId != _vehicle->id()
+        || component != _commandComponent || command != MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW) {
+        return;
+    }
+    if (failure == Vehicle::MavCmdResultFailureDuplicateCommand) {
+        // Vehicle permits only one outstanding command 1000 per component.
+        // A joystick/screen command rejected behind ours emits this GLOBAL
+        // signal, but does not terminate the original queue entry. It is not
+        // a flight-controller ACK for our command: keep its original deadline.
+        // If our own synchronous dispatch was rejected instead, sendRate()
+        // leaves messagesSent unchanged and requestYawLock fails it there.
+        qCDebug(GimbalModeLog) << "Ignoring local duplicate rejection while awaiting mode ACK"
+                              << "vehicle" << vehicleId << "manager" << component;
+        return;
+    }
+    qCInfo(GimbalModeLog) << "Gimbal mode manager ACK" << "vehicle" << vehicleId
+        << "manager" << component << "result" << result << "failure" << failure
+        << "targetLocked" << _targetLocked;
+    if (_clock.elapsed() >= _commandDeadline) {
+        _finishCommand(tr("Gimbal mode change failed: no flight controller acknowledgement."));
+        return;
+    }
+    if (failure == 0 && result == MAV_RESULT_IN_PROGRESS) {
+        return;
+    }
+    if (failure != 0 || result != MAV_RESULT_ACCEPTED) {
+        _finishCommand(tr("Flight controller rejected the gimbal mode command (result %1, failure %2).")
+                       .arg(result).arg(failure));
+        return;
+    }
+    if (!_haveControl() || (_isProductA8Route() && !_canQueryA8())) {
+        _finishCommand(tr("Gimbal mode change cancelled: control or connection was lost."));
+        return;
+    }
+    // The product's legacy bridge flags can already say Follow while A8 is
+    // physically Locked. An accepted/repeated MAVLink setpoint is therefore
+    // not sufficient: explicitly select the A8 motion mode, only on a user
+    // request and only AFTER the owning manager accepts that same mode.
+    if (_isProductA8Route()) {
+        const bool sent = _camera->setGimbalYawLock(_targetLocked);
+        qCInfo(GimbalModeLog) << "Gimbal mode A8 command" << "function" << (_targetLocked ? 3 : 4)
+                             << "sent" << sent;
+        if (!sent) {
+            _finishCommand(tr("A8 mode command could not be sent."));
+            return;
+        }
+    }
+    _commandPhase = AwaitingFeedback;
+    _commandDeadline = _clock.elapsed() + kCommandFeedbackTimeoutMs;
+    _queryNotBefore = _clock.elapsed() + kCommandSettleMs;
+    _lastQueryAt = -10000;
+}
+
+void GimbalModeController::_confirmCommand()
+{
+    if (_commandPhase == AwaitingFeedback && _clock.elapsed() >= _commandDeadline) {
+        _finishCommand(tr("Gimbal mode change was not confirmed by the gimbal. Check the connection and retry."));
+        return;
+    }
+    if (_commandPhase == AwaitingFeedback && _haveControl() && _sampleAt >= _queryNotBefore
+        && _sampleMode == (_targetLocked ? Locked : Follow)) {
+        _finishCommand();
+    }
+}
+
+void GimbalModeController::_finishCommand(const QString &error)
+{
+    _commandPhase = Idle;
+    _commandComponent = -1;
+    _applyToNative();
+    qCInfo(GimbalModeLog) << "Gimbal mode command finished" << "targetLocked" << _targetLocked
+                         << "confirmedMode" << _mode << "error" << error;
+    emit commandPendingChanged();
+    if (!error.isEmpty()) {
+        emit commandFailed(error);
+    }
+}
+
+void GimbalModeController::cancelModeCommand()
+{
+    if (commandPending()) {
+        _finishCommand(tr("Gimbal mode change cancelled by another gimbal action."));
+    }
 }

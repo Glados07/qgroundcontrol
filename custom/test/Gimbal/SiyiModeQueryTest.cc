@@ -29,6 +29,27 @@ QByteArray reply(quint16 sequence, quint8 mode, quint8 control = 2)
 class SiyiModeQueryTest : public QObject {
     Q_OBJECT
 private slots:
+    void explicitMotionModeCommandsHaveCorrectWireBytes()
+    {
+        QUdpSocket server;
+        QVERIFY(server.bind(QHostAddress(QHostAddress::LocalHost), 0));
+        SiyiSdk sdk;
+        sdk.setEndpoint("127.0.0.1", server.localPort());
+        QSignalSpy modeSpy(&sdk, &SiyiSdk::gimbalModeReceived);
+        for (const bool locked : {false, true, false}) {
+            QVERIFY(sdk.setGimbalYawLock(locked));
+            QTRY_VERIFY(server.hasPendingDatagrams());
+            const auto data = server.receiveDatagram().data();
+            const auto packet = SiyiProtocol::decodePacket(data);
+            QVERIFY(packet.valid); // header, length and CRC
+            QCOMPARE(packet.command, quint8(0x0c));
+            QCOMPARE(packet.sequence, quint16(0));
+            QCOMPARE(packet.payload, QByteArray(1, char(locked ? 3 : 4)));
+            QCOMPARE(packet.control, quint8(1));
+            QCOMPARE(modeSpy.count(), 0); // sending cannot invent confirmation
+        }
+    }
+
     void normalCameraPacketsAreUnchanged()
     {
         const auto ordinary = SiyiProtocol::decodePacket(SiyiProtocol::requestCameraSystemStatusPacket());

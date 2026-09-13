@@ -4,7 +4,7 @@
 
 当前分支：`SecDev/ft/control`
 
-最后更新：2026-09-11
+最后更新：2026-09-13
 
 ## 1. 当前开发进度
 
@@ -26,6 +26,10 @@
 12. UniRC 10 Pro 内置SDK蓝牙的CH9拨轮变倍，以及CH10回中/俯仰90°动态动作。
 
 各模块当前所处阶段如下：
+
+- **2026-09-13 顶部模式切换异常路径补修（主机回归通过，待Android真机验收）**：修复其他摇杆/屏幕指令的本地重复拒绝误中止模式切换；修复等待控制权的旧点击在连接、SDK端点或云台路由变化后仍可执行。新增独立 `sessionRevision`，QML在点击时保存、会话失效时清除待执行动作，C++发送入口再次校验。普通模式反馈过期不更换会话，避免恢复此前丢点击的问题。原方位角算法、SDK模式命令格式及实际模式回读逻辑不变，详见8.3.6。
+
+- **2026-09-11 顶部模式按钮切换链路补正（主机回归通过，待Android真机验收）**：用户确认重连后的实际模式显示已同步，但点击“偏航跟随”未切换。初版只修复读状态，没有建立实际模式写入/回读闭环，且等待控制权期间模式反馈过期会直接丢弃点击。现保留点击目标，通过原生零速率命令停止旧速率重发并同步管理器模式；本产品A8在管理器ACK接受且仍持有控制权后，发送显式SDK Lock/Follow，再等实际模式回读。增加切换中、失败/超时提示，方位角算法仍完全不改。详见8.3.5。
 
 - **2026-09-11 顶部云台重连模式同步修复（主机回归通过，待Android真机验收）**：新增独立 `GimbalModeController`。本产品A8链路的模式通过只读SIYI `0x0A`实际运动模式查询确认；不再用legacy姿态反馈的锁定位或默认false冒充真实模式。重连/超时显示“模式同步中”，收到有效反馈后统一更新状态文字、切换按钮和原生yawLock；不自动发送锁定/跟随命令。方位角Policy、Provider、原始heading及罗盘算法完全不改。具体绑定边界、测试与验收见8.3.4。
 
@@ -1030,8 +1034,8 @@ MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | 
 1. `GimbalModeController`由CustomPlugin创建。模式为Unknown、Follow、Locked、FPV；断联、所有链路移除、Vehicle重建/切换、activeGimbal或其路由变化、SDK端点/启用变化时撤销查询代次并清除确认状态。不从QSettings恢复上次点击模式，不依据方位角运动推断锁定，不重放模式命令。
 2. **产品固定绑定，不是自动识别**：现有日志的manager信息明确为component1管理device154；本产品顶部A8使用 `manager=1/device=154`，SDK端点取现有A8 `sdkHost/sdkPort`。只有一个Vehicle、一个MAVLink云台且A8 SDK启用时才能把该端点反馈用于这条路由。右侧选中A8还是MT11不参与绑定，绝不取MT11 Manager状态。该A8路由在SDK关闭/不可达或多Vehicle/多MAVLink云台时保持Unknown，不回退到已存在歧义的legacy锁定位。若后续接线、device id或设备拓扑变化，必须明确扩展绑定，不能把154当成通用SIYI型号识别。
 3. A8查询使用 `0x0A`配置状态中的 `gimbal_motion_mode`，0=Lock、1=Follow、2=FPV，其他值为Unknown；定义参见[SIYI A8 mini官方手册的配置查询](https://siyi.biz/siyi_file/A8%20mini/A8%20mini%20User%20Manual%20v1.6.pdf)。沿用现有SiyiProtocol的序号0请求字节，不要求固件回显事务序号。每次只读查询建立独立临时本地UDP端口，与缩放/拍照/录像和普通相机状态轮询的socket隔离；只接受当前socket、配置IP/端口、CRC合法、ACK、CMD=0x0A、完整payload且1.5秒内的响应。一次查询只提交一次；取消/完成后旧端口保留4秒并丢弃回包，避免在有效期内被新查询立即复用。查询代次同时约束Vehicle/云台会话，旧槽或旧响应不能确认新连接。
-4. 每250 ms复核，通常每2秒只读查询一次，3.5秒没有有效模式反馈则Unknown。点击顶部Yaw Lock/Follow确实派发后立即撤销旧确认，等待至少400 ms再查询实际结果；命令ACK或本地messagesSent只用于派发判断，不直接把目标当实际状态。模式未知时顶部文字及切换按钮显示“模式同步中”，切换按钮禁用；已确认锁定时显示“偏航锁定”且按钮为切换到跟随，跟随时相反，FPV单独显示。
-5. 确认模式同时通过原生公开 `Gimbal::setYawLock`同步给当前Gimbal，避免仅改QML但原生速率控制仍读取错误模式。新鲜A8 SDK确认有效期间，285到达或其锁定位变化不会覆盖它。281管理器flags只做诊断，不视为硬件实际执行证明；其协议含义见[MAVLink GIMBAL_MANAGER_STATUS](https://mavlink.io/en/messages/common.html#GIMBAL_MANAGER_STATUS)。未知状态不编造新的原生模式，本轮只门控顶部模式切换，不新增全局RC/摇杆控制拦截。
+4. 每250 ms复核，通常每2秒只读查询一次，3.5秒没有有效模式反馈则Unknown。初版点击后仅撤销确认并延迟400 ms重新查询的处理，现由8.3.5的命令/回读闭环替代；ACK或本地messagesSent都不直接把目标当实际状态。模式未知时顶部文字及切换按钮显示“模式同步中”，切换按钮禁用；已确认锁定时显示“偏航锁定”且按钮为切换到跟随，跟随时相反，FPV单独显示。
+5. 确认模式同时通过原生公开 `Gimbal::setYawLock`同步给当前Gimbal，避免仅改QML但原生速率控制仍读取错误模式。新鲜A8 SDK确认有效期间，285到达或其锁定位变化不会覆盖它；用户模式切换在途时的原生控制模式另按8.3.5保持显式目标，不把旧反馈重新带入发送链路。281管理器flags只做诊断，不视为硬件实际执行证明；其协议含义见[MAVLink GIMBAL_MANAGER_STATUS](https://mavlink.io/en/messages/common.html#GIMBAL_MANAGER_STATUS)。没有用户切换请求的未知状态不编造新模式，不新增全局RC/摇杆控制拦截。
 6. 非本产品A8路由继续按标准285的锁定位确认，严格匹配Vehicle、manager/device或独立component/device0；不把别的云台当回退。重复/小乱序的非零boot时间戳不延长确认寿命；未知时只请求285消息，不发送姿态或控制权命令。
 7. **方位角链路不变**：`GimbalAzimuthPolicy.*`、`GimbalAzimuthProvider.*`、`GimbalHeadingTelemetry.*`以及罗盘的公式与数据源均无修改；不改入站285的flags/q/heading，不改pitch或原生姿态转换。顶部Az仍来自原Provider，模式显示改读新Controller。所有实现/测试/翻译位于custom，原生src未修改。
 
@@ -1040,6 +1044,43 @@ MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | 
 验证：新增 `GimbalModeControllerTest`与 `SiyiModeQueryTest`已接入custom/CMakeLists的桌面测试和 `check_gimbal_mode_sync`目标。主机使用Qt 5.14.2/MSVC编译生产模式Controller（仅外围QObject依赖替身）及生产SiyiSdk/SiyiProtocol（真实loopback UDP），覆盖实际Lock/285 Follow冲突、断联恢复、相同sysid新Vehicle、SDK端点变化、旧响应、模式未知/Follow/Lock/FPV/非法值、超时、多Vehicle/多云台隔离、标准路由及对象销毁；原SiyiProtocol回归同时通过。PySide6/Qt 6运行 `python custom/test/Gimbal/GimbalModeUiTest.py`，从实际GimbalIndicator提取模式绑定，8个状态/按钮场景通过；这是绑定级测试，不是完整工具栏或Android渲染验收。未修改的3组方位角回归再次通过。
 
 真机验收仍必须在重新构建的Android APK上完成：A8 SDK端点可达且启用；锁定后断开/重连，仅等待同步、不点击模式按钮，确认顶部恢复锁定且实物未动；跟随模式同样测试；连续往返至少5次，补测QGC冷启动时设备已经锁定、切换模式后再重连，以及单独断开/恢复SDK但保留飞控连接。SDK断开期间应显示同步中，恢复后显示实际模式。确认右侧A8/MT11切换不影响顶部模式，且两种模式下原方位角表现保持不变。当前环境未完成Qt 6 Android整包构建，也没有遥控器/云台现场，不能把主机测试通过写成真机问题已闭环。
+
+#### 8.3.5 重连同步后“偏航跟随”按钮未切换的修复（2026-09-11）
+
+**问题定位与证据边界。** 用户已确认8.3.4修复后的模式显示和实物一致，但点击跟随不能正常切换。本次代码核查确认：
+
+- UI读取的是A8 `0x0A`实际模式，按钮却仍只调用原生 `toggleGimbalYawLock()`，没有A8显式模式指令，没有跟踪命令1000的ACK及实际执行结果。它发送的是原生pitch/yaw位置Fact和目标flags；这些legacy反馈并不保证与A8实际模式一致，发送计数增长也不代表硬件切换完成。此处“读实际模式”和“写入并确认实际模式”未闭环。
+- `_invokeOwnershipAction()`在等待控制权后再次检查 `_modeKnown`，若3.5秒反馈有效期已过便直接return；调用者随后无条件清除待执行动作。已明确选择的Follow(false)被静默丢弃，这是确定可复现的程序缺陷。
+- 原生 `toggleGimbalYawLock()`不停止500 ms速率重发Timer；初版同步器也没有目标模式在途状态，旧SDK/legacy反馈可能把原生后续速率命令的yawLock重新设为旧模式。新实现同时处理这条竞态。
+
+本次没有新增该次按钮失败的真机日志，**不能断言飞控下游一定进行了重复目标去重，或上述某一条就是该次现场触发条件**。这些已定位的控制流程缺陷均已修正；现场是否还有飞控拒绝、SDK丢包或外部RC覆盖，由新增命令结果日志和真机回读确认，不再靠立即改按钮文本判断成功。
+
+**当前执行流程。** 所有代码仍位于custom，原生src未修改。
+
+1. 按钮显示目标动作：当前锁定→“偏航跟随”，当前跟随→“偏航锁定”。点击时保存明确的bool目标。等待控制权时显示“模式切换中”，不重复提交同一按钮；10秒未取得控制权明确提示未发送。获得控制权后，不因上一个模式样本过期丢弃已保存的目标，但C++仍校验当前Vehicle/云台、连接、控制权及A8唯一端点绑定。
+2. `GimbalModeController::requestYawLock()`拒绝同组件尚未完成的命令1000。通过原生公开setter将pitch/yaw速率置0，再调用原生 `sendRate()`，既停止其旧速率Timer，也发送 `MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW`：param1/2=NaN（不指定位置）、param3/4=0、flags=12（Follow）或28（Lock）、param7=当前device。不把原生绝对/相对yaw角当位置目标重新发给云台。字段语义参见[MAVLink命令1000](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW)。
+3. 用独立的目标模式和 `commandPending`管理在途操作；原生后续速率控制使用此目标，UI仍只显示有效回读的实际模式。旧285/SDK实际模式尚未变化时，不允许它把在途控制模式改回去。不更改原始285 flags、四元数、heading，也不改变方位角计算。
+4. 只接受当前Vehicle、manager和命令1000的成功ACK。拒绝、未发送、ACK超时或控制权丢失均终止并提示。**仅本产品A8固定路由**在ACK接受且控制权/端点仍有效时，由 `GimbalControlManager → SiyiSdk → SiyiProtocol`发送一次 `0x0C`，func_type=3锁定或4跟随。其定义见[SIYI A8 mini官方手册](https://siyi.biz/siyi_file/A8%20mini/A8%20mini%20User%20Manual%20v1.6.pdf)。不在重连、普通轮询或失败后自动发送/重试此写命令；其他标准云台仅使用MAVLink路径。
+5. ACK接受后至少等待400 ms，再以原有隔离查询端口读A8 `0x0A`；标准设备以新的匹配285确认。只有实际模式等于目标才结束切换并恢复相反动作按钮。UDP发送成功、ACK接受、旧请求回包均不能冒充成功；实际反馈最多等待5秒。期间其他顶部姿态按钮暂时禁用；CH10/共享CenterCoordinator发起的新动作、断联、对象/路由或SDK端点变化取消在途操作，迟到ACK不触发私有SDK写入。失败后不盲目回滚硬件，只重新按实际反馈显示。
+6. `qgc.custom.gimbal.mode`的info日志新增 `command requested`（目标与确认模式）、`manager ACK`（result/failure）、`A8 command`（function/sent）、`command finished`（确认模式/错误），配合已有SDK查询/回复debug日志定位具体停在哪一步。中文提示已同步至custom翻译。
+
+**验证。** 主机Qt 5.14.2/MSVC重新编译生产ModeController、SiyiSdk/SiyiProtocol，6个CTest目标全部通过，包含未修改的3组方位角测试。模式Controller测试新增Lock→Follow→Lock往返、旧反馈不覆盖在途目标、等待控制权时模式样本过期、重复点击、无控制权/命令忙/未发送、ACK拒绝/错组件/超时、UDP发送失败、发送成功但实物模型未变、断联/端点/Vehicle变化以及标准设备不发送SDK模式命令。真实loopback UDP测试验证 `0x0C`功能号3/4、长度、序号和CRC；外围Vehicle/云台状态仍为测试替身，并非硬件仿真验收。`GimbalModeUiTest.py`现提取实际生产QML按钮callback、onClicked及控制权函数，验证双向点击后的目标bool和相反按钮、切换中禁用、模式样本过期后的动作保留、多云台身份隔离；不是完整Android工具栏渲染测试。英中TS均通过lrelease。
+
+**真机验收。** 使用包含本次修改的新APK，保持现有方位角设置/算法不动，地面松开云台摇杆：云台锁定→断开重连→等顶部恢复锁定→点击“偏航跟随”→短暂“模式切换中”→回读跟随后按钮变为“偏航锁定”；转动基座确认实物跟随。再点击“偏航锁定”，回读后按钮变为“偏航跟随”，转动基座确认实物保向。往返至少5次，并复查重连和两种模式下方位角。若出现失败提示，保留提示全文和 `qgc.custom.gimbal.mode`日志，不能把点击无结果视为正常；不得清除设置或修改方位角算法来绕过。当前环境没有连接飞控/A8，也未构建Android整包，真机闭环待测。
+
+#### 8.3.6 模式切换结果隔离与等待控制权会话隔离（2026-09-13）
+
+9月13日复核确认8.3.5的常规双向切换/回读测试通过，但还有两条异常路径。修复仍仅在custom，原生 `src`及所有方位角Policy/Provider/HeadingTelemetry文件不改。
+
+1. **本地重复发送拒绝不是在途模式命令的ACK。** 原生Vehicle只允许同一组件存在一条未完成的命令1000。另一条摇杆/屏幕命令被拒绝时，`Vehicle::_sendMavCommandWorker()`通过共享 `mavCommandResult`发出 `MavCmdResultFailureDuplicateCommand`，并不移除原来的模式命令。旧ModeController仅按Vehicle/component/command匹配，误把该通知当飞控拒绝，终止切换并忽略稍后原命令的成功ACK，导致A8模式指令没有发送。现对该原生枚举单独过滤：不确认成功、不取消、不延长原ACK截止时间，继续等待原队列项的真实结果。若是本次 `sendRate()`自身同步派发失败，发送计数不会增加，仍由 `requestYawLock()`的派发检查明确失败；飞控拒绝、真正超时等处理不放宽。没有更改原生队列规则，没有无条件忽略所有失败，也没有增加重发。
+2. **点击意图绑定会话，不只绑定QObject身份。** ModeController新增只读 `sessionRevision`和 `sessionChanged`；每次原有 `_reset()`（断联/恢复、Vehicle或Gimbal变化、manager/device Fact变化、SDK端点/启用变化、拓扑变化）递增会话代次并通知QML。按钮在点击时随目标bool保存代次；等待控制权的模式动作收到会话变更便清除，同时原有 `_pendingGeneration`让已排队的Qt.callLater检查失效。`_pendingContextIsCurrent()`还校验代次；即使通知延迟，动作也不得继续。最终 `requestYawLock(bool, quint32)`强制携带点击代次，发送任何模式命令前拒绝旧代次，不能在派发时把旧动作改盖成新代次。对象未销毁的短时断联重连、同对象路由/SDK端点变化也得到隔离；恢复后仅同步实际模式，必须重新点击才发送新目标。
+3. **反馈过期与会话变化分开。** 每次SDK查询使用的 `_requestId`仍只关联该次回包；不能拿它当会话号。单纯3.5秒模式样本过期只显示Unknown，不递增 `sessionRevision`，因此同一连接会话中等待控制权的明确目标仍保留。普通查询、新反馈、按钮切换均不会自行创建新会话；不恢复8.3.5之前“等待控制权后因未知模式直接丢点击”的逻辑。
+
+日志沿用 `qgc.custom.gimbal.mode`：请求增加session，debug记录会话重置及被忽略的本地重复拒绝，过期动作拒绝记录点击与当前session。错误提示复用已有中文翻译；锁定/跟随按钮方向、A8的ACK后显式SDK模式写入、回读确认与超时提示不变。
+
+验证：`GimbalModeControllerTest`新增其他指令重复拒绝（包括在原sendRate返回前重入）、本次同步派发失败、持续重复拒绝不延长ACK期限，以及同对象断联恢复/SDK端点/启用/manager/device变化后C++拒绝旧会话等回归；确认合法新点击仍可发送，同会话反馈过期仍可继续。`GimbalModeUiTest.py`除生产按钮回调、派发函数外，现在还加载生产 `modeControllerConnection`，验证收到sessionChanged立即清除等待动作、已排队回调失效、通知延迟时的代次兜底、同对象路由变化和新会话重新点击。6个CTest目标（含SDK协议与3组未修改方位角回归）及Qt 6 QML测试均用于本轮验证；外围Vehicle/硬件仍为替身，不等同于Android真机验收。
+
+真机补测：在新APK上先重复8.3.5的锁定/跟随双向切换和重连实际状态同步；再覆盖切换等待ACK时的摇杆/屏幕操作、等待控制权期间短时断联并恢复、SDK端点/启用变化。其他指令的本地重复拒绝不应再被报告为模式命令的飞控拒绝；真实拒绝或超时仍要提示。会话变化后不可自动重放旧点击，只显示重新读到的实际状态；必须重新点击才能执行新模式。保持原方位角算法和设置不动。本轮未连接飞控/A8、未生成Android APK。
 
 ### 8.4 UniRC 10 Pro CH9拨轮变倍与CH10回中/俯仰90°动态切换
 
