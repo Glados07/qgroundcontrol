@@ -1082,6 +1082,31 @@ MT11帧格式为 `55 66 | control | payload length LE | sequence LE | command | 
 
 真机补测：在新APK上先重复8.3.5的锁定/跟随双向切换和重连实际状态同步；再覆盖切换等待ACK时的摇杆/屏幕操作、等待控制权期间短时断联并恢复、SDK端点/启用变化。其他指令的本地重复拒绝不应再被报告为模式命令的飞控拒绝；真实拒绝或超时仍要提示。会话变化后不可自动重放旧点击，只显示重新读到的实际状态；必须重新点击才能执行新模式。保持原方位角算法和设置不动。本轮未连接飞控/A8、未生成Android APK。
 
+#### 8.3.7 A8 Android 热重连后的媒体停滞恢复（2026-09-13～09-14）
+
+用户确认A8持续供电，仅关闭再打开QGC也会先出图、随后断开重连。因此不能把反复断流直接归因于每次相机冷启动。9月11日附件中的确定顺序是：16:14:44.274最后一帧已经完成硬解/SurfaceTexture显示；16:14:44.277同一SSRC的RTCP SR出现巨大NTP/RTP时间跳变；之后该会话没有新的RTP/压缩媒体，16:15:05原生20秒source watchdog判定约21秒无帧并重建，随后同一硬解路由恢复。该证据不能证明每次断流都同因，也不能证明QGC的SYSTEM_TIME已经到达A8并导致相机校时。
+
+本轮修复的是程序侧“已经出图的RTSP会话停止产生媒体后，仍长期等待启动级超时”的恢复缺口，不把快速重连描述为相机停发包根因已消除。改动仅在custom与本文，不修改src，不调整A8/MT11的H.265格式、MediaCodec候选、rank、RTSP传输方式或飞控校时行为。
+
+- `custom/src/VideoManager/VideoReceiver/GStreamer/A8RtspStreamRecovery.*`：由CustomPlugin在创建sink时安装，按当前URI主机匹配`sdkHost`，排除`mt11SdkHost`、同主机歧义和thermal receiver，与Video 1/2位置无关。只有该generation的sink首帧之后才工作；从本receiver的sink追溯本pipeline，对该视频RTP session的入站RTP/RTCP及压缩媒体tee安装只读probe，不使用进程级element hook。GStreamer 1.22.12的`recv_rtp_src_<session>_<ssrc>_<pt>`会话命名已与附件核对；要求H264/H265、90kHz。5秒内无法完整附着则保留原生watchdog，不对未知拓扑强制重启。
+- `A8RtspRecoveryPolicy.*`：本地进展计时只用单调时钟，不以相机PTS/NTP或本机日历时间计算停滞。SR按网络字节序解析并检查compound长度、版本、报告块、padding和SSRC，RTP差值正确处理32位回绕。SR的NTP/RTP进展偏离本地间隔超过30秒只记为异常；不会修改或丢弃该报告。异常后10秒窗口内，原始RTP与压缩媒体均停止至少2秒，才走快速恢复；没有该组合证据时，已正常播放的压缩媒体停滞6秒才恢复。正常收帧、单个坏SR及短时抖动不触发重建；sink停止而压缩媒体仍进展也不会被当成source故障。
+- 每代最多派发一次恢复，逐receiver/同URI在60秒内最多两次；预算不因stop/start而清零，耗尽后交回原生watchdog。probe只记录线程安全快照，QObject线程做判断并调用当前receiver的stop，后续start仍由既有VideoManager/DualVideoManager的stop-complete与退避状态机负责，不另建重试循环、不推进硬解路由。
+- URI/端点变化、当前代pipeline错误、stop或receiver销毁时撤销观察；旧代首帧/错误不能操作新代。后台及本地录像期间不执行新增快速恢复，恢复前台/结束录像后保留观察宽限；原生停止/超时机制仍有效。本轮没有解决原生录像EOS等待的既有边界，也不主动中断录像来换取恢复速度。
+- `CustomFirmwarePlugin::adjustOutgoingMavlinkMessageThreadSafe()`仅新增SYSTEM_TIME发送路径debug记录，包括发送端ID、序号、unixUs、bootMs和本机时间，不读取跨线程GUI对象属性，不拦截/改写/增加消息。“queued for vehicle link”不是相机收到该消息的证明。用于下一轮将校时发送与A8的SR突变对应起来。
+
+新增日志分类：`gcs.custom.video.a8rtsprecovery`、`gcs.custom.video.clockdiagnostics`。原有采集启动参数的`--logging:`列表可追加这两项；保留`rtspsrc:5,rtpsession:5,rtpjitterbuffer:5,udpsrc:6`的GStreamer日志。关键记录包括`A8 session observation attached`、`A8 sender clock discontinuity observed`、`Recovering stalled A8 RTSP session`和预算耗尽提示。恢复日志记录RTP与压缩媒体各自停滞时长；不能仅凭出现重连日志判定根治。
+
+桌面测试目标：
+
+```bash
+cmake --build <desktop-build> --target check_a8_rtsp_recovery_policy
+ctest --test-dir <desktop-build>/custom -R '^A8RtspRecoveryPolicyTest$' --output-on-failure
+```
+
+主机验证：当前生产Policy和测试用Qt 5.14.2/MSVC C++17兼容harness重新编译，26 passed、0 failed、0 skipped，覆盖附件时序、RTP回绕、前后时间跳变、异常SR仍持续播放、真实收包/媒体门禁、坏RTCP、双主机选择、同代单次派发、跨代预算、URI切换及前后台/录像门禁；生产Policy `/W4`无警告。原有AndroidH265DecoderRoutePolicyTest重新编译回归10 passed，合计36 passed、CTest 2/2通过。非Android空实现编译、CustomFirmwarePlugin头文件moc及git diff --check通过。该测试没有编译或运行Android/GStreamer动态probe集成、真实RTSP服务器或MediaCodec，不能代替完整Qt 6.8.3 Android构建和真机验收。
+
+真机验收必须使用包含本轮修改的新APK，在地面台架保持A8持续供电，连续至少5次关闭/打开QGC，每次双路播放至少120秒，另持续播放10分钟并交换Video 1/2。确认A8监测成功附着、MT11没有该恢复日志且generation/decoder实例不被A8恢复改变；确认单个SR异常且仍有媒体时不重启、同代无重复stop、无新增软件解码、前后台/退出/录像收尾正常。若A8仍需重建，即使黑屏时间缩短也只能称为恢复改善：仍需结合新SYSTEM_TIME日志与入站RTP/RTCP继续定位相机/链路的停发条件，不得宣称消除了断流或马赛克。当前环境无目标Android连接，尚未生成APK或完成这组硬件验收。
+
 ### 8.4 UniRC 10 Pro CH9拨轮变倍与CH10回中/俯仰90°动态切换
 
 #### 8.4.1 设备与UniGCS前置条件

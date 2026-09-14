@@ -22,6 +22,7 @@
 #include "Settings/FlyViewCustomSettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
+#include "VideoManager/VideoReceiver/GStreamer/A8RtspStreamRecovery.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderFallback.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderRecovery.h"
@@ -588,6 +589,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     installMt11NativeH265InputRoute(receiver, _gimbalControlSettings);
 #endif
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    A8RtspStreamRecovery::install(receiver, sink, _gimbalControlSettings);
+#endif
 
     const bool isSecondaryVideoReceiver = receiver
         && _dualVideoManager
