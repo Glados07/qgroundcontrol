@@ -399,7 +399,8 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             visible: pane.visible
-                     && (ScreenTools.isMobile || paneMouseArea.containsMouse)
+                     && (ScreenTools.isMobile || paneMouseArea.containsMouse
+                         || pipResize.pressed)
             height: ScreenTools.defaultFontPixelHeight * 2.5
             width: height
             sourceSize.height: height
@@ -414,23 +415,23 @@ Item {
                 property real initialWidth: 0
 
                 onPressed: function(mouse) {
-                    pipResize.anchors.fill = undefined
-                    initialX = mouse.x
+                    // The icon moves with the pane's right edge. Keep both
+                    // samples in the stable Fly View parent coordinates;
+                    // detaching this area's anchors cannot freeze its parent.
+                    initialX = mapToItem(root.parent, mouse.x, mouse.y).x
                     initialWidth = root.width
                 }
-
-                onReleased: pipResize.anchors.fill = pipResizeIcon
 
                 onPositionChanged: function(mouse) {
                     if (!pressed) {
                         return
                     }
                     var parentWidth = root.parent.width
-                    var newWidth = initialWidth + mouse.x - initialX
-                    if (newWidth < parentWidth * root._maxSize
-                            && newWidth > parentWidth * root._minSize) {
-                        root._pipSize = newWidth
-                    }
+                    var currentX = mapToItem(root.parent, mouse.x, mouse.y).x
+                    var newWidth = initialWidth + currentX - initialX
+                    root._pipSize = Math.max(parentWidth * root._minSize,
+                                            Math.min(parentWidth * root._maxSize,
+                                                     newWidth))
                 }
             }
         }

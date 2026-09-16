@@ -49,7 +49,7 @@
 | 模块 | 当前已实现 | 验证状态与下一步 |
 |---|---|---|
 | Viewer3D | OSM、外部模型、可选 Google 3D；本地场景显示飞行器与任务 | 已集成；按目标平台验证导入、坐标配准和可选 WebEngine 能力 |
-| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、厂商硬解、逐路恢复 | 桌面 MT11 播放已有实测；Android 双路、交换源和持续播放仍需完整验收 |
+| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；桌面 MT11 播放已有实测；双路实播缩放及 Android 双路、交换源和持续播放仍需完整验收 |
 | A8 Mini 相机 | 缩放、拍照、录像、能力查询与播放后停滞恢复 | 已有真机使用及新版目视播放正常反馈；当前缩放与长期稳定性需按矩阵回归 |
 | MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制 | 协议和策略已有主机测试；手势、模式画面及 Android 链路待真机验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
@@ -174,7 +174,7 @@ custom/
 │   ├── FlightDisplay/
                                                             # 飞行页、相机栏、PIP、罗盘与告警 UI
 │   │   ├── DualPipView.qml
-                                                            # ① 双辅窗布局：将地图、Video 1、Video 2 作为 item1/item2/item3，绘制两个 PipPane 及窗口边框、展开/收起和弹出操作；维护一主两辅的容器归属与尺寸。
+                                                            # ① 双辅窗布局：将地图、Video 1、Video 2 作为 item1/item2/item3，绘制两个 PipPane 及窗口边框、展开/收起和弹出操作；缩放按父容器坐标计算位移，联动更新两个 16:9 辅窗并钳制尺寸边界。
                                                             # ② 切换实现：_initializeLayout/_reconcileLayout/_applyLayout/_activateSlot 用 map/video1/video2 稳定键交换位置，并保存 MainFlyWindowView、IsPIPVisible 等布局设置；由 FlyView 传入实际显示项。
 │   │   ├── FlightDisplayViewSecondaryVideo.qml
                                                             # ① 第二路画面本体：secondaryVideoContent 中的 QGCVideoBackground 承载视频纹理；本文件定义等待/禁用时的 noVideo 图文、背景和九宫格参考线，负责画面内部显示。
@@ -691,6 +691,11 @@ custom/
 │   │   └── UniRcProtocolTest.cc
                                                             # ① UniRC 协议/通道回归：构造 20 Hz 请求及通道响应，验证 CRC、帧长、半帧/多帧、重同步和非法输入，同时检查 CH9 回中/反向、CH10 释放到按下边沿和 CH7/8 死区。
                                                             # ② 动作状态验证：直接调用 UniRcProtocol、UniRcChannelPolicy 和 Ch10GimbalActionState，确认手动操作顺序、迟到 ACK 与动作轮换规则；作为桌面 QtTest 目标运行，不需要实际 Bluetooth 或遥控器。
+│   ├── FlightDisplay/
+                                                            # 飞行页交互测试
+│   │   └── DualPipResizeTest.py
+                                                            # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
+                                                            # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
 │   ├── Gimbal/
                                                             # 相机协议、媒体、云台和方位角测试
 │   │   ├── AzimuthStubs/
@@ -1182,6 +1187,14 @@ Balsam 转换由独立 QProcess 执行，同一时刻只运行一个导入。工
 
 点击辅窗口调用 `_activateSlot()`，先把该项置为 fullState，再把原主视图放入被点击的同一槽；`_applyLayout()` 统一更新各项 pipState。三个 adapter 将内容绑定到下槽、上槽或独立窗口；`_showWindow()` 与窗口关闭回调管理弹出/回收。`_setPipIsExpanded()` 持久化 `IsPIPVisible`。这组操作调整显示状态和位置，不改写相机 SDK 对象或视频 URL。
 
+**双辅窗如何连续缩放**
+
+上下辅窗共用 `_pipSize`，拖动任一右上角手柄时同步改变宽度，单窗保持 16:9。`pipResize` 在按下和移动时通过 `mapToItem(root.parent, mouse.x, mouse.y)` 将指针映射到同一父容器，按“按下时宽度 + 累计水平位移”更新尺寸。图标会随右边缘移动，不能直接将其内部 `mouse.x` 作为固定基准；解除内部 MouseArea 的锚点也无法固定图标的坐标原点。
+
+手柄始终锚定图标，按住时保持可见，移出辅窗仍继续接收拖动；释放或取消后直接恢复普通悬停显示，无需重新绑定锚点。目标宽度钳制在父容器宽度的 10%～75%，越界时停在边界，指针返回有效区间后继续跟随。缩放直接更新现有容器和内容项，不增加缓动动画、延迟定时器或视频管线重建。
+
+`custom/test/FlightDisplay/DualPipResizeTest.py` 已在 Qt/PySide6 6.10.2 离屏环境通过鼠标事件回归；验证几何与交互，不代表完整 QGC、目标 Qt Kit 或 Android 双路实播性能验收。
+
 **主视频默认值与自动流**
 
 `GimbalVideoStreamSupport::installA8MiniDefaults()` 按版本标记安装主视频默认值，只处理空值、受支持的已知默认形式和缺省设置，保留其他用户 URL。A8 默认地址的 RTSP timeout 至少为 20 s；Android 未保存 lowLatencyMode 时启用低延迟。设置生效后仍由 VideoManager 启动实际管线。
@@ -1268,6 +1281,7 @@ flowchart LR
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
 | 三视图与 PIP 操作 | `FlightDisplay/FlyView.qml`、`DualPipView.qml` | FlyView 创建地图/Video 1/Video 2，DualPipView 保存主辅位置并实现交换、展开、缩放与独立窗口。 |
+| PIP 缩放验证 | `custom/test/FlightDisplay/DualPipResizeTest.py` | 加载实际 DualPipView 与原生 PipState，检查鼠标位移和两个辅窗尺寸一致、边界限幅、取消/重拖及内容项归属。 |
 | 第二路实际画面 | `FlightDisplay/FlyViewSecondaryVideo.qml`、`FlightDisplayViewSecondaryVideo.qml` | 外层维护 PipState、全屏及弹窗重启；内层创建视频显示项、等待提示、适配/裁剪和参考线，再把窗口/显示项交给 Manager。 |
 | 视频配置输入 | `UI/AppSettings/VideoSettings.qml`；`Settings/VideoCustomSettings.h/.cc`、`VideoCustom.SettingsGroup.json`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面编辑第二路 URL 和解码策略；VideoCustom 持久化第二路地址，GimbalControl 保存 Android 策略及 MT11 端点等关联配置。 |
 | 主路与第二路生命周期 | `CustomPlugin.cc`；`VideoManager/DualVideoManager.h/.cc`；原生 `src/VideoManager/` | 主路复用原生 VideoManager；第二路独立持有 receiver/sink、处理重复源和重连；插件把各路显示项、恢复和相机媒体接口接起来。 |
@@ -2373,15 +2387,17 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、航向时效、活动云台匹配 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
+| `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC 帧、通道保护及 CH10 状态 |
 | `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **13 个 C++ CTest 用例**；两个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI：
+当前 custom 注册 **13 个 C++ CTest 用例**；三个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI 和 PIP 缩放：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
+python custom/test/FlightDisplay/DualPipResizeTest.py
 ~~~
 
 布局检查另需 Qt 6 的 `rcc`，会生成截图，完整命令见[布局测试 README](custom/test/UI/FlyViewSettingsLayout/README.md)。各 `*Stubs/` 目录只为测试补足依赖，不进入产品构建。翻译更新见[翻译 README](custom/translations/README.md)。主机纯策略测试不覆盖真实 MediaCodec、蓝牙、USB、相机时序或 Android 画面。
@@ -2403,6 +2419,7 @@ ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQ
 | 范围 | 必测行为 |
 |---|---|
 | 视频 | A8、MT11 各自位于 URL 1/2；同时播放与交换；持续至少 10 min；断流重连；PIP 切换、前后台、surface 重建 |
+| PIP 缩放 | 双路播放及地图作为辅窗时，分别拖动上下手柄；连续放大/缩小、快速反向、拖出辅窗、触及上下限并返回、释放/取消后重拖、主辅切换及父窗口改变大小；确认跟手、无跳变和视频持续显示 |
 | Android 解码 | 按 receiver/generation 确认 CAPS、source、实际 decoder、decoder 输出和 sink 首帧；保持硬解，健康另一条流不被重建 |
 | A8 停滞恢复 | 连续至少 5 次关闭/打开 QGC，每次双路播放至少 120 s；无停滞时不重建；恢复遵守次数限制 |
 | 相机 | A8 各分辨率上限；MT11 短按 1～30x、长按全倍率、释放/取消/反向；三种 MT11 模式实际画面 |
