@@ -15377,6 +15377,48 @@ Do you want to set the Basic ID?</source>
   <context>
     <name>SafetyComponent</name>
     <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="341"/>
+      <source>Collision Emergency Brake</source>
+      <translation>碰撞紧急刹车</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="377"/>
+      <source>Enable collision emergency brake</source>
+      <translation>启用碰撞紧急刹车</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="385"/>
+      <source>Normal braking distance:</source>
+      <translation>常规刹车距离：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="403"/>
+      <source>Mission braking distance:</source>
+      <translation>任务模式刹车距离：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="419"/>
+      <source>Cooldown margin:</source>
+      <translation>冷却解除余量：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="435"/>
+      <source>Minimum active altitude:</source>
+      <translation>最低生效高度：</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="451"/>
+      <source>Braking adds a speed-dependent stopping distance.
+Reactivation requires all monitored distances to stay outside the base distance plus the cooldown margin.</source>
+      <translation>实际触发距离包含随接近速度变化的制动距离。
+所有监测方向的障碍距离持续达到基础距离与冷却解除余量之和后，才会恢复刹车触发。</translation>
+    </message>
+    <message>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="459"/>
+      <source>Mission uses its own distance.</source>
+      <translation>任务模式使用独立距离。</translation>
+    </message>
+    <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="74"/>
       <source>Low Power Failsafe Trigger</source>
       <translation>电源低压故障保护触发器</translation>

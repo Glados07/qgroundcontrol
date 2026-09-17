@@ -55,6 +55,12 @@ SetupPage {
             property Fact _disarmLandDelay:     controller.getParameterFact(-1, "COM_DISARM_LAND")
             property Fact _collisionPrevention: controller.getParameterFact(-1, "CP_DIST")
             property Fact _objectAvoidance:     controller.getParameterFact(-1, "COM_OBS_AVOID")
+            property Fact _cebEnabled:          controller.getParameterFact(-1, "CEB_EN", false)
+            property Fact _cebDistance:         controller.getParameterFact(-1, "CEB_DIST", false)
+            property Fact _cebMissionDistance:  controller.getParameterFact(-1, "CEB_MIS_DIST", false)
+            property Fact _cebCooldownDistance: controller.getParameterFact(-1, "CEB_CD_DIST", false)
+            property Fact _cebMinimumAltitude:  controller.getParameterFact(-1, "CEB_ALT_MIN", false)
+            property bool _cebActive:           _cebEnabled !== null && _cebEnabled.rawValue !== 0
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
             property bool _hitlAvailable:       controller.parameterExists(-1, hitlParam)
             property Fact _hitlEnabled:         controller.getParameterFact(-1, hitlParam, false)
@@ -326,6 +332,136 @@ SetupPage {
                                 fact:       _showObstacleDistanceOverlay
 
                                 property Fact _showObstacleDistanceOverlay: QGroundControl.settingsManager.flyViewSettings.showObstacleDistanceOverlay
+                            }
+                        }
+                    }
+                }
+
+                QGCLabel {
+                    text:                   qsTr("Collision Emergency Brake")
+                    visible:                _cebEnabled !== null
+                }
+
+                Rectangle {
+                    objectName:             "cebSettingsPanel"
+                    width:                  cebRow.width + (_margins * 2)
+                    height:                 cebRow.height + (_margins * 2)
+                    color:                  qgcPal.windowShade
+                    visible:                _cebEnabled !== null
+
+                    Row {
+                        id:                 cebRow
+                        spacing:            _margins
+                        anchors.centerIn:   parent
+
+                        Item {
+                            width:                  _imageWidth
+                            height:                 _imageHeight
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            QGCColoredImage {
+                                color:              qgcPal.text
+                                source:             "/qmlimages/ObjectAvoidance.svg"
+                                height:             _imageHeight
+                                width:              _imageWidth
+                                anchors.centerIn:   parent
+                            }
+                        }
+
+                        GridLayout {
+                            columns:                2
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            FactCheckBox {
+                                objectName:         "cebEnableCheckBox"
+                                text:               qsTr("Enable collision emergency brake")
+                                fact:               _cebEnabled
+                                enabled:            _cebEnabled !== null
+                                Layout.columnSpan:  2
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Normal braking distance:")
+                                visible:            _cebDistance !== null
+                                enabled:            _cebActive
+                                Layout.minimumWidth:_labelWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                objectName:         "cebDistanceField"
+                                fact:               _cebDistance
+                                visible:            fact !== null
+                                enabled:            _cebActive && fact !== null
+                                showHelp:           true
+                                Layout.minimumWidth:_editFieldWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Mission braking distance:")
+                                visible:            _cebMissionDistance !== null
+                                enabled:            _cebActive
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                objectName:         "cebMissionDistanceField"
+                                fact:               _cebMissionDistance
+                                visible:            fact !== null
+                                enabled:            _cebActive && fact !== null
+                                showHelp:           true
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Cooldown margin:")
+                                visible:            _cebCooldownDistance !== null
+                                enabled:            _cebActive
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                objectName:         "cebCooldownDistanceField"
+                                fact:               _cebCooldownDistance
+                                visible:            fact !== null
+                                enabled:            _cebActive && fact !== null
+                                showHelp:           true
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Minimum active altitude:")
+                                visible:            _cebMinimumAltitude !== null
+                                enabled:            _cebActive
+                                Layout.fillWidth:   true
+                            }
+
+                            FactTextField {
+                                objectName:         "cebMinimumAltitudeField"
+                                fact:               _cebMinimumAltitude
+                                visible:            fact !== null
+                                enabled:            _cebActive && fact !== null
+                                showHelp:           true
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Braking adds a speed-dependent stopping distance.\nReactivation requires all monitored distances to stay outside the base distance plus the cooldown margin.")
+                                wrapMode:           Text.WordWrap
+                                Layout.columnSpan:  2
+                                Layout.maximumWidth:_labelWidth + _editFieldWidth
+                                Layout.fillWidth:   true
+                            }
+
+                            QGCLabel {
+                                text:               qsTr("Mission uses its own distance.")
+                                visible:            _cebMissionDistance !== null
+                                wrapMode:           Text.WordWrap
+                                Layout.columnSpan:  2
+                                Layout.maximumWidth:_labelWidth + _editFieldWidth
+                                Layout.fillWidth:   true
                             }
                         }
                     }

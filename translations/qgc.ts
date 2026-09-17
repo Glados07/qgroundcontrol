@@ -15232,6 +15232,47 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
 <context>
     <name>SafetyComponent</name>
     <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="341"/>
+        <source>Collision Emergency Brake</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="377"/>
+        <source>Enable collision emergency brake</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="385"/>
+        <source>Normal braking distance:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="403"/>
+        <source>Mission braking distance:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="419"/>
+        <source>Cooldown margin:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="435"/>
+        <source>Minimum active altitude:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="451"/>
+        <source>Braking adds a speed-dependent stopping distance.
+Reactivation requires all monitored distances to stay outside the base distance plus the cooldown margin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="459"/>
+        <source>Mission uses its own distance.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="74"/>
         <source>Low Power Failsafe Trigger</source>
         <translation type="unfinished"></translation>
