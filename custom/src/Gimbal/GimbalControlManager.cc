@@ -425,6 +425,7 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     , _videoManager(VideoManager::instance())
 {
     Q_CHECK_PTR(_settings);
+    connect(_sdk, &SiyiSdk::gimbalModeReceived, this, &GimbalControlManager::gimbalModeReceived);
     _sdk->setZoomRange(kMinZoom, kProtocolMaxZoom);
 
     _sdkResponseTimer.setSingleShot(true);
@@ -1272,8 +1273,33 @@ bool GimbalControlManager::requestCameraStatus()
     return _sdk->requestCameraSystemStatus();
 }
 
+bool GimbalControlManager::requestGimbalMode(quint64 requestId)
+{
+    if (!enabled()) {
+        return false;
+    }
+    _configureSdkEndpoint();
+    return _sdk->requestGimbalMode(requestId);
+}
+
+bool GimbalControlManager::setGimbalYawLock(bool locked)
+{
+    if (!enabled()) {
+        return false;
+    }
+    _configureSdkEndpoint();
+    return _sdk->setGimbalYawLock(locked);
+}
+
+void GimbalControlManager::cancelGimbalModeRequest()
+{
+    _sdk->cancelGimbalModeRequest();
+}
+
 void GimbalControlManager::_settingsChanged()
 {
+    cancelGimbalModeRequest();
+    emit gimbalModeEndpointChanged();
     const bool nowEnabled = enabled();
 
     // Stop native held motion at its latched endpoint before applying endpoint
@@ -2673,6 +2699,8 @@ void GimbalControlManager::_handleCameraSystemStatus(quint8 hdrStatus,
     }
 
     Q_UNUSED(hdrStatus);
+    // Ordinary camera polling cannot confirm a new gimbal session. Isolated
+    // read-only mode queries use SiyiSdk::gimbalModeReceived instead.
     Q_UNUSED(gimbalMotionMode);
     Q_UNUSED(gimbalMountingDirection);
     Q_UNUSED(videoOutputStatus);

@@ -11,8 +11,13 @@
 
 #include "CustomAutoPilotPlugin.h"
 #include "FactMetaData.h"
+#include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 #include "px4_custom_mode.h"
+
+#include <QtCore/QDateTime>
+
+QGC_LOGGING_CATEGORY(CustomClockDiagnosticsLog, "gcs.custom.video.clockdiagnostics")
 
 namespace {
 
@@ -50,6 +55,26 @@ CustomFirmwarePlugin::CustomFirmwarePlugin()
             && mode.mode_name != missionFlightMode()) {
             mode.canBeSet = false;
         }
+    }
+}
+
+void CustomFirmwarePlugin::adjustOutgoingMavlinkMessageThreadSafe(
+    Vehicle *vehicle, LinkInterface *link, mavlink_message_t *message)
+{
+    PX4FirmwarePlugin::adjustOutgoingMavlinkMessageThreadSafe(vehicle, link, message);
+    // Observe the actual send path without changing, suppressing, or adding a
+    // flight-controller clock message. This is not an on-wire delivery ACK.
+    // Do not read GUI-owned Vehicle/Link properties from this thread.
+    if (message && message->msgid == MAVLINK_MSG_ID_SYSTEM_TIME
+        && CustomClockDiagnosticsLog().isDebugEnabled()) {
+        mavlink_system_time_t clock{};
+        mavlink_msg_system_time_decode(message, &clock);
+        qCDebug(CustomClockDiagnosticsLog) << "Outgoing SYSTEM_TIME queued for vehicle link"
+            << "vehicleToken" << static_cast<const void *>(vehicle)
+            << "linkToken" << static_cast<const void *>(link)
+            << "senderSystem" << message->sysid << "senderComponent" << message->compid
+            << "sequence" << message->seq << "unixUs" << clock.time_unix_usec
+            << "bootMs" << clock.time_boot_ms << "localUnixMs" << QDateTime::currentMSecsSinceEpoch();
     }
 }
 

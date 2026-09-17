@@ -13,6 +13,7 @@
 #include "FactMetaData.h"
 #include "Gimbal/GimbalAzimuthProvider.h"
 #include "Gimbal/GimbalCenterCoordinator.h"
+#include "Gimbal/GimbalModeController.h"
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
@@ -21,6 +22,7 @@
 #include "Settings/FlyViewCustomSettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
+#include "VideoManager/VideoReceiver/GStreamer/A8RtspStreamRecovery.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderFallback.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderRecovery.h"
@@ -189,6 +191,7 @@ void CustomPlugin::init()
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureGimbalCenterCoordinator();
+    _ensureGimbalModeController();
     _ensureUniRcChannelController();
     _ensureMt11ControlManager();
     _ensureVideoCustomSettings();
@@ -317,6 +320,12 @@ GimbalAzimuthProvider *CustomPlugin::gimbalAzimuthProviderObject()
 QObject *CustomPlugin::gimbalCenterCoordinator()
 {
     return gimbalCenterCoordinatorObject();
+}
+
+QObject *CustomPlugin::gimbalModeController()
+{
+    _ensureGimbalModeController();
+    return _gimbalModeController;
 }
 
 GimbalCenterCoordinator *CustomPlugin::gimbalCenterCoordinatorObject()
@@ -452,6 +461,17 @@ void CustomPlugin::_ensureGimbalCenterCoordinator()
     }
 }
 
+void CustomPlugin::_ensureGimbalModeController()
+{
+    if (!_gimbalModeController) {
+        _ensureGimbalControlManager();
+        _gimbalModeController = new GimbalModeController(_gimbalControlManager, this);
+        _ensureGimbalCenterCoordinator();
+        connect(_gimbalCenterCoordinator, &GimbalCenterCoordinator::gimbalActionRequestStarted,
+                _gimbalModeController, &GimbalModeController::cancelModeCommand);
+    }
+}
+
 void CustomPlugin::_ensureUniRcChannelController()
 {
 #ifdef Q_OS_ANDROID
@@ -569,6 +589,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     installMt11NativeH265InputRoute(receiver, _gimbalControlSettings);
 #endif
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    A8RtspStreamRecovery::install(receiver, sink, _gimbalControlSettings);
+#endif
 
     const bool isSecondaryVideoReceiver = receiver
         && _dualVideoManager

@@ -11,6 +11,7 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QtMath>
+#include <QtCore/QTimer>
 
 namespace {
 
@@ -27,6 +28,9 @@ SiyiSdk::SiyiSdk(QObject* parent)
 void SiyiSdk::setEndpoint(const QString& host, quint16 port)
 {
     QHostAddress address(host);
+    if (!address.isEqual(_host) || port != _port) {
+        cancelGimbalModeRequest();
+    }
     if (address.isNull()) {
         _host = QHostAddress();
         _port = 0;
@@ -102,6 +106,83 @@ bool SiyiSdk::requestCameraSystemStatus()
     return _sendPacket(SiyiProtocol::requestCameraSystemStatusPacket());
 }
 
+bool SiyiSdk::requestGimbalMode(quint64 requestId)
+{
+    cancelGimbalModeRequest();
+    if (_host.isNull() || _port == 0) {
+        return false;
+    }
+    // The SDK specifies a frame sequence, not a universally supported echoed
+    // transaction id. Keep the established sequence-zero packet unchanged and
+    // isolate each read-only query by its local UDP port instead. No camera
+    // controls are sent on this socket, and ordinary polling cannot answer it.
+    auto *socket = new QUdpSocket(this);
+    const QHostAddress local(_host.protocol() == QAbstractSocket::IPv6Protocol
+                                ? QHostAddress::AnyIPv6 : QHostAddress::AnyIPv4);
+    if (!socket->bind(local, 0)) {
+        socket->deleteLater();
+        return false;
+    }
+    _modeSocket = socket;
+    _modeRequestId = requestId;
+    _modeRequestAge.start();
+    connect(socket, &QUdpSocket::readyRead, this, [this, socket]() {
+        if (_modeSocket != socket || !_modeRequestAge.isValid()) {
+            return;
+        }
+        while (socket->hasPendingDatagrams()) {
+            QByteArray bytes;
+            bytes.resize(int(socket->pendingDatagramSize()));
+            QHostAddress sender;
+            quint16 port = 0;
+            const qint64 size = socket->readDatagram(bytes.data(), bytes.size(), &sender, &port);
+            if (size <= 0 || !sender.isEqual(_host) || port != _port || _modeRequestAge.elapsed() > 1500) {
+                continue;
+            }
+            bytes.resize(int(size));
+            QList<SiyiProtocol::DecodedPacket> packets;
+            if (!SiyiProtocol::decodeDatagram(bytes, &packets)) {
+                continue;
+            }
+            for (const auto &packet : packets) {
+                SiyiProtocol::CameraSystemStatus status;
+                if (SiyiProtocol::isAckPacket(packet)
+                    && packet.command == SiyiProtocol::CommandCameraSystemInfo
+                    && SiyiProtocol::parseCameraSystemStatusPayload(packet.payload, &status)) {
+                    const quint64 id = _modeRequestId;
+                    cancelGimbalModeRequest();
+                    emit gimbalModeReceived(id, status.gimbalMotionMode);
+                    return;
+                }
+            }
+        }
+    });
+    const QByteArray packet = SiyiProtocol::requestCameraSystemStatusPacket();
+    if (socket->writeDatagram(packet, _host, _port) != packet.size()) {
+        cancelGimbalModeRequest();
+        return false;
+    }
+    return true;
+}
+
+void SiyiSdk::cancelGimbalModeRequest()
+{
+    _modeRequestAge.invalidate();
+    if (auto *socket = _modeSocket.data()) {
+        _modeSocket.clear();
+        socket->disconnect(this);
+        // Reserve the old port beyond both the query and mode lifetimes so
+        // delayed UDP replies cannot hit an immediately reused local port.
+        // At the 2-second polling rate this is a small, bounded quarantine.
+        connect(socket, &QUdpSocket::readyRead, socket, [socket]() {
+            while (socket->hasPendingDatagrams()) {
+                socket->readDatagram(nullptr, 0);
+            }
+        });
+        QTimer::singleShot(4000, socket, &QObject::deleteLater);
+    }
+}
+
 bool SiyiSdk::takePhoto()
 {
     return _sendPacket(SiyiProtocol::takePhotoPacket());
@@ -110,6 +191,11 @@ bool SiyiSdk::takePhoto()
 bool SiyiSdk::toggleVideoRecording()
 {
     return _sendPacket(SiyiProtocol::toggleVideoRecordingPacket());
+}
+
+bool SiyiSdk::setGimbalYawLock(bool locked)
+{
+    return _sendPacket(SiyiProtocol::gimbalYawLockPacket(locked));
 }
 
 void SiyiSdk::_readPendingDatagrams()

@@ -1003,4 +1003,78 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>GimbalIndicator</name>
+    <message>
+        <source>Switching &lt;br&gt; mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal control acquisition timed out. Mode command was not sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mode syncing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Syncing &lt;br&gt; mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FPV</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GimbalModeController</name>
+    <message>
+        <source>Gimbal mode change cancelled: connection or gimbal changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled: control was lost.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode change failed: no flight controller acknowledgement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode change was not confirmed by the gimbal. Check the connection and retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode command not sent: control or the A8 connection is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another gimbal command is pending. Release the stick and retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode command could not be sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flight controller rejected the gimbal mode command (result %1, failure %2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled: control or connection was lost.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A8 mode command could not be sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gimbal mode change cancelled by another gimbal action.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

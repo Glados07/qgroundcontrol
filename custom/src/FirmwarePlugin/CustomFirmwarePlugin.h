@@ -28,6 +28,8 @@ public:
     const QVariantList &toolIndicators(const Vehicle *vehicle) final;
     bool hasGimbal(Vehicle *vehicle, bool &rollSupported, bool &pitchSupported, bool &yawSupported) const final;
     void updateAvailableFlightModes(FlightModeList &modeList) override;
+    void adjustOutgoingMavlinkMessageThreadSafe(Vehicle *vehicle, LinkInterface *link,
+                                               mavlink_message_t *message) override;
 
 private:
     QVariantList _toolIndicatorList;

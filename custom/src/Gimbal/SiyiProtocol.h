@@ -63,6 +63,7 @@ public:
     static QByteArray requestCameraSystemStatusPacket();
     static QByteArray takePhotoPacket();
     static QByteArray toggleVideoRecordingPacket();
+    static QByteArray gimbalYawLockPacket(bool locked);
     static QByteArray absoluteZoomPacket(double zoomLevel);
     static QByteArray requestMaximumZoomPacket();
     static QByteArray requestCurrentZoomPacket();

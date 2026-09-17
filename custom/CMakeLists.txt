@@ -424,6 +424,22 @@ set(CUSTOM_INCLUDE_DIRECTORIES
 if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     enable_testing()
+    qt_add_executable(A8RtspRecoveryPolicyTest
+        test/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicyTest.cc
+        src/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicy.cc
+        src/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicy.h
+    )
+    target_include_directories(A8RtspRecoveryPolicyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/VideoManager/VideoReceiver/GStreamer
+    )
+    target_link_libraries(A8RtspRecoveryPolicyTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME A8RtspRecoveryPolicyTest COMMAND $<TARGET_FILE:A8RtspRecoveryPolicyTest>)
+    add_custom_target(check_a8_rtsp_recovery_policy
+        COMMAND $<TARGET_FILE:A8RtspRecoveryPolicyTest>
+        DEPENDS A8RtspRecoveryPolicyTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
     qt_add_executable(SiyiProtocolTest
         test/Gimbal/SiyiProtocolTest.cc
         src/Gimbal/A8MiniZoomPolicy.cc
@@ -594,6 +610,40 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         COMMAND $<TARGET_FILE:GimbalAzimuthProviderTest>
         DEPENDS GimbalAzimuthProviderTest
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(GimbalModeControllerTest
+        test/Gimbal/GimbalModeControllerTest.cc
+        test/Gimbal/ModeStubs/TestDoubles.h
+        src/Gimbal/GimbalModeController.cc
+        src/Gimbal/GimbalModeController.h
+    )
+    target_include_directories(GimbalModeControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/ModeStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+        ${mavlink_SOURCE_DIR}
+    )
+    target_link_libraries(GimbalModeControllerTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME GimbalModeControllerTest COMMAND $<TARGET_FILE:GimbalModeControllerTest>)
+
+    qt_add_executable(SiyiModeQueryTest
+        test/Gimbal/SiyiModeQueryTest.cc
+        src/Gimbal/SiyiSdk.cc
+        src/Gimbal/SiyiSdk.h
+        src/Gimbal/SiyiProtocol.cc
+        src/Gimbal/SiyiProtocol.h
+    )
+    target_include_directories(SiyiModeQueryTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/ModeStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(SiyiModeQueryTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME SiyiModeQueryTest COMMAND $<TARGET_FILE:SiyiModeQueryTest>)
+    add_custom_target(check_gimbal_mode_sync
+        COMMAND $<TARGET_FILE:GimbalModeControllerTest>
+        COMMAND $<TARGET_FILE:SiyiModeQueryTest>
+        DEPENDS GimbalModeControllerTest SiyiModeQueryTest
         USES_TERMINAL
     )
 

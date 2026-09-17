@@ -31,6 +31,18 @@ Item {
     property var    activeGimbal:               gimbalController ? gimbalController.activeGimbal : null
     property bool   multiGimbalSetup:           gimbalController && gimbalController.gimbals.count > 1
     property bool   joystickButtonsAvailable:   activeVehicle && activeVehicle.joystickEnabled
+    readonly property var _gimbalModeController: QGroundControl.corePlugin
+                                                  && QGroundControl.corePlugin.gimbalModeController !== undefined
+                                                  ? QGroundControl.corePlugin.gimbalModeController : null
+    readonly property bool _modeKnown: !!_gimbalModeController
+                                        && _gimbalModeController.gimbal === activeGimbal
+                                        && _gimbalModeController.known
+    readonly property bool _yawLocked: _modeKnown && _gimbalModeController.yawLocked
+    readonly property bool _modeCommandPending: !!_gimbalModeController
+                                                 && _gimbalModeController.gimbal === activeGimbal
+                                                 && _gimbalModeController.commandPending
+    readonly property bool _yawActionPending: _modeCommandPending
+                                               || (!!_pendingOwnershipAction && _pendingOwnershipAction.id === "yawLock")
     readonly property var _gimbalCenterCoordinator: QGroundControl.corePlugin
                                                      && QGroundControl.corePlugin.gimbalCenterCoordinator !== undefined
                                                      ? QGroundControl.corePlugin.gimbalCenterCoordinator
@@ -137,6 +149,9 @@ Item {
                 && activeVehicle === _pendingVehicle
                 && gimbalController === _pendingController
                 && activeGimbal === _pendingGimbal
+                && (_pendingOwnershipAction.id !== "yawLock"
+                    || (_gimbalModeController
+                        && _pendingOwnershipAction.sessionRevision === _gimbalModeController.sessionRevision))
     }
 
     function _clearPendingOwnershipAction() {
@@ -163,7 +178,12 @@ Item {
         try {
             switch (action.id) {
             case "yawLock":
-                controller.toggleGimbalYawLock(action.value)
+                // Use the explicit click-time target even if the last mode
+                // sample expired while acquiring control. C++ checks the
+                // current route/ownership and confirms the physical result.
+                if (_gimbalModeController && _gimbalModeController.gimbal === gimbal) {
+                    _gimbalModeController.requestYawLock(action.value, action.sessionRevision)
+                }
                 break
             case "center":
                 controller.centerGimbal()
@@ -479,7 +499,13 @@ Item {
         id:          pendingOwnershipTimeout
         interval:    control._pendingOwnershipTimeoutMs
         repeat:      false
-        onTriggered: control._clearPendingOwnershipAction()
+        onTriggered: {
+            var yawAction = control._pendingOwnershipAction && control._pendingOwnershipAction.id === "yawLock"
+            control._clearPendingOwnershipAction()
+            if (yawAction) {
+                mainWindow.showMessageDialog(qsTr("Gimbal mode"), qsTr("Gimbal control acquisition timed out. Mode command was not sent."))
+            }
+        }
     }
 
     Timer {
@@ -523,7 +549,7 @@ Item {
                     property var acqControlButtonEnabled: QGroundControl.settingsManager.gimbalControllerSettings.toolbarIndicatorShowAcquireReleaseControl.rawValue
 
                     model: [
-                        {id: "yawLock",   text: activeGimbal.yawLock ? qsTr("Yaw <br> Follow") : qsTr("Yaw <br> Lock")  , visible: true                    },
+                        {id: "yawLock",   text: control._yawActionPending ? qsTr("Switching <br> mode") : (!control._modeKnown ? qsTr("Syncing <br> mode") : (control._yawLocked ? qsTr("Yaw <br> Follow") : qsTr("Yaw <br> Lock"))), visible: true },
                         {id: "center",    text: qsTr("Center")                                                          , visible: true                    },
                         {id: "tilt90",    text: qsTr("Tilt 90")                                                         , visible: true                    },
                         {id: "pointHome", text: qsTr("Point <br> Home")                                                 , visible: true                    },
@@ -533,7 +559,12 @@ Item {
 
                     QGCButton {
                         property var callbackList: [
-                           {"yawLock":      function(){ control._dispatchOwnershipAction({id: "yawLock", value: !activeGimbal.yawLock}) } },
+                           {"yawLock":      function(){
+                                if (control._modeKnown && !control._yawActionPending) {
+                                    control._dispatchOwnershipAction({id: "yawLock", value: !control._yawLocked,
+                                        sessionRevision: control._gimbalModeController.sessionRevision})
+                                }
+                            } },
                            {"center":       function(){ control._requestCenter() }                                                        },
                            {"tilt90":       function(){ control._dispatchOwnershipAction({id: "tilt90"}) }                                },
                            // PointHome is a Vehicle ROI command, not a direct
@@ -566,6 +597,7 @@ Item {
                         Layout.preferredHeight: buttonHeight
                         Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
                         text: modelData.text
+                        enabled: (modelData.id !== "yawLock" || (control._modeKnown && !control._yawActionPending)) && !control._modeCommandPending
                         fontWeight: Font.DemiBold
                         visible: modelData.visible
                         pointSize: ScreenTools.smallFontPointSize
@@ -864,7 +896,9 @@ Item {
             id:                     statusLabel
             text:                   activeGimbal && activeGimbal.retracted ?
                                         qsTr("Retracted") :
-                                        (activeGimbal && activeGimbal.yawLock ? qsTr("Yaw locked") : qsTr("Yaw follow"))
+                                        (!control._modeKnown ? qsTr("Mode syncing") :
+                                         (control._gimbalModeController.mode === 3 ? qsTr("FPV") :
+                                          (control._yawLocked ? qsTr("Yaw locked") : qsTr("Yaw follow"))))
             Layout.columnSpan:      2
             Layout.alignment:       Qt.AlignHCenter
         }
@@ -887,6 +921,19 @@ Item {
     MouseArea {
         anchors.fill:   parent
         onClicked:      mainWindow.showIndicatorDrawer(gimbalControlsPage, control)
+    }
+
+    Connections {
+        id: modeControllerConnection
+        target: _gimbalModeController
+        function onSessionChanged() {
+            if (control._pendingOwnershipAction && control._pendingOwnershipAction.id === "yawLock") {
+                control._clearPendingOwnershipAction()
+            }
+        }
+        function onCommandFailed(reason) {
+            mainWindow.showMessageDialog(qsTr("Gimbal mode"), reason)
+        }
     }
 
     Connections {
