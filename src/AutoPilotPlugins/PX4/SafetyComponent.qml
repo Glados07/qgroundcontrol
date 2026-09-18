@@ -58,7 +58,6 @@ SetupPage {
             property Fact _cebEnabled:          controller.getParameterFact(-1, "CEB_EN", false)
             property Fact _cebDistance:         controller.getParameterFact(-1, "CEB_DIST", false)
             property Fact _cebMissionDistance:  controller.getParameterFact(-1, "CEB_MIS_DIST", false)
-            property Fact _cebCooldownDistance: controller.getParameterFact(-1, "CEB_CD_DIST", false)
             property Fact _cebMinimumAltitude:  controller.getParameterFact(-1, "CEB_ALT_MIN", false)
             property bool _cebActive:           _cebEnabled !== null && _cebEnabled.rawValue !== 0
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
@@ -409,22 +408,6 @@ SetupPage {
                             FactTextField {
                                 objectName:         "cebMissionDistanceField"
                                 fact:               _cebMissionDistance
-                                visible:            fact !== null
-                                enabled:            _cebActive && fact !== null
-                                showHelp:           true
-                                Layout.fillWidth:   true
-                            }
-
-                            QGCLabel {
-                                text:               qsTr("Cooldown margin:")
-                                visible:            _cebCooldownDistance !== null
-                                enabled:            _cebActive
-                                Layout.fillWidth:   true
-                            }
-
-                            FactTextField {
-                                objectName:         "cebCooldownDistanceField"
-                                fact:               _cebCooldownDistance
                                 visible:            fact !== null
                                 enabled:            _cebActive && fact !== null
                                 showHelp:           true

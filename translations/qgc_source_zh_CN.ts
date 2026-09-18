@@ -15377,44 +15377,39 @@ Do you want to set the Basic ID?</source>
   <context>
     <name>SafetyComponent</name>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="341"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="340"/>
       <source>Collision Emergency Brake</source>
       <translation>碰撞紧急刹车</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="377"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="376"/>
       <source>Enable collision emergency brake</source>
       <translation>启用碰撞紧急刹车</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="385"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="384"/>
       <source>Normal braking distance:</source>
       <translation>常规触发距：</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="403"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="402"/>
       <source>Mission braking distance:</source>
-      <translation>任务模式触发距：</translation>
+      <translation>自动模式触发距：</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="419"/>
-      <source>Cooldown margin:</source>
-      <translation>冷却域宽度：</translation>
-    </message>
-    <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="435"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="418"/>
       <source>Minimum active altitude:</source>
       <translation>最低生效高度：</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="451"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="434"/>
       <source>Braking adds a speed-dependent stopping distance.
 Reactivation requires all monitored distances to stay outside the base distance plus the cooldown margin.</source>
       <translation>实际触发距离包含随接近速度变化的制动距离。
 所有监测方向的障碍距离持续达到基础距离与冷却域宽度之和后，才会恢复刹车触发。</translation>
     </message>
     <message>
-      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="459"/>
+      <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="442"/>
       <source>Mission uses its own distance.</source>
       <translation>任务模式使用独立距离。</translation>
     </message>
