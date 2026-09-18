@@ -318,7 +318,8 @@ def main():
     assert core.gimbal["uniRcSdkInterface"].get_value() == 0
 
     # Legacy frame and direction are fixed product conventions, not settings.
-    assert set(core.fly_custom) == {"showHeadingCompassBar", "showGimbalHeadingCompassBar"}
+    assert set(core.fly_custom) == {"showHeadingCompassBar", "showGimbalHeadingCompassBar",
+                                    "proximityRadarAlertDistance"}
     assert "gimbalLegacyYawReference" not in core.fly_custom
     assert "gimbalLegacyYawReversed" not in core.fly_custom
     assert not any(item.metaObject().indexOfProperty("label") >= 0

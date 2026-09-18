@@ -12,6 +12,7 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.FactControls
 import QGroundControl.ScreenTools
 
 ToolIndicatorPage {
@@ -22,35 +23,53 @@ ToolIndicatorPage {
     required property var radarData
 
     contentComponent: Component {
-        SettingsGroupLayout {
-            heading:       qsTr("Proximity Radar")
-            showDividers:  false
-            contentSpacing: 0
+        ColumnLayout {
+            spacing: ScreenTools.defaultFontPixelHeight / 2
 
-            Repeater {
-                model: root.radarData.entries
+            SettingsGroupLayout {
+                heading:        qsTr("Alert Settings")
+                showDividers:   false
+                contentSpacing: 0
+                Layout.fillWidth: true
 
-                delegate: RowLayout {
-                    id: radarRow
+                LabelledFactTextField {
+                    label:       qsTr("Alert Distance")
+                    fact:        root.radarData.alertDistanceFact
+                    visible:     fact !== null
+                }
+            }
 
-                    required property var modelData
+            SettingsGroupLayout {
+                heading:        qsTr("Proximity Radar")
+                showDividers:   false
+                contentSpacing: 0
+                Layout.fillWidth: true
 
-                    readonly property var   fact:           modelData ? modelData.fact : null
-                    readonly property bool  proximityAlert: root.radarData.factInAlert(fact)
-                    readonly property color textColor:       proximityAlert ? QGroundControl.globalPalette.colorRed : QGroundControl.globalPalette.text
+                Repeater {
+                    model: root.radarData.entries
 
-                    visible: root.radarData.factAvailable(fact)
-                    spacing: ScreenTools.defaultFontPixelWidth * 2
+                    delegate: RowLayout {
+                        id: radarRow
 
-                    QGCLabel {
-                        Layout.fillWidth: true
-                        text:             radarRow.modelData ? qsTr("%1 Radar").arg(radarRow.modelData.direction) : ""
-                        color:            radarRow.textColor
-                    }
+                        required property var modelData
 
-                    QGCLabel {
-                        text:  radarRow.fact ? radarRow.fact.valueString + " " + radarRow.fact.units : ""
-                        color: radarRow.textColor
+                        readonly property var   fact:           modelData ? modelData.fact : null
+                        readonly property bool  proximityAlert: root.radarData.factInAlert(fact)
+                        readonly property color textColor:       proximityAlert ? QGroundControl.globalPalette.colorRed : QGroundControl.globalPalette.text
+
+                        visible: root.radarData.factAvailable(fact)
+                        spacing: ScreenTools.defaultFontPixelWidth * 2
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            text:             radarRow.modelData ? qsTr("%1 Radar").arg(radarRow.modelData.direction) : ""
+                            color:            radarRow.textColor
+                        }
+
+                        QGCLabel {
+                            text:  radarRow.fact ? radarRow.fact.valueString + " " + radarRow.fact.units : ""
+                            color: radarRow.textColor
+                        }
                     }
                 }
             }

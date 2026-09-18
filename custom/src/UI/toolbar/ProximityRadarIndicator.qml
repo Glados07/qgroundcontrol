@@ -31,9 +31,13 @@ Item {
     QtObject {
         id: radarModel
 
-        readonly property real alertDistanceMeters: 5.0
-        readonly property var  activeVehicle:        QGroundControl.multiVehicleManager.activeVehicle
-        readonly property var  distanceSensors:      activeVehicle ? activeVehicle.distanceSensors : null
+        readonly property var  flyViewCustomSettings: QGroundControl.corePlugin ? QGroundControl.corePlugin.flyViewCustomSettings : null
+        readonly property var  alertDistanceFact:    flyViewCustomSettings ? flyViewCustomSettings.proximityRadarAlertDistance : null
+        readonly property real alertDistanceMeters:  alertDistanceFact && isFinite(Number(alertDistanceFact.rawValue))
+                                                     ? Number(alertDistanceFact.rawValue)
+                                                     : 5.0
+        readonly property var  activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
+        readonly property var  distanceSensors:       activeVehicle ? activeVehicle.distanceSensors : null
         readonly property var  entries:              distanceSensors ? [
             { fact: distanceSensors.rotationNone,     direction: qsTr("Forward") },
             { fact: distanceSensors.rotationYaw45,    direction: qsTr("Forward/Right") },
@@ -50,11 +54,11 @@ Item {
         readonly property bool proximityAlert:     _hasProximityAlert()
 
         function factAvailable(fact) {
-            return fact && !isNaN(fact.value)
+            return fact && isFinite(Number(fact.rawValue))
         }
 
         function factInAlert(fact) {
-            return factAvailable(fact) && fact.value < alertDistanceMeters
+            return factAvailable(fact) && Number(fact.rawValue) < alertDistanceMeters
         }
 
         function _hasTelemetry() {
