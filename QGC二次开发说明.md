@@ -51,10 +51,10 @@
 | Viewer3D | OSM、外部模型、可选 Google 3D；本地场景显示飞行器与任务 | 已集成；按目标平台验证导入、坐标配准和可选 WebEngine 能力 |
 | 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；桌面 MT11 播放已有实测；双路实播缩放及 Android 双路、交换源和持续播放仍需完整验收 |
 | A8 Mini 相机 | 缩放、拍照、录像、能力查询与播放后停滞恢复 | 已有真机使用及新版目视播放正常反馈；当前缩放与长期稳定性需按矩阵回归 |
-| MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制 | 协议和策略已有主机测试；手势、模式画面及 Android 链路待真机验收 |
+| MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制、CH11/CH12 转向 | 协议、通道映射和 UDP 停控已有主机测试；手势、模式画面及 Android 转向链路待真机验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
-| UniRC 10 Pro | 蓝牙 SDK、16 通道显示、CH9 变倍、CH10 回中/俯视交替 | 蓝牙通道、CH9 和基础回中已有实测；动态交替、手动复位及顶部联动待验收 |
+| UniRC 10 Pro | 蓝牙 SDK、16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | 蓝牙通道、CH9 和基础回中已有实测；动态交替、顶部联动和 MT11 双轴控制待真机验收 |
 | 双罗盘 | 飞行器航向、活动 MAVLink 云台世界方位角 | 已集成；当前反馈换算有实测依据，仍需锁定/跟随、转动基座和失联回归 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
@@ -296,6 +296,12 @@ custom/
 │   │   ├── Mt11ControlManager.h
                                                             # ① MT11 业务接口：声明独立变倍、拍照、录像、VideoMode 及兼容 thermal 属性，提供 target/actual 倍率、模式 known/pending、SD 与本地录像会话和错误等 QML 状态。
                                                             # ② 依赖与异步成员：保存 Mt11Sdk、能力/倍率轮询、长按保活/停止状态和 Video 2 媒体引用；共享面板通过统一动作接口调用本类，接收器切换与退出通过媒体清理接口收尾。
+│   │   ├── Mt11GimbalController.cc
+                                                            # ① MT11 转向控制：将 CH11/CH12 映射为 0x07 的 Yaw/Pitch 有符号速度，处理中位死区、双轴中位确认、350 ms 输入超时和停止重发；运动刷新仅由新通道帧驱动。
+                                                            # ② 生命周期：复用 Mt11ControlManager 的 SDK，禁用/切端点/析构前向旧设备发完剩余停止包；新会话必须重新收到双轴中位，避免恢复旧输入。
+│   │   ├── Mt11GimbalController.h
+                                                            # ① 输入接口：setAvailable、updateChannels 和 cancel 分别接收 Manager 可用状态、UniRC 两路值和上游取消；不改变 A8/MAVLink 云台动作状态。
+                                                            # ② 状态归属：保存 SDK 弱引用、输入 watchdog、停止重试及 armed/moving 状态，供同目录实现与桌面 UDP 测试共用。
 │   │   ├── Mt11Protocol.cc
                                                             # ① 字节编解码：构造并校验 MT11 帧及 CRC；连续变倍 ACK 按小端 16 位数除以 10 解码，最大/当前倍率按整数与小数两个字节解码，避免混合倍率读错。
                                                             # ② 模式与反馈：用 0x11 命令编码 [00 02]、[02 00]、[03 02] 三种画面模式，解析 0x10/0x11 及相机功能反馈；Mt11Sdk 派发解析结果，Manager 更新模式/倍率/录像状态。
@@ -803,6 +809,9 @@ custom/
 │   │   │   └── VehicleLinkManager.h
                                                             # ① 测试头入口：模拟通信丢失与 allLinksRemoved 通知，使断线和切换连接可取消旧模式请求。
                                                             # ② 包含同目录 TestDoubles.h 中的集中模拟类；GimbalModeControllerTest 通过测试 include 路径解析到本头，仅满足模式控制器所需接口，不替换产品构建中的原生实现。
+│   │   ├── Mt11GimbalControllerTest.cc
+                                                            # ① 转向链路回归：使用真实 Mt11Sdk 和本机 UDP 接收端验证 CH11/CH12 双轴映射、中位保护、连续刷新、独立停轴、无效值及输入超时。
+                                                            # ② 停止和反馈：核对三份停止包、新动作取消旧停止重试、切端点/析构清理，以及 ACK 来源、格式和设备拒绝；仅复用 ModeStubs 的日志宏，不模拟 SDK 传输。
 │   │   ├── Mt11ProtocolTest.cc
                                                             # ① MT11 协议测试：核对连续/绝对变倍、相机编码参数和三种视频模式的帧字节、CRC、严格解码、多帧完整性，以及倍率/功能反馈的不同载荷格式。
                                                             # ② 策略联测：验证 Mt11ZoomPolicy 的显示档位、30 倍绝对命令终点及实测值边界；测试不依赖 MT11 网络设备，修改命令或倍率规则后可先执行该桌面目标。
@@ -1458,8 +1467,9 @@ MT11 使用独立 UDP socket、请求状态和媒体管理器，复用相机栏�
 | 高于 30x 时短按 | 不发送绝对倍率命令；使用长按回到支持范围 |
 | 选择视频模式 | 变焦、热成像、变焦+热成像拼接；等待设备确认后更新 |
 | 拍照/录像 | 独立控制 MT11 SD 支路及绑定的 Video 2 本地媒体 |
+| UniRC CH11/CH12 | CH11 控制 Yaw、CH12 控制 Pitch；以私有 SDK `0x07` 发送双轴转向速度，回中停止，详见 3.4.6 |
 
-`mt11ZoomStep` 控制目标档位，不控制镜头连续运动速度；MT11 SDK 没有速度字段。长按期间每 450 ms 保活同方向，实际 `0x18` 倍率用于进展和端点判断。普通松手通常发送停止；具有严格端点确认时可省略普通停止，取消或退出仍执行停止。60 s 内没有请求方向的有效倍率进展时，watchdog 结束动作。
+`mt11ZoomStep` 控制目标档位，不控制镜头连续变倍速度；MT11 的 `0x05` 变倍命令没有速度字段。长按期间每 450 ms 保活同方向，实际 `0x18` 倍率用于进展和端点判断。普通松手通常发送停止；具有严格端点确认时可省略普通停止，取消或退出仍执行停止。60 s 内没有请求方向的有效倍率进展时，watchdog 结束动作。
 
 #### 3.4.3 实现流程
 
@@ -1527,7 +1537,31 @@ MT11 将“目标”“实测”“命令等待”分开维护：
 | 变倍与模式事务 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11ZoomPolicy.h/.cc`、`ZoomStepPolicy.h/.cc` | Manager 区分短按绝对倍率与长按运动，策略计算可达目标/反馈对齐；模式事务通过回读确认，QML 展示实际结果。 |
 | 独立 UDP 与反馈校验 | `Gimbal/Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | Protocol 编解码两种倍率及视频模式；SDK 校验来源和近期请求，分发 ACK/异步反馈，避免与 A8 状态混用。 |
 | 第二路画面与本地媒体 | `VideoManager/DualVideoManager.h/.cc`；`Gimbal/Mt11ControlManager.h/.cc`；第二路视频 QML | 第二路接收器和显示项供 MT11 抓图/录像使用；媒体会话和文件命名由 MT11 Manager 独立维护。完整保存链路见 3.5。 |
-| 验证 | `custom/test/Gimbal/Mt11ProtocolTest.cc`；共享设置布局检查 | 协议测试验证命令字节、倍率编码和目标边界；布局检查覆盖设置页，模式画面与连续变倍需设备验收。 |
+| 遥控转向 | `Android/UniRcChannelController.h/.cc`；`Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc` | UniRC 将索引 10/11 的通道值交给 Manager；Controller 负责速度映射、初始保护和停止，通过同一 MT11 SDK 发送 `0x07`。 |
+| 验证 | `custom/test/Gimbal/Mt11ProtocolTest.cc`、`Mt11GimbalControllerTest.cc`；共享设置布局检查 | 协议测试验证命令字节、倍率编码和目标边界；转向测试通过本机 UDP 检查双轴输入与停控，真机方向和 Android 时序仍需验收。 |
+
+#### 3.4.6 MT11 遥控双轴转向（CH11 / CH12）
+
+协议依据为 **UniPod MT11 SDK V0.1.0.pdf 第 6 页，私有 SDK 的云台转向 `0x07`**。该命令以两个 `int8_t` 表示转向速度，载荷顺序为 `[turn_yaw, turn_pitch]`；不是绝对角度，也不是以 °/s 为单位的角速度。正 Yaw 向右、正 Pitch 向上，负值相反，0 停止对应轴。ACK 是单字节 `sta`：1 成功，0 出错。
+
+| 通道输入 | CH11 → Yaw | CH12 → Pitch |
+|---|---|---|
+| 1050 | -100，向左 | -100，向下 |
+| 1500 | 0，停止 | 0，停止 |
+| 1950 | +100，向右 | +100，向上 |
+| 1475～1525（包含边界） | 中位死区，0 | 中位死区，0 |
+
+这是软件对通道数值的方向约定；遥控器实体拨轮/摇杆增加数值的方向需在真机核对。中位死区为本项目的抗抖设置，不是 PDF 协议要求。死区外按 `sign(d) × max(1, round((abs(d) - 25) × 100 / 425))` 映射，其中 `d = clamp(channel, 1050, 1950) - 1500`；因此保持 ±100 端点，死区外从低速连续增加。900～2100 为输入合理性检查范围，合理但超出标定端点的值饱和到 ±100；任一轴超出合理范围，立即停止两轴并重新要求中位。
+
+**接线与可用条件**：`CustomPlugin` 先创建 MT11 Manager，再注入 `UniRcChannelController`；合法 `0x42` 帧独立于 CH9/CH10 检查，将 `channels.at(10)` / `channels.at(11)` 送入 `updateUniRcGimbalChannels()` → `Mt11GimbalController::updateChannels()` → `Mt11Sdk::sendGimbalRotation()` → `Mt11Protocol::gimbalRotationPacket()`。复用 `mt11Enabled`、SDK IP 和端口，不增加设置键，不依赖相机标签选择、视频播放、飞控连接或 MAVLink 云台控制权。两路输入不修改 A8 的 CH10 交替状态。
+
+启用 UniRC 和 MT11，保持应用前台，并等待 MT11 `sdkResponding=true` 后，让 **CH11、CH12 同时进入中位死区**。首次连接、SDK 不可用、蓝牙断流、输入异常、后台返回和配置切换后均重新要求该步骤；偏置输入不会在恢复连接时自动续转。CH9/CH10 无效或改变 CH9 反向设置只复位 A8 输入，不打断 MT11；CH11/CH12 无效也不取消 A8 动作。
+
+**发送与停止**：每份有效通道输入都发送当前非零双轴速度，随现有 20 Hz 通道流刷新，单轴回中只清零该轴。双轴回中立即发送 `[00 00]`，随后以 100 ms 间隔补发两份；保持中位不持续刷停止包。新转向先取消旧的停止重试，避免延迟停止打断新动作。独立 350 ms 输入 watchdog 及上游断连/后台/关闭路径均停止两轴并解除中位确认状态；没有新输入时，定时器只可能发送停止包。
+
+Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止包，避免它们误发到新设备。UDP 发送成功仅代表本地写出，三份停止包不能保证在网络完全中断时到达设备。`0x07` 回复沿现有来源 IP/端口、CRC、ACK 标志和 1.5 s 近期请求窗口校验；`sta=0` 取消转向并显示错误，不将 ACK 当作云台到达某个角度的反馈。沿用 SDK 固定序号 0 的关联方式，不宣称能区分同命令的每次刷新。
+
+**验证边界**：本次使用 Windows / Qt 5.14.2 / MSVC 的独立主机测试程序，`Mt11GimbalControllerTest` 23 项、`Mt11ProtocolTest` 14 项、`UniRcProtocolTest` 23 项通过（计数包含初始化和收尾）。生产 CMake 中新增转向 CTest 目标；完整 Qt 6/Android 构建和真机测试尚未完成。设备验收需核对两轴正负方向、同时转向、端点/死区、单轴回中、双轴停止、断流/后台/禁用、端点切换与恢复后的中位保护，并确认 A8 CH9/CH10 同时使用不受影响。
 
 ---
 
@@ -1810,7 +1844,7 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 1. 在 Android 开启蓝牙，并在系统设置完成遥控器内置 SDK 蓝牙设备的配对。
 2. 在 UniGCS 将“遥控 SDK 连接方式”设为蓝牙。当前目标固件已有实测的配套配置是“数传 1 = UDP、数传 2 = 关闭、SDK = 蓝牙”。
 3. 在 QGC“飞行视图 → 云台相机”启用 UniRC SDK，填写已配对设备的 MAC，并允许“附近设备”权限。
-4. 保持 QGC 前台运行，确认 CH1～CH16 实时值更新；CH9 先回中、CH10 先释放后再操作。
+4. 保持 QGC 前台运行，确认 CH1～CH16 实时值更新；CH9 先回中、CH10 先释放后再操作。控制 MT11 时启用其 SDK，等待在线后让 CH11/CH12 同时回中，详见 3.4.6。
 
 | `GimbalControl` 设置键 | 默认值 |
 |---|---|
@@ -1830,8 +1864,9 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 | CH10 | 先 ≤1250 释放，再 ≥1750 按下 | 按下沿触发一次；持续按住不重复 |
 | CH10 下一动作 | 初始为回中；动作确认后交替 | 回中 → 俯仰 -90° → 回中 |
 | CH7/CH8 | 合理值越出 [1400,1600] | 将下一次 CH10 复位为回中，不额外发送姿态命令 |
+| CH11/CH12 | MT11 SDK 可用后，先同时进入 1475～1525 | 解除双轴初始保护；CH11 为 Yaw、CH12 为 Pitch，1050/1500/1950 对应 -100/0/+100 转向速度 |
 
-通道合理范围为 900～2100。CH9/CH10 无效时停用动作并重新等待初始状态；合法 SDK 回包仍维持蓝牙在线状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。
+通道合理范围为 900～2100。CH9/CH10 无效时停用 A8 动作并重新等待初始状态；合法 SDK 回包仍维持蓝牙在线状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。
 
 #### 3.7.3 实现流程
 
@@ -1849,14 +1884,16 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 
 通道帧结构为 `55 66 + control + length(LE16) + sequence(LE16) + command + payload + CRC16/XMODEM`。字节流解析器保留未完整到达的数据，完整帧才进入通道策略。发送停止输出同样使用三份请求，频率码改为 Off。
 
-**从 16 通道到两个动作入口**
+**从 16 通道到动作入口**
 
 `_handleChannelPacket()` 对合法目标帧先刷新 watchdog、保存实际通道值，再调用 `UniRcChannelPolicy::update(CH7, CH8, CH9, CH10, reversed)`。Policy 只返回 channelsValid、zoomDirection/changed、manualAttitudeInputDetected 和 ch10Pressed，不直接操作设备。
 
-1. CH9/CH10 越界：Policy 调用 `linkLost()` / `reset()`，清除已允许动作的状态，重新要求 CH9 回中、CH10 释放；控制器停掉当前 UniRC 动作。合法 SDK 帧仍刷新连接 watchdog。
+1. CH9/CH10 越界：Policy 调用 `linkLost()` / `reset()`，清除已允许动作的状态，重新要求 CH9 回中、CH10 释放；控制器通过 `_resetA8Input()` 停掉当前 A8 动作。合法 SDK 帧仍刷新连接 watchdog，MT11 独立检查 CH11/CH12。
 2. 有手动姿态输入：先调用协调器 `noteManualAttitudeInput()`，把下一 CH10 动作复位。
 3. CH9 方向改变：`_applyZoomDirection()` → `_tryStartZoom()` → A8 `startUniRcZoom()`；回中调用停止，暂不可启动时按当前输入状态重试。
 4. CH10 出现按下沿：调用 `requestNextCh10Action()`。下一动作由共享协调器确认结果决定，不由蓝牙层计数翻转。
+
+每份合法通道帧中，控制器独立将索引 10/11 交给 MT11 Manager 的 `updateUniRcGimbalChannels()`；MT11 双轴独立判断中位、范围与 SDK 可用状态，不复用 CH7/8 的 A8 手动姿态检测。其 `0x07` 映射和停止时序见 3.4.6。
 
 通道数组从 0 开始，因此源码索引 6/7/8/9 对应界面的 CH7/CH8/CH9/CH10。同帧先处理手动姿态再处理 CH10，确保“手动后按键”以回中为目标。CH9 与触控 hold 区分持有者，触控释放不能停掉拨轮接管后的动作。
 
@@ -1864,7 +1901,7 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 
 `_inputWatchdogExpired()` 按写入队列、收到字节、合法帧、目标通道帧区分阶段；`_receiveTimeoutMessage()` / `diagnosticSummary()` 输出对应运行状态。`_scheduleBluetoothFailure()` 清空动作并安排关闭/重连，`_closeBluetooth()` 停定时器、复位 parser、解除旧 socket 信号并释放连接。
 
-失焦、禁用、配置变化和 `shutdown()` 同样进入停止路径。重新建立连接后重新等待 CH9 回中、CH10 释放；连接成功本身不会恢复上一方向。
+失焦、禁用、配置变化和 `shutdown()` 同样进入停止路径；`_resetInput()` 同时调用 MT11 `cancelUniRcGimbal()`。重新建立连接后重新等待 CH9 回中、CH10 释放及 CH11/CH12 同时回中；连接成功本身不会恢复上一方向。
 
 #### 3.7.4 从蓝牙连接到动作可用
 
@@ -1872,10 +1909,10 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 |:---|:---|:---|
 | `bluetoothConnected` | RFCOMM socket 已连接 | 蓝牙传输建立 |
 | `sdkRouteActive` | 收到合法目标 `0x42` 通道帧 | 当前连接已接通 SDK 通道路由 |
-| `channelInputActive` | 合法通道帧中的 CH9/CH10 值通过范围检查 | 可进入动作策略；首次仍需回中/释放保护 |
+| `channelInputActive` | 合法通道帧中的 CH9/CH10 值通过范围检查 | A8 可进入动作策略；不代表 MT11 双轴已完成中位确认 |
 | `channelValues` | 保存最新 16 路实际值 | 设置页可以查看映射是否正确 |
 
-首次通道帧等待窗口为 1.5 s；建立通道流后，以每份合法 `0x42` 帧刷新 350 ms watchdog。SDK 回包合法但 CH9/CH10 越界时，watchdog 仍刷新，动作状态解除，保留实际值供检查映射。
+首次通道帧等待窗口为 1.5 s；建立通道流后，以每份合法 `0x42` 帧刷新 350 ms watchdog。SDK 回包合法但 CH9/CH10 越界时，watchdog 仍刷新，A8 动作状态解除，保留实际值供检查映射。
 
 CH10 的典型操作序列：
 
@@ -1898,6 +1935,7 @@ CH10 的典型操作序列：
 | 字节流转通道值 | `Android/UniRcProtocol.h/.cc` | 生成启停请求，缓存接收字节并处理半帧/连帧，经 CRC/帧长校验输出 16 路 int16 通道。 |
 | 通道值转动作 | `Android/UniRcChannelPolicy.h/.cc`；`UniRcChannelController.h/.cc` | Policy 判断有效范围、CH9 死区/方向、CH10 按下沿及 CH7/8 手动输入；Controller 根据连接和新鲜度执行或释放动作。 |
 | CH9 连续变倍 | `Gimbal/GimbalControlManager.h/.cc` | 接收遥控方向并维护 UniRC 动作持有者；回中、失联、禁用等条件释放运动，与相机栏触控输入协调。 |
+| CH11/CH12 转向 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc`、`Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | 接入现有蓝牙帧，以独立 MT11 SDK 发送 `0x07`；双轴中位/范围保护、超时、停止重发及端点变更清理见 3.4.6。 |
 | CH10 姿态交替 | `Gimbal/GimbalCenterCoordinator.h/.cc`、`Ch10GimbalActionState.h` | 请求复用共享回中/俯视事务，动作完成与手动输入更新下一动作，顶部控制也使用同一状态。 |
 | 验证 | `custom/test/Android/UniRcProtocolTest.cc`；设置布局检查 | 主机验证帧拆解、通道保护、反向和 CH10 边沿/共享状态；布局脚本验证 16 通道显示，蓝牙和硬件动作需真机验收。 |
 
@@ -2383,6 +2421,7 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 |---|---|
 | `custom/test/Gimbal/SiyiProtocolTest.cc`、`SiyiModeQueryTest.cc` | A8 协议、倍率策略、模式查询 |
 | `custom/test/Gimbal/Mt11ProtocolTest.cc` | MT11 编解码、模式、倍率与端点策略 |
+| `custom/test/Gimbal/Mt11GimbalControllerTest.cc` | CH11/CH12 映射、死区、恢复保护、UDP 双轴刷新/停止、无效值、超时、端点隔离和 ACK 校验 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc`、`GimbalPhotoCapturePolicyTest.cc` | 媒体会话、尺寸和 DPR |
 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、航向时效、活动云台匹配 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
@@ -2393,7 +2432,7 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **13 个 C++ CTest 用例**；三个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI 和 PIP 缩放：
+当前 custom 注册 **14 个 C++ CTest 用例**；三个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI 和 PIP 缩放：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
@@ -2406,6 +2445,7 @@ python custom/test/FlightDisplay/DualPipResizeTest.py
 
 ~~~sh
 ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQueryTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest)$' --output-on-failure
 ~~~
 
 验证的交付物按层次区分：CMake/编译结果确认接入和类型依赖；策略测试确认纯逻辑；QML 检查及截图确认绑定/布局；新 APK 的真机日志与实际画面确认平台和设备行为。第 1 节的进度应与实际完成的层次对应。
@@ -2426,7 +2466,7 @@ ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQ
 | 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、MT11 断流停止/手动重开；容量清理触发、停止重试和退出封装 |
 | Android 图库 | 同卷保存、失败重试、公开发布、切换存储卷；已发布媒体卸载后保留 |
 | 云台姿态/模式 | RC 接管后 Center/Tilt 90/Lock/Follow；重连同步、等待期间失联/切车；迟到 ACK 不执行旧动作 |
-| UniRC | 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；失焦/断流后停止并重新保护 |
+| UniRC | 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |
 

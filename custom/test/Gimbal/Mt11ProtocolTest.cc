@@ -18,6 +18,7 @@ class Mt11ProtocolTest : public QObject
 
 private slots:
     void documentedCommandFrames();
+    void gimbalRotationFramesAndFeedback();
     void cameraEncodingParameterFrames();
     void cameraEncodingParameterPayloads();
     void videoModeFrames();
@@ -61,6 +62,29 @@ void Mt11ProtocolTest::documentedCommandFrames()
              QByteArrayLiteral("5566010000000016b2a6"));
     QCOMPARE(Mt11Protocol::requestCurrentZoomPacket().toHex(),
              QByteArrayLiteral("55660100000000187c47"));
+}
+
+void Mt11ProtocolTest::gimbalRotationFramesAndFeedback()
+{
+    QCOMPARE(Mt11Protocol::gimbalRotationPacket(0, 0).toHex(),
+             QByteArrayLiteral("55660102000000070000f124"));
+    QCOMPARE(Mt11Protocol::gimbalRotationPacket(100, -100).toHex(),
+             QByteArrayLiteral("5566010200000007649c2aa1"));
+    QCOMPARE(Mt11Protocol::gimbalRotationPacket(-100, 100).toHex(),
+             QByteArrayLiteral("55660102000000079c645555"));
+    for (const int invalid : {-1000, -101, 101, 256}) {
+        QVERIFY(Mt11Protocol::gimbalRotationPacket(invalid, 0).isEmpty());
+        QVERIFY(Mt11Protocol::gimbalRotationPacket(0, invalid).isEmpty());
+    }
+    bool accepted = false;
+    QVERIFY(Mt11Protocol::parseGimbalRotationAckPayload(QByteArray::fromHex("01"), &accepted));
+    QVERIFY(accepted);
+    QVERIFY(Mt11Protocol::parseGimbalRotationAckPayload(QByteArray::fromHex("00"), &accepted));
+    QVERIFY(!accepted);
+    for (const QByteArray& invalid : {QByteArray(), QByteArray::fromHex("02"), QByteArray::fromHex("0100")}) {
+        QVERIFY(!Mt11Protocol::parseGimbalRotationAckPayload(invalid, &accepted));
+    }
+    QVERIFY(!Mt11Protocol::parseGimbalRotationAckPayload(QByteArray::fromHex("01"), nullptr));
 }
 
 void Mt11ProtocolTest::cameraEncodingParameterFrames()

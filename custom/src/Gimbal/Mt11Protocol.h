@@ -22,6 +22,7 @@ public:
 
     enum Command : quint8 {
         CommandManualZoom       = 0x05,
+        CommandGimbalRotation   = 0x07,
         CommandCameraSystemInfo = 0x0a,
         CommandFunctionFeedback = 0x0b,
         CommandPhotoAndRecord   = 0x0c,
@@ -94,6 +95,9 @@ public:
     };
 
     static QByteArray manualZoomPacket(qint8 direction);
+    // SDK V0.1.0: signed speed, yaw first (right positive), pitch second
+    // (up positive). Zero stops the corresponding axis; these are not angles.
+    static QByteArray gimbalRotationPacket(int yawSpeed, int pitchSpeed);
     static QByteArray absoluteZoomPacket(double zoomLevel);
     static QByteArray requestMaximumZoomPacket();
     static QByteArray requestCurrentZoomPacket();
@@ -113,6 +117,8 @@ public:
 
     static bool parseManualZoomAckPayload(const QByteArray& payload,
                                           double* zoomLevel);
+    static bool parseGimbalRotationAckPayload(const QByteArray& payload,
+                                              bool* accepted);
     static bool parseAbsoluteZoomAckPayload(const QByteArray& payload,
                                             bool* accepted);
     static bool parseZoomValuePayload(const QByteArray& payload,

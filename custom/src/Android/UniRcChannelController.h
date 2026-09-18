@@ -22,6 +22,7 @@
 class GimbalCenterCoordinator;
 class GimbalControlManager;
 class GimbalControlSettings;
+class Mt11ControlManager;
 
 Q_DECLARE_LOGGING_CATEGORY(UniRcChannelLog)
 
@@ -42,6 +43,7 @@ public:
     explicit UniRcChannelController(GimbalControlSettings *settings,
                                     GimbalControlManager *gimbalControlManager,
                                     GimbalCenterCoordinator *gimbalCenterCoordinator,
+                                    Mt11ControlManager *mt11ControlManager,
                                     QObject *parent = nullptr);
     ~UniRcChannelController() override;
 
@@ -97,6 +99,7 @@ private:
     void _applyZoomDirection(int direction, bool directionChanged);
     void _tryStartZoom(int direction);
     void _resetInput(bool normalZoomStop);
+    void _resetA8Input(bool normalZoomStop);
     void _setBluetoothConnected(bool connected);
     void _setSdkRouteActive(bool active);
     void _setChannelInputActive(bool active);
@@ -118,6 +121,7 @@ private:
     QPointer<GimbalControlSettings> _settings;
     QPointer<GimbalControlManager> _gimbalControlManager;
     QPointer<GimbalCenterCoordinator> _gimbalCenterCoordinator;
+    QPointer<Mt11ControlManager> _mt11ControlManager;
     QBluetoothSocket *_socket = nullptr;
     UniRcProtocol::StreamParser _parser;
     UniRcChannelPolicy _channelPolicy;

@@ -16,6 +16,7 @@
 
 class Fact;
 class GimbalControlSettings;
+class Mt11GimbalController;
 class Mt11Sdk;
 class QQuickItem;
 class VideoReceiver;
@@ -139,6 +140,9 @@ public:
     Q_INVOKABLE bool setVideoMode(int mode);
     // Compatibility action retained for the former binary mode control.
     Q_INVOKABLE bool toggleThermalMode();
+
+    void updateUniRcGimbalChannels(qint16 channel11, qint16 channel12);
+    void cancelUniRcGimbal();
 
     void setVideoItem(QQuickItem* videoItem);
     void setVideoReceiver(VideoReceiver* receiver);
@@ -282,6 +286,7 @@ private:
 
     GimbalControlSettings* _settings = nullptr;
     Mt11Sdk* _sdk = nullptr;
+    Mt11GimbalController* _gimbalController = nullptr;
     QTimer _pollTimer;
     QTimer _sdkResponseTimer;
     QTimer _maximumZoomFreshnessTimer;

@@ -2,6 +2,7 @@
  *
  * UniPod MT11 SDK wire-protocol helpers.
  * Protocol source: UniPod MT11 SDK V0.2.3.
+ * Gimbal rotation (0x07): UniPod MT11 SDK V0.1.0, page 6.
  *
  ****************************************************************************/
 
@@ -42,6 +43,19 @@ QByteArray Mt11Protocol::manualZoomPacket(qint8 direction)
     QByteArray payload;
     payload.append(static_cast<char>(direction));
     return _encode(CommandManualZoom, payload);
+}
+
+QByteArray Mt11Protocol::gimbalRotationPacket(int yawSpeed, int pitchSpeed)
+{
+    if (yawSpeed < -100 || yawSpeed > 100
+        || pitchSpeed < -100 || pitchSpeed > 100) {
+        return {};
+    }
+
+    QByteArray payload;
+    payload.append(static_cast<char>(static_cast<quint8>(yawSpeed)));
+    payload.append(static_cast<char>(static_cast<quint8>(pitchSpeed)));
+    return _encode(CommandGimbalRotation, payload);
 }
 
 QByteArray Mt11Protocol::absoluteZoomPacket(double zoomLevel)
@@ -232,6 +246,17 @@ bool Mt11Protocol::parseManualZoomAckPayload(const QByteArray& payload,
         return false;
     }
     *zoomLevel = parsedZoom;
+    return true;
+}
+
+bool Mt11Protocol::parseGimbalRotationAckPayload(const QByteArray& payload,
+                                                bool* accepted)
+{
+    if (!accepted || payload.size() != 1
+        || static_cast<quint8>(payload.at(0)) > 1) {
+        return false;
+    }
+    *accepted = payload.at(0) == 1;
     return true;
 }
 

@@ -105,6 +105,16 @@ bool Mt11Sdk::sendManualZoom(qint8 direction)
                        Mt11Protocol::CommandManualZoom);
 }
 
+bool Mt11Sdk::sendGimbalRotation(int yawSpeed, int pitchSpeed)
+{
+    const QByteArray packet = Mt11Protocol::gimbalRotationPacket(yawSpeed, pitchSpeed);
+    if (packet.isEmpty()) {
+        emit communicationError(tr("MT11 gimbal rotation speed must be within -100 to 100."));
+        return false;
+    }
+    return _sendPacket(packet, Mt11Protocol::CommandGimbalRotation);
+}
+
 bool Mt11Sdk::sendAbsoluteZoom(double zoomLevel)
 {
     if (!qIsFinite(zoomLevel)
@@ -231,7 +241,14 @@ void Mt11Sdk::_dispatchAck(quint8 command, const QByteArray& payload)
     }
 
     bool parsed = false;
-    if (command == Mt11Protocol::CommandManualZoom) {
+    if (command == Mt11Protocol::CommandGimbalRotation) {
+        bool accepted = false;
+        parsed = Mt11Protocol::parseGimbalRotationAckPayload(payload, &accepted);
+        if (parsed) {
+            emit packetReceived();
+            emit gimbalRotationFeedbackReceived(accepted);
+        }
+    } else if (command == Mt11Protocol::CommandManualZoom) {
         double zoom = 0.0;
         parsed = Mt11Protocol::parseManualZoomAckPayload(payload, &zoom)
             && zoom >= _minimumFeedbackZoom

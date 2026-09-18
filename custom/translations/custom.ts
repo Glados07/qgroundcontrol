@@ -626,6 +626,10 @@
 <context>
     <name>Mt11ControlManager</name>
     <message>
+        <source>MT11 rejected the gimbal rotation command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Gimbal/Mt11ControlManager.cc" line="674"/>
         <source>Wait for the pending MT11 recording command before changing its SDK settings.</source>
         <translation type="unfinished"></translation>
@@ -764,6 +768,10 @@
 </context>
 <context>
     <name>Mt11Sdk</name>
+    <message>
+        <source>MT11 gimbal rotation speed must be within -100 to 100.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <location filename="../src/Gimbal/Mt11Sdk.cc" line="38"/>
         <source>Invalid MT11 SDK endpoint: %1:%2</source>
