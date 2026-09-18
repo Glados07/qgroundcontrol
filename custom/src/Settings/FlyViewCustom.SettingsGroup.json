@@ -15,6 +15,17 @@
             "longDesc": "Show the active MAVLink gimbal direction at the top center of Fly View.",
             "type": "bool",
             "default": false
+        },
+        {
+            "name": "proximityRadarAlertDistance",
+            "shortDesc": "Proximity radar alert distance",
+            "longDesc": "Distance below which the proximity radar indicator displays an alert.",
+            "type": "double",
+            "units": "m",
+            "min": 0.1,
+            "max": 100.0,
+            "decimalPlaces": 1,
+            "default": 5.0
         }
     ]
 }

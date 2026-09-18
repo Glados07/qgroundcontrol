@@ -213,12 +213,22 @@
 <context>
     <name>ProximityRadarIndicatorPage</name>
     <message>
-        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="26"/>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="30"/>
+        <source>Alert Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="36"/>
+        <source>Alert Distance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="43"/>
         <source>Proximity Radar</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="47"/>
+        <location filename="../src/QmlControls/ProximityRadarIndicatorPage.qml" line="65"/>
         <source>%1 Radar</source>
         <translation type="unfinished"></translation>
     </message>

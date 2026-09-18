@@ -15,7 +15,7 @@ Item {
     id:         _root
     visible:    false
 
-    property string folder              // Due to Qt bug with file url parsing this must be an absolute path
+    property string folder              // Absolute local directory path
     property var    nameFilters:    []  // Important: Only name filters with simple wildcarding like *.foo are supported.
     property string title
     property bool   selectFolder:   false
@@ -94,7 +94,7 @@ Item {
 
     FileDialog {
         id:             fullFileDialog
-        currentFolder:  "file:///" + _root.folder
+        currentFolder:  controller.localFileToUrl(_root.folder)
         nameFilters:    _root.nameFilters ? _root.nameFilters : []
         title:          _root.title
         defaultSuffix:  _root.defaultSuffix
@@ -112,7 +112,7 @@ Item {
 
     Labs.FolderDialog {
         id:             fullFolderDialog
-        currentFolder:  "file:///" + _root.folder
+        currentFolder:  controller.localFileToUrl(_root.folder)
         title:          _root.title
 
         onAccepted: _root.acceptedForLoad(controller.urlToLocalFile(folder))
