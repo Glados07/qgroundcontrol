@@ -478,11 +478,13 @@ void CustomPlugin::_ensureUniRcChannelController()
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureGimbalCenterCoordinator();
+    _ensureMt11ControlManager();
     if (!_uniRcChannelController) {
         _uniRcChannelController =
             new UniRcChannelController(_gimbalControlSettings,
                                        _gimbalControlManager,
                                        _gimbalCenterCoordinator,
+                                       _mt11ControlManager,
                                        this);
     }
 #endif

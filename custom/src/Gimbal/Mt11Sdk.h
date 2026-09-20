@@ -32,6 +32,7 @@ public:
     void clearPendingRequests();
 
     bool sendManualZoom(qint8 direction);
+    bool sendGimbalRotation(int yawSpeed, int pitchSpeed);
     bool sendAbsoluteZoom(double zoomLevel);
     bool requestMaximumZoom();
     bool requestCurrentZoom();
@@ -45,6 +46,7 @@ public:
     bool setThermalMode(bool enabled);
 
 signals:
+    void gimbalRotationFeedbackReceived(bool accepted);
     void manualZoomReceived(double zoomLevel);
     void absoluteZoomFeedbackReceived(bool accepted);
     void maximumZoomReceived(double zoomLevel);

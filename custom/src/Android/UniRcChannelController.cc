@@ -9,6 +9,7 @@
 #include "GimbalCenterCoordinator.h"
 #include "GimbalControlManager.h"
 #include "GimbalControlSettings.h"
+#include "Mt11ControlManager.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtBluetooth/QBluetoothAddress>
@@ -27,15 +28,18 @@ UniRcChannelController::UniRcChannelController(
     GimbalControlSettings *settings,
     GimbalControlManager *gimbalControlManager,
     GimbalCenterCoordinator *gimbalCenterCoordinator,
+    Mt11ControlManager *mt11ControlManager,
     QObject *parent)
     : QObject(parent)
     , _settings(settings)
     , _gimbalControlManager(gimbalControlManager)
     , _gimbalCenterCoordinator(gimbalCenterCoordinator)
+    , _mt11ControlManager(mt11ControlManager)
 {
     Q_ASSERT(_settings);
     Q_ASSERT(_gimbalControlManager);
     Q_ASSERT(_gimbalCenterCoordinator);
+    Q_ASSERT(_mt11ControlManager);
 
     _reconnectTimer.setSingleShot(true);
     _reconnectTimer.setInterval(kReconnectDelayMs);
@@ -136,9 +140,9 @@ void UniRcChannelController::_zoomDirectionSettingChanged()
 
     // Changing the mapping while the wheel is deflected must not reverse the
     // lens without a neutral transition. Stop the current action and re-arm
-    // both channel controls from their safe positions; the Bluetooth session
-    // and 0x42 stream remain connected.
-    _resetInput(false);
+    // A8 channel controls from their safe positions; the Bluetooth session,
+    // 0x42 stream and independent MT11 rotation remain active.
+    _resetA8Input(false);
     qCInfo(UniRcChannelLog)
         << "UniRC CH9 zoom direction mapping changed"
         << "reversed"
@@ -725,6 +729,12 @@ void UniRcChannelController::_handleChannelPacket(
         emit channelsChanged();
     }
 
+    // Channel numbers are one-based; the protocol array is zero-based.
+    // MT11 validates its own axes, independently of A8 channel validity.
+    if (_mt11ControlManager) {
+        _mt11ControlManager->updateUniRcGimbalChannels(channels.at(10), channels.at(11));
+    }
+
     const UniRcChannelPolicy::Result result =
         _channelPolicy.update(
             channel7,
@@ -740,7 +750,7 @@ void UniRcChannelController::_handleChannelPacket(
                 << "CH9" << channel9 << "CH10" << channel10;
         }
         _invalidChannelWarningActive = true;
-        _resetInput(false);
+        _resetA8Input(false);
         _setLastError(
             tr("Receiving UniRC 0x42 data, but CH9=%1 or CH10=%2 is outside 900-2100; check the channel mapping.")
                 .arg(channel9)
@@ -820,6 +830,14 @@ void UniRcChannelController::_tryStartZoom(int direction)
 }
 
 void UniRcChannelController::_resetInput(bool normalZoomStop)
+{
+    if (_mt11ControlManager) {
+        _mt11ControlManager->cancelUniRcGimbal();
+    }
+    _resetA8Input(normalZoomStop);
+}
+
+void UniRcChannelController::_resetA8Input(bool normalZoomStop)
 {
     if (_gimbalControlManager && _gimbalControlManager->uniRcZoomActive()) {
         if (normalZoomStop) {

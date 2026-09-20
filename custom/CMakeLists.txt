@@ -485,6 +485,28 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    qt_add_executable(Mt11GimbalControllerTest
+        test/Gimbal/Mt11GimbalControllerTest.cc
+        src/Gimbal/Mt11GimbalController.cc
+        src/Gimbal/Mt11GimbalController.h
+        src/Gimbal/Mt11Sdk.cc
+        src/Gimbal/Mt11Sdk.h
+        src/Gimbal/Mt11Protocol.cc
+        src/Gimbal/Mt11Protocol.h
+    )
+    target_include_directories(Mt11GimbalControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/ModeStubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(Mt11GimbalControllerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME Mt11GimbalControllerTest COMMAND $<TARGET_FILE:Mt11GimbalControllerTest>)
+    add_custom_target(check_mt11_gimbal_control
+        COMMAND $<TARGET_FILE:Mt11GimbalControllerTest>
+        DEPENDS Mt11GimbalControllerTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
     qt_add_executable(GimbalMediaSessionPolicyTest
         test/Gimbal/GimbalMediaSessionPolicyTest.cc
         src/Gimbal/GimbalMediaSessionPolicy.cc

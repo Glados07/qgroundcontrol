@@ -11,6 +11,7 @@
 #include "Fact.h"
 #include "GimbalControlSettings.h"
 #include "GimbalPhotoCapturePolicy.h"
+#include "Mt11GimbalController.h"
 #include "Mt11Protocol.h"
 #include "Mt11Sdk.h"
 #include "Mt11ZoomPolicy.h"
@@ -179,6 +180,7 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
     : QObject(parent)
     , _settings(settings)
     , _sdk(new Mt11Sdk(this))
+    , _gimbalController(new Mt11GimbalController(_sdk, this))
 {
     Q_CHECK_PTR(_settings);
     _sdk->setZoomRange(kMinimumZoom, kAbsoluteCommandMaximumZoom);
@@ -243,6 +245,11 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
             this, &Mt11ControlManager::_handleVideoMode);
     connect(_sdk, &Mt11Sdk::communicationError,
             this, &Mt11ControlManager::_handleCommunicationError);
+    connect(_sdk, &Mt11Sdk::gimbalRotationFeedbackReceived, this, [this](bool accepted) {
+        if (!accepted) {
+            _setLastError(tr("MT11 rejected the gimbal rotation command."));
+        }
+    });
     connect(_sdk, &Mt11Sdk::packetReceived, this, [this]() {
         if (!enabled()) {
             return;
@@ -365,6 +372,7 @@ Mt11ControlManager::Mt11ControlManager(GimbalControlSettings* settings,
 
 Mt11ControlManager::~Mt11ControlManager()
 {
+    _gimbalController->setAvailable(false);
     const bool stopZoomRequired = _zoomCommandPending
         || _absoluteZoomTakeoverHintValid || _continuousZoomActive
         || _continuousZoomEndpointLatchedDirection != 0
@@ -420,6 +428,16 @@ Mt11ControlManager::~Mt11ControlManager()
     _localPhotoPending = false;
     _localPhotoSaveThreadPool.waitForDone();
     shutdownLocalMedia(true);
+}
+
+void Mt11ControlManager::updateUniRcGimbalChannels(qint16 channel11, qint16 channel12)
+{
+    _gimbalController->updateChannels(channel11, channel12);
+}
+
+void Mt11ControlManager::cancelUniRcGimbal()
+{
+    _gimbalController->cancel();
 }
 
 bool Mt11ControlManager::enabled() const
@@ -1070,6 +1088,10 @@ void Mt11ControlManager::_settingsChanged()
 
     const bool hadCameraRecording = _recording;
     const bool hadRecordingSession = recordingSessionActive();
+
+    // Retire RC motion and all delayed stops while the SDK still targets the
+    // previous camera. The new endpoint must respond and see neutral first.
+    _gimbalController->setAvailable(false);
 
     const bool stopSequencePending = _zoomCommandPending
         || _absoluteZoomTakeoverHintValid
@@ -2265,6 +2287,7 @@ void Mt11ControlManager::_setSdkResponding(bool responding)
 {
     if (_sdkResponding == responding) return;
     _sdkResponding = responding;
+    _gimbalController->setAvailable(enabled() && responding);
     emit sdkRespondingChanged();
     emit zoomAvailabilityChanged();
 }
