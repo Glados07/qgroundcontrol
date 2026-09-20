@@ -15248,7 +15248,7 @@ Click the Next button to upload calibration to board. Click Cancel if you don&ap
     </message>
     <message>
         <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="402"/>
-        <source>Mission braking distance:</source>
+        <source>Auto braking distance:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -15264,7 +15264,7 @@ Reactivation requires all monitored distances to stay outside the base distance 
     </message>
     <message>
         <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="442"/>
-        <source>Mission uses its own distance.</source>
+        <source>Mission and Offboard use the auto distance.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

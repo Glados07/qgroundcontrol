@@ -15393,7 +15393,7 @@ Do you want to set the Basic ID?</source>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="402"/>
-      <source>Mission braking distance:</source>
+      <source>Auto braking distance:</source>
       <translation>自动模式触发距：</translation>
     </message>
     <message>
@@ -15410,8 +15410,8 @@ Reactivation requires all monitored distances to stay outside the base distance 
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="442"/>
-      <source>Mission uses its own distance.</source>
-      <translation>任务模式使用独立距离。</translation>
+      <source>Mission and Offboard use the auto distance.</source>
+      <translation>任务模式和 Offboard 模式使用自动模式触发距。</translation>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/PX4/SafetyComponent.qml" line="74"/>

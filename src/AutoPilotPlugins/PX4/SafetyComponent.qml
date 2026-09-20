@@ -57,7 +57,7 @@ SetupPage {
             property Fact _objectAvoidance:     controller.getParameterFact(-1, "COM_OBS_AVOID")
             property Fact _cebEnabled:          controller.getParameterFact(-1, "CEB_EN", false)
             property Fact _cebDistance:         controller.getParameterFact(-1, "CEB_DIST", false)
-            property Fact _cebMissionDistance:  controller.getParameterFact(-1, "CEB_MIS_DIST", false)
+            property Fact _cebAutoDistance:     controller.getParameterFact(-1, "CEB_AUTO_DIST", false)
             property Fact _cebMinimumAltitude:  controller.getParameterFact(-1, "CEB_ALT_MIN", false)
             property bool _cebActive:           _cebEnabled !== null && _cebEnabled.rawValue !== 0
             property Fact _landSpeedMC:         controller.getParameterFact(-1, "MPC_LAND_SPEED", false)
@@ -399,15 +399,15 @@ SetupPage {
                             }
 
                             QGCLabel {
-                                text:               qsTr("Mission braking distance:")
-                                visible:            _cebMissionDistance !== null
+                                text:               qsTr("Auto braking distance:")
+                                visible:            _cebAutoDistance !== null
                                 enabled:            _cebActive
                                 Layout.fillWidth:   true
                             }
 
                             FactTextField {
-                                objectName:         "cebMissionDistanceField"
-                                fact:               _cebMissionDistance
+                                objectName:         "cebAutoDistanceField"
+                                fact:               _cebAutoDistance
                                 visible:            fact !== null
                                 enabled:            _cebActive && fact !== null
                                 showHelp:           true
@@ -439,8 +439,8 @@ SetupPage {
                             }
 
                             QGCLabel {
-                                text:               qsTr("Mission uses its own distance.")
-                                visible:            _cebMissionDistance !== null
+                                text:               qsTr("Mission and Offboard use the auto distance.")
+                                visible:            _cebAutoDistance !== null
                                 wrapMode:           Text.WordWrap
                                 Layout.columnSpan:  2
                                 Layout.maximumWidth:_labelWidth + _editFieldWidth
