@@ -10,8 +10,8 @@
 | 分支 | `SecDev/ft/control` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `71a84cb4d`，包含工作区现有的 A8 采集工具 |
-| 文档更新 | 2026-09-16 |
+| 本次代码核对基线 | `9d675eefd` + 当前工作区；本次同步范围为双罗盘、相关文件树与验证说明，其他模块保留既有核对范围 |
+| 文档更新 | 2026-09-28 |
 
 ## 阅读导航
 
@@ -55,7 +55,7 @@
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
 | UniRC 10 Pro | 蓝牙 SDK、16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | 蓝牙通道、CH9 和基础回中已有实测；动态交替、顶部联动和 MT11 双轴控制待真机验收 |
-| 双罗盘 | 飞行器航向、活动 MAVLink 云台世界方位角 | 已集成；当前反馈换算有实测依据，仍需锁定/跟随、转动基座和失联回归 |
+| [双罗盘](#compass) | 飞行器航向与 A8 主画面的云台世界方位角 | 标准刻度、独立航向绑定与主画面显隐的 Qt Quick 主机回归通过；Android 实机显示待验收，范围见 4.2 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
 | 通信与 Android USB | 默认 UDP 配置、USB 串口授权/枚举/热插拔 | 已集成；目标遥控器 USB Host 与飞控重连待真机验收 |
@@ -85,7 +85,7 @@ custom/
                                                             # 产品定制代码、资源、平台适配与开发验证
 ├── CMakeLists.txt
                                                             # ① 构建入口：将 custom C++、复用的原生 Viewer3D 实现和 custom.qrc 纳入应用；查找 Bluetooth、Quick3D、Quick3DAssetUtils，按可用性接入 WebEngineQuick。
-                                                            # ② 装配方式：声明 Custom.Widgets/Custom.FlightDisplay QML 模块，生成 Android 模板覆盖目录、编译翻译，并在桌面 QGC_BUILD_TESTING 开启时注册 13 个 C++ 测试目标。
+                                                            # ② 装配方式：声明 Custom.Widgets/Custom.FlightDisplay QML 模块，生成 Android 模板覆盖目录、编译翻译，并在桌面 QGC_BUILD_TESTING 开启时注册 C++ 测试目标；当前清单与执行方式见 4.1。
 ├── custom.qrc
                                                             # ① 资源清单：通过 prefix/alias 定义 QML 页面、设置 JSON、图标、F450 网格和三维 shader 的运行时路径；/Custom/qml 下的同名别名供插件拦截后覆盖原生页面。
                                                             # ② 关联关系：同时引用 custom 文件和保留复用的原生 QML/材质；新增界面或移动资源后需同步路径，CMake 负责打包，CustomPlugin 的 URL 拦截器负责将页面请求导向对应资源。
@@ -181,13 +181,13 @@ custom/
                                                             # ② 渲染接线：通过 initVideoItem 将窗口与显示项交给 DualVideoManager，getWidth/getHeight 按宽高比和适配模式计算画面尺寸；PIP 归属、全屏和外层提示由 FlyViewSecondaryVideo 处理。
 │   │   ├── FlyView.qml
                                                             # ① 飞行页总装与布局：创建地图、主视频、第二路视频、DualPipView、原生 widgetLayer、自定义覆盖层和三维窗口；设置区域尺寸、PIP 左下锚点、层叠关系及相互依赖。
-                                                            # ② 模块连接：将三个内容项送入 DualPipView，向 FlyViewCustomLayer 提供页面可用空间/右上保留区，并连接工具条与 Viewer3D 显隐；整页布局改这里，相机栏内部按钮在 GimbalCameraControl。
+                                                            # ② 模块连接：将三个内容项送入 DualPipView，向 FlyViewCustomLayer 提供页面可用空间/右上保留区，以及由 Video 1 的 hasVideo、PipState.fullState 和三维窗口状态决定的 a8VideoIsMain；整页布局与工具条/Viewer3D 显隐在此接线，相机栏内部按钮在 GimbalCameraControl。
 │   │   ├── FlyViewCompassBar.qml
                                                             # ① 两条罗盘共用的 UI：compassBar 绘制条带背景和循环方位刻度，headingIndicator/headingLabel 显示中心角度，compassArrowIndicator 使用 compassPointer.svg；字体、颜色、宽高及指针尺寸均在此定义。
-                                                            # ② 显示输入：通过 directionDegrees、indicatorPrefix 接收角度和标识，将角度归一到 0～360°并排列刻度；默认 directionDegrees 读取 vehicle.heading.rawValue，顶部云台实例由 FlyViewCustomLayer 改绑 Provider.absoluteYaw。
+                                                            # ② 显示输入：通过 directionDegrees、indicatorPrefix 接收角度和标识，将世界方位角归一到 [0°, 360°) 并按标准方位排列刻度，不作安装方向换算或镜像；默认读取 vehicle.heading.rawValue，顶部云台实例由 FlyViewCustomLayer 改绑 Provider.absoluteYaw。
 │   │   ├── FlyViewCustomLayer.qml
                                                             # ① 覆盖层装配：compassBarLoader 放置底部飞控航向条，gimbalCompassBarLoader 放置顶部云台方位角条；分别绑定开关、显隐、上下锚点和 QGCToolInsets，同时加载母线电压告警。
-                                                            # ② 数据与可用性：底部沿用活动车辆 heading；顶部绑定 GimbalAzimuthProvider.absoluteYaw，并结合车辆/云台/Provider 有效性与失联状态显示；Provider 执行 2 s 过期检查，底部没有相同的独立超时逻辑。
+                                                            # ② 数据与可用性：底部沿用活动车辆 heading；顶部绑定 GimbalAzimuthProvider.absoluteYaw，由 a8VideoIsMain、显示开关、车辆/云台/Provider 有效性与通信状态共同控制 Loader，隐藏时释放顶部 inset；Provider 执行姿态过期检查，底部没有相同的独立超时逻辑。
 │   │   ├── FlyViewSecondaryVideo.qml
                                                             # ① 第二路飞行页包装：将 FlightDisplayViewSecondaryVideo 放入 PipState 内容容器，定义第二路标签、双击全屏行为和原生距离/雷达叠加，是 DualPipView 接收的第二路显示项。
                                                             # ② 窗口迁移：弹出或返回飞行页时协调停止视频与延迟重启，待窗口/渲染对象稳定后恢复播放；实际 RTSP 接收由 DualVideoManager 管理，纹理绘制和画面适配在内部显示组件。
@@ -698,10 +698,27 @@ custom/
                                                             # ① UniRC 协议/通道回归：构造 20 Hz 请求及通道响应，验证 CRC、帧长、半帧/多帧、重同步和非法输入，同时检查 CH9 回中/反向、CH10 释放到按下边沿和 CH7/8 死区。
                                                             # ② 动作状态验证：直接调用 UniRcProtocol、UniRcChannelPolicy 和 Ch10GimbalActionState，确认手动操作顺序、迟到 ACK 与动作轮换规则；作为桌面 QtTest 目标运行，不需要实际 Bluetooth 或遥控器。
 │   ├── FlightDisplay/
-                                                            # 飞行页交互测试
-│   │   └── DualPipResizeTest.py
+                                                            # 飞行页交互、罗盘显示及主辅画面联动测试
+│   │   ├── CompassStubs/
+                                                            # 罗盘显示测试的最小依赖替身，仅由 GimbalCompassTest.py 注册，不进入产品构建
+│   │   │   ├── GeneratorBusVoltageAlert.qml
+                                                            # ① 告警依赖替身：提供带 vehicle 属性的空 Item，满足 FlyViewCustomLayer 对 GeneratorBusVoltageAlert 的组件引用。
+                                                            # ② 隔离范围：由 GimbalCompassTest.py 注册到 Custom.Widgets；遥测替身保持参数未就绪，测试不启动或验证母线电压告警业务。
+│   │   │   ├── QGCColoredImage.qml
+                                                            # ① 图像控件替身：使用 Qt Quick Image 并补充 color 属性，承接实际罗盘指针的 source、sourceSize、fillMode 与尺寸绑定。
+                                                            # ② 验证边界：由 GimbalCompassTest.py 注册到 QGroundControl.Controls，加载临时资源包中的真实 SVG；不模拟产品控件的着色效果，验证重点为刻度与显示绑定。
+│   │   │   ├── QGCLabel.qml
+                                                            # ① 文本控件替身：直接使用 Qt Quick Text，为罗盘方位标签及中心角度提供真实文本属性和宽度计算。
+                                                            # ② 测试协作：由 GimbalCompassTest.py 注册到 QGroundControl.Controls，读取实际 Repeater 标签的文字与横坐标；不验证原生 QGCLabel 的主题及全局字号策略。
+│   │   │   └── QGroundControl.qml
+                                                            # ① 遥测与配置替身：QML 单例提供 videoManager、活动车辆/云台、机头航向、链路状态、方位角 Provider 和两个罗盘开关，供测试分别改变输入。
+                                                            # ② 状态隔离：为 DualPipView 提供返回默认值的读取接口和不落盘的保存接口；不连接设备、不写用户设置，也不执行真实方位角算法或模式命令。
+│   │   ├── DualPipResizeTest.py
                                                             # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
                                                             # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
+│   │   └── GimbalCompassTest.py
+                                                            # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
+                                                            # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
 │   ├── Gimbal/
                                                             # 相机协议、媒体、云台和方位角测试
 │   │   ├── AzimuthStubs/
@@ -1952,11 +1969,13 @@ CH10 的典型操作序列：
 | 罗盘 | `FlyViewCustomLayer.qml` 中的实例 | 角度来源 | 显示条件 |
 |:---|:---|:---|:---|
 | 飞控航向（底部中央） | `compassBarLoader` | 组件默认读取 `activeVehicle.heading.rawValue`，表示机头航向 | 开关开启、页面可见、活动 Vehicle 存在且 heading 为有限数 |
-| 云台方位角（顶部中央并避让工具区） | `gimbalCompassBarLoader` | 父层把 `gimbalAzimuthProvider.absoluteYaw` 绑定给组件的 `directionDegrees` | 开关开启、页面可见、活动云台存在、车辆链路正常且 Provider 输出有效 |
+| 云台方位角（顶部中央并避让工具区） | `gimbalCompassBarLoader` | 父层把 `gimbalAzimuthProvider.absoluteYaw` 绑定给组件的 `directionDegrees` | A8 Mini（Video 1）为 PIP 主画面、未打开三维视图，且开关开启、页面可见、活动云台存在、车辆链路正常、Provider 输出有效 |
 
 两条罗盘都加载 [FlyViewCompassBar.qml](custom/src/FlightDisplay/FlyViewCompassBar.qml)，外观共用；创建、位置和显隐在 [FlyViewCustomLayer.qml](custom/src/FlightDisplay/FlyViewCustomLayer.qml)。修改共同外观会同时影响两条；需要不同样式时，通过组件属性由两个 Loader 分别传入。
 
-两者是遥测界面，不写入视频 OSD。云台指向与右侧 A8/MT11 选择器、MT11 视频模式独立；没有有效姿态时不显示伪造角度。
+两者是遥测界面，不写入视频 OSD。顶部控制栏和顶部罗盘对应产品 A8 Mini（Video 1），MT11 对应 Video 2：地图或 MT11 作为主画面、A8 仅在辅窗/独立窗口中时，不显示顶部罗盘，也不占用顶部 inset。显隐依据实际 PIP 状态，与右侧 A8/MT11 相机控制面板的选中项、MT11 视频模式无关；没有有效姿态时不显示伪造角度。视频全屏时覆盖层隐藏。此绑定以 Video 1=A8、Video 2=MT11 的产品接线为准，不按任意 RTSP URL 自动识别设备。
+
+A8 Mini 在飞机上倒装使用，安装/反馈方向约定由方位角计算链路处理；显示层直接使用其世界方位角。顶部与底部使用相同的标准方位排列：朝北 0° 时 W 在左、E 在右；90° 对应东、180° 对应南、270° 对应西。两条罗盘的数值分别表示云台世界方位角和机头航向，不要求二者相同；安装方向是产品输入约定，不提供独立设置开关。
 
 #### 3.8.2 实现流程
 
@@ -2004,7 +2023,7 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 
 **QML 绘制与布局**
 
-`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`。顶部 Loader 额外检查活动云台、Provider.valid 和通信状态；无效时卸载该显示项。
+`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`，不作刻度镜像。顶部 Loader 额外检查活动云台、Provider.valid、通信状态及 `a8VideoIsMain`；无效时卸载该显示项。`a8VideoIsMain` 默认 false，由 `FlyView.qml` 绑定主视频 `hasVideo`、`videoControl.pipState.state === fullState` 和三维视图未打开这三个条件，不能用“主画面不是地图”代替，否则 MT11 主画面也会误显示。
 
 样式入口集中在 `FlyViewCompassBar.qml`：`compassBar` 定义条背景，`headingIndicator/headingLabel` 定义中心角度框，`compassArrowIndicator` 加载 `FlightMap/Images/compassPointer.svg`；`implicitWidth`、`_barHeight`、`_pointerSize` 控制尺寸。两条的位置、边距和可用宽度由对应 Loader 的 anchors/width/x 决定。
 
@@ -2013,6 +2032,8 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 ~~~text
 标签横坐标 = 条宽 / 2 + (标签未环绕角 - 当前航向) × 条宽 / 360 - 标签宽 / 2
 ~~~
+
+显示层只对后端输出作角度归一化和刻度绘制，不对 `absoluteYaw`/`directionDegrees` 取负、增加安装偏移或镜像刻度，也不发送控制命令。安装/反馈方向换算由上面的世界方位角分支负责；0°/360° 附近按未环绕角连续排布，避免方位标签整圈跳移。
 
 固定指针与滚动刻度分离；顶部云台条考虑右侧相机栏预留宽度，底部条按整个 Fly View 可用宽度布局。`QGCToolInsets` 只增加实际可见控件占用的中央边距。
 
@@ -2041,9 +2062,10 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 | 显隐配置 | `Settings/FlyViewCustomSettings.h/.cc`、`FlyViewCustom.SettingsGroup.json`；`UI/AppSettings/FlyViewSettings.qml` | 设置页编辑两条罗盘开关，Fact 写入 FlyView 分组；覆盖层根据开关及有效数据控制显示。 |
 | MAVLink 接收与对象接线 | `CustomPlugin.cc`；`Gimbal/GimbalAzimuthProvider.h/.cc` | 插件转交消息和活动 Vehicle；Provider 按车辆/component/device 缓存姿态并选择活动云台，拒绝过期或不匹配数据。 |
 | 航向与参考系换算 | `Gimbal/GimbalHeadingTelemetry.h/.cc`、`GimbalAzimuthPolicy.h/.cc` | Telemetry 保存未取整飞控航向并选择有效来源；Policy 检查四元数，按 Earth/Vehicle/legacy 规则转换世界方位角。 |
-| 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页承载覆盖层；底部 Loader 使用组件的 Vehicle 航向默认绑定，顶部显式绑定 Provider.absoluteYaw；两实例分别处理显隐、上下位置和避让。 |
-| 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；组件绘制方位标签、角度框和 SVG 指针，云台参考系换算由后端完成。 |
+| 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页传入 A8 主画面状态；底部 Loader 使用默认航向绑定，顶部显式绑定 Provider.absoluteYaw；分别处理显隐、上下位置和避让。 |
+| 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；两条使用相同标准刻度，安装/反馈方向和参考系换算由后端完成。 |
 | 验证 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc`；AzimuthStubs | 分别检查数学换算、来源/时序和活动对象匹配；设备转动、锁定/跟随和失联表现按真机矩阵核对。 |
+| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、两条独立航向、中心数值不变、北向环绕、地图/A8/MT11 切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
 
 ---
 
@@ -2427,17 +2449,21 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
+| `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC 帧、通道保护及 CH10 状态 |
 | `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **14 个 C++ CTest 用例**；三个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI 和 PIP 缩放：
+当前 custom 注册 **14 个 C++ CTest 用例**；四个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放与云台罗盘（后者使用 PySide6 自带 rcc 生成临时资源包）：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
 python custom/test/FlightDisplay/DualPipResizeTest.py
+python custom/test/FlightDisplay/GimbalCompassTest.py
 ~~~
+
+当前罗盘专项主机验证基于页首代码基线及工作区，环境为 Windows、Qt/PySide6 6.10.2 离屏渲染：`GimbalCompassTest.py` 8/8、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。前两项分别验证真实 QML 显示/状态联动和鼠标缩放事件，模式脚本检查按钮绑定与回调；不代表完整 QGC 编译、目标 Qt Kit、APK 或倒装 A8 真机方向验收。
 
 布局检查另需 Qt 6 的 `rcc`，会生成截图，完整命令见[布局测试 README](custom/test/UI/FlyViewSettingsLayout/README.md)。各 `*Stubs/` 目录只为测试补足依赖，不进入产品构建。翻译更新见[翻译 README](custom/translations/README.md)。主机纯策略测试不覆盖真实 MediaCodec、蓝牙、USB、相机时序或 Android 画面。
 
@@ -2466,6 +2492,7 @@ ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControl
 | 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、MT11 断流停止/手动重开；容量清理触发、停止重试和退出封装 |
 | Android 图库 | 同卷保存、失败重试、公开发布、切换存储卷；已发布媒体卸载后保留 |
 | 云台姿态/模式 | RC 接管后 Center/Tilt 90/Lock/Follow；重连同步、等待期间失联/切车；迟到 ACK 不执行旧动作 |
+| 双罗盘 | 按 3.8 的方位约定核对倒装 A8 的实际朝向与中心读数/方位标签；跟随/锁定和机体转动时分别核对两条独立航向；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
 | UniRC | 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |
