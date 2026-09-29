@@ -24,6 +24,19 @@ std::array<float, 4> yawQuaternion(double yawDegrees) {
     return {static_cast<float>(std::cos(halfYaw)), 0.0F, 0.0F, static_cast<float>(std::sin(halfYaw))};
 }
 
+std::array<float, 4> quaternionFromEulerDegrees(double rollDegrees, double pitchDegrees, double yawDegrees) {
+    const double cr = std::cos(rollDegrees * kDegreesToRadians * 0.5);
+    const double sr = std::sin(rollDegrees * kDegreesToRadians * 0.5);
+    const double cp = std::cos(pitchDegrees * kDegreesToRadians * 0.5);
+    const double sp = std::sin(pitchDegrees * kDegreesToRadians * 0.5);
+    const double cy = std::cos(yawDegrees * kDegreesToRadians * 0.5);
+    const double sy = std::sin(yawDegrees * kDegreesToRadians * 0.5);
+    return {static_cast<float>(cr * cp * cy + sr * sp * sy),
+            static_cast<float>(sr * cp * cy - cr * sp * sy),
+            static_cast<float>(cr * sp * cy + sr * cp * sy),
+            static_cast<float>(cr * cp * sy - sr * sp * cy)};
+}
+
 quint32 nextBootMs() {
     static quint32 bootMs = 10000;
     return ++bootMs;
@@ -70,7 +83,7 @@ mavlink_message_t gimbalMessage(double yawDegrees, quint16 flags = 28, quint8 sy
     return message;
 }
 
-mavlink_message_t recordedGimbalMessage(const std::array<float, 4> &q, quint16 flags = 28) {
+mavlink_message_t quaternionGimbalMessage(const std::array<float, 4> &q, quint16 flags = 28) {
     mavlink_gimbal_device_attitude_status_t attitude{};
     attitude.time_boot_ms = nextBootMs();
     attitude.flags = flags;
@@ -98,10 +111,15 @@ class GimbalAzimuthProviderTest : public QObject {
     void followsAndLocksWithFixedLegacyFrame();
     void usesUnroundedHeadingAndRefreshesOnHeadingArrival();
     void constructorHonorsQObjectParent();
-    void reversedFeedbackReplaysRecordedSamples();
+    void invertedInstallationTracksYawCommands_data();
+    void invertedInstallationTracksYawCommands();
+    void invertedInstallationBaseRotation_data();
+    void invertedInstallationBaseRotation();
+    void invertedInstallationTiltKeepsAzimuth_data();
+    void invertedInstallationTiltKeepsAzimuth();
     void fixedFeedbackConventionNeedsHeadingInBothModes();
-    void reversedFeedbackDoesNotOverrideExplicitFrames();
-    void reversedFeedbackPreservesFreshnessGuards();
+    void installationConventionDoesNotOverrideExplicitFrames();
+    void installationConventionPreservesFreshnessGuards();
     void explicitFramesOverrideFixedLegacyConvention();
     void isolatesVehicleComponentAndDeviceRoutes();
     void highLatencyUnits_data();
@@ -119,9 +137,13 @@ void GimbalAzimuthProviderTest::followsAndLocksWithFixedLegacyFrame() {
     GimbalAzimuthProvider provider;
 
     provider.handleMavlinkMessage(&vehicle, headingMessage(45.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(171.738, 12));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-171.738, 12));
     QVERIFY(azimuthEquals(provider, -126.738));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(171.387, 28));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-171.387, 28));
+    QVERIFY(azimuthEquals(provider, -126.387));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-171.387, 12));
+    QVERIFY(azimuthEquals(provider, -126.387));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-171.387, 28));
     QVERIFY(azimuthEquals(provider, -126.387));
 
     // Dense rotation used to defeat movement-threshold frame inference.
@@ -129,18 +151,18 @@ void GimbalAzimuthProviderTest::followsAndLocksWithFixedLegacyFrame() {
     for (int step = 0; step <= 360; ++step) {
         const double heading = 45.0 + step * 0.5;
         provider.handleMavlinkMessage(&vehicle, headingMessage(heading));
-        provider.handleMavlinkMessage(&vehicle, gimbalMessage(heading + 126.387, 28));
+        provider.handleMavlinkMessage(&vehicle, gimbalMessage(-126.387 - heading, 28));
         QVERIFY(azimuthEquals(provider, -126.387));
     }
     // A yaw command in lock mode must still move the displayed azimuth.
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(225.0 + 111.387, 28));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-111.387 - 225.0, 28));
     QVERIFY(azimuthEquals(provider, -111.387));
 
     for (int step = 0; step <= 90; ++step) {
         const double heading = 225.0 + step * 0.5;
         provider.handleMavlinkMessage(&vehicle, headingMessage(heading));
         provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 12));
-        QVERIFY(azimuthEquals(provider, heading - 20.0));
+        QVERIFY(azimuthEquals(provider, heading + 20.0));
     }
 }
 
@@ -152,9 +174,9 @@ void GimbalAzimuthProviderTest::usesUnroundedHeadingAndRefreshesOnHeadingArrival
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(45.625));
-    QVERIFY(azimuthEquals(provider, 35.625));
+    QVERIFY(azimuthEquals(provider, 55.625));
     provider.handleMavlinkMessage(&vehicle, headingMessage(46.125));
-    QVERIFY(azimuthEquals(provider, 36.125));
+    QVERIFY(azimuthEquals(provider, 56.125));
 }
 
 void GimbalAzimuthProviderTest::constructorHonorsQObjectParent() {
@@ -168,33 +190,115 @@ void GimbalAzimuthProviderTest::constructorHonorsQObjectParent() {
     QVERIFY(provider.isNull());
 }
 
-void GimbalAzimuthProviderTest::reversedFeedbackReplaysRecordedSamples() {
+void GimbalAzimuthProviderTest::invertedInstallationTracksYawCommands_data() {
+    QTest::addColumn<int>("flags");
+    QTest::addColumn<double>("heading");
+    QTest::addColumn<double>("initialYaw");
+    QTest::addColumn<double>("commandedYaw");
+    QTest::addColumn<double>("expectedAzimuth");
+
+    for (int flags : {12, 28}) {
+        const QByteArray mode = flags == 12 ? "follow-" : "lock-";
+        QTest::newRow((mode + "north-right-east").constData()) << flags << 0.0 << 0.0 << 30.0 << 30.0;
+        QTest::newRow((mode + "north-left-west").constData()) << flags << 0.0 << 0.0 << -30.0 << 330.0;
+        QTest::newRow((mode + "nonzero-heading-right").constData()) << flags << 70.0 << 20.0 << 35.0 << 105.0;
+        QTest::newRow((mode + "nonzero-heading-left").constData()) << flags << 70.0 << 20.0 << 5.0 << 75.0;
+        QTest::newRow((mode + "east-right").constData()) << flags << 90.0 << 0.0 << 30.0 << 120.0;
+        QTest::newRow((mode + "east-left").constData()) << flags << 90.0 << 0.0 << -30.0 << 60.0;
+        QTest::newRow((mode + "south-right").constData()) << flags << 180.0 << 0.0 << 30.0 << 210.0;
+        QTest::newRow((mode + "south-left").constData()) << flags << 180.0 << 0.0 << -30.0 << 150.0;
+        QTest::newRow((mode + "west-right").constData()) << flags << 270.0 << 0.0 << 30.0 << 300.0;
+        QTest::newRow((mode + "west-left").constData()) << flags << 270.0 << 0.0 << -30.0 << 240.0;
+        QTest::newRow((mode + "north-wrap-right").constData()) << flags << 359.75 << 0.0 << 0.5 << 0.25;
+        QTest::newRow((mode + "north-wrap-left").constData()) << flags << 0.25 << 0.0 << -0.5 << 359.75;
+    }
+}
+
+void GimbalAzimuthProviderTest::invertedInstallationTracksYawCommands() {
+    QFETCH(int, flags);
+    QFETCH(double, heading);
+    QFETCH(double, initialYaw);
+    QFETCH(double, commandedYaw);
+    QFETCH(double, expectedAzimuth);
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
     GimbalAzimuthProvider provider;
-    provider.handleMavlinkMessage(&vehicle, headingMessage(4.75517));
-    provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(
-        {8.20792e-05F, -0.300543F, 0.953768F, 1.9889e-05F}));
-    QVERIFY(azimuthEquals(provider, 149.77472104076586));
-    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeadingReversed"));
-    provider.handleMavlinkMessage(&vehicle, headingMessage(312.904));
-    const std::array<float, 4> q{6.03497e-05F, 0.115557F, 0.993301F, 9.94521e-06F};
-    provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(q));
-    QVERIFY(azimuthEquals(provider, 146.17550411199395));
+    // Synthetic inputs express the installed A8 Mini's direction contract;
+    // these are not a replay of an upside-down hardware capture. The earlier
+    // tabletop capture remains covered by the generic reversed-policy tests.
+    provider.handleMavlinkMessage(&vehicle, headingMessage(heading));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(initialYaw, flags));
+    QVERIFY(azimuthEquals(provider, heading + initialYaw));
+    const double before = provider.absoluteYaw();
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(commandedYaw, flags));
+    QVERIFY(azimuthEquals(provider, expectedAzimuth));
+    const double actualChange = GimbalAzimuthPolicy::wrap180(provider.absoluteYaw() - before);
+    const double expectedChange = commandedYaw - initialYaw;
+    QVERIFY(std::abs(actualChange - expectedChange) < 0.0001);
+    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeading"));
+}
 
-    // Switching lock/follow does not change the installation's convention.
-    provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(q, 12));
-    QVERIFY(azimuthEquals(provider, 146.17550411199395));
-    provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(q, 28));
-    QVERIFY(azimuthEquals(provider, 146.17550411199395));
+void GimbalAzimuthProviderTest::invertedInstallationBaseRotation_data() {
+    QTest::addColumn<int>("flags");
+    QTest::addColumn<double>("feedbackAfterRotation");
+    QTest::addColumn<double>("expectedAfterRotation");
+    QTest::newRow("locked-camera-base-plus-90") << 28 << -70.0 << 90.0;
+    QTest::newRow("following-camera-base-plus-90") << 12 << 20.0 << 180.0;
+}
 
-    // Follow with fixed feedback still turns one-to-one with the base.
-    provider.handleMavlinkMessage(&vehicle, recordedGimbalMessage(q, 12));
-    provider.handleMavlinkMessage(&vehicle, headingMessage(42.904));
-    QVERIFY(azimuthEquals(provider, -123.82449588800605));
-    // A changed feedback angle in lock mode must not be hidden by a hold latch.
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(150.0, 28));
-    QVERIFY(azimuthEquals(provider, -107.096));
+void GimbalAzimuthProviderTest::invertedInstallationBaseRotation() {
+    QFETCH(int, flags);
+    QFETCH(double, feedbackAfterRotation);
+    QFETCH(double, expectedAfterRotation);
+    Vehicle vehicle;
+    MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
+    GimbalAzimuthProvider provider;
+    provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, flags));
+    QVERIFY(azimuthEquals(provider, 90.0));
+    // For a world-locked camera, relative feedback falls by 90 degrees;
+    // in follow mode relative feedback stays fixed and world yaw rises by 90.
+    provider.handleMavlinkMessage(&vehicle, headingMessage(160.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(feedbackAfterRotation, flags));
+    QVERIFY(azimuthEquals(provider, expectedAfterRotation));
+    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeading"));
+}
+
+void GimbalAzimuthProviderTest::invertedInstallationTiltKeepsAzimuth_data() {
+    QTest::addColumn<int>("flags");
+    QTest::addColumn<double>("roll");
+    QTest::addColumn<double>("pitch");
+    for (int flags : {12, 28}) {
+        const QByteArray mode = flags == 12 ? "follow-" : "lock-";
+        QTest::newRow((mode + "pitch-down").constData()) << flags << 0.0 << -60.0;
+        QTest::newRow((mode + "pitch-up").constData()) << flags << 0.0 << 60.0;
+        QTest::newRow((mode + "roll-and-pitch").constData()) << flags << 15.0 << -30.0;
+        QTest::newRow((mode + "half-turn-roll-pitch-down").constData()) << flags << 180.0 << -60.0;
+        QTest::newRow((mode + "half-turn-roll-pitch-up").constData()) << flags << 180.0 << 60.0;
+        QTest::newRow((mode + "negative-half-turn-roll-pitch-up").constData()) << flags << -180.0 << 60.0;
+    }
+}
+
+void GimbalAzimuthProviderTest::invertedInstallationTiltKeepsAzimuth() {
+    QFETCH(int, flags);
+    QFETCH(double, roll);
+    QFETCH(double, pitch);
+    Vehicle vehicle;
+    MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
+    GimbalAzimuthProvider provider;
+    provider.handleMavlinkMessage(&vehicle, headingMessage(30.25));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(42.125, flags));
+    QVERIFY(azimuthEquals(provider, 72.375));
+    auto q = quaternionFromEulerDegrees(roll, pitch, 42.125);
+    provider.handleMavlinkMessage(&vehicle, quaternionGimbalMessage(q, flags));
+    QVERIFY(azimuthEquals(provider, 72.375));
+    // q and -q describe the same orientation, including a half-turn roll.
+    for (float &component : q) {
+        component = -component;
+    }
+    provider.handleMavlinkMessage(&vehicle, quaternionGimbalMessage(q, flags));
+    QVERIFY(azimuthEquals(provider, 72.375));
+    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeading"));
 }
 
 void GimbalAzimuthProviderTest::fixedFeedbackConventionNeedsHeadingInBothModes() {
@@ -206,23 +310,23 @@ void GimbalAzimuthProviderTest::fixedFeedbackConventionNeedsHeadingInBothModes()
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 12));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
-    QVERIFY(azimuthEquals(provider, 50.0));
-    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeadingReversed"));
+    QVERIFY(azimuthEquals(provider, 90.0));
+    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeading"));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0, 28));
-    QVERIFY(azimuthEquals(provider, 50.0));
-    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeadingReversed"));
+    QVERIFY(azimuthEquals(provider, 90.0));
+    QCOMPARE(provider.referenceSource(), QStringLiteral("ConfiguredLegacyVehicleHeading"));
 
     // The product has no user-configurable frame or direction: lock/follow use
-    // the same fixed heading-minus-feedback contract for legacy messages.
+    // the same fixed heading-plus-feedback contract for legacy messages.
     provider.handleMavlinkMessage(&vehicle, headingMessage(160.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(110.0, 28));
-    QVERIFY(azimuthEquals(provider, 50.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-70.0, 28));
+    QVERIFY(azimuthEquals(provider, 90.0));
     provider.handleMavlinkMessage(&vehicle, headingMessage(250.0));
-    provider.handleMavlinkMessage(&vehicle, gimbalMessage(110.0, 12));
-    QVERIFY(azimuthEquals(provider, 140.0));
+    provider.handleMavlinkMessage(&vehicle, gimbalMessage(-70.0, 12));
+    QVERIFY(azimuthEquals(provider, 180.0));
 }
 
-void GimbalAzimuthProviderTest::reversedFeedbackDoesNotOverrideExplicitFrames() {
+void GimbalAzimuthProviderTest::installationConventionDoesNotOverrideExplicitFrames() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
     GimbalAzimuthProvider provider;
@@ -246,20 +350,20 @@ void GimbalAzimuthProviderTest::reversedFeedbackDoesNotOverrideExplicitFrames() 
     QVERIFY(provider.usingDeltaYaw());
 }
 
-void GimbalAzimuthProviderTest::reversedFeedbackPreservesFreshnessGuards() {
+void GimbalAzimuthProviderTest::installationConventionPreservesFreshnessGuards() {
     Vehicle vehicle;
     MultiVehicleManager::instance()->setActiveVehicle(&vehicle);
     GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(70.0));
-    QVERIFY(azimuthEquals(provider, 50.0));
+    QVERIFY(azimuthEquals(provider, 90.0));
     QTest::qWait(1100);
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
     QTest::qWait(1200);
     QVERIFY(!provider.valid());  // Gimbal is fresh, heading has expired.
     provider.handleMavlinkMessage(&vehicle, headingMessage(72.0));
-    QVERIFY(azimuthEquals(provider, 52.0));
+    QVERIFY(azimuthEquals(provider, 92.0));
     vehicle.vehicleLinkManager()->setCommunicationLost(true);
     QVERIFY(!provider.valid());
     vehicle.vehicleLinkManager()->setCommunicationLost(false);
@@ -267,7 +371,7 @@ void GimbalAzimuthProviderTest::reversedFeedbackPreservesFreshnessGuards() {
     provider.handleMavlinkMessage(&vehicle, headingMessage(74.0));
     QVERIFY(!provider.valid());  // Reconnection also requires fresh gimbal data.
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
-    QVERIFY(azimuthEquals(provider, 54.0));
+    QVERIFY(azimuthEquals(provider, 94.0));
 }
 
 void GimbalAzimuthProviderTest::explicitFramesOverrideFixedLegacyConvention() {
@@ -292,25 +396,25 @@ void GimbalAzimuthProviderTest::isolatesVehicleComponentAndDeviceRoutes() {
     GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&first, headingMessage(40.0));
     provider.handleMavlinkMessage(&first, gimbalMessage(10.0, 28, 1, 154, 1));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 50.0));
     provider.handleMavlinkMessage(&first, headingMessage(100.0, 2, 1));
     provider.handleMavlinkMessage(&first, headingMessage(100.0, 1, 154));
     provider.handleMavlinkMessage(&first, gimbalMessage(90.0, 28, 2, 154, 1));
     provider.handleMavlinkMessage(&first, gimbalMessage(90.0, 28, 1, 155, 1));
-    QVERIFY(azimuthEquals(provider, 30.0));
-    provider.handleMavlinkMessage(&first, gimbalMessage(-10.0, 28, 1, 154, 2));
-    QVERIFY(azimuthEquals(provider, 30.0));
-    first.gimbalController()->setActiveGimbal(&secondDevice);
     QVERIFY(azimuthEquals(provider, 50.0));
+    provider.handleMavlinkMessage(&first, gimbalMessage(-10.0, 28, 1, 154, 2));
+    QVERIFY(azimuthEquals(provider, 50.0));
+    first.gimbalController()->setActiveGimbal(&secondDevice);
+    QVERIFY(azimuthEquals(provider, 30.0));
     provider.handleMavlinkMessage(&second, headingMessage(100.0, 2));
     provider.handleMavlinkMessage(&second, gimbalMessage(5.0, 28, 2));
-    QVERIFY(azimuthEquals(provider, 50.0));
-    MultiVehicleManager::instance()->setActiveVehicle(&second);
-    QVERIFY(azimuthEquals(provider, 95.0));
-    MultiVehicleManager::instance()->setActiveVehicle(&first);
-    QVERIFY(azimuthEquals(provider, 50.0));
-    first.gimbalController()->setActiveGimbal(&firstDevice);
     QVERIFY(azimuthEquals(provider, 30.0));
+    MultiVehicleManager::instance()->setActiveVehicle(&second);
+    QVERIFY(azimuthEquals(provider, 105.0));
+    MultiVehicleManager::instance()->setActiveVehicle(&first);
+    QVERIFY(azimuthEquals(provider, 30.0));
+    first.gimbalController()->setActiveGimbal(&firstDevice);
+    QVERIFY(azimuthEquals(provider, 50.0));
 }
 
 void GimbalAzimuthProviderTest::highLatencyUnits_data() {
@@ -338,7 +442,7 @@ void GimbalAzimuthProviderTest::highLatencyUnits() {
     }
     provider.handleMavlinkMessage(&vehicle, message);
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, expectedHeading - 10.0));
+    QVERIFY(azimuthEquals(provider, expectedHeading + 10.0));
 }
 
 void GimbalAzimuthProviderTest::quaternionIgnoresDisplayOffset() {
@@ -348,7 +452,7 @@ void GimbalAzimuthProviderTest::quaternionIgnoresDisplayOffset() {
     provider.handleMavlinkMessage(&vehicle, headingMessage(135.0));
     provider.handleMavlinkMessage(&vehicle, quaternionHeadingMessage(45.625, 90.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 35.625));
+    QVERIFY(azimuthEquals(provider, 55.625));
 }
 
 void GimbalAzimuthProviderTest::invalidTelemetryDoesNotRenewFreshness() {
@@ -358,17 +462,17 @@ void GimbalAzimuthProviderTest::invalidTelemetryDoesNotRenewFreshness() {
     provider.handleMavlinkMessage(&vehicle, quaternionHeadingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 50.0));
     QTest::qWait(1100);
     provider.handleMavlinkMessage(&vehicle, headingMessage(std::numeric_limits<double>::quiet_NaN()));
     provider.handleMavlinkMessage(&vehicle, quaternionHeadingMessage(std::numeric_limits<double>::quiet_NaN()));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 50.0));
     // The gimbal is fresh; only the last valid heading expires.
     QTest::qWait(1200);
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(41.0));
-    QVERIFY(azimuthEquals(provider, 31.0));
+    QVERIFY(azimuthEquals(provider, 51.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(std::numeric_limits<double>::quiet_NaN()));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(42.0));
@@ -381,16 +485,16 @@ void GimbalAzimuthProviderTest::gimbalExpiryIsIndependentOfHeading() {
     GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 50.0));
     QTest::qWait(1100);
     provider.handleMavlinkMessage(&vehicle, headingMessage(41.0));
-    QVERIFY(azimuthEquals(provider, 31.0));
+    QVERIFY(azimuthEquals(provider, 51.0));
     QTest::qWait(1200);
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(42.0));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 32.0));
+    QVERIFY(azimuthEquals(provider, 52.0));
 }
 
 void GimbalAzimuthProviderTest::reconnectRequiresNewHeadingAndGimbal() {
@@ -399,7 +503,7 @@ void GimbalAzimuthProviderTest::reconnectRequiresNewHeadingAndGimbal() {
     GimbalAzimuthProvider provider;
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(10.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 50.0));
     vehicle.vehicleLinkManager()->setCommunicationLost(true);
     QVERIFY(!provider.valid());
     vehicle.vehicleLinkManager()->setCommunicationLost(false);
@@ -407,7 +511,7 @@ void GimbalAzimuthProviderTest::reconnectRequiresNewHeadingAndGimbal() {
     provider.handleMavlinkMessage(&vehicle, gimbalMessage(20.0));
     QVERIFY(!provider.valid());
     provider.handleMavlinkMessage(&vehicle, headingMessage(50.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 70.0));
 }
 
 void GimbalAzimuthProviderTest::ignoresReplayedGimbalSamplesButAcceptsZeroTimestamps() {
@@ -418,12 +522,12 @@ void GimbalAzimuthProviderTest::ignoresReplayedGimbalSamplesButAcceptsZeroTimest
     const auto newer = gimbalMessage(20.0);
     provider.handleMavlinkMessage(&vehicle, headingMessage(40.0));
     provider.handleMavlinkMessage(&vehicle, newer);
-    QVERIFY(azimuthEquals(provider, 20.0));
+    QVERIFY(azimuthEquals(provider, 60.0));
     provider.handleMavlinkMessage(&vehicle, older);
     provider.handleMavlinkMessage(&vehicle, newer);
-    QVERIFY(azimuthEquals(provider, 20.0));
+    QVERIFY(azimuthEquals(provider, 60.0));
     provider.handleMavlinkMessage(&vehicle, headingMessage(50.0));
-    QVERIFY(azimuthEquals(provider, 30.0));
+    QVERIFY(azimuthEquals(provider, 70.0));
 
     mavlink_gimbal_device_attitude_status_t status{};
     status.flags = 28;
@@ -432,12 +536,12 @@ void GimbalAzimuthProviderTest::ignoresReplayedGimbalSamplesButAcceptsZeroTimest
     mavlink_message_t zeroTime{};
     mavlink_msg_gimbal_device_attitude_status_encode(1, 154, &zeroTime, &status);
     provider.handleMavlinkMessage(&vehicle, zeroTime);
-    QVERIFY(azimuthEquals(provider, 25.0));
+    QVERIFY(azimuthEquals(provider, 75.0));
     q = yawQuaternion(26.0);
     std::copy(q.begin(), q.end(), status.q);
     mavlink_msg_gimbal_device_attitude_status_encode(1, 154, &zeroTime, &status);
     provider.handleMavlinkMessage(&vehicle, zeroTime);
-    QVERIFY(azimuthEquals(provider, 24.0));
+    QVERIFY(azimuthEquals(provider, 76.0));
 }
 
 QTEST_GUILESS_MAIN(GimbalAzimuthProviderTest)

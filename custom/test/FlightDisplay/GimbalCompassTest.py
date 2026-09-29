@@ -237,6 +237,25 @@ class GimbalCompassTest(unittest.TestCase):
                                         if abs(label.x() + label.width() / 2 - compass.width() / 2) < 0.01)
                     self.assertEqual(center_label.property("text"), ("N", "E", "S", "W")[angle // 90])
 
+    def test_right_and_left_bearings_bring_east_and_west_to_pointer(self):
+        self.select(1)
+        compass = self.gimbal.property("item")
+        # The provider supplies resolved world yaw. Positive/rightward yaw
+        # must bring E to the pointer, not W; do not mirror the scale again.
+        for direction, cardinal in ((1, "E"), (-1, "W")):
+            previous_distance = float("inf")
+            for turn in (0, 30, 60, 90):
+                self.provider.setProperty("absoluteYaw", direction * turn)
+                QTest.qWait(1)
+                target = min((label for label in self.labels(compass)
+                              if label.property("text") == cardinal),
+                             key=lambda label: abs(label.x() + label.width() / 2 - compass.width() / 2))
+                distance = abs(target.x() + target.width() / 2 - compass.width() / 2)
+                self.assertLess(distance, previous_distance)
+                self.assertAlmostEqual(compass.property("heading"), (direction * turn) % 360)
+                previous_distance = distance
+            self.assertAlmostEqual(previous_distance, 0)
+
     def test_north_crossing_is_continuous(self):
         self.select(1)
         compass = self.gimbal.property("item")
