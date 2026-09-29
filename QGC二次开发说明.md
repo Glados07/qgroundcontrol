@@ -10,7 +10,7 @@
 | 分支 | `SecDev/ft/control` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `8f3d3209e` + 当前工作区；本次同步范围为 UniRC UART2 SDK 接口、相关文件树、设置与验证说明，其他模块保留既有核对范围 |
+| 本次代码核对基线 | `33575aaa6` + 当前工作区；本次同步范围为倒装 A8 云台方位角方向、相关文件职责、计算示例与验证说明，其他模块保留既有核对范围 |
 | 文档更新 | 2026-09-29 |
 
 ## 阅读导航
@@ -55,7 +55,7 @@
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
 | UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | UART2 已接入，完整 Qt 6/Android 构建及真机路由待验证；蓝牙通道、CH9 和基础回中已有实测，动态交替、顶部联动和 MT11 双轴控制仍待真机验收 |
-| [双罗盘](#compass) | 飞行器航向与 A8 主画面的云台世界方位角 | 标准刻度、独立航向绑定与主画面显隐的 Qt Quick 主机回归通过；Android 实机显示待验收，范围见 4.2 |
+| [双罗盘](#compass) | 飞行器航向与倒装 A8 主画面的云台世界方位角；固定机体时右转方位角增大、左转减小 | 倒装反馈方向、模式相关 C++ 及罗盘联动主机回归通过，证据范围见 4.1；Android 倒装实机方向及跟随/锁定待验收，范围见 4.2 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
 | 通信与 Android USB | 默认 UDP 配置、USB 串口授权/枚举/热插拔 | 已集成；目标遥控器 USB Host 与飞控重连待真机验收 |
@@ -235,12 +235,12 @@ custom/
                                                             # ② 更新规则：动作请求携带当前 revision，只有匹配版本的 commandAccepted 才推进序列；新手动操作或复位更新版本，使旧 ACK 不能改变新序列，由 GimbalCenterCoordinator 和 UniRC 调用。
 │   │   ├── GimbalAzimuthPolicy.cc
                                                             # ① 参考系换算实现：检查四元数和冲突标志；Earth 参考系直接提取世界方位角，Vehicle 参考系通过有效 delta_yaw 或飞控航向转到世界参考系，再归一化角度。
-                                                            # ② 兼容规则：无显式参考系时按 Provider 给定的 legacy 约定计算，可处理车辆航向减反馈 yaw 的安装方向；返回来源/错误而不伪造缺失基准，供顶部云台罗盘判断是否可显示。
+                                                            # ② 兼容规则：无显式参考系时按 Provider 给定的 legacy 约定计算，保留正/反两种反馈方向能力；当前倒装 A8 接入取车辆航向加反馈 yaw，返回来源/错误而不伪造缺失基准，供顶部云台罗盘判断是否可显示。
 │   │   ├── GimbalAzimuthPolicy.h
                                                             # ① 世界方位角计算契约：Input 包含 [w,x,y,z] 四元数、Earth/Vehicle 参考系标志、delta_yaw 可用性、飞控航向和 legacy 方向约定；Result 返回有效性、角度、来源与错误。
                                                             # ② 对外提供 calculate、isValidQuaternion 和 wrap180；显式参考系优先于 legacy 配置，计算只依赖输入值，车辆选择、消息解析和 2 s 时效由 GimbalAzimuthProvider 负责。
 │   │   ├── GimbalAzimuthProvider.cc
-                                                            # ① 消息到角度：接收飞控姿态及 GIMBAL_DEVICE_ATTITUDE_STATUS，按车辆和云台标识保存样本，选择活动云台后构造 GimbalAzimuthPolicy::Input，计算并发布 absoluteYaw 与来源。
+                                                            # ① 消息到角度：接收飞控姿态及 GIMBAL_DEVICE_ATTITUDE_STATUS，按车辆和云台标识保存样本，选择活动云台后构造 Policy::Input；当前倒装 A8 的无显式 frame 输入固定为 VehicleHeading、legacyYawReversed=false，计算并发布 absoluteYaw 与来源。
                                                             # ② 有效性控制：处理独立云台的设备匹配、切车/切云台、通信丢失和 2 s 样本过期；飞控基准使用未取整 GimbalHeadingTelemetry，结果绑定顶部 gimbalCompassBarLoader，不接管底部飞控航向显示。
 │   │   ├── GimbalAzimuthProvider.h
                                                             # ① 云台罗盘数据接口：声明 valid、absoluteYaw、usingDeltaYaw、referenceSource 等属性及 MAVLink 输入入口，向 QML 提供可显示的世界方位角。
@@ -726,7 +726,7 @@ custom/
                                                             # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
                                                             # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
 │   │   └── GimbalCompassTest.py
-                                                            # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
+                                                            # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、左右转方位标签接近中心、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
                                                             # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
 │   ├── Gimbal/
                                                             # 相机协议、媒体、云台和方位角测试
@@ -780,7 +780,7 @@ custom/
                                                             # ① 方位角纯计算测试：覆盖 Earth/Vehicle/legacy 参考系、delta_yaw、安装方向反转、四元数正负/非单位输入、跨北角度及缺少世界参考的情况。
                                                             # ② 验证方式：构造 Input 调用 GimbalAzimuthPolicy 并比较有效性、角度与来源，包含姿态/飞控航向变化的连续样本；保证坐标换算语义，实际消息路由及时效另由 Provider 测试检查。
 │   │   ├── GimbalAzimuthProviderTest.cc
-                                                            # ① 方位角数据链测试：构造实际 MAVLink 消息并驱动生产 Provider，检查车辆/component/device 路由、未取整航向、显式参考系覆盖、消息过期和断线重连后的有效性。
+                                                            # ① 方位角数据链测试：构造 MAVLink 消息驱动生产 Provider，检查倒装 A8 固定机体时左右转向、跟随/锁定的统一反馈方向、车辆/component/device 路由、未取整航向、显式参考系覆盖、消息过期和断线重连后的有效性。
                                                             # ② 隔离依赖：使用 AzimuthStubs 模拟车辆/云台/链路，以 Qt 信号和受控样本触发变化，确认错误来源、旧帧及无效遥测不会续命；不需要启动完整 QGC 或连接云台。
 │   │   ├── GimbalCenterCoordinatorTest.cc
                                                             # ① 回中事务测试：覆盖重新显式接管、配置 ACK 匹配、控制权一致性、1° 预激活、最终命令/ACK、超时、取消和切车，检查失败时不发后续姿态命令。
@@ -2045,9 +2045,9 @@ Provider 使用单调时钟和过期检查定时器，云台姿态样本有效�
 | 明确 Earth frame | 从四元数取世界 yaw，调用 `wrap180()` |
 | 明确 Vehicle frame 且 delta_yaw 有效 | 将 delta_yaw 对应的世界参考旋转与云台四元数组合，再取 yaw |
 | 明确 Vehicle frame，delta_yaw 不可用 | 使用新鲜飞控航向完成参考旋转；航向不可用则结果无效 |
-| 没有明确 frame 的当前产品接入 | Provider 固定配置 legacy VehicleHeading 与反向约定，计算 `wrap180(heading - feedbackYaw)` |
+| 没有明确 frame 的当前倒装 A8 接入 | Provider 固定配置 `legacyYawReference=VehicleHeading`、`legacyYawReversed=false`，计算 `wrap180(heading + feedbackYaw)` |
 
-legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用该约定；不得用“哪个角度变化小”动态猜测参考系。MAVLink 扩展字段解码为零也不等于字段实际存在，Provider 分开维护支持与可用标记。
+legacy 分支的安装方向是固定产品输入约定：倒装 A8 的反馈 yaw 按右转为正、左转为负接入；只作用于无显式 frame 的反馈方向，不改变飞控航向的符号。锁定/跟随均使用同一个 VehicleHeading 参考系，不以模式切换公式，不用“哪个角度变化小”动态猜测参考系，也不整体反转世界方位角或补加 180°。显式 Earth/Vehicle frame 与 delta_yaw 仍按上表解释。MAVLink 扩展字段解码为零也不等于字段实际存在，Provider 分开维护支持与可用标记。俯仰沿原有链路保持向上为正，不对原始四元数、Pitch 或控制命令做安装方向翻转。
 
 **QML 绘制与布局**
 
@@ -2069,17 +2069,27 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 
 `GimbalAzimuthPolicy` 输出的角度归一化到 [-180°, 180°)，绘制组件再按方向刻度表达。跨越 ±180°/0° 是角度环绕，不能按两个显示数值的普通减法判断物理转动量。
 
-以当前无显式 frame 的产品反馈为例：
+以当前倒装 A8、无显式 frame 的产品反馈为例，下列 yaw 均是云台相对机体的反馈角；罗盘将结果按 [0°, 360°) 显示，顶部控制栏直接显示 Provider 的 [-180°, 180°) 数值，两者代表同一世界朝向：
 
 ~~~text
-飞控 heading = 100°，云台反馈 yaw = 20°
-世界方位角 = wrap(100° - 20°) = 80°
+机体朝北不动，云台从正前方右转 30°：
+heading = 0°，feedbackYaw 从 0° 增至 30°
+世界方位角从 0° 增至 30°，指向由北偏东；左转则相反
 
-基座转到 heading = 130°，反馈 yaw 同时变为 50°
-世界方位角 = wrap(130° - 50°) = 80°
+跟随状态，云台相对机体偏右 20°：
+飞控 heading = 100°，云台反馈 yaw = 20°
+世界方位角 = wrap180(100° + 20°) = 120°
+机体转到 heading = 130°，若 feedbackYaw 仍为 20°，世界方位角为 150°
+
+锁定状态，云台保持世界方位角 120°，仅机体/基座向右转动 30°：
+heading 从 100° 变为 130°，feedbackYaw 从 20° 变为 -10°
+世界方位角 = wrap180(130° + (-10°)) = 120°
+
+锁定状态下仍可遥控转动云台；机体保持 130°，再使云台右转 15°：
+feedbackYaw 从 -10° 变为 5°，世界方位角 = wrap180(130° + 5°) = 135°
 ~~~
 
-这是固定接入约定下的计算示例。接入另一种有显式 Earth/Vehicle frame 的设备时，按其标志和 delta_yaw 分支计算，不套用上述减法。Provider 只采用当前活动云台的样本；切换车辆/云台后必须重新匹配对象身份和有效数据。
+这些是固定接入约定下的配对样本计算示例，不是倒装设备的实测结果。锁定仅指基座运动时保持既定世界朝向，不等于永远指北，也不阻止遥控改变目标；未转动云台时，机体航向与相对反馈的变化应在同一参考下相互抵消。接入有显式 Earth/Vehicle frame 的设备时，按其标志和 delta_yaw 分支计算，不强套 legacy 安装约定。Provider 只采用当前活动云台的样本；切换车辆/云台后必须重新匹配对象身份和有效数据。
 
 布局由 `FlyViewCustomLayer` 提供上下 inset：底部航向占底部中央，顶部云台方向结合左右工具区和相机栏预留宽度。关闭某条罗盘时释放相应空间，不保留空白占位。
 
@@ -2088,12 +2098,12 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
 | 显隐配置 | `Settings/FlyViewCustomSettings.h/.cc`、`FlyViewCustom.SettingsGroup.json`；`UI/AppSettings/FlyViewSettings.qml` | 设置页编辑两条罗盘开关，Fact 写入 FlyView 分组；覆盖层根据开关及有效数据控制显示。 |
-| MAVLink 接收与对象接线 | `CustomPlugin.cc`；`Gimbal/GimbalAzimuthProvider.h/.cc` | 插件转交消息和活动 Vehicle；Provider 按车辆/component/device 缓存姿态并选择活动云台，拒绝过期或不匹配数据。 |
+| MAVLink 接收与对象接线 | `CustomPlugin.cc`；`Gimbal/GimbalAzimuthProvider.h/.cc` | 插件转交消息和活动 Vehicle；Provider 按车辆/component/device 缓存姿态并选择活动云台，设置倒装 A8 的固定 legacy 参考系与反馈方向，拒绝过期或不匹配数据。 |
 | 航向与参考系换算 | `Gimbal/GimbalHeadingTelemetry.h/.cc`、`GimbalAzimuthPolicy.h/.cc` | Telemetry 保存未取整飞控航向并选择有效来源；Policy 检查四元数，按 Earth/Vehicle/legacy 规则转换世界方位角。 |
 | 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页传入 A8 主画面状态；底部 Loader 使用默认航向绑定，顶部显式绑定 Provider.absoluteYaw；分别处理显隐、上下位置和避让。 |
 | 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；两条使用相同标准刻度，安装/反馈方向和参考系换算由后端完成。 |
-| 验证 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc`；AzimuthStubs | 分别检查数学换算、来源/时序和活动对象匹配；设备转动、锁定/跟随和失联表现按真机矩阵核对。 |
-| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、两条独立航向、中心数值不变、北向环绕、地图/A8/MT11 切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
+| 验证 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc`；AzimuthStubs | 分别检查数学换算、来源/时序和活动对象匹配；生产 Provider 用例覆盖倒装接入的左右转正负方向及跟随/锁定配对输入，不以桌面正装采集记录证明倒装方向；设备运动和失联表现按真机矩阵核对。 |
+| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、左右转时东西标签向中心接近、两条独立航向、中心数值不变、北向环绕、地图/A8/MT11 切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
 
 ---
 
@@ -2473,11 +2483,11 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | `custom/test/Gimbal/Mt11ProtocolTest.cc` | MT11 编解码、模式、倍率与端点策略 |
 | `custom/test/Gimbal/Mt11GimbalControllerTest.cc` | CH11/CH12 映射、死区、恢复保护、UDP 双轴刷新/停止、无效值、超时、端点隔离和 ACK 校验 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc`、`GimbalPhotoCapturePolicyTest.cc` | 媒体会话、尺寸和 DPR |
-| `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、航向时效、活动云台匹配 |
+| `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、倒装 A8 左右转反馈方向与跟随/锁定配对输入、显式参考系、航向时效、活动云台匹配 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
-| `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
+| `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC 帧、通道保护及 CH10 状态 |
 | `custom/test/Android/UniRcSerialPortTest.cc` | Unix 伪终端串口参数、收发/背压、错误与会话隔离；非 Unix 主机检查关闭状态和平台错误，跳过 Unix 用例 |
 | `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
@@ -2492,9 +2502,9 @@ python custom/test/FlightDisplay/DualPipResizeTest.py
 python custom/test/FlightDisplay/GimbalCompassTest.py
 ~~~
 
-既有罗盘专项主机验证保留原核对范围，环境为 Windows、Qt/PySide6 6.10.2 离屏渲染：`GimbalCompassTest.py` 8/8、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。前两项分别验证真实 QML 显示/状态联动和鼠标缩放事件，模式脚本检查按钮绑定与回调；不代表完整 QGC 编译、目标 Qt Kit、APK 或倒装 A8 真机方向验收。
+当前倒装 A8 方位角专项基于页首代码基线及工作区完成主机验证：Windows / Qt 5.14.2 / MSVC 独立重编的 `GimbalAzimuthProviderTest`、`GimbalAzimuthPolicyTest`、`GimbalHeadingTelemetryTest`、`GimbalModeControllerTest`、`SiyiModeQueryTest`、`SiyiProtocolTest` 六组 CTest 全部通过；Provider 的 XML 结果为 55 项通过、0 失败（含初始化与收尾），其中 38 个倒装安装约定的参数化场景全部通过，覆盖左右转、四向机头航向、北向环绕、跟随/锁定基座转动及俯仰/横滚下的方位角一致性。Windows / Qt/PySide6 6.10.2 离屏验证中，`GimbalCompassTest.py` 9/9、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。显示脚本分别验证真实 QML 显示/状态联动、鼠标缩放事件以及模式按钮绑定与回调，不代表完整 QGC 编译、目标 Qt Kit 或 APK 已通过。合成样本和桌面正装采集记录不能用作倒装方向验收证据；Android 倒装 A8 的实际左右转向、锁定/跟随及俯仰方向仍按 4.2 验收。
 
-本次 UART2 接入使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行 `UniRcProtocolTest`、`Mt11GimbalControllerTest`，各 23 项通过、0 失败（计数含初始化和收尾）；覆盖既有协议、A8 通道策略及 MT11 输入/停控回归。`UniRcSerialPortTest` 在同一 Windows 主机为 4 项通过、0 失败、7 项 Unix 伪终端测试跳过（计数含初始化和收尾）；仅确认关闭状态与非 Unix 平台错误，伪终端及实际 UART 收发尚未验证。
+UART2 接入的既有验证使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行 `UniRcProtocolTest`、`Mt11GimbalControllerTest`，各 23 项通过、0 失败（计数含初始化和收尾）；覆盖既有协议、A8 通道策略及 MT11 输入/停控回归。`UniRcSerialPortTest` 在同一 Windows 主机为 4 项通过、0 失败、7 项 Unix 伪终端测试跳过（计数含初始化和收尾）；仅确认关闭状态与非 Unix 平台错误，伪终端及实际 UART 收发尚未验证。
 
 设置页以 Qt 6/PySide6 完成 8 组分辨率、150% 字体及深浅主题布局检查，默认值、切换接口 Fact 写入、依赖行显隐、原 MAC 保留均通过；未发现 QML 绑定错误，中文翻译编译为 206 条已完成、0 条未完成。当前环境缺少 Qt 6.6 开发 Kit 的 `Qt6Config.cmake`，未完成完整 Qt 6/Android 构建，以上主机测试不等同于 Android UART2 真机验证。
 
@@ -2525,7 +2535,7 @@ ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControl
 | 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、MT11 断流停止/手动重开；容量清理触发、停止重试和退出封装 |
 | Android 图库 | 同卷保存、失败重试、公开发布、切换存储卷；已发布媒体卸载后保留 |
 | 云台姿态/模式 | RC 接管后 Center/Tilt 90/Lock/Follow；重连同步、等待期间失联/切车；迟到 ACK 不执行旧动作 |
-| 双罗盘 | 按 3.8 的方位约定核对倒装 A8 的实际朝向与中心读数/方位标签；跟随/锁定和机体转动时分别核对两条独立航向；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
+| 双罗盘 | A8 按机载方式倒装：机体固定、朝北时分别右转/左转云台，核对方位角递增向东/递减向西、跨北连续及 W 左 E 右；跟随时核对机体与云台叠加，锁定时仅转基座核对世界方位保持、遥控转云台时核对目标可改变，并核对俯仰向上为正；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
 | UniRC UART2/蓝牙路由 | 净配置默认启用 UART2；升级保留旧接口和禁用值；UniGCS 路由与数传组合匹配；UART2 `/dev/ttyHS2`、115200 8N1 无流控；关闭蓝牙/拒绝附近设备权限时 UART2 仍工作；UART2 打开失败、已开无字节、有字节无 SDK 帧、合法帧无 `0x42`、有效通道流的诊断；接口往返切换、前后台、禁用与重连时只有一个传输且旧回调不影响新会话 |
 | UniRC 动作 | 两种接口分别验证 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |

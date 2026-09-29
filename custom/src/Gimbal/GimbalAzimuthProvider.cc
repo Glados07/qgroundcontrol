@@ -227,12 +227,14 @@ void GimbalAzimuthProvider::_recalculateSample(Vehicle *vehicle, CachedSample &s
         headingIt != _vehicleHeadingTelemetry.cend() ? headingIt->heading(nowMs) : GimbalHeadingTelemetry::Sample{};
     sample.input.vehicleHeadingAvailable = heading.valid;
     sample.input.vehicleHeadingDegrees = heading.yawDegrees;
-    // Fixed custom-product legacy feedback contract: vehicle reference with
-    // reversed yaw, as observed in the A8 Mini capture. Neither this frame nor
-    // its direction is a user setting or inferred from yaw-lock. Explicit
-    // MAVLink frame declarations still take precedence in the policy.
+    // Fixed inverted-A8 product contract: feedback yaw is vehicle-relative,
+    // positive for a rightward (clockwise-from-above) turn. Add it to the vehicle
+    // heading in BOTH lock and follow; do not reuse the upright bench sign.
+    // Only the legacy installation direction is configured here. Explicit
+    // MAVLink frames/delta_yaw retain their protocol interpretation, and the
+    // provider never changes the raw quaternion or the gimbal pitch path.
     sample.input.legacyYawReference = GimbalAzimuthPolicy::LegacyYawReference::VehicleHeading;
-    sample.input.legacyYawReversed = true;
+    sample.input.legacyYawReversed = false;
     const bool fresh = nowMs >= sample.receivedAtMs && nowMs - sample.receivedAtMs <= kSampleTimeoutMs;
     const auto next = fresh ? GimbalAzimuthPolicy::calculate(sample.input) : GimbalAzimuthPolicy::Result{};
     const bool changed = forceLog || sample.result.source != next.source || sample.result.valid != next.valid ||
