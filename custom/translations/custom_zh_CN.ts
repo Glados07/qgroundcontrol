@@ -565,6 +565,16 @@
         <translation>SDK蓝牙地址</translation>
     </message>
     <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml"/>
+        <source>SDK Serial Port</source>
+        <translation>SDK串口</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml"/>
+        <source>Baud Rate</source>
+        <translation>波特率</translation>
+    </message>
+    <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="99"/>
         <source>Channel Values</source>
         <translation>遥控通道</translation>
@@ -872,8 +882,18 @@
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="396"/>
-        <source>Failed to send the UniRC 0x42 request over Bluetooth: %1</source>
-        <translation>通过蓝牙发送UniRC 0x42请求失败：%1</translation>
+        <source>Failed to send the UniRC 0x42 request on %1: %2</source>
+        <translation>通过%1发送UniRC 0x42请求失败：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc"/>
+        <source>Cannot open UniRC SDK UART2 on %1: %2</source>
+        <translation>无法打开%1上的UniRC SDK UART2：%2</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc"/>
+        <source>UniRC SDK UART2 error on %1: %2</source>
+        <translation>%1发生UniRC SDK UART2错误：%2</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="417"/>
@@ -902,13 +922,18 @@
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="982"/>
-        <source>UniRC 0x42 Bluetooth channel data stopped on %1 after %2 frame(s).</source>
-        <translation>%1上的UniRC 0x42蓝牙通道数据在收到%2帧后中断。</translation>
+        <source>UniRC 0x42 channel data stopped on %1 after %2 frame(s).</source>
+        <translation>%1上的UniRC 0x42通道数据在收到%2帧后中断。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="987"/>
-        <source>The UniRC request still had %1 Bluetooth byte(s) queued after %2 ms; the SPP transport did not accept the request.</source>
-        <translation>UniRC请求在%2毫秒后仍有%1个蓝牙字节排队；SPP传输层未接收该请求。</translation>
+        <source>The UniRC request on %1 still had %2 byte(s) queued after %3 ms.</source>
+        <translation>%1上的UniRC请求在%3毫秒后仍有%2个字节排队。</translation>
+    </message>
+    <message>
+        <location filename="../src/Android/UniRcChannelController.cc"/>
+        <source>Opened %1 and wrote the UniRC 0x42 request, but received no data. Check the UniGCS UART2 SDK route.</source>
+        <translation>已打开%1并写出UniRC 0x42请求，但未收到数据。请检查UniGCS UART2 SDK路由。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="994"/>
@@ -917,8 +942,8 @@
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="998"/>
-        <source>Received %1 Bluetooth byte(s) from %2, but no valid UniRC SDK frame.</source>
-        <translation>已从%2收到%1个蓝牙字节，但没有有效的UniRC SDK帧。</translation>
+        <source>Received %1 byte(s) from %2, but no valid UniRC SDK frame.</source>
+        <translation>已从%2收到%1个字节，但没有有效的UniRC SDK帧。</translation>
     </message>
     <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="1002"/>
@@ -984,10 +1009,9 @@
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcSdkInterface].enumStrings, </extracomment>
         <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
-        <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="85"/>
         <location filename="../src/Gimbal/GimbalControl.SettingsGroup.json"/>
-        <source>Bluetooth</source>
-        <translation>蓝牙</translation>
+        <source>Bluetooth,UART2</source>
+        <translation>蓝牙,UART2</translation>
     </message>
     <message>
         <extracomment>.QGC.MetaData.Facts[uniRcSdkBluetoothAddress].shortDesc, </extracomment>

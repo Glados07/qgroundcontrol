@@ -80,26 +80,49 @@ ColumnLayout {
             fact: root.gimbalControlSettings.uniRcChannelControlEnabled
         }
 
-        FlyViewComboBox {
+        FlyViewFactComboBox {
             Layout.fillWidth: true
             label: qsTr("SDK Interface")
-            model: [qsTranslate("GimbalControl.SettingsGroup.json", "Bluetooth")]
-            currentIndex: root.gimbalControlSettings.uniRcSdkInterface.enumIndex
+            fact: root.gimbalControlSettings.uniRcSdkInterface
+            indexModel: false
             enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
-
-            onActivated: (index) => {
-                const interfaceFact = root.gimbalControlSettings.uniRcSdkInterface
-                if (index >= 0 && index < interfaceFact.enumValues.length) {
-                    interfaceFact.value = interfaceFact.enumValues[index]
-                }
-            }
         }
 
         FlyViewFactTextField {
+            objectName: "uniRcBluetoothAddressRow"
             Layout.fillWidth: true
             label: qsTr("SDK Bluetooth Address")
             fact: root.gimbalControlSettings.uniRcSdkBluetoothAddress
+            visible: root.gimbalControlSettings.uniRcSdkInterface.rawValue === 0
             enabled: root.gimbalControlSettings.uniRcChannelControlEnabled.rawValue
+        }
+
+        FlyViewSettingsRow {
+            objectName: "uniRcUartPortRow"
+            Layout.fillWidth: true
+            label: qsTr("SDK Serial Port")
+            visible: root.gimbalControlSettings.uniRcSdkInterface.rawValue === 1
+
+            QGCLabel {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "/dev/ttyHS2"
+                wrapMode: Text.Wrap
+            }
+        }
+
+        FlyViewSettingsRow {
+            objectName: "uniRcUartBaudRateRow"
+            Layout.fillWidth: true
+            label: qsTr("Baud Rate")
+            visible: root.gimbalControlSettings.uniRcSdkInterface.rawValue === 1
+
+            QGCLabel {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "115200 (8N1)"
+                wrapMode: Text.Wrap
+            }
         }
 
         QGCLabel {

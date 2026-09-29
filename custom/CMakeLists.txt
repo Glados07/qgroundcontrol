@@ -693,6 +693,23 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
+    qt_add_executable(UniRcSerialPortTest
+        test/Android/UniRcSerialPortTest.cc
+        src/Android/UniRcSerialPort.cc
+        src/Android/UniRcSerialPort.h
+    )
+    target_include_directories(UniRcSerialPortTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+    )
+    target_link_libraries(UniRcSerialPortTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME UniRcSerialPortTest COMMAND $<TARGET_FILE:UniRcSerialPortTest>)
+    add_custom_target(check_unirc_serial_port
+        COMMAND $<TARGET_FILE:UniRcSerialPortTest>
+        DEPENDS UniRcSerialPortTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
     qt_add_executable(AndroidH265DecoderRoutePolicyTest
         test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc
         src/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderCapsPolicy.cc

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * UniRC 10 Pro Bluetooth SDK channel bridge.
+ * UniRC 10 Pro Bluetooth/UART2 SDK channel bridge.
  *
  ****************************************************************************/
 
@@ -11,6 +11,7 @@
 #include "GimbalControlSettings.h"
 #include "Mt11ControlManager.h"
 #include "QGCLoggingCategory.h"
+#include "UniRcSerialPort.h"
 
 #include <QtBluetooth/QBluetoothAddress>
 #include <QtBluetooth/QBluetoothLocalDevice>
@@ -114,7 +115,7 @@ void UniRcChannelController::shutdown()
     if (_gimbalCenterCoordinator) {
         _gimbalCenterCoordinator->cancel();
     }
-    _closeBluetooth(true, "shutdown");
+    _closeTransport(true, "shutdown");
 }
 
 void UniRcChannelController::_settingsChanged()
@@ -128,7 +129,7 @@ void UniRcChannelController::_settingsChanged()
         _bluetoothPaired = false;
         emit diagnosticsChanged();
     }
-    _closeBluetooth(true, "settings-changed");
+    _closeTransport(true, "settings-changed");
     _reconcile();
 }
 
@@ -140,7 +141,7 @@ void UniRcChannelController::_zoomDirectionSettingChanged()
 
     // Changing the mapping while the wheel is deflected must not reverse the
     // lens without a neutral transition. Stop the current action and re-arm
-    // A8 channel controls from their safe positions; the Bluetooth session,
+    // A8 channel controls from their safe positions; the SDK session,
     // 0x42 stream and independent MT11 rotation remain active.
     _resetA8Input(false);
     qCInfo(UniRcChannelLog)
@@ -162,7 +163,7 @@ void UniRcChannelController::_applicationStateChanged(
         if (_gimbalCenterCoordinator) {
             _gimbalCenterCoordinator->cancel();
         }
-        _closeBluetooth(true, "application-background");
+        _closeTransport(true, "application-background");
         return;
     }
     _reconcile();
@@ -176,11 +177,17 @@ bool UniRcChannelController::_shouldRun() const
         && _applicationActive
         && _settings
         && _settings->uniRcChannelControlEnabled()->rawValue().toBool()
-        && _settings->uniRcSdkInterface()->rawValue().toUInt()
-               == kBluetoothSdkInterface;
+        && (_settings->uniRcSdkInterface()->rawValue().toUInt()
+                == kBluetoothSdkInterface || _usesUart2());
 #else
     return false;
 #endif
+}
+
+bool UniRcChannelController::_usesUart2() const
+{
+    return _settings
+        && _settings->uniRcSdkInterface()->rawValue().toUInt() == kUart2SdkInterface;
 }
 
 void UniRcChannelController::_reconcile()
@@ -189,7 +196,7 @@ void UniRcChannelController::_reconcile()
         _reconnectTimer.stop();
         _connectionTimeout.stop();
         _inputWatchdog.stop();
-        _closeBluetooth(true, "not-running");
+        _closeTransport(true, "not-running");
         if (!_failureScheduled) {
             if (_shuttingDown) {
                 _setDiagnosticStage(QStringLiteral("SHUTDOWN"));
@@ -200,7 +207,8 @@ void UniRcChannelController::_reconcile()
                               ->rawValue().toBool()
                        && _settings->uniRcSdkInterface()
                               ->rawValue().toUInt()
-                              != kBluetoothSdkInterface) {
+                              != kBluetoothSdkInterface
+                       && !_usesUart2()) {
                 _setDiagnosticStage(
                     QStringLiteral("SDK_INTERFACE_UNSUPPORTED"));
                 _setLastError(
@@ -217,7 +225,14 @@ void UniRcChannelController::_reconcile()
         return;
     }
 
-    if (_socket || _permissionRequestPending) {
+    if (_socket || _uart) {
+        return;
+    }
+    if (_usesUart2()) {
+        _connectUart2();
+        return;
+    }
+    if (_permissionRequestPending) {
         return;
     }
     if (!_ensureBluetoothPermission() || !_ensureBluetoothPoweredOn()) {
@@ -275,7 +290,9 @@ bool UniRcChannelController::_ensureBluetoothPermission()
         this,
         [this](const QPermission &result) {
             _permissionRequestPending = false;
-            if (_shuttingDown) {
+            // A permission result may arrive after switching to UART2 or
+            // disabling SDK input. It must not overwrite the new session.
+            if (!_shouldRun() || _usesUart2()) {
                 return;
             }
             if (result.status() == Qt::PermissionStatus::Granted) {
@@ -310,7 +327,7 @@ bool UniRcChannelController::_ensureBluetoothPoweredOn()
 
 void UniRcChannelController::_connectBluetooth()
 {
-    if (!_shouldRun() || _socket) {
+    if (!_shouldRun() || _usesUart2() || _socket || _uart) {
         return;
     }
     if (!_ensureBluetoothPermission() || !_ensureBluetoothPoweredOn()) {
@@ -344,7 +361,7 @@ void UniRcChannelController::_connectBluetooth()
     _bluetoothPaired = true;
     emit diagnosticsChanged();
     qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt + 1
+        << "UniRC SDK attempt" << _connectionAttempt + 1
         << "event pairing-confirmed"
         << "device" << configuredAddress;
 
@@ -369,7 +386,7 @@ void UniRcChannelController::_connectBluetooth()
     connect(_socket,
             &QBluetoothSocket::bytesWritten,
             this,
-            &UniRcChannelController::_socketBytesWritten);
+            &UniRcChannelController::_transportBytesWritten);
     connect(_socket,
             &QBluetoothSocket::errorOccurred,
             this,
@@ -380,7 +397,7 @@ void UniRcChannelController::_connectBluetooth()
             .arg(_transportDescription()));
     _setDiagnosticStage(QStringLiteral("RFCOMM_CONNECTING"));
     qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt
+        << "UniRC SDK attempt" << _connectionAttempt
         << "event connect-start"
         << "device" << _transportDescription()
         << "service" << "SerialPort";
@@ -392,6 +409,49 @@ void UniRcChannelController::_connectBluetooth()
     _connectionTimeout.start();
 }
 
+void UniRcChannelController::_connectUart2()
+{
+    if (!_shouldRun() || !_usesUart2() || _uart || _socket) {
+        return;
+    }
+
+    _resetReceiveDiagnostics();
+    ++_connectionAttempt;
+    _connectionElapsed.restart();
+    _setDiagnosticStage(QStringLiteral("UART2_OPENING"));
+    _uart = new UniRcSerialPort(this);
+    if (!_uart->open()) {
+        _scheduleTransportFailure(
+            tr("Cannot open UniRC SDK UART2 on %1: %2")
+                .arg(_transportDescription(), _uart->errorString()),
+            "uart2-open-failed");
+        return;
+    }
+
+    UniRcSerialPort *const uart = _uart;
+    connect(uart, &UniRcSerialPort::readyRead, this, [this, uart]() {
+        if (uart == _uart) {
+            _readAvailableTransportData();
+        }
+    });
+    connect(uart, &UniRcSerialPort::bytesWritten,
+            this, &UniRcChannelController::_transportBytesWritten);
+    connect(uart, &UniRcSerialPort::errorOccurred, this, [this, uart]() {
+        if (uart == _uart) {
+            _scheduleTransportFailure(
+                tr("UniRC SDK UART2 error on %1: %2")
+                    .arg(_transportDescription(), uart->errorString()),
+                "uart2-error");
+        }
+    });
+    _setUartConnected(true);
+    _setDiagnosticStage(QStringLiteral("UART2_OPEN"));
+    qCInfo(UniRcChannelLog)
+        << "UniRC SDK attempt" << _connectionAttempt
+        << "event uart2-open" << "device" << _transportDescription();
+    _startChannelStream();
+}
+
 void UniRcChannelController::_socketConnected()
 {
     QBluetoothSocket *const socket =
@@ -400,33 +460,38 @@ void UniRcChannelController::_socketConnected()
         return;
     }
     if (!_shouldRun()) {
-        _closeBluetooth(true, "connected-while-stopped");
+        _closeTransport(true, "connected-while-stopped");
         return;
     }
 
     _connectionTimeout.stop();
     _setBluetoothConnected(true);
-    _setLastError(QString());
-    _requestElapsed.restart();
     _setDiagnosticStage(QStringLiteral("RFCOMM_CONNECTED"));
     qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt
+        << "UniRC SDK attempt" << _connectionAttempt
         << "event connected"
         << "elapsedMs" << _connectionElapsed.elapsed()
         << "device" << _transportDescription()
         << "peerName" << _socket->peerName()
         << "peerAddress" << _socket->peerAddress().toString();
 
+    _startChannelStream();
+}
+
+void UniRcChannelController::_startChannelStream()
+{
+    _setLastError(QString());
+    _requestElapsed.restart();
     if (!_sendChannelRequest(UniRcProtocol::Frequency20Hz)) {
-        _scheduleBluetoothFailure(
-            tr("Failed to send the UniRC 0x42 request over Bluetooth: %1")
-                .arg(_socket->errorString()),
+        _scheduleTransportFailure(
+            tr("Failed to send the UniRC 0x42 request on %1: %2")
+                .arg(_transportDescription(), _transportErrorString()),
             "request-write-failed");
         return;
     }
     _requestAwaitingTransmission = true;
     _setDiagnosticStage(QStringLiteral("REQUEST_0X42_QUEUED"));
-    if (_socket->bytesToWrite() == 0) {
+    if (_transportBytesToWrite() == 0) {
         _markChannelRequestTransmitted("queue-empty-after-write");
     }
     _inputWatchdog.start(kInitialFrameTimeoutMs);
@@ -439,7 +504,7 @@ void UniRcChannelController::_socketDisconnected()
     if (!socket || socket != _socket || _shuttingDown) {
         return;
     }
-    _scheduleBluetoothFailure(
+    _scheduleTransportFailure(
         tr("The UniRC SDK Bluetooth connection to %1 was disconnected.")
             .arg(_transportDescription()),
         "socket-disconnected");
@@ -453,7 +518,7 @@ void UniRcChannelController::_socketError(
     if (!socket || socket != _socket || _shuttingDown) {
         return;
     }
-    _scheduleBluetoothFailure(
+    _scheduleTransportFailure(
         tr("UniRC SDK Bluetooth error on %1: %2")
             .arg(_transportDescription(), _socket->errorString()),
         "socket-error");
@@ -466,7 +531,7 @@ void UniRcChannelController::_connectionTimeoutExpired()
     if (!_socket || _bluetoothConnected || _shuttingDown) {
         return;
     }
-    _scheduleBluetoothFailure(
+    _scheduleTransportFailure(
         tr("Timed out while connecting to the UniRC SDK Bluetooth device %1.")
             .arg(_transportDescription()),
         "connection-timeout");
@@ -474,10 +539,10 @@ void UniRcChannelController::_connectionTimeoutExpired()
 
 bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
 {
-    if (!_socket
-        || _socket->state()
-            != QBluetoothSocket::SocketState::ConnectedState
-        || !_socket->isWritable()) {
+    if (!(_uart && _uart->isOpen())
+        && !(_socket && _socket->state()
+            == QBluetoothSocket::SocketState::ConnectedState
+            && _socket->isWritable())) {
         return false;
     }
 
@@ -490,9 +555,9 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
     for (int copy = 0; copy < 3; ++copy) {
         qint64 offset = 0;
         while (offset < packet.size()) {
-            const qint64 written = _socket->write(
-                packet.constData() + offset,
-                packet.size() - offset);
+            const qint64 written = _uart
+                ? _uart->write(packet.mid(offset))
+                : _socket->write(packet.constData() + offset, packet.size() - offset);
             if (written <= 0) {
                 return false;
             }
@@ -501,7 +566,7 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
         ++_requestFrameCount;
         _requestByteCount += static_cast<quint64>(packet.size());
         qCInfo(UniRcChannelLog)
-            << "UniRC Bluetooth attempt" << _connectionAttempt
+            << "UniRC SDK attempt" << _connectionAttempt
             << "event request-frame-queued" << copy + 1 << "/3"
             << "frequencyCode" << frequencyCode
             << "bytes" << packet.size()
@@ -510,12 +575,12 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
 
     _lastRequestPacket = packet;
     qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt
+        << "UniRC SDK attempt" << _connectionAttempt
         << "event request-queued"
         << "frequencyCode" << frequencyCode
         << "frames" << 3
         << "bytes" << packet.size() * 3
-        << "socketBytesToWrite" << _socket->bytesToWrite()
+        << "transportBytesToWrite" << _transportBytesToWrite()
         << "packet" << packet.toHex(' ');
     return true;
 }
@@ -529,14 +594,12 @@ void UniRcChannelController::_socketReadyRead()
         return;
     }
 
-    _readAvailableBluetoothData();
+    _readAvailableTransportData();
 }
 
-void UniRcChannelController::_socketBytesWritten(qint64 bytes)
+void UniRcChannelController::_transportBytesWritten(qint64 bytes)
 {
-    QBluetoothSocket *const socket =
-        qobject_cast<QBluetoothSocket *>(sender());
-    if (!socket || socket != _socket
+    if (!sender() || (sender() != _socket && sender() != _uart)
         || bytes <= 0
         || _failureScheduled
         || _shuttingDown) {
@@ -547,13 +610,13 @@ void UniRcChannelController::_socketBytesWritten(qint64 bytes)
         _requestConfirmedByteCount += static_cast<quint64>(bytes);
         emit diagnosticsChanged();
         qCInfo(UniRcChannelLog)
-            << "UniRC Bluetooth attempt" << _connectionAttempt
+            << "UniRC SDK attempt" << _connectionAttempt
             << "event request-bytes-written"
             << "writtenNow" << bytes
             << "writtenTotal" << _requestConfirmedByteCount
             << "requestBytes" << _requestByteCount
-            << "socketBytesToWrite" << socket->bytesToWrite();
-        if (socket->bytesToWrite() == 0) {
+            << "transportBytesToWrite" << _transportBytesToWrite();
+        if (_transportBytesToWrite() == 0) {
             _markChannelRequestTransmitted("bytes-written");
         }
     }
@@ -562,7 +625,7 @@ void UniRcChannelController::_socketBytesWritten(qint64 bytes)
 void UniRcChannelController::_markChannelRequestTransmitted(
     const char *evidence)
 {
-    if (!_requestAwaitingTransmission || !_socket) {
+    if (!_requestAwaitingTransmission || !transportConnected()) {
         return;
     }
 
@@ -580,24 +643,24 @@ void UniRcChannelController::_markChannelRequestTransmitted(
         emit diagnosticsChanged();
     }
     qCInfo(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt
+        << "UniRC SDK attempt" << _connectionAttempt
         << "event request-transmitted"
         << "evidence" << evidence
         << "requestFrames" << _requestFrameCount
         << "requestBytes" << _requestByteCount
         << "writtenBytes" << _requestConfirmedByteCount
-        << "socketBytesToWrite" << _socket->bytesToWrite()
+        << "transportBytesToWrite" << _transportBytesToWrite()
         << "remoteAck" << false;
 }
 
-void UniRcChannelController::_readAvailableBluetoothData()
+void UniRcChannelController::_readAvailableTransportData()
 {
-    if (!_socket || _failureScheduled || _shuttingDown) {
+    if ((!_socket && !_uart) || _failureScheduled || _shuttingDown) {
         return;
     }
 
-    const QByteArray incoming = _socket->readAll();
-    if (incoming.isEmpty()) {
+    const QByteArray incoming = _uart ? _uart->readAll() : _socket->readAll();
+    if (incoming.isEmpty() || _failureScheduled) {
         return;
     }
 
@@ -608,9 +671,10 @@ void UniRcChannelController::_readAvailableBluetoothData()
             incoming.left(kReceiveSampleMaxBytes - _receiveSample.size()));
     }
     if (firstReceive) {
-        _setDiagnosticStage(QStringLiteral("BT_RX_NO_SDK_FRAME"));
+        _setDiagnosticStage(_uart ? QStringLiteral("UART2_RX_NO_SDK_FRAME")
+                                 : QStringLiteral("BT_RX_NO_SDK_FRAME"));
         qCInfo(UniRcChannelLog)
-            << "UniRC Bluetooth attempt" << _connectionAttempt
+            << "UniRC SDK attempt" << _connectionAttempt
             << "event first-rx"
             << "requestElapsedMs"
             << (_requestElapsed.isValid()
@@ -628,7 +692,7 @@ void UniRcChannelController::_readAvailableBluetoothData()
     if (firstValidSdkFrame) {
         const UniRcProtocol::DecodedPacket &packet = packets.first();
         qCInfo(UniRcChannelLog)
-            << "UniRC Bluetooth attempt" << _connectionAttempt
+            << "UniRC SDK attempt" << _connectionAttempt
             << "event sdk-frame-valid"
             << "control"
             << QStringLiteral("0x%1")
@@ -670,7 +734,7 @@ void UniRcChannelController::_handleChannelPacket(
         return;
     }
     if (!_gimbalControlManager || !_gimbalCenterCoordinator) {
-        _scheduleBluetoothFailure(
+        _scheduleTransportFailure(
             tr("UniRC gimbal control dependencies are unavailable."),
             "dependencies-unavailable");
         return;
@@ -690,7 +754,7 @@ void UniRcChannelController::_handleChannelPacket(
         _setSdkRouteActive(true);
         _setDiagnosticStage(QStringLiteral("SDK_ROUTE_ACTIVE"));
         qCInfo(UniRcChannelLog)
-            << "UniRC Bluetooth attempt" << _connectionAttempt
+            << "UniRC SDK attempt" << _connectionAttempt
             << "event stream-active"
             << "requestElapsedMs"
             << (_requestElapsed.isValid()
@@ -856,23 +920,23 @@ void UniRcChannelController::_inputWatchdogExpired()
 {
     // If the GUI thread was busy, readyRead and this timer can be queued at
     // the same time while a complete 0x42 frame is already buffered. Drain
-    // the current socket first; a valid frame re-arms the watchdog.
-    _readAvailableBluetoothData();
+    // the current transport first; a valid frame re-arms the watchdog.
+    _readAvailableTransportData();
     if (_inputWatchdog.isActive()
         || _failureScheduled
         || _shuttingDown) {
         return;
     }
 
-    if (_channelFrameCount == 0 && _socket) {
-        const qint64 queuedBytes = _socket->bytesToWrite();
+    if (_channelFrameCount == 0 && transportConnected()) {
+        const qint64 queuedBytes = _transportBytesToWrite();
         if (queuedBytes > 0
             && _requestElapsed.isValid()
             && _requestElapsed.elapsed() < kRequestQueueTimeoutMs) {
             const int remainingMs = static_cast<int>(
                 kRequestQueueTimeoutMs - _requestElapsed.elapsed());
             qCInfo(UniRcChannelLog)
-                << "UniRC Bluetooth attempt" << _connectionAttempt
+                << "UniRC SDK attempt" << _connectionAttempt
                 << "event request-still-queued"
                 << "queuedBytes" << queuedBytes
                 << "requestElapsedMs" << _requestElapsed.elapsed();
@@ -889,9 +953,8 @@ void UniRcChannelController::_inputWatchdogExpired()
     _resetInput(false);
     const bool requestStillQueued =
         _channelFrameCount == 0
-        && _socket
-        && _socket->bytesToWrite() > 0;
-    _scheduleBluetoothFailure(
+        && _transportBytesToWrite() > 0;
+    _scheduleTransportFailure(
         _receiveTimeoutMessage(),
         requestStillQueued
             ? "request-queue-timeout"
@@ -900,7 +963,7 @@ void UniRcChannelController::_inputWatchdogExpired()
                    : "initial-response-timeout"));
 }
 
-void UniRcChannelController::_scheduleBluetoothFailure(
+void UniRcChannelController::_scheduleTransportFailure(
     const QString &message,
     const char *reason)
 {
@@ -918,7 +981,7 @@ void UniRcChannelController::_scheduleBluetoothFailure(
     _inputWatchdog.stop();
     _resetInput(false);
     qCWarning(UniRcChannelLog)
-        << "UniRC Bluetooth attempt" << _connectionAttempt
+        << "UniRC SDK attempt" << _connectionAttempt
         << "event failed"
         << "reason" << reason
         << "device" << _transportDescription()
@@ -926,10 +989,8 @@ void UniRcChannelController::_scheduleBluetoothFailure(
         << (_socket
                 ? static_cast<int>(_socket->state())
                 : -1)
-        << "socketError"
-        << (_socket ? _socket->errorString() : QString())
-        << "socketBytesToWrite"
-        << (_socket ? _socket->bytesToWrite() : 0)
+        << "transportError" << _transportErrorString()
+        << "transportBytesToWrite" << _transportBytesToWrite()
         << "requestFrames" << _requestFrameCount
         << "requestBytes" << _requestByteCount
         << "requestWrittenBytes" << _requestConfirmedByteCount
@@ -948,7 +1009,7 @@ void UniRcChannelController::_scheduleBluetoothFailure(
     _setLastError(message);
 
     QTimer::singleShot(0, this, [this]() {
-        _closeBluetooth(false, "failure");
+        _closeTransport(false, "failure");
         _failureScheduled = false;
         if (_shouldRun() && !_reconnectTimer.isActive()) {
             _reconnectTimer.start(kFailureRetryDelayMs);
@@ -956,8 +1017,8 @@ void UniRcChannelController::_scheduleBluetoothFailure(
     });
 }
 
-void UniRcChannelController::_closeBluetooth(bool sendDisableRequest,
-                                             const char *reason)
+void UniRcChannelController::_closeTransport(bool sendDisableRequest,
+                                              const char *reason)
 {
     _connectionTimeout.stop();
     _inputWatchdog.stop();
@@ -966,23 +1027,40 @@ void UniRcChannelController::_closeBluetooth(bool sendDisableRequest,
     _requestAwaitingTransmission = false;
     _parser.reset();
 
+    // A best-effort disable write may synchronously fail. Once closing, old
+    // transport callbacks must not schedule another failure/reconnect cycle.
+    if (_uart) {
+        _uart->disconnect(this);
+    }
+    if (_socket) {
+        _socket->disconnect(this);
+    }
+    if (sendDisableRequest
+        && transportConnected()
+        && _channelFrameCount > 0) {
+        // Best effort: UART writes immediately without blocking; a failed
+        // device must never delay the local stop or releasing its handle.
+        (void) _sendChannelRequest(UniRcProtocol::FrequencyOff);
+    }
+    if (_uart || _socket) {
+        qCInfo(UniRcChannelLog)
+            << "Closing UniRC SDK connection"
+            << "reason" << reason
+            << "device" << _transportDescription();
+    }
+
+    if (_uart) {
+        _uart->close();
+        _uart->deleteLater();
+        _uart = nullptr;
+    }
+    _setUartConnected(false);
     if (!_socket) {
         _setBluetoothConnected(false);
         return;
     }
 
     QBluetoothSocket *const socket = _socket;
-    if (sendDisableRequest
-        && _bluetoothConnected
-        && _channelFrameCount > 0) {
-        (void) _sendChannelRequest(UniRcProtocol::FrequencyOff);
-    }
-    qCInfo(UniRcChannelLog)
-        << "Closing UniRC SDK Bluetooth connection"
-        << "reason" << reason
-        << "device" << _transportDescription();
-
-    socket->disconnect(this);
     _socket = nullptr;
     _setBluetoothConnected(false);
     if (socket->state()
@@ -1033,23 +1111,28 @@ void UniRcChannelController::_resetReceiveDiagnostics()
 QString UniRcChannelController::_receiveTimeoutMessage() const
 {
     if (_channelFrameCount > 0) {
-        return tr("UniRC 0x42 Bluetooth channel data stopped on %1 after %2 frame(s).")
+        return tr("UniRC 0x42 channel data stopped on %1 after %2 frame(s).")
             .arg(_transportDescription())
             .arg(_channelFrameCount);
     }
-    if (_socket && _socket->bytesToWrite() > 0) {
-        return tr("The UniRC request still had %1 Bluetooth byte(s) queued after %2 ms; the SPP transport did not accept the request.")
-            .arg(_socket->bytesToWrite())
+    if (_transportBytesToWrite() > 0) {
+        return tr("The UniRC request on %1 still had %2 byte(s) queued after %3 ms.")
+            .arg(_transportDescription())
+            .arg(_transportBytesToWrite())
             .arg(_requestElapsed.isValid()
                      ? _requestElapsed.elapsed()
                      : kRequestQueueTimeoutMs);
     }
     if (_receivedByteCount == 0) {
+        if (_uart) {
+            return tr("Opened %1 and wrote the UniRC 0x42 request, but received no data. Check the UniGCS UART2 SDK route.")
+                .arg(_transportDescription());
+        }
         return tr("Connected to %1 and completed the local Bluetooth write for the UniRC 0x42 request, but received no data. RFCOMM is connected, but the SDK route is not confirmed; check the UniGCS Bluetooth route.")
             .arg(_transportDescription());
     }
     if (_decodedFrameCount == 0) {
-        return tr("Received %1 Bluetooth byte(s) from %2, but no valid UniRC SDK frame.")
+        return tr("Received %1 byte(s) from %2, but no valid UniRC SDK frame.")
             .arg(_receivedByteCount)
             .arg(_transportDescription());
     }
@@ -1068,15 +1151,30 @@ QString UniRcChannelController::_configuredBluetoothAddress() const
 
 QString UniRcChannelController::_transportDescription() const
 {
+    if (_uart || (!_socket && _usesUart2())) {
+        return QStringLiteral("UART2 /dev/ttyHS2 (115200, 8N1)");
+    }
     const QString address = _configuredBluetoothAddress();
     return address.isEmpty()
         ? tr("unconfigured device")
         : address;
 }
 
+QString UniRcChannelController::_transportErrorString() const
+{
+    return _uart ? _uart->errorString()
+                 : (_socket ? _socket->errorString() : QString());
+}
+
+qint64 UniRcChannelController::_transportBytesToWrite() const
+{
+    return _uart ? _uart->bytesToWrite()
+                 : (_socket ? _socket->bytesToWrite() : 0);
+}
+
 QString UniRcChannelController::diagnosticSummary() const
 {
-    const qint64 queuedBytes = _socket ? _socket->bytesToWrite() : 0;
+    const qint64 queuedBytes = _transportBytesToWrite();
     const QString lastFrame = _lastFramePayloadSize < 0
         ? QStringLiteral("n/a")
         : QStringLiteral("ctrl=0x%1,cmd=0x%2,len=%3")
@@ -1089,13 +1187,19 @@ QString UniRcChannelController::diagnosticSummary() const
                    16,
                    QLatin1Char('0'))
               .arg(_lastFramePayloadSize);
+    const bool uart = _uart || (!_socket && _usesUart2());
+    const QString connection = uart
+        ? QStringLiteral("UART2=%1").arg(_uartConnected ? QStringLiteral("open")
+                                                        : QStringLiteral("closed"))
+        : QStringLiteral("paired=%1 | RFCOMM=%2")
+              .arg(_bluetoothPaired ? QStringLiteral("yes") : QStringLiteral("no"))
+              .arg(_bluetoothConnected ? QStringLiteral("connected")
+                                       : QStringLiteral("disconnected"));
     return QStringLiteral(
-               "stage=%1 | paired=%2 | RFCOMM=%3 | TX=%4/%5 B | queued=%6 B | RX=%7 B | SDK=%8 | 0x42=%9 | control=%10 | last=%11")
+               "stage=%1 | device=%2 | %3 | TX=%4/%5 B | queued=%6 B | RX=%7 B | SDK=%8 | 0x42=%9 | control=%10 | last=%11")
         .arg(_diagnosticStage)
-        .arg(_bluetoothPaired ? QStringLiteral("yes")
-                              : QStringLiteral("no"))
-        .arg(_bluetoothConnected ? QStringLiteral("connected")
-                                 : QStringLiteral("disconnected"))
+        .arg(_transportDescription())
+        .arg(connection)
         .arg(_requestConfirmedByteCount)
         .arg(_requestByteCount)
         .arg(queuedBytes)
@@ -1114,6 +1218,18 @@ void UniRcChannelController::_setBluetoothConnected(bool connected)
     }
     _bluetoothConnected = connected;
     emit bluetoothConnectedChanged();
+    emit transportConnectedChanged();
+    emit diagnosticsChanged();
+}
+
+void UniRcChannelController::_setUartConnected(bool connected)
+{
+    if (_uartConnected == connected) {
+        return;
+    }
+    _uartConnected = connected;
+    emit uartConnectedChanged();
+    emit transportConnectedChanged();
     emit diagnosticsChanged();
 }
 

@@ -132,6 +132,7 @@ class Chinese(QTranslator):
         "Virtual Joystick": "虚拟摇杆", "Instrument Panel": "仪表面板", "Gimbal Camera": "云台相机",
         "Zoom Step": "变焦步长", "Enabled": "启用", "Channel Values": "通道实时数值",
         "SDK Interface": "SDK 接口", "SDK Bluetooth Address": "SDK 蓝牙地址",
+        "SDK Serial Port": "SDK 串口", "Baud Rate": "波特率", "Bluetooth": "蓝牙",
         "SIYI A8 Mini Gimbal Camera": "思翼 A8 Mini 云台相机", "UniPod MT11 Gimbal Camera": "UniPod MT11 云台相机",
         "SDK Host": "SDK 主机地址", "SDK Port": "SDK 端口", "3D View": "3D 视图",
         "Minimum Altitude": "最低高度", "Maximum Altitude": "最高高度",
@@ -182,6 +183,8 @@ def main():
     assert QResource.registerResource(args.resource), "Could not register custom binary resource"
     style = Style()
     core = Core()
+    assert core.gimbal["uniRcChannelControlEnabled"].get_value() is True
+    assert core.gimbal["uniRcSdkInterface"].get_value() == 1, "New installations must use UART2"
     qmlRegisterType(Fact, "QGroundControl.FactSystem", 1, 0, "Fact")
     qmlRegisterSingletonInstance(Core, "QGroundControl", 1, 0, "QGroundControl", core)
     for uri in ("QGroundControl.AppSettings", "QGroundControl.MultiVehicleManager"):
@@ -307,15 +310,31 @@ def main():
     core.app["useChecklist"].set_value(old)
 
     combo_row = next(item for item in descendants(root)
-                     if "FlyViewComboBox" in item.metaObject().className()
+                     if "FlyViewFactComboBox" in item.metaObject().className()
                      and item.property("label") == Chinese.labels["SDK Interface"])
     combo = next(item for item in descendants(combo_row)
-                 if item.metaObject().className().startswith("QGCComboBox"))
-    # The remaining SDK selector has one legal entry. Seed only the test double
-    # with an invalid stored value to verify activation writes back that entry.
-    core.gimbal["uniRcSdkInterface"].set_value(-1)
+                 if item.metaObject().className().startswith("FactComboBox"))
+    bluetooth_row = root.findChild(QQuickItem, "uniRcBluetoothAddressRow")
+    uart_port_row = root.findChild(QQuickItem, "uniRcUartPortRow")
+    uart_baud_row = root.findChild(QQuickItem, "uniRcUartBaudRateRow")
+    assert combo.property("count") == 2, "Both SDK interfaces must be selectable"
+    assert combo.property("currentIndex") == 1
+    assert not bluetooth_row.isVisible() and uart_port_row.isVisible() and uart_baud_row.isVisible()
+    assert any(item.property("text") == "/dev/ttyHS2" for item in descendants(uart_port_row))
+    assert any(item.property("text") == "115200 (8N1)" for item in descendants(uart_baud_row))
+    bluetooth_address = core.gimbal["uniRcSdkBluetoothAddress"].get_value()
+    # Existing Bluetooth selections retain their stored value and address;
+    # the selector must write both values through and switch dependent rows.
     assert QMetaObject.invokeMethod(combo, "activated", Qt.DirectConnection, Q_ARG(int, 0))
+    settle()
     assert core.gimbal["uniRcSdkInterface"].get_value() == 0
+    assert bluetooth_row.isVisible() and not uart_port_row.isVisible() and not uart_baud_row.isVisible()
+    assert QMetaObject.invokeMethod(combo, "activated", Qt.DirectConnection, Q_ARG(int, 1))
+    settle()
+    assert core.gimbal["uniRcSdkInterface"].get_value() == 1
+    assert not bluetooth_row.isVisible() and uart_port_row.isVisible() and uart_baud_row.isVisible()
+    assert core.gimbal["uniRcSdkBluetoothAddress"].get_value() == bluetooth_address
+    print("PASS: UART2 defaults and fixed serial settings, SDK selection and Bluetooth address preservation")
 
     # Legacy frame and direction are fixed product conventions, not settings.
     assert set(core.fly_custom) == {"showHeadingCompassBar", "showGimbalHeadingCompassBar"}
