@@ -100,9 +100,9 @@
             "name": "uniRcSdkInterface",
             "shortDesc": "UniRC SDK interface",
             "type": "uint32",
-            "enumStrings": "Bluetooth",
-            "enumValues": "0",
-            "default": 0
+            "enumStrings": "Bluetooth,UART2",
+            "enumValues": "0,1",
+            "default": 1
         },
         {
             "name": "uniRcSdkBluetoothAddress",

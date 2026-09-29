@@ -10,8 +10,8 @@
 | 分支 | `SecDev/ft/control` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `71a84cb4d`，包含工作区现有的 A8 采集工具 |
-| 文档更新 | 2026-09-16 |
+| 本次代码核对基线 | `8f3d3209e` + 当前工作区；本次同步范围为 UniRC UART2 SDK 接口、相关文件树、设置与验证说明，其他模块保留既有核对范围 |
+| 文档更新 | 2026-09-29 |
 
 ## 阅读导航
 
@@ -54,8 +54,8 @@
 | MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制、CH11/CH12 转向 | 协议、通道映射和 UDP 停控已有主机测试；手势、模式画面及 Android 转向链路待真机验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
-| UniRC 10 Pro | 蓝牙 SDK、16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | 蓝牙通道、CH9 和基础回中已有实测；动态交替、顶部联动和 MT11 双轴控制待真机验收 |
-| 双罗盘 | 飞行器航向、活动 MAVLink 云台世界方位角 | 已集成；当前反馈换算有实测依据，仍需锁定/跟随、转动基座和失联回归 |
+| UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | UART2 已接入，完整 Qt 6/Android 构建及真机路由待验证；蓝牙通道、CH9 和基础回中已有实测，动态交替、顶部联动和 MT11 双轴控制仍待真机验收 |
+| [双罗盘](#compass) | 飞行器航向与 A8 主画面的云台世界方位角 | 标准刻度、独立航向绑定与主画面显隐的 Qt Quick 主机回归通过；Android 实机显示待验收，范围见 4.2 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
 | 通信与 Android USB | 默认 UDP 配置、USB 串口授权/枚举/热插拔 | 已集成；目标遥控器 USB Host 与飞控重连待真机验收 |
@@ -85,7 +85,7 @@ custom/
                                                             # 产品定制代码、资源、平台适配与开发验证
 ├── CMakeLists.txt
                                                             # ① 构建入口：将 custom C++、复用的原生 Viewer3D 实现和 custom.qrc 纳入应用；查找 Bluetooth、Quick3D、Quick3DAssetUtils，按可用性接入 WebEngineQuick。
-                                                            # ② 装配方式：声明 Custom.Widgets/Custom.FlightDisplay QML 模块，生成 Android 模板覆盖目录、编译翻译，并在桌面 QGC_BUILD_TESTING 开启时注册 13 个 C++ 测试目标。
+                                                            # ② 装配方式：声明 Custom.Widgets/Custom.FlightDisplay QML 模块，生成 Android 模板覆盖目录、编译翻译，并在桌面 QGC_BUILD_TESTING 开启时注册 C++ 测试目标；当前清单与执行方式见 4.1。
 ├── custom.qrc
                                                             # ① 资源清单：通过 prefix/alias 定义 QML 页面、设置 JSON、图标、F450 网格和三维 shader 的运行时路径；/Custom/qml 下的同名别名供插件拦截后覆盖原生页面。
                                                             # ② 关联关系：同时引用 custom 文件和保留复用的原生 QML/材质；新增界面或移动资源后需同步路径，CMake 负责打包，CustomPlugin 的 URL 拦截器负责将页面请求导向对应资源。
@@ -116,7 +116,7 @@ custom/
                                                             # ① 产品启动总装：创建设置与业务 Manager，安装默认链路/视频设置、中文翻译和 QML URL 拦截器，注册 Viewer3D 类型；将这些对象接入原生 QGCCorePlugin 生命周期并提供给界面。
                                                             # ② 运行接线：mavlinkMessage 将消息交给方位角 Provider 并过滤自动视频信息，模式控制器自行订阅 Vehicle 消息；主/次视频项和接收器分别接 A8/MT11，安装尺寸探针与恢复逻辑，退出时收尾媒体、第二路视频和后台发布。
 │   ├── Android/
-                                                            # Android 媒体桥与 UniRC 蓝牙通道控制
+                                                            # Android 媒体桥与 UniRC Bluetooth/UART2 通道控制
 │   │   ├── AndroidMediaLibrary.cc
                                                             # ① JNI 适配实现：调用 QGCCustomMediaLibrary 的静态方法，转换 QString、Java 返回对象及异常结果，为暂存、发布、配额清理和等待提供统一 C++ 入口。
                                                             # ② 媒体链路：相机 Manager 完成截图或关闭录像文件后调用发布接口，Java 负责公共目录提交与恢复；新增存储能力时需同步本文件、AndroidMediaLibrary.h 和 Java 方法签名。
@@ -124,23 +124,29 @@ custom/
                                                             # ① 平台媒体接口声明：提供暂存目录、旧媒体源目录、文件发布、已发布录像清理、等待发布和媒体删除方法，供 A8/MT11 本地照片与录像逻辑共用。
                                                             # ② 调用约定：以 C++ 路径、文件类型和执行结果隔离 Android Java API；Manager 负责生成文件与控制录制，本接口只承接平台存储操作，具体 JNI 签名和结果转换在同名 .cc。
 │   │   ├── UniRcChannelController.cc
-                                                            # ① 接收链路：依据启用开关、前后台状态、蓝牙权限和配置 MAC 建立 RFCOMM 连接，发送 20 Hz 通道请求；区分写入本地队列与实际发送，经 StreamParser 组帧后刷新 16 路数值和诊断状态。
+                                                            # ① 接收链路：依据启用开关、前后台状态和 SDK 接口选择打开 UART2 或建立 RFCOMM 连接，发送 20 Hz 通道请求；蓝牙单独处理权限和 MAC，两个传输共用 StreamParser、16 路数值与诊断状态。
                                                             # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；首包/持续输入超时、失联或切后台时停止动作、清空输入并按条件重连。
 │   │   ├── UniRcChannelController.h
-                                                            # ① UniRC 控制器契约：声明 bluetoothConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10 和诊断信息等 QML 属性，以及 shutdown 退出接口。
-                                                            # ② 异步状态：保存 Bluetooth socket、权限/应用状态处理、请求发送阶段、首包及输入 watchdog、重连定时器和通道动作状态；通过设置、A8 Manager 与回中协调器连接输入和执行端。
+                                                            # ① UniRC 控制器契约：声明 bluetoothConnected、uartConnected、transportConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10 和诊断信息等 QML 属性，以及 shutdown 退出接口。
+                                                            # ② 异步状态：保存互斥的 Bluetooth socket/UART2 传输、权限/应用状态处理、请求发送阶段、首包及输入 watchdog、重连定时器和通道动作状态；通过设置、相机 Manager 与回中协调器连接输入和执行端。
 │   │   ├── UniRcChannelPolicy.cc
                                                             # ① 数值判定：检查 900～2100 的有效输入；CH9 在 1475～1525 回中后按方向输出并应用反向开关，CH10 用 ≤1250 释放、≥1750 按下判断有效边沿。
                                                             # ② 动作保护：CH7/8 超出 1400～1600 判为手动控制；CH9/10 非法输入清除已就绪状态，恢复后仍须重新回中/释放，避免控制器把失效数据或持续按住状态当成新操作。
 │   │   ├── UniRcChannelPolicy.h
-                                                            # ① 纯通道策略接口：定义 CH7/8/9/10 输入的有效范围、方向与边沿状态，以及处理结果结构，向控制器返回需要执行的动作而不直接访问蓝牙或云台。
+                                                            # ① 纯通道策略接口：定义 CH7/8/9/10 输入的有效范围、方向与边沿状态，以及处理结果结构，向控制器返回需要执行的动作而不直接访问 SDK 传输或云台。
                                                             # ② 状态约定：CH9 必须先回中才能输出方向，CH10 必须先释放才能识别按下；保留反向配置和输入保护所需状态，规则实现位于同名 .cc，可由独立测试直接调用。
 │   │   ├── UniRcProtocol.cc
                                                             # ① 编码与校验：封装 55 66 帧头、控制字、长度、序号、命令和 CRC16-XMODEM，生成开启 20 Hz 上报及关闭请求，检查通道包命令、长度与 CRC。
-                                                            # ② 流式解析：累积 Bluetooth 分段数据，处理半帧、连续多帧和无效帧重同步；将合法 0x42/32 字节载荷解码为 16 路数值，供 UniRcChannelController 更新界面和执行动作。
-│   │   └── UniRcProtocol.h
+                                                            # ② 流式解析：累积 Bluetooth/UART2 分段数据，处理半帧、连续多帧和无效帧重同步；将合法 0x42/32 字节载荷解码为 16 路数值，供 UniRcChannelController 更新界面和执行动作。
+│   │   ├── UniRcProtocol.h
                                                             # ① UniRC 字节协议声明：定义命令、通道数据包、CRC 与启停通道请求接口；StreamParser 保存跨次接收的字节缓存，并向控制器输出完整解析结果。
                                                             # ② 数据约定：通道上报包含 16 个 int16 数值，帧长、序号及数值采用协议规定的字节序；本文件负责通信数据契约，通道阈值和动作含义由 UniRcChannelPolicy 解释。
+│   │   ├── UniRcSerialPort.cc
+                                                            # ① 板载 UART2 实现：以 POSIX 非阻塞方式打开 /dev/ttyHS2，设置 115200 8N1、无流控，使用 QSocketNotifier 驱动读写；与 Android USB Host 串口管理器独立。
+                                                            # ② 收发与清理：缓存短写/EAGAIN 后的剩余数据，处理系统调用错误并报告 errno；关闭时释放 fd 与通知器、使旧会话写入通知失效，不阻塞等待串口排空。
+│   │   └── UniRcSerialPort.h
+                                                            # ① UART2 传输契约：提供 open/close、readAll/write、bytesToWrite、errorString，以及 readyRead、bytesWritten、errorOccurred 信号，供 UniRcChannelController 接线。
+                                                            # ② 线程与状态：所有操作属于对象的事件循环线程；维护 fd、读写通知器、有界发送缓存和会话编号，bytesWritten 只表示字节已被本地操作系统接收。
 │   ├── AutoPilotPlugin/
                                                             # 设备设置页面定制
 │   │   ├── CustomAutoPilotPlugin.cc
@@ -181,13 +187,13 @@ custom/
                                                             # ② 渲染接线：通过 initVideoItem 将窗口与显示项交给 DualVideoManager，getWidth/getHeight 按宽高比和适配模式计算画面尺寸；PIP 归属、全屏和外层提示由 FlyViewSecondaryVideo 处理。
 │   │   ├── FlyView.qml
                                                             # ① 飞行页总装与布局：创建地图、主视频、第二路视频、DualPipView、原生 widgetLayer、自定义覆盖层和三维窗口；设置区域尺寸、PIP 左下锚点、层叠关系及相互依赖。
-                                                            # ② 模块连接：将三个内容项送入 DualPipView，向 FlyViewCustomLayer 提供页面可用空间/右上保留区，并连接工具条与 Viewer3D 显隐；整页布局改这里，相机栏内部按钮在 GimbalCameraControl。
+                                                            # ② 模块连接：将三个内容项送入 DualPipView，向 FlyViewCustomLayer 提供页面可用空间/右上保留区，以及由 Video 1 的 hasVideo、PipState.fullState 和三维窗口状态决定的 a8VideoIsMain；整页布局与工具条/Viewer3D 显隐在此接线，相机栏内部按钮在 GimbalCameraControl。
 │   │   ├── FlyViewCompassBar.qml
                                                             # ① 两条罗盘共用的 UI：compassBar 绘制条带背景和循环方位刻度，headingIndicator/headingLabel 显示中心角度，compassArrowIndicator 使用 compassPointer.svg；字体、颜色、宽高及指针尺寸均在此定义。
-                                                            # ② 显示输入：通过 directionDegrees、indicatorPrefix 接收角度和标识，将角度归一到 0～360°并排列刻度；默认 directionDegrees 读取 vehicle.heading.rawValue，顶部云台实例由 FlyViewCustomLayer 改绑 Provider.absoluteYaw。
+                                                            # ② 显示输入：通过 directionDegrees、indicatorPrefix 接收角度和标识，将世界方位角归一到 [0°, 360°) 并按标准方位排列刻度，不作安装方向换算或镜像；默认读取 vehicle.heading.rawValue，顶部云台实例由 FlyViewCustomLayer 改绑 Provider.absoluteYaw。
 │   │   ├── FlyViewCustomLayer.qml
                                                             # ① 覆盖层装配：compassBarLoader 放置底部飞控航向条，gimbalCompassBarLoader 放置顶部云台方位角条；分别绑定开关、显隐、上下锚点和 QGCToolInsets，同时加载母线电压告警。
-                                                            # ② 数据与可用性：底部沿用活动车辆 heading；顶部绑定 GimbalAzimuthProvider.absoluteYaw，并结合车辆/云台/Provider 有效性与失联状态显示；Provider 执行 2 s 过期检查，底部没有相同的独立超时逻辑。
+                                                            # ② 数据与可用性：底部沿用活动车辆 heading；顶部绑定 GimbalAzimuthProvider.absoluteYaw，由 a8VideoIsMain、显示开关、车辆/云台/Provider 有效性与通信状态共同控制 Loader，隐藏时释放顶部 inset；Provider 执行姿态过期检查，底部没有相同的独立超时逻辑。
 │   │   ├── FlyViewSecondaryVideo.qml
                                                             # ① 第二路飞行页包装：将 FlightDisplayViewSecondaryVideo 放入 PipState 内容容器，定义第二路标签、双击全屏行为和原生距离/雷达叠加，是 DualPipView 接收的第二路显示项。
                                                             # ② 窗口迁移：弹出或返回飞行页时协调停止视频与延迟重启，待窗口/渲染对象稳定后恢复播放；实际 RTSP 接收由 DualVideoManager 管理，纹理绘制和画面适配在内部显示组件。
@@ -411,7 +417,7 @@ custom/
                                                             # ① 通用设置页面：保留语言、单位、音频、保存路径与品牌图等原生选项，定制基础字体大小输入及增减按钮，便于桌面和 Android 调整整体可读性。
                                                             # ② 字号链路：控件修改 appSettings.appFontPointSize Fact，ScreenTools 和全局控件随之刷新；Android 首次字体默认值由 CustomPlugin 的元数据调整安装，当前用户字号由设置系统持久化。
 │   │   │   ├── GimbalControlSettingsGroup.qml
-                                                            # ① 云台配置 UI：显示 A8/MT11 启用、各自 SDK 主机/端口与变倍步长；Android 区域提供 UniRC 通道控制、SDK 接口、蓝牙 MAC、CH9 反向及连接/诊断信息。
+                                                            # ① 云台配置 UI：显示 A8/MT11 启用、各自 SDK 主机/端口与变倍步长；Android 区域提供 UniRC 启用和接口选择、按接口显示的蓝牙 MAC 或 UART2 参数、CH1～CH16 网格及 A8 区的 CH9 反向设置。
                                                             # ② 数据绑定：编辑 GimbalControlSettings Fact，读取 UniRcChannelController.channelValues 显示 16 路实时通道网格，按开关调整字段可用性；这是配置页，相机控制栏按钮与排版位于 FlightDisplay/GimbalCameraControl.qml。
 │   │   │   ├── VideoSettings.qml
                                                             # ① 视频配置 UI：组合主路源类型/URL、第二路 RTSP URL、低延迟、超时、画面适配、录制格式及存储限额，加入 MAVLink 自动发现、Android 硬解和本地媒体开关。
@@ -693,15 +699,35 @@ custom/
 ├── test/
                                                             # 开发验证；C++ 按桌面测试开关构建，Python 检查单独运行
 │   ├── Android/
-                                                            # UniRC 协议与通道策略测试
-│   │   └── UniRcProtocolTest.cc
+                                                            # UniRC 协议、通道策略与板载串口测试
+│   │   ├── UniRcProtocolTest.cc
                                                             # ① UniRC 协议/通道回归：构造 20 Hz 请求及通道响应，验证 CRC、帧长、半帧/多帧、重同步和非法输入，同时检查 CH9 回中/反向、CH10 释放到按下边沿和 CH7/8 死区。
-                                                            # ② 动作状态验证：直接调用 UniRcProtocol、UniRcChannelPolicy 和 Ch10GimbalActionState，确认手动操作顺序、迟到 ACK 与动作轮换规则；作为桌面 QtTest 目标运行，不需要实际 Bluetooth 或遥控器。
+                                                            # ② 动作状态验证：直接调用 UniRcProtocol、UniRcChannelPolicy 和 Ch10GimbalActionState，确认手动操作顺序、迟到 ACK 与动作轮换规则；作为桌面 QtTest 目标运行，不需要实际 Bluetooth/UART2 或遥控器。
+│   │   └── UniRcSerialPortTest.cc
+                                                            # ① 串口传输回归：Unix 主机使用伪终端检查 115200 8N1、二进制接收、延迟写通知、短写/背压时字节顺序、缓存上限、关闭及旧会话通知隔离。
+                                                            # ② 平台边界：通过私有测试入口选择伪终端，不更改产品固定节点；非 Unix 主机验证关闭状态及不支持平台错误，Unix 专项跳过，真实 Android 节点访问与 SDK 路由另行验收。
 │   ├── FlightDisplay/
-                                                            # 飞行页交互测试
-│   │   └── DualPipResizeTest.py
+                                                            # 飞行页交互、罗盘显示及主辅画面联动测试
+│   │   ├── CompassStubs/
+                                                            # 罗盘显示测试的最小依赖替身，仅由 GimbalCompassTest.py 注册，不进入产品构建
+│   │   │   ├── GeneratorBusVoltageAlert.qml
+                                                            # ① 告警依赖替身：提供带 vehicle 属性的空 Item，满足 FlyViewCustomLayer 对 GeneratorBusVoltageAlert 的组件引用。
+                                                            # ② 隔离范围：由 GimbalCompassTest.py 注册到 Custom.Widgets；遥测替身保持参数未就绪，测试不启动或验证母线电压告警业务。
+│   │   │   ├── QGCColoredImage.qml
+                                                            # ① 图像控件替身：使用 Qt Quick Image 并补充 color 属性，承接实际罗盘指针的 source、sourceSize、fillMode 与尺寸绑定。
+                                                            # ② 验证边界：由 GimbalCompassTest.py 注册到 QGroundControl.Controls，加载临时资源包中的真实 SVG；不模拟产品控件的着色效果，验证重点为刻度与显示绑定。
+│   │   │   ├── QGCLabel.qml
+                                                            # ① 文本控件替身：直接使用 Qt Quick Text，为罗盘方位标签及中心角度提供真实文本属性和宽度计算。
+                                                            # ② 测试协作：由 GimbalCompassTest.py 注册到 QGroundControl.Controls，读取实际 Repeater 标签的文字与横坐标；不验证原生 QGCLabel 的主题及全局字号策略。
+│   │   │   └── QGroundControl.qml
+                                                            # ① 遥测与配置替身：QML 单例提供 videoManager、活动车辆/云台、机头航向、链路状态、方位角 Provider 和两个罗盘开关，供测试分别改变输入。
+                                                            # ② 状态隔离：为 DualPipView 提供返回默认值的读取接口和不落盘的保存接口；不连接设备、不写用户设置，也不执行真实方位角算法或模式命令。
+│   │   ├── DualPipResizeTest.py
                                                             # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
                                                             # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
+│   │   └── GimbalCompassTest.py
+                                                            # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
+                                                            # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
 │   ├── Gimbal/
                                                             # 相机协议、媒体、云台和方位角测试
 │   │   ├── AzimuthStubs/
@@ -909,7 +935,7 @@ custom/
 | 5. 跨模块接线 | `_ensureGimbalModeController()`、`_ensureDualVideoManager()` | 模式事务响应新的姿态动作取消；第二路 receiver/item 变化同步给 MT11 |
 | 6. 视频策略 | `AndroidVideoDecoderPolicy::apply()`、`GimbalVideoStreamSupport::installA8MiniDefaults()` | 解码候选和默认视频设置在实际管线启动前就绪 |
 | 7. 页面与视频对象 | `createQmlApplicationEngine()`、`createVideoSink()` | 安装 QML URL 拦截器；按 receiver 身份绑定相机、分辨率与恢复观察器 |
-| 8. 持续数据 | `mavlinkMessage()`、各对象的 connect/timer | 姿态送 Provider，自动视频源按设置过滤；SDK/蓝牙/receiver 回调各自驱动状态 |
+| 8. 持续数据 | `mavlinkMessage()`、各对象的 connect/timer | 姿态送 Provider，自动视频源按设置过滤；相机 SDK、UniRC Bluetooth/UART2 和 receiver 回调各自驱动状态 |
 | 9. 退出 | `aboutToQuit` 直接连接、`cleanup()` | 取消姿态请求、关闭 UniRC，`_shutdownMt11Video()` 收尾第二路，A8 `shutdownLocalMedia(true)` 收尾主路，最后解除 interceptor 与翻译 |
 
 业务对象由插件持有，单次命令和管线又有自己的会话标识。阅读异步实现时同时查看“对象何时创建/销毁”和“本次请求何时失效”，二者不是同一个生命周期。
@@ -956,7 +982,7 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 | `gimbalControlManager`、`mt11ControlManager` | 设备能力、相机命令和各自媒体会话 | 右侧相机栏 |
 | `gimbalCenterCoordinator`、`gimbalModeController` | 共享姿态事务、实际模式读取和切换 | 顶部云台栏、UniRC |
 | `gimbalAzimuthProvider` | 当前 MAVLink 云台的有效世界方位角 | 顶部云台栏、云台罗盘 |
-| `uniRcChannelController` | 蓝牙和 SDK 通道状态、CH1～CH16 | UniRC 设置区及动作转发 |
+| `uniRcChannelController` | Bluetooth/UART2 传输与 SDK 通道状态、CH1～CH16 | UniRC 设置区及动作转发 |
 
 ### 2.3 QML 与 Android 的接入方式
 
@@ -983,6 +1009,8 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 
 这里的 **generation** 是一次管线或请求会话的标识。异步回调同时核对对象、URI 和 generation，确保旧连接的返回值不会驱动新会话。原生视频层提供通用机制；A8/MT11 地址分类、硬解候选和恢复决策由 custom 提供。
 
+UniRC UART2 的新增实现完全位于 `custom/src/Android`，由 `custom/CMakeLists.txt` 接入；沿用原生 `src` 的模块层级和 `.h/.cc` 命名方式。板载 `/dev/ttyHS2` 直接使用 POSIX 接口，不经过原生 LinkManager 或 `QGCUsbSerialManager.java`，本次无需修改原生串口/USB 实现。
+
 ### 2.5 数据链路与控制对象
 
 运行时需要分别理解下面四条链路。它们可以共享网络，但由不同对象建立、确认和释放。
@@ -992,7 +1020,7 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 | 飞控 MAVLink | 飞控遥测、参数、云台姿态命令 | 原生 LinkManager/Vehicle + custom 飞控与云台模块 | Vehicle 出现；参数与云台各自完成加载/发现 |
 | 相机 UDP SDK | 倍率、拍照/录像、设备状态和模式 | `SiyiSdk`、`Mt11Sdk` | 收到对应设备的有效状态/应答 |
 | RTSP 视频 | 压缩视频、解码帧、本地录像支路 | VideoManager、DualVideoManager、GstVideoReceiver | 对应路有 source、decoder 输出及 sink 首帧 |
-| UniRC Bluetooth | 16 通道输入，转为 CH9/CH10 动作 | UniRcChannelController、通道 Policy | 合法 `0x42` 通道流，且动作通道值有效 |
+| UniRC Bluetooth/UART2 | 16 通道输入，转为 CH9/CH10 及 CH11/CH12 动作 | UniRcChannelController、UniRcSerialPort、通道 Policy | 合法 `0x42` 通道流，且各动作通道值有效并完成初始保护 |
 
 三个界面选择的含义不同：
 
@@ -1555,7 +1583,7 @@ MT11 将“目标”“实测”“命令等待”分开维护：
 
 **接线与可用条件**：`CustomPlugin` 先创建 MT11 Manager，再注入 `UniRcChannelController`；合法 `0x42` 帧独立于 CH9/CH10 检查，将 `channels.at(10)` / `channels.at(11)` 送入 `updateUniRcGimbalChannels()` → `Mt11GimbalController::updateChannels()` → `Mt11Sdk::sendGimbalRotation()` → `Mt11Protocol::gimbalRotationPacket()`。复用 `mt11Enabled`、SDK IP 和端口，不增加设置键，不依赖相机标签选择、视频播放、飞控连接或 MAVLink 云台控制权。两路输入不修改 A8 的 CH10 交替状态。
 
-启用 UniRC 和 MT11，保持应用前台，并等待 MT11 `sdkResponding=true` 后，让 **CH11、CH12 同时进入中位死区**。首次连接、SDK 不可用、蓝牙断流、输入异常、后台返回和配置切换后均重新要求该步骤；偏置输入不会在恢复连接时自动续转。CH9/CH10 无效或改变 CH9 反向设置只复位 A8 输入，不打断 MT11；CH11/CH12 无效也不取消 A8 动作。
+启用 UniRC 和 MT11，保持应用前台，并等待 MT11 `sdkResponding=true` 后，让 **CH11、CH12 同时进入中位死区**。首次连接、SDK 不可用、Bluetooth/UART2 断流、输入异常、后台返回和配置切换后均重新要求该步骤；偏置输入不会在恢复连接时自动续转。CH9/CH10 无效或改变 CH9 反向设置只复位 A8 输入，不打断 MT11；CH11/CH12 无效也不取消 A8 动作。
 
 **发送与停止**：每份有效通道输入都发送当前非零双轴速度，随现有 20 Hz 通道流刷新，单轴回中只清零该轴。双轴回中立即发送 `[00 00]`，随后以 100 ms 间隔补发两份；保持中位不持续刷停止包。新转向先取消旧的停止重试，避免延迟停止打断新动作。独立 350 ms 输入 watchdog 及上游断连/后台/关闭路径均停止两轴并解除中位确认状态；没有新输入时，定时器只可能发送停止包。
 
@@ -1837,23 +1865,31 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 
 <a id="unirc"></a>
 
-### 3.7 UniRC 10 Pro 蓝牙通道控制
+### 3.7 UniRC 10 Pro Bluetooth/UART2 通道控制
 
 #### 3.7.1 配置与使用
 
-1. 在 Android 开启蓝牙，并在系统设置完成遥控器内置 SDK 蓝牙设备的配对。
-2. 在 UniGCS 将“遥控 SDK 连接方式”设为蓝牙。当前目标固件已有实测的配套配置是“数传 1 = UDP、数传 2 = 关闭、SDK = 蓝牙”。
-3. 在 QGC“飞行视图 → 云台相机”启用 UniRC SDK，填写已配对设备的 MAC，并允许“附近设备”权限。
-4. 保持 QGC 前台运行，确认 CH1～CH16 实时值更新；CH9 先回中、CH10 先释放后再操作。控制 MT11 时启用其 SDK，等待在线后让 CH11/CH12 同时回中，详见 3.4.6。
+新配置默认启用 UniRC SDK，并选择 **UART2**。入口为“应用设置 → 飞行视图 → UniRC SDK”，传输接口切换即时生效。
+
+1. 在 UniGCS 将“遥控 SDK 连接方式”设为 UART2，并确认当前数传 1/2 组合允许 SDK 使用 UART2。QGC 只选择应用侧传输，不替代 UniGCS 的设备路由配置。
+2. QGC 保持 UniRC SDK 启用、SDK 接口为 UART2；固定使用板载串口 `/dev/ttyHS2`、115200 波特率、8N1、无流控。UART2 不需要蓝牙配对、MAC 或“附近设备”权限；设置页显示固定串口信息。
+3. 保持 QGC 前台运行，确认 CH1～CH16 网格由 `--` 变为实时数值。串口打开本身不代表 SDK 路由已通，首次合法 `0x42` 通道帧才激活 `sdkRouteActive`，网格据此显示实际通道值。
+4. CH9 先回中、CH10 先释放后再操作。控制 MT11 时启用其 SDK，等待在线后让 CH11/CH12 同时回中，详见 3.4.6。
+
+需要使用原蓝牙链路时，在 Android 开启蓝牙并配对内置 SDK 设备，在 UniGCS 选择蓝牙 SDK 路由，再将 QGC 的 SDK 接口切为 Bluetooth、填写 MAC 并允许“附近设备”权限。蓝牙地址仅在选择 Bluetooth 时显示；QGC 直接连接该 MAC，不负责扫描和配对。此前实测的“数传 1 = UDP、数传 2 = 关闭、SDK = 蓝牙”仅是蓝牙验证记录，不能据此认定 UART2 路由组合已验证。
 
 | `GimbalControl` 设置键 | 默认值 |
 |---|---|
 | `uniRcChannelControlEnabled` | true |
-| `uniRcSdkInterface` | 0：Bluetooth，当前唯一接口 |
-| `uniRcSdkBluetoothAddress` | `41:42:9E:3D:A5:D2`，按实际设备修改 |
+| `uniRcSdkInterface` | 1：UART2；保留 0：Bluetooth |
+| `uniRcSdkBluetoothAddress` | `41:42:9E:3D:A5:D2`，仅 Bluetooth 使用，按实际设备修改 |
 | `uniRcZoomDirectionReversed` | false，在 A8 设置区调整 |
 
-QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Android 启动；QGC 的 CH10 命令沿 MAVLink 到 PX4，再由飞控侧配置转发到云台。
+默认值只适用于未保存对应键的新配置；升级时保留已经保存的接口、启用状态和 MAC，不强制把旧 Bluetooth 配置改为 UART2。已有安装需要切换时，在上述设置页手动选择 UART2 即可。
+
+控制器仅在 Android 启动。板载 UART2 与 `QGCUsbSerialManager.java` 管理的 USB Host/Type-C 串口独立，也不是飞控 MAVLink 连接；QGC 的 CH10 命令仍沿 MAVLink 到 PX4，再由飞控侧配置转发到云台。
+
+**文档与目标设备约定**：《UniRC 10 Pro V1.0》第 6.3 节（第 121 页）旧 UniRC 10 表列出的串口 2 是 `/dev/ttyHS0`，并要求按 Android 机型匹配；本产品按本次目标设备要求固定采用 `/dev/ttyHS2`，不自动探测或切换到旧设备节点。第 122 页说明 SDK 路由由 UniGCS 配置且受数传组合影响，UART2 的可用组合、设备节点访问权限及实际通道流需在目标固件验收。
 
 #### 3.7.2 通道工作模式
 
@@ -1866,7 +1902,7 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 | CH7/CH8 | 合理值越出 [1400,1600] | 将下一次 CH10 复位为回中，不额外发送姿态命令 |
 | CH11/CH12 | MT11 SDK 可用后，先同时进入 1475～1525 | 解除双轴初始保护；CH11 为 Yaw、CH12 为 Pitch，1050/1500/1950 对应 -100/0/+100 转向速度 |
 
-通道合理范围为 900～2100。CH9/CH10 无效时停用 A8 动作并重新等待初始状态；合法 SDK 回包仍维持蓝牙在线状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。
+通道合理范围为 900～2100。CH9/CH10 无效时停用 A8 动作并重新等待初始状态；合法 SDK 回包仍维持当前 SDK 通道路由状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。Bluetooth 与 UART2 使用相同映射和动作保护。
 
 #### 3.7.3 实现流程
 
@@ -1874,15 +1910,17 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 
 | 阶段 | 方法链 | 实际处理 |
 |:---|:---|:---|
-| 生命周期入口 | `_settingsChanged()` / `_applicationStateChanged()` → `_reconcile()` | `_shouldRun()` 核对启用、前台和关闭状态，决定连接或停止 |
-| 权限与设备 | `_ensureBluetoothPermission()`、`_ensureBluetoothPoweredOn()` | 处理 Android 蓝牙权限和电源状态，按配置 MAC 检查目标 |
-| 建立传输 | `_connectBluetooth()` → `_socketConnected()` | Qt Bluetooth 经典 RFCOMM；连接超时由 `_connectionTimeoutExpired()` 处理 |
-| 请求通道 | `_sendChannelRequest()` | 通过 `UniRcProtocol::channelDataRequestPacket()` 生成 20 Hz 请求，分三份独立写入 |
-| 确认写出阶段 | `_socketBytesWritten()` → `_markChannelRequestTransmitted()` | 区分 socket 写入排队与完成本地传输，再进入首份目标帧等待 |
-| 读取字节 | `_socketReadyRead()` → `_readAvailableBluetoothData()` | 把每批字节交给 `UniRcProtocol::StreamParser::append()`，处理拆包、连包和不完整帧 |
+| 生命周期入口 | `_settingsChanged()` / `_applicationStateChanged()` → `_reconcile()` | `_shouldRun()` 核对 Android、启用、接口、前台和关闭状态，决定连接或停止；两个传输互斥 |
+| UART2 建立传输 | `_connectUart2()` → `UniRcSerialPort::open()` | POSIX 非阻塞打开 `/dev/ttyHS2`，termios 设置 115200 8N1、无流控；失败输出操作名和 errno，无蓝牙权限步骤 |
+| Bluetooth 权限与设备 | `_ensureBluetoothPermission()`、`_ensureBluetoothPoweredOn()` | 仅 Bluetooth 分支处理 Android 蓝牙权限、电源状态和配置 MAC |
+| Bluetooth 建立传输 | `_connectBluetooth()` → `_socketConnected()` | Qt Bluetooth 经典 RFCOMM；连接超时由 `_connectionTimeoutExpired()` 处理 |
+| 共用通道请求 | `_startChannelStream()` → `_sendChannelRequest()` | 通过 `UniRcProtocol::channelDataRequestPacket()` 生成 freq=5 的 20 Hz 请求，在当前传输连续写入三份 |
+| 确认本地写出 | `_transportBytesWritten()` → `_markChannelRequestTransmitted()` | 区分传输缓存排队与本地写出，发送缓存清空后进入首份目标帧等待；UART2 表示 OS 接收字节，不是硬件发完或远端确认 |
+| UART2 字节收发 | `QSocketNotifier` → `UniRcSerialPort::readAll()` / `_flushWriteBuffer()` | 可读事件收取字节，可写事件续写短写/EAGAIN 剩余数据，发送缓存上限 64 KiB；读写错误关闭本地句柄并通知 Controller |
+| 共用字节解析 | UART2 `readyRead` / Bluetooth `_socketReadyRead()` → `_readAvailableTransportData()` | 把每批字节交给 `UniRcProtocol::StreamParser::append()`，处理拆包、连包和不完整帧 |
 | 校验通道 | `_handleChannelPacket()` → `UniRcProtocol::parseChannelData()` | 只接受 control=0、command=0x42、payload=32；解析 16 个小端 int16 并更新 channelValues |
 
-通道帧结构为 `55 66 + control + length(LE16) + sequence(LE16) + command + payload + CRC16/XMODEM`。字节流解析器保留未完整到达的数据，完整帧才进入通道策略。发送停止输出同样使用三份请求，频率码改为 Off。
+通道帧结构为 `55 66 + control + length(LE16) + sequence(LE16) + command + payload + CRC16/XMODEM`。字节流解析器保留未完整到达的数据，完整帧才进入通道策略。第 6.2.4 节（第 111 页）要求开启/关闭请求连续发送三份；关闭频率码为 0，通道回包为 16 个 int16，设备默认范围为 1050～1950。
 
 **从 16 通道到动作入口**
 
@@ -1891,7 +1929,7 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 1. CH9/CH10 越界：Policy 调用 `linkLost()` / `reset()`，清除已允许动作的状态，重新要求 CH9 回中、CH10 释放；控制器通过 `_resetA8Input()` 停掉当前 A8 动作。合法 SDK 帧仍刷新连接 watchdog，MT11 独立检查 CH11/CH12。
 2. 有手动姿态输入：先调用协调器 `noteManualAttitudeInput()`，把下一 CH10 动作复位。
 3. CH9 方向改变：`_applyZoomDirection()` → `_tryStartZoom()` → A8 `startUniRcZoom()`；回中调用停止，暂不可启动时按当前输入状态重试。
-4. CH10 出现按下沿：调用 `requestNextCh10Action()`。下一动作由共享协调器确认结果决定，不由蓝牙层计数翻转。
+4. CH10 出现按下沿：调用 `requestNextCh10Action()`。下一动作由共享协调器确认结果决定，不由传输层计数翻转。
 
 每份合法通道帧中，控制器独立将索引 10/11 交给 MT11 Manager 的 `updateUniRcGimbalChannels()`；MT11 双轴独立判断中位、范围与 SDK 可用状态，不复用 CH7/8 的 A8 手动姿态检测。其 `0x07` 映射和停止时序见 3.4.6。
 
@@ -1899,20 +1937,26 @@ QGC 直接连接配置的 MAC，不承担扫描和配对。控制器仅在 Andro
 
 **断流与停止清理**
 
-`_inputWatchdogExpired()` 按写入队列、收到字节、合法帧、目标通道帧区分阶段；`_receiveTimeoutMessage()` / `diagnosticSummary()` 输出对应运行状态。`_scheduleBluetoothFailure()` 清空动作并安排关闭/重连，`_closeBluetooth()` 停定时器、复位 parser、解除旧 socket 信号并释放连接。
+`_inputWatchdogExpired()` 先读取当前传输的待收数据，再按写入队列、收到字节、合法帧、目标通道帧区分阶段；`_receiveTimeoutMessage()` / `diagnosticSummary()` 输出对应运行状态。`_scheduleTransportFailure()` 立即清空动作、解除 SDK 路由状态并安排关闭，符合运行条件时在 10 s 后重试所选接口；不会自动切到另一接口。`_closeTransport()` 停定时器、复位 parser、解除旧传输信号并释放连接。
+
+收到过通道帧后的正常关闭会尽力发送三份 Off 请求。UART2 同步尝试非阻塞写出后立即释放 fd，不等待串口排空；断流、设备错误或内核拥塞时不能保证远端收到停止上报请求。本地 A8/MT11 停控和输入保护先执行，不依赖远端确认。
 
 失焦、禁用、配置变化和 `shutdown()` 同样进入停止路径；`_resetInput()` 同时调用 MT11 `cancelUniRcGimbal()`。重新建立连接后重新等待 CH9 回中、CH10 释放及 CH11/CH12 同时回中；连接成功本身不会恢复上一方向。
 
-#### 3.7.4 从蓝牙连接到动作可用
+#### 3.7.4 从传输建立到动作可用
 
 | 状态属性 | 成立条件 | 可得出的结论 |
 |:---|:---|:---|
 | `bluetoothConnected` | RFCOMM socket 已连接 | 蓝牙传输建立 |
+| `uartConnected` | `/dev/ttyHS2` 打开且串口参数设置完成 | UART2 本地传输可用，尚未证明设备回包 |
+| `transportConnected` | 当前 Bluetooth 或 UART2 传输建立 | 控制器提供统一传输状态属性，当前设置页未单独显示该状态 |
 | `sdkRouteActive` | 收到合法目标 `0x42` 通道帧 | 当前连接已接通 SDK 通道路由 |
 | `channelInputActive` | 合法通道帧中的 CH9/CH10 值通过范围检查 | A8 可进入动作策略；不代表 MT11 双轴已完成中位确认 |
 | `channelValues` | 保存最新 16 路实际值 | 设置页可以查看映射是否正确 |
 
-首次通道帧等待窗口为 1.5 s；建立通道流后，以每份合法 `0x42` 帧刷新 350 ms watchdog。SDK 回包合法但 CH9/CH10 越界时，watchdog 仍刷新，A8 动作状态解除，保留实际值供检查映射。
+控制器通过 `diagnosticStage`、`diagnosticSummary` 和 `lastError` 向 QML 提供诊断属性，并将连接、发送、接收和错误事件写入 `gcs.custom.android.unircchannel` 日志；当前设置页只显示接口参数与通道网格，未单独展示诊断文字。阶段先区分 `RFCOMM_CONNECTING` / `RFCOMM_CONNECTED` 与 `UART2_OPENING` / `UART2_OPEN`，随后共用 `REQUEST_0X42_QUEUED`、`REQUEST_0X42_TRANSMITTED`、`SDK_FRAME_NO_0X42` 和 `SDK_ROUTE_ACTIVE`；收到字节但尚无合法 SDK 帧时分别记录 `BT_RX_NO_SDK_FRAME` / `UART2_RX_NO_SDK_FRAME`。串口无法打开时，错误包含 `/dev/ttyHS2`、系统调用和 errno；本地已写出但无数据时，错误说明需要检查 UniGCS UART2 SDK 路由。
+
+首次通道帧等待窗口为 1.5 s，尚未清空的请求队列最长等待 10 s；建立通道流后，以每份合法 `0x42` 帧刷新 350 ms watchdog。SDK 回包合法但 CH9/CH10 越界时，watchdog 仍刷新，A8 动作状态解除，保留实际值供检查映射。
 
 CH10 的典型操作序列：
 
@@ -1924,20 +1968,21 @@ CH10 的典型操作序列：
 
 在两次按键之间操作 CH7/CH8 姿态通道，会把下一次动作恢复为回中；同一份通道帧中先处理手动输入，再处理 CH10 按下沿。若动作忙碌、请求取消或确认失败，不应仅以按键次数推算下一动作，应以协调器状态为准。
 
-从后台返回、蓝牙断流重连或运行中改变 CH9 反向设置后，先让 CH9 回中、CH10 释放，再开始新的动作序列。
+从后台返回、任一接口断流重连、切换 SDK 接口或运行中改变 CH9 反向设置后，先让 CH9 回中、CH10 释放，再开始新的动作序列。
 
 #### 3.7.5 功能对应的文件与资源协作
 
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
-| 配置与通道观察 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面编辑蓝牙配置并显示 CH1～CH16；Fact 保存设置，通道网格绑定控制器实时值和连接状态。 |
-| Bluetooth 生命周期 | `Android/UniRcChannelController.h/.cc`；`CustomPlugin.cc` | 插件创建并连接控制器；控制器负责权限、指定 MAC 的 RFCOMM、前后台、20 Hz 请求、watchdog、断开和重连。 |
+| 配置与通道观察 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面选择 Bluetooth/UART2、按接口显示 MAC 或固定串口信息，并显示 CH1～CH16；Fact 保存设置，新增默认值不覆盖已保存选择。 |
+| 共用传输生命周期 | `Android/UniRcChannelController.h/.cc`；`CustomPlugin.cc` | 插件创建并连接控制器；控制器按接口建立互斥的 UART2 或 RFCOMM，共用前后台、20 Hz 请求、watchdog、断开和重连，蓝牙单独处理权限与 MAC。 |
+| 板载 UART2 | `Android/UniRcSerialPort.h/.cc`；`custom/CMakeLists.txt` | CMake 将传输类纳入 custom；固定串口参数、非阻塞收发、短写缓存、系统错误和旧会话通知隔离由该类负责，不使用 USB 串口桥。 |
 | 字节流转通道值 | `Android/UniRcProtocol.h/.cc` | 生成启停请求，缓存接收字节并处理半帧/连帧，经 CRC/帧长校验输出 16 路 int16 通道。 |
 | 通道值转动作 | `Android/UniRcChannelPolicy.h/.cc`；`UniRcChannelController.h/.cc` | Policy 判断有效范围、CH9 死区/方向、CH10 按下沿及 CH7/8 手动输入；Controller 根据连接和新鲜度执行或释放动作。 |
 | CH9 连续变倍 | `Gimbal/GimbalControlManager.h/.cc` | 接收遥控方向并维护 UniRC 动作持有者；回中、失联、禁用等条件释放运动，与相机栏触控输入协调。 |
-| CH11/CH12 转向 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc`、`Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | 接入现有蓝牙帧，以独立 MT11 SDK 发送 `0x07`；双轴中位/范围保护、超时、停止重发及端点变更清理见 3.4.6。 |
+| CH11/CH12 转向 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc`、`Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | 接入任一接口的合法通道帧，以独立 MT11 SDK 发送 `0x07`；双轴中位/范围保护、超时、停止重发及端点变更清理见 3.4.6。 |
 | CH10 姿态交替 | `Gimbal/GimbalCenterCoordinator.h/.cc`、`Ch10GimbalActionState.h` | 请求复用共享回中/俯视事务，动作完成与手动输入更新下一动作，顶部控制也使用同一状态。 |
-| 验证 | `custom/test/Android/UniRcProtocolTest.cc`；设置布局检查 | 主机验证帧拆解、通道保护、反向和 CH10 边沿/共享状态；布局脚本验证 16 通道显示，蓝牙和硬件动作需真机验收。 |
+| 验证 | `custom/test/Android/UniRcProtocolTest.cc`、`UniRcSerialPortTest.cc`；设置布局检查 | 协议测试验证帧拆解、通道保护、反向和 CH10 边沿/共享状态；串口测试按平台验证伪终端收发或非 Unix 错误；布局脚本验证接口选择和 16 通道显示，设备路由及硬件动作需真机验收。 |
 
 ---
 
@@ -1952,11 +1997,13 @@ CH10 的典型操作序列：
 | 罗盘 | `FlyViewCustomLayer.qml` 中的实例 | 角度来源 | 显示条件 |
 |:---|:---|:---|:---|
 | 飞控航向（底部中央） | `compassBarLoader` | 组件默认读取 `activeVehicle.heading.rawValue`，表示机头航向 | 开关开启、页面可见、活动 Vehicle 存在且 heading 为有限数 |
-| 云台方位角（顶部中央并避让工具区） | `gimbalCompassBarLoader` | 父层把 `gimbalAzimuthProvider.absoluteYaw` 绑定给组件的 `directionDegrees` | 开关开启、页面可见、活动云台存在、车辆链路正常且 Provider 输出有效 |
+| 云台方位角（顶部中央并避让工具区） | `gimbalCompassBarLoader` | 父层把 `gimbalAzimuthProvider.absoluteYaw` 绑定给组件的 `directionDegrees` | A8 Mini（Video 1）为 PIP 主画面、未打开三维视图，且开关开启、页面可见、活动云台存在、车辆链路正常、Provider 输出有效 |
 
 两条罗盘都加载 [FlyViewCompassBar.qml](custom/src/FlightDisplay/FlyViewCompassBar.qml)，外观共用；创建、位置和显隐在 [FlyViewCustomLayer.qml](custom/src/FlightDisplay/FlyViewCustomLayer.qml)。修改共同外观会同时影响两条；需要不同样式时，通过组件属性由两个 Loader 分别传入。
 
-两者是遥测界面，不写入视频 OSD。云台指向与右侧 A8/MT11 选择器、MT11 视频模式独立；没有有效姿态时不显示伪造角度。
+两者是遥测界面，不写入视频 OSD。顶部控制栏和顶部罗盘对应产品 A8 Mini（Video 1），MT11 对应 Video 2：地图或 MT11 作为主画面、A8 仅在辅窗/独立窗口中时，不显示顶部罗盘，也不占用顶部 inset。显隐依据实际 PIP 状态，与右侧 A8/MT11 相机控制面板的选中项、MT11 视频模式无关；没有有效姿态时不显示伪造角度。视频全屏时覆盖层隐藏。此绑定以 Video 1=A8、Video 2=MT11 的产品接线为准，不按任意 RTSP URL 自动识别设备。
+
+A8 Mini 在飞机上倒装使用，安装/反馈方向约定由方位角计算链路处理；显示层直接使用其世界方位角。顶部与底部使用相同的标准方位排列：朝北 0° 时 W 在左、E 在右；90° 对应东、180° 对应南、270° 对应西。两条罗盘的数值分别表示云台世界方位角和机头航向，不要求二者相同；安装方向是产品输入约定，不提供独立设置开关。
 
 #### 3.8.2 实现流程
 
@@ -2004,7 +2051,7 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 
 **QML 绘制与布局**
 
-`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`。顶部 Loader 额外检查活动云台、Provider.valid 和通信状态；无效时卸载该显示项。
+`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`，不作刻度镜像。顶部 Loader 额外检查活动云台、Provider.valid、通信状态及 `a8VideoIsMain`；无效时卸载该显示项。`a8VideoIsMain` 默认 false，由 `FlyView.qml` 绑定主视频 `hasVideo`、`videoControl.pipState.state === fullState` 和三维视图未打开这三个条件，不能用“主画面不是地图”代替，否则 MT11 主画面也会误显示。
 
 样式入口集中在 `FlyViewCompassBar.qml`：`compassBar` 定义条背景，`headingIndicator/headingLabel` 定义中心角度框，`compassArrowIndicator` 加载 `FlightMap/Images/compassPointer.svg`；`implicitWidth`、`_barHeight`、`_pointerSize` 控制尺寸。两条的位置、边距和可用宽度由对应 Loader 的 anchors/width/x 决定。
 
@@ -2013,6 +2060,8 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 ~~~text
 标签横坐标 = 条宽 / 2 + (标签未环绕角 - 当前航向) × 条宽 / 360 - 标签宽 / 2
 ~~~
+
+显示层只对后端输出作角度归一化和刻度绘制，不对 `absoluteYaw`/`directionDegrees` 取负、增加安装偏移或镜像刻度，也不发送控制命令。安装/反馈方向换算由上面的世界方位角分支负责；0°/360° 附近按未环绕角连续排布，避免方位标签整圈跳移。
 
 固定指针与滚动刻度分离；顶部云台条考虑右侧相机栏预留宽度，底部条按整个 Fly View 可用宽度布局。`QGCToolInsets` 只增加实际可见控件占用的中央边距。
 
@@ -2041,9 +2090,10 @@ legacy 分支的安装方向是固定产品输入约定，锁定/跟随均使用
 | 显隐配置 | `Settings/FlyViewCustomSettings.h/.cc`、`FlyViewCustom.SettingsGroup.json`；`UI/AppSettings/FlyViewSettings.qml` | 设置页编辑两条罗盘开关，Fact 写入 FlyView 分组；覆盖层根据开关及有效数据控制显示。 |
 | MAVLink 接收与对象接线 | `CustomPlugin.cc`；`Gimbal/GimbalAzimuthProvider.h/.cc` | 插件转交消息和活动 Vehicle；Provider 按车辆/component/device 缓存姿态并选择活动云台，拒绝过期或不匹配数据。 |
 | 航向与参考系换算 | `Gimbal/GimbalHeadingTelemetry.h/.cc`、`GimbalAzimuthPolicy.h/.cc` | Telemetry 保存未取整飞控航向并选择有效来源；Policy 检查四元数，按 Earth/Vehicle/legacy 规则转换世界方位角。 |
-| 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页承载覆盖层；底部 Loader 使用组件的 Vehicle 航向默认绑定，顶部显式绑定 Provider.absoluteYaw；两实例分别处理显隐、上下位置和避让。 |
-| 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；组件绘制方位标签、角度框和 SVG 指针，云台参考系换算由后端完成。 |
+| 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页传入 A8 主画面状态；底部 Loader 使用默认航向绑定，顶部显式绑定 Provider.absoluteYaw；分别处理显隐、上下位置和避让。 |
+| 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；两条使用相同标准刻度，安装/反馈方向和参考系换算由后端完成。 |
 | 验证 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc`；AzimuthStubs | 分别检查数学换算、来源/时序和活动对象匹配；设备转动、锁定/跟随和失联表现按真机矩阵核对。 |
+| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、两条独立航向、中心数值不变、北向环绕、地图/A8/MT11 切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
 
 ---
 
@@ -2319,7 +2369,7 @@ Android 未保存字号时，custom 元数据默认设为 12 pt；目标遥控�
 
 #### 3.13.2 布局工作方式
 
-Fly View 设置采用可滚动、字体尺度决定最大宽度的居中布局；窄屏自动收缩，行组件按空间调整标签和控件。章节顺序为原有飞行设置、Instrument Panel、云台相机、Viewer3D。云台组不依赖设备在线状态，Android UniRC 区显示自适应的 CH1～CH16 网格。Video 页面沿用原生自适应设置布局。
+Fly View 设置采用可滚动、字体尺度决定最大宽度的居中布局；窄屏自动收缩，行组件按空间调整标签和控件。章节顺序为原有飞行设置、Instrument Panel、云台相机、Viewer3D。云台组不依赖设备在线状态，Android UniRC 区显示自适应的 CH1～CH16 网格；SDK 接口下拉框在 Bluetooth/UART2 之间切换，Bluetooth 显示 MAC，UART2 显示固定设备节点与波特率。通道网格仅在 SDK 路由激活时显示实际值，否则显示 `--`。Video 页面沿用原生自适应设置布局。
 
 #### 3.13.3 实现与翻译流程
 
@@ -2337,7 +2387,7 @@ Fly View 设置采用可滚动、字体尺度决定最大宽度的居中布局�
 
 例如 `DECLARE_SETTINGGROUP(VideoCustom, "Video")` 使用独立 VideoCustom 元数据，但实际值写入 Video；`DECLARE_SETTINGGROUP(FlyViewCustom, "FlyView")` 同理。新增键时必须同时核对 JSON 的 name、头文件 DEFINE、实现 DECLARE 与 QML 引用。
 
-当前设置构造函数还维护**升级保留语义**：VideoCustomSettings 只在新键不存在时读取受支持的旧 URL；GimbalControlSettings 用版本标记处理已知默认端点/空蓝牙地址。已存在的当前键和用户自定义端点按代码条件保留。这属于本版启动行为，新增默认值时不能简单覆盖所有保存值。
+当前设置构造函数还维护**升级保留语义**：VideoCustomSettings 只在新键不存在时读取受支持的旧 URL；GimbalControlSettings 用版本标记处理已知默认端点/空蓝牙地址。UniRC SDK 接口枚举保留 `0=Bluetooth`，新增 `1=UART2` 为未保存键的默认值，启用默认值仍为 true；已保存的接口选择和启用状态不强制迁移。已存在的当前键和用户自定义端点按代码条件保留。这属于本版启动行为，新增默认值时不能简单覆盖所有保存值。
 
 **QML 文件如何真正被加载**
 
@@ -2427,25 +2477,34 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
+| `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC 帧、通道保护及 CH10 状态 |
+| `custom/test/Android/UniRcSerialPortTest.cc` | Unix 伪终端串口参数、收发/背压、错误与会话隔离；非 Unix 主机检查关闭状态和平台错误，跳过 Unix 用例 |
 | `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **14 个 C++ CTest 用例**；三个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI 和 PIP 缩放：
+当前 custom 注册 **15 个 C++ CTest 用例**；四个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放与云台罗盘（后者使用 PySide6 自带 rcc 生成临时资源包）：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
 python custom/test/FlightDisplay/DualPipResizeTest.py
+python custom/test/FlightDisplay/GimbalCompassTest.py
 ~~~
 
-布局检查另需 Qt 6 的 `rcc`，会生成截图，完整命令见[布局测试 README](custom/test/UI/FlyViewSettingsLayout/README.md)。各 `*Stubs/` 目录只为测试补足依赖，不进入产品构建。翻译更新见[翻译 README](custom/translations/README.md)。主机纯策略测试不覆盖真实 MediaCodec、蓝牙、USB、相机时序或 Android 画面。
+既有罗盘专项主机验证保留原核对范围，环境为 Windows、Qt/PySide6 6.10.2 离屏渲染：`GimbalCompassTest.py` 8/8、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。前两项分别验证真实 QML 显示/状态联动和鼠标缩放事件，模式脚本检查按钮绑定与回调；不代表完整 QGC 编译、目标 Qt Kit、APK 或倒装 A8 真机方向验收。
+
+本次 UART2 接入使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行 `UniRcProtocolTest`、`Mt11GimbalControllerTest`，各 23 项通过、0 失败（计数含初始化和收尾）；覆盖既有协议、A8 通道策略及 MT11 输入/停控回归。`UniRcSerialPortTest` 在同一 Windows 主机为 4 项通过、0 失败、7 项 Unix 伪终端测试跳过（计数含初始化和收尾）；仅确认关闭状态与非 Unix 平台错误，伪终端及实际 UART 收发尚未验证。
+
+设置页以 Qt 6/PySide6 完成 8 组分辨率、150% 字体及深浅主题布局检查，默认值、切换接口 Fact 写入、依赖行显隐、原 MAC 保留均通过；未发现 QML 绑定错误，中文翻译编译为 206 条已完成、0 条未完成。当前环境缺少 Qt 6.6 开发 Kit 的 `Qt6Config.cmake`，未完成完整 Qt 6/Android 构建，以上主机测试不等同于 Android UART2 真机验证。
+
+布局检查另需 Qt 6 的 `rcc`，会生成截图，完整命令见[布局测试 README](custom/test/UI/FlyViewSettingsLayout/README.md)。各 `*Stubs/` 目录只为测试补足依赖，不进入产品构建。翻译更新见[翻译 README](custom/translations/README.md)。主机纯策略测试不覆盖真实 MediaCodec、蓝牙、板载 UART2、USB、相机时序或 Android 画面。
 
 需要定向回归时，可在已构建对应目标的前提下使用 CTest 名称过滤，例如：
 
 ~~~sh
 ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQueryTest)$' --output-on-failure
-ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest|UniRcSerialPortTest)$' --output-on-failure
 ~~~
 
 验证的交付物按层次区分：CMake/编译结果确认接入和类型依赖；策略测试确认纯逻辑；QML 检查及截图确认绑定/布局；新 APK 的真机日志与实际画面确认平台和设备行为。第 1 节的进度应与实际完成的层次对应。
@@ -2466,7 +2525,9 @@ ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControl
 | 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、MT11 断流停止/手动重开；容量清理触发、停止重试和退出封装 |
 | Android 图库 | 同卷保存、失败重试、公开发布、切换存储卷；已发布媒体卸载后保留 |
 | 云台姿态/模式 | RC 接管后 Center/Tilt 90/Lock/Follow；重连同步、等待期间失联/切车；迟到 ACK 不执行旧动作 |
-| UniRC | 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
+| 双罗盘 | 按 3.8 的方位约定核对倒装 A8 的实际朝向与中心读数/方位标签；跟随/锁定和机体转动时分别核对两条独立航向；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
+| UniRC UART2/蓝牙路由 | 净配置默认启用 UART2；升级保留旧接口和禁用值；UniGCS 路由与数传组合匹配；UART2 `/dev/ttyHS2`、115200 8N1 无流控；关闭蓝牙/拒绝附近设备权限时 UART2 仍工作；UART2 打开失败、已开无字节、有字节无 SDK 帧、合法帧无 `0x42`、有效通道流的诊断；接口往返切换、前后台、禁用与重连时只有一个传输且旧回调不影响新会话 |
+| UniRC 动作 | 两种接口分别验证 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |
 

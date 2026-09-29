@@ -19,6 +19,9 @@ Item {
     property var totalToolInsets: toolInsets
     property var mapControl
     property real rightTopReserve: 0
+    // The product's primary video is A8 Mini; default hidden until FlyView
+    // confirms it is the main PIP view (not a thumbnail or detached window).
+    property bool a8VideoIsMain: false
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var _gimbalController: _activeVehicle ? _activeVehicle.gimbalController : null
@@ -86,6 +89,7 @@ Item {
                                                          parent.width - _safeLeft - _safeRight)
 
         active: root.visible &&
+                root.a8VideoIsMain &&
                 root._showGimbalHeadingCompassBar &&
                 root._gimbalHeadingValid
         visible: active && status === Loader.Ready && width > 0

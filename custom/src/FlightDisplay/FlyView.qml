@@ -212,6 +212,11 @@ Item {
             parentToolInsets: widgetLayer.totalToolInsets
             rightTopReserve: _rightPanelWidth
             mapControl: _mapControl
+            // Video 1 is A8 Mini; Video 2 is MT11. Camera-panel selection is
+            // independent of which video actually occupies the main view.
+            a8VideoIsMain: QGroundControl.videoManager.hasVideo
+                           && videoControl.pipState.state === videoControl.pipState.fullState
+                           && !viewer3DWindow.isOpen
             visible: !_anyVideoFullScreen
         }
 

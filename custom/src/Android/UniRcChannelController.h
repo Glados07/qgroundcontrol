@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * UniRC 10 Pro Bluetooth SDK channel bridge.
+ * UniRC 10 Pro Bluetooth/UART2 SDK channel bridge.
  *
  ****************************************************************************/
 
@@ -23,6 +23,7 @@ class GimbalCenterCoordinator;
 class GimbalControlManager;
 class GimbalControlSettings;
 class Mt11ControlManager;
+class UniRcSerialPort;
 
 Q_DECLARE_LOGGING_CATEGORY(UniRcChannelLog)
 
@@ -30,6 +31,8 @@ class UniRcChannelController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool bluetoothConnected READ bluetoothConnected NOTIFY bluetoothConnectedChanged)
+    Q_PROPERTY(bool uartConnected READ uartConnected NOTIFY uartConnectedChanged)
+    Q_PROPERTY(bool transportConnected READ transportConnected NOTIFY transportConnectedChanged)
     Q_PROPERTY(bool sdkRouteActive READ sdkRouteActive NOTIFY sdkRouteActiveChanged)
     Q_PROPERTY(bool channelInputActive READ channelInputActive NOTIFY channelInputActiveChanged)
     Q_PROPERTY(QVariantList channelValues READ channelValues NOTIFY channelsChanged)
@@ -48,6 +51,8 @@ public:
     ~UniRcChannelController() override;
 
     bool bluetoothConnected() const { return _bluetoothConnected; }
+    bool uartConnected() const { return _uartConnected; }
+    bool transportConnected() const { return _bluetoothConnected || _uartConnected; }
     bool sdkRouteActive() const { return _sdkRouteActive; }
     bool channelInputActive() const { return _channelInputActive; }
     QVariantList channelValues() const { return _channelValues; }
@@ -61,6 +66,8 @@ public:
 
 signals:
     void bluetoothConnectedChanged();
+    void uartConnectedChanged();
+    void transportConnectedChanged();
     void sdkRouteActiveChanged();
     void channelInputActiveChanged();
     void channelsChanged();
@@ -77,30 +84,36 @@ private slots:
     void _socketConnected();
     void _socketDisconnected();
     void _socketReadyRead();
-    void _socketBytesWritten(qint64 bytes);
+    void _transportBytesWritten(qint64 bytes);
     void _socketError(QBluetoothSocket::SocketError error);
 
 private:
     bool _shouldRun() const;
+    bool _usesUart2() const;
     bool _ensureBluetoothPermission();
     bool _ensureBluetoothPoweredOn();
     void _connectBluetooth();
-    void _closeBluetooth(bool sendDisableRequest, const char *reason);
+    void _connectUart2();
+    void _startChannelStream();
+    void _closeTransport(bool sendDisableRequest, const char *reason);
     bool _sendChannelRequest(quint8 frequencyCode);
-    void _readAvailableBluetoothData();
+    void _readAvailableTransportData();
     void _markChannelRequestTransmitted(const char *evidence);
     void _handleChannelPacket(const UniRcProtocol::DecodedPacket &packet);
-    void _scheduleBluetoothFailure(const QString &message,
+    void _scheduleTransportFailure(const QString &message,
                                    const char *reason);
     void _resetReceiveDiagnostics();
     QString _receiveTimeoutMessage() const;
     QString _configuredBluetoothAddress() const;
     QString _transportDescription() const;
+    QString _transportErrorString() const;
+    qint64 _transportBytesToWrite() const;
     void _applyZoomDirection(int direction, bool directionChanged);
     void _tryStartZoom(int direction);
     void _resetInput(bool normalZoomStop);
     void _resetA8Input(bool normalZoomStop);
     void _setBluetoothConnected(bool connected);
+    void _setUartConnected(bool connected);
     void _setSdkRouteActive(bool active);
     void _setChannelInputActive(bool active);
     void _setLastError(const QString &message);
@@ -117,12 +130,14 @@ private:
     static constexpr int kDiagnosticRefreshMs = 500;
     static constexpr int kReceiveSampleMaxBytes = 64;
     static constexpr quint32 kBluetoothSdkInterface = 0;
+    static constexpr quint32 kUart2SdkInterface = 1;
 
     QPointer<GimbalControlSettings> _settings;
     QPointer<GimbalControlManager> _gimbalControlManager;
     QPointer<GimbalCenterCoordinator> _gimbalCenterCoordinator;
     QPointer<Mt11ControlManager> _mt11ControlManager;
     QBluetoothSocket *_socket = nullptr;
+    UniRcSerialPort *_uart = nullptr;
     UniRcProtocol::StreamParser _parser;
     UniRcChannelPolicy _channelPolicy;
     QTimer _reconnectTimer;
@@ -150,6 +165,7 @@ private:
     quint8 _lastFrameControl = 0;
     quint8 _lastFrameCommand = 0;
     bool _bluetoothConnected = false;
+    bool _uartConnected = false;
     bool _bluetoothPaired = false;
     bool _sdkRouteActive = false;
     bool _channelInputActive = false;

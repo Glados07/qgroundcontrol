@@ -18,6 +18,8 @@ Item {
     implicitHeight: (_headingIndicatorHeight / 2) + _barHeight + (_pointerSize / 2)
 
     property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
+    // Use the resolved earth-frame heading. Mounting compensation belongs
+    // in the provider, not in the standard N/E/S/W scale arrangement.
     property real directionDegrees: vehicle ? Number(vehicle.heading.rawValue) : NaN
     property string indicatorPrefix: ""
 
