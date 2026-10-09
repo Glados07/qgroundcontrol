@@ -23,45 +23,34 @@ Item {
 
     QGCPalette { id: linkPalette }
 
-    onAvailableChanged: drawing.requestPaint()
-    onLevelChanged: drawing.requestPaint()
-    onSignalColorChanged: drawing.requestPaint()
-    onInactiveColorChanged: drawing.requestPaint()
+    Item {
+        id: glyph
 
-    Canvas {
-        id: drawing
+        anchors.centerIn: parent
+        width: Math.min(parent.width, parent.height)
+        height: width
 
-        anchors.fill: parent
-        antialiasing: true
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
+        Repeater {
+            model: 5
 
-        onPaint: {
-            const context = getContext("2d")
-            context.reset()
-            const scale = Math.min(width, height) / 64
-            context.translate((width - 64 * scale) / 2, (height - 64 * scale) / 2)
-            context.scale(scale, scale)
-            context.lineCap = "round"
-            context.lineWidth = 4.5
-            // The dot and four arcs represent 20, 40, 60, 80 and 100%.
-            // A known zero has an empty red dot; unavailable is neutral gray.
-            for (let segment = 1; segment <= 4; ++segment) {
-                context.beginPath()
-                context.strokeStyle = root.available && root.level > segment
-                                      ? root.signalColor : root.inactiveColor
-                context.arc(32, 52, 10 * segment, Math.PI * 1.25, Math.PI * 1.75)
-                context.stroke()
-            }
-            context.beginPath()
-            context.arc(32, 52, 3.1, 0, Math.PI * 2)
-            if (root.available && root.level > 0) {
-                context.fillStyle = root.signalColor
-                context.fill()
-            } else {
-                context.lineWidth = 2
-                context.strokeStyle = root.signalColor
-                context.stroke()
+            Rectangle {
+                readonly property bool filled: root.available && index < root.level
+
+                // Fixed baseline, increasing heights and a half-bar gap keep
+                // all five levels distinct even at toolbar icon sizes.
+                x: glyph.width * (4 + index * 12) / 64
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: glyph.height / 8
+                width: glyph.width / 8
+                height: glyph.height * (12 + index * 9) / 64
+                radius: glyph.width / 48
+                antialiasing: true
+                color: filled ? root.signalColor : "transparent"
+                border.width: Math.max(1, glyph.width / 48)
+                // Red empty bars mean a confirmed zero; gray empty bars mean
+                // unavailable data. Neither state lights a strength segment.
+                border.color: filled || !root.available || root.level === 0
+                              ? root.signalColor : root.inactiveColor
             }
         }
     }

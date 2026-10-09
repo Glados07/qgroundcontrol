@@ -34,13 +34,13 @@ ToolIndicatorPage {
     FontMetrics {
         id: captionMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.smallFontPointSize
+        font.pointSize: ScreenTools.defaultFontPointSize * 1.25
     }
 
     FontMetrics {
         id: valueMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 1.8
+        font.pointSize: ScreenTools.defaultFontPointSize * 2.4
         font.bold: true
     }
 
@@ -50,13 +50,14 @@ ToolIndicatorPage {
 
             // Size from actual translated text, not the width of a Latin glyph.
             // Reserve the same outer padding as the native indicator drawer.
-            width: Math.min(Math.max(ScreenTools.defaultFontPixelHeight * 18,
+            width: Math.min(Math.max(ScreenTools.defaultFontPixelHeight * 20,
                                      naturalColumnWidth * 2 + horizontalOverhead),
                             Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
             spacing: ScreenTools.defaultFontPixelHeight * 0.8
 
-            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * 0.6
-            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * 0.75
+            readonly property bool compact: mainWindow.width < ScreenTools.defaultFontPixelHeight * 20
+            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * (compact ? 0.35 : 0.6)
+            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * (compact ? 0.45 : 0.75)
             readonly property real horizontalOverhead: sidePadding * 2 + columnSpacing * 2 + 1
             readonly property real columnWidth: Math.max(1, (width - horizontalOverhead) / 2)
             readonly property real captionTextWidth: Math.max(
@@ -70,7 +71,7 @@ ToolIndicatorPage {
                 valueMetrics.advanceWidth(qsTr("Not available"))) + 4
             readonly property real naturalColumnWidth: Math.max(captionTextWidth, valueTextWidth)
                                                        + ScreenTools.defaultFontPixelHeight * 0.6
-            readonly property real captionPointSize: ScreenTools.smallFontPointSize
+            readonly property real captionPointSize: captionMetrics.font.pointSize
                                                      * Math.min(1, columnWidth / captionTextWidth)
             // Both values share one fitted size, including unknown status.
             // Independent Text.Fit would shrink 100% but leave the quality larger.
@@ -99,6 +100,7 @@ ToolIndicatorPage {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Air Link")
+                    font.pointSize: ScreenTools.defaultFontPointSize * 1.3
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -122,7 +124,7 @@ ToolIndicatorPage {
                     Layout.preferredWidth: 1
                     text: qsTr("Signal strength")
                     font.pointSize: content.captionPointSize
-                    opacity: 0.7
+                    opacity: 0.85
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.NoWrap
                 }
@@ -148,7 +150,7 @@ ToolIndicatorPage {
                     Layout.preferredWidth: 1
                     text: qsTr("Signal quality")
                     font.pointSize: content.captionPointSize
-                    opacity: 0.7
+                    opacity: 0.85
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.NoWrap
                 }

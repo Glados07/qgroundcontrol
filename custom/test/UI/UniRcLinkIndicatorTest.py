@@ -378,12 +378,12 @@ Item {
         click()
         captured = view.grabWindow()
         assert captured.save(str(OUTPUT / f"preview-{name}.png"))
-        captures.append(captured.copy(400, 0, 400, 260))
-    contact_sheet = QImage(816, 536, QImage.Format_ARGB32)
+        captures.append(captured.copy(360, 0, 440, 280))
+    contact_sheet = QImage(896, 576, QImage.Format_ARGB32)
     contact_sheet.fill(QColor("#333333"))
     painter = QPainter(contact_sheet)
     for index, captured in enumerate(captures):
-        painter.drawImage((index % 2) * 416, (index // 2) * 276, captured)
+        painter.drawImage((index % 2) * 456, (index // 2) * 296, captured)
     painter.end()
     assert contact_sheet.save(str(OUTPUT / "overview-dark.png"))
 
