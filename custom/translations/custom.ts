@@ -826,6 +826,10 @@
 <context>
     <name>UniRcChannelController</name>
     <message>
+        <source>Failed to query the UniRC video link on %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="181"/>
         <source>The selected UniRC SDK interface is not supported.</source>
         <translation type="unfinished"></translation>
@@ -1092,6 +1096,48 @@
     </message>
     <message>
         <source>Gimbal mode change cancelled by another gimbal action.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UniRcLinkIndicator</name>
+    <message>
+        <source>Air link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UniRcLinkIndicatorPage</name>
+    <message>
+        <source>Air Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal strength</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Strong</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Weak</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
