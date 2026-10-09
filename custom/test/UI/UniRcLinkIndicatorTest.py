@@ -78,13 +78,22 @@ class Plugin(QObject):
     toolBarIndicators = Property("QVariantList", lambda self: [self.adjacent_url], constant=True)
 
 
+class VehicleLinkManager(QObject):
+    changed = Signal()
+    lost = False
+    communicationLost = Property(bool, lambda self: self.lost, notify=changed)
+
+
 class Vehicle(QObject):
-    def __init__(self, adjacent_url):
+    def __init__(self, adjacent_url, gimbal_url):
         super().__init__()
         self.adjacent_url = adjacent_url
+        self.gimbal_url = gimbal_url
+        self.link_manager = VehicleLinkManager()
 
-    toolIndicators = Property("QVariantList", lambda self: [self.adjacent_url], constant=True)
+    toolIndicators = Property("QVariantList", lambda self: [self.adjacent_url, self.gimbal_url, self.adjacent_url], constant=True)
     modeIndicators = Property("QVariantList", lambda self: [self.adjacent_url], constant=True)
+    vehicleLinkManager = Property(QObject, lambda self: self.link_manager, constant=True)
 
 
 class VehicleManager(QObject):
@@ -188,6 +197,11 @@ def descendants(item):
         yield from descendants(child)
 
 
+def find_item(item, name):
+    # Repeater delegates live in the visual tree, which can differ from QObject ownership.
+    return next((child for child in descendants(item) if child.objectName() == name), None)
+
+
 def settle():
     QTest.qWait(80)
 
@@ -212,6 +226,9 @@ Item {
                 radius: width / 2; color: "#86949b"; opacity: 0.5 }
 }
 ''', encoding="utf-8")
+    gimbal = OUTPUT / "GimbalIndicator.qml"
+    gimbal.write_text(adjacent.read_text(encoding="utf-8").replace(
+        'objectName: "adjacentIndicator"', 'objectName: "gimbalIndicator"'), encoding="utf-8")
     app = QGuiApplication([])
     for filename in ("C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/consola.ttf"):
         if Path(filename).exists():
@@ -224,7 +241,7 @@ Item {
     style, controller, window = Style(), Controller(), MainWindow()
     adjacent_url = QUrl.fromLocalFile(str(adjacent))
     plugin = Plugin(controller, adjacent_url)
-    vehicle = Vehicle(adjacent_url)
+    vehicle = Vehicle(adjacent_url, QUrl.fromLocalFile(str(gimbal)))
     manager = VehicleManager(vehicle)
     core = Core(plugin, manager)
     qmlRegisterSingletonInstance(Core, "QGroundControl", 1, 0, "QGroundControl", core)
@@ -256,11 +273,11 @@ Item {
     view.show()
     settle()
     toolbar = root.findChild(QQuickItem, "toolbarLoader").property("item")
-    indicator = root.findChild(QQuickItem, "uniRcLinkIndicator")
-    assert indicator, "Production toolbar must include the UniRC indicator"
-    strength = root.findChild(QQuickItem, "uniRcToolbarStrength")
-    icon = root.findChild(QQuickItem, "uniRcToolbarSignalIcon")
-    touch_area = root.findChild(QQuickItem, "uniRcLinkTouchArea")
+    indicator = find_item(root, "uniRcLinkIndicator")
+    assert indicator, ("Production toolbar must include the UniRC indicator", WARNINGS)
+    strength = find_item(root, "uniRcToolbarStrength")
+    icon = find_item(root, "uniRcToolbarSignalIcon")
+    touch_area = find_item(root, "uniRcLinkTouchArea")
     indicator_width = indicator.width()
 
     def click():
@@ -279,6 +296,18 @@ Item {
                 point = item.mapToItem(window.page, QPointF(0, 0))
                 assert point.x() >= -1 and point.x() + item.width() <= window.page.width() + 1
                 assert item.property("contentWidth") <= item.width() + 1, item.property("text")
+        detail_strength = window.page.findChild(QQuickItem, "uniRcDetailStrength")
+        detail_quality = window.page.findChild(QQuickItem, "uniRcDetailQuality")
+        strength_size = detail_strength.property("fontInfo").property("pointSize").toNumber()
+        quality_size = detail_quality.property("fontInfo").property("pointSize").toNumber()
+        assert strength_size > 0 and abs(strength_size - quality_size) < 0.01, (strength_size, quality_size)
+        for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
+            assert window.page.findChild(QQuickItem, name).property("lineCount") == 1
+        strength_pos = detail_strength.mapToItem(window.page, QPointF(0, 0))
+        quality_pos = detail_quality.mapToItem(window.page, QPointF(0, 0))
+        assert quality_pos.x() > strength_pos.x() and abs(quality_pos.y() - strength_pos.y()) < 1
+        # Equal columns can differ by one pixel when the available width is odd.
+        assert abs(detail_strength.width() - detail_quality.width()) <= 1, (detail_strength.width(), detail_quality.width())
         surface = root.findChild(QQuickItem, "drawerSurface")
         assert surface.x() >= 0 and surface.x() + surface.width() <= root.width()
         assert surface.y() + surface.height() <= root.height()
@@ -312,11 +341,28 @@ Item {
         assert view.grabWindow().save(str(OUTPUT / f"{'light' if light else 'dark'}-unknown.png"))
     print("PASS: six strength levels, independent quality/color, stale state, real drawer click and translations")
 
-    # Confirm final placement after both application-level and vehicle indicators.
-    preceding = [item for item in descendants(toolbar) if item.objectName() == "adjacentIndicator"]
-    assert len(preceding) == 3
-    indicator_left = indicator.mapToItem(toolbar, QPointF(0, 0)).x()
-    assert all(item.mapToItem(toolbar, QPointF(item.width(), 0)).x() <= indicator_left for item in preceding)
+    def check_gimbal_position():
+        gimbal_item = find_item(root, "gimbalIndicator")
+        indicator_right = indicator.mapToItem(toolbar, QPointF(indicator.width(), 0)).x()
+        gimbal_left = gimbal_item.mapToItem(toolbar, QPointF(0, 0)).x()
+        assert abs(gimbal_left - indicator_right - toolbar.property("spacing")) < 1
+
+    check_gimbal_position()
+
+    # SDK transport remains connected throughout this flight-link loss.
+    window.close_drawer()
+    connected_width = toolbar.width()
+    vehicle.link_manager.lost = True
+    vehicle.link_manager.changed.emit()
+    settle()
+    assert not indicator.isVisible() and not indicator.property("showIndicator")
+    assert not touch_area.property("enabled") and toolbar.width() < connected_width
+    vehicle.link_manager.lost = False
+    vehicle.link_manager.changed.emit()
+    settle()
+    assert indicator.isVisible()
+    check_gimbal_position()
+    print("PASS: flight-link loss hides the icon and releases spacing; reconnect restores it immediately before the gimbal")
 
     # A contact sheet of unaltered production-QML grabs for review. Color,
     # text and icon rendering all come from the actual toolbar/drawer above.
@@ -332,22 +378,31 @@ Item {
         click()
         captured = view.grabWindow()
         assert captured.save(str(OUTPUT / f"preview-{name}.png"))
-        captures.append(captured.copy(470, 0, 330, 240))
-    contact_sheet = QImage(676, 496, QImage.Format_ARGB32)
+        captures.append(captured.copy(400, 0, 400, 260))
+    contact_sheet = QImage(816, 536, QImage.Format_ARGB32)
     contact_sheet.fill(QColor("#333333"))
     painter = QPainter(contact_sheet)
     for index, captured in enumerate(captures):
-        painter.drawImage((index % 2) * 346, (index // 2) * 256, captured)
+        painter.drawImage((index % 2) * 416, (index // 2) * 276, captured)
     painter.end()
     assert contact_sheet.save(str(OUTPUT / "overview-dark.png"))
 
     manager.current = None
     manager.changed.emit()
     settle()
-    assert indicator.isVisible() and indicator.property("showIndicator")
+    assert find_item(root, "uniRcLinkIndicator") is None
+    manager.current = vehicle
+    manager.changed.emit()
+    settle()
+    indicator = find_item(root, "uniRcLinkIndicator")
+    strength = find_item(root, "uniRcToolbarStrength")
+    icon = find_item(root, "uniRcToolbarSignalIcon")
+    touch_area = find_item(root, "uniRcLinkTouchArea")
+    assert indicator and indicator.isVisible()
+    check_gimbal_position()
     click()
-    assert window.page, "Air-link details must not depend on a MAVLink vehicle"
-    print("PASS: indicator is rightmost and remains usable without a MAVLink vehicle")
+    assert window.page
+    print("PASS: no active vehicle removes the icon; reconnect restores a single usable entry")
 
     for light in (False, True):
         window.close_drawer()
@@ -372,7 +427,7 @@ Item {
     plugin.controller = None
     plugin.changed.emit()
     settle()
-    assert root.findChild(QQuickItem, "uniRcLinkIndicatorLoader").property("item") is None
+    assert find_item(root, "uniRcLinkIndicatorLoader") is None
     errors = [message for message in WARNINGS if any(token in message for token in (
         "TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign",
         "is not a type", "Error:", "Cannot open"))]

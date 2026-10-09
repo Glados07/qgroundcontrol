@@ -31,16 +31,53 @@ ToolIndicatorPage {
 
     QGCPalette { id: linkPalette }
 
+    FontMetrics {
+        id: captionMetrics
+        font.family: ScreenTools.normalFontFamily
+        font.pointSize: ScreenTools.smallFontPointSize
+    }
+
+    FontMetrics {
+        id: valueMetrics
+        font.family: ScreenTools.normalFontFamily
+        font.pointSize: ScreenTools.defaultFontPointSize * 1.8
+        font.bold: true
+    }
+
     contentComponent: Component {
         ColumnLayout {
             id: content
 
-            width: Math.min(ScreenTools.defaultFontPixelWidth * 36,
-                            Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelWidth * 6))
+            // Size from actual translated text, not the width of a Latin glyph.
+            // Reserve the same outer padding as the native indicator drawer.
+            width: Math.min(Math.max(ScreenTools.defaultFontPixelHeight * 18,
+                                     naturalColumnWidth * 2 + horizontalOverhead),
+                            Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
             spacing: ScreenTools.defaultFontPixelHeight * 0.8
 
-            readonly property real sidePadding: ScreenTools.defaultFontPixelWidth
-            readonly property real valueHeight: ScreenTools.defaultFontPixelHeight * 2.2
+            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * 0.6
+            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * 0.75
+            readonly property real horizontalOverhead: sidePadding * 2 + columnSpacing * 2 + 1
+            readonly property real columnWidth: Math.max(1, (width - horizontalOverhead) / 2)
+            readonly property real captionTextWidth: Math.max(
+                captionMetrics.advanceWidth(qsTr("Signal strength")),
+                captionMetrics.advanceWidth(qsTr("Signal quality"))) + 4
+            readonly property real valueTextWidth: Math.max(
+                valueMetrics.advanceWidth("100%"),
+                valueMetrics.advanceWidth(qsTr("Strong")),
+                valueMetrics.advanceWidth(qsTr("Medium")),
+                valueMetrics.advanceWidth(qsTr("Weak")),
+                valueMetrics.advanceWidth(qsTr("Not available"))) + 4
+            readonly property real naturalColumnWidth: Math.max(captionTextWidth, valueTextWidth)
+                                                       + ScreenTools.defaultFontPixelHeight * 0.6
+            readonly property real captionPointSize: ScreenTools.smallFontPointSize
+                                                     * Math.min(1, columnWidth / captionTextWidth)
+            // Both values share one fitted size, including unknown status.
+            // Independent Text.Fit would shrink 100% but leave the quality larger.
+            readonly property real valueScale: Math.min(1, columnWidth / valueTextWidth)
+            readonly property real valuePointSize: valueMetrics.font.pointSize * valueScale
+            readonly property real valueHeight: Math.ceil(valueMetrics.height * valueScale)
+                                                + ScreenTools.defaultFontPixelHeight * 0.4
 
             RowLayout {
                 Layout.fillWidth: true
@@ -73,20 +110,21 @@ ToolIndicatorPage {
                 Layout.rightMargin: content.sidePadding
                 Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.6
                 columns: 3
-                columnSpacing: ScreenTools.defaultFontPixelWidth * 2
+                columnSpacing: content.columnSpacing
                 rowSpacing: ScreenTools.defaultFontPixelHeight * 0.3
 
                 QGCLabel {
+                    objectName: "uniRcDetailStrengthCaption"
                     Layout.row: 0
                     Layout.column: 0
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: 1
                     text: qsTr("Signal strength")
-                    font.pointSize: ScreenTools.smallFontPointSize
+                    font.pointSize: content.captionPointSize
                     opacity: 0.7
                     horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.NoWrap
                 }
 
                 Rectangle {
@@ -102,16 +140,17 @@ ToolIndicatorPage {
                 }
 
                 QGCLabel {
+                    objectName: "uniRcDetailQualityCaption"
                     Layout.row: 0
                     Layout.column: 2
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: 1
                     text: qsTr("Signal quality")
-                    font.pointSize: ScreenTools.smallFontPointSize
+                    font.pointSize: content.captionPointSize
                     opacity: 0.7
                     horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.NoWrap
                 }
 
                 QGCLabel {
@@ -124,10 +163,9 @@ ToolIndicatorPage {
                     Layout.preferredHeight: content.valueHeight
                     text: root.available ? root.linkStatus.strengthPercent + "%" : qsTr("Not available")
                     color: strengthIcon.signalColor
-                    font.pointSize: ScreenTools.defaultFontPointSize * (root.available ? 2 : 1.15)
+                    font.pointSize: content.valuePointSize
                     font.bold: true
-                    fontSizeMode: Text.Fit
-                    minimumPointSize: ScreenTools.defaultFontPointSize
+                    wrapMode: Text.NoWrap
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -142,10 +180,9 @@ ToolIndicatorPage {
                     Layout.preferredHeight: content.valueHeight
                     text: root.qualityText
                     color: root.qualityColor
-                    font.pointSize: ScreenTools.defaultFontPointSize * (root.available ? 2 : 1.15)
+                    font.pointSize: content.valuePointSize
                     font.bold: true
-                    fontSizeMode: Text.Fit
-                    minimumPointSize: ScreenTools.defaultFontPointSize
+                    wrapMode: Text.NoWrap
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }

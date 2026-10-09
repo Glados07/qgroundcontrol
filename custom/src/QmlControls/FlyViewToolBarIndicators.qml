@@ -24,6 +24,34 @@ Row {
 
     property var  _activeVehicle:           QGroundControl.multiVehicleManager.activeVehicle
     property real _toolIndicatorMargins:    ScreenTools.defaultFontPixelHeight * 0.66
+    readonly property string _uniRcIndicatorSource: "qrc:/Custom/qml/QGroundControl/Toolbar/UniRcLinkIndicator.qml"
+
+    function vehicleToolIndicators() {
+        if (!_activeVehicle) {
+            return []
+        }
+        const nativeIndicators = _activeVehicle.toolIndicators
+        if (!QGroundControl.corePlugin || !QGroundControl.corePlugin.uniRcChannelController) {
+            return nativeIndicators
+        }
+
+        // Preserve each firmware's order and place the air link immediately
+        // before its gimbal entry, including custom resource replacements.
+        const indicators = []
+        let inserted = false
+        for (let index = 0; index < nativeIndicators.length; ++index) {
+            if (!inserted && String(nativeIndicators[index]).endsWith("/GimbalIndicator.qml")) {
+                indicators.push(_uniRcIndicatorSource)
+                inserted = true
+            }
+            indicators.push(nativeIndicators[index])
+        }
+        // Some firmware (for example ArduSub) has no gimbal indicator.
+        if (!inserted) {
+            indicators.push(_uniRcIndicatorSource)
+        }
+        return indicators
+    }
 
     Repeater {
         id:     appRepeater
@@ -38,13 +66,14 @@ Row {
 
     Repeater {
         id:     toolIndicatorsRepeater
-        model:  _activeVehicle ? _activeVehicle.toolIndicators : []
+        model:  indicatorRow.vehicleToolIndicators()
 
         Loader {
+            objectName:         String(modelData) === indicatorRow._uniRcIndicatorSource ? "uniRcLinkIndicatorLoader" : ""
             anchors.top:        parent.top
             anchors.bottom:     parent.bottom
             source:             modelData
-            visible:            item.showIndicator
+            visible:            item ? item.showIndicator : false
         }
     }
 
@@ -58,14 +87,4 @@ Row {
         }
     }
 
-    // Keep SDK link telemetry at the right end of the status group. It is
-    // independent of the MAVLink vehicle and remains visible while offline.
-    Loader {
-        objectName:         "uniRcLinkIndicatorLoader"
-        anchors.top:        parent.top
-        anchors.bottom:     parent.bottom
-        active:             !!QGroundControl.corePlugin.uniRcChannelController
-        source:             "qrc:/Custom/qml/QGroundControl/Toolbar/UniRcLinkIndicator.qml"
-        visible:            item ? item.showIndicator : false
-    }
 }

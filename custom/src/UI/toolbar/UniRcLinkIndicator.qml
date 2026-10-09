@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Application-level UniRC air-link indicator, independent of MAVLink vehicles.
+ * UniRC air-link indicator for the active vehicle's connected toolbar.
  *
  ****************************************************************************/
 
@@ -22,8 +22,11 @@ Item {
     width: Math.max(indicatorRow.width, ScreenTools.defaultFontPixelHeight * 2.5)
     activeFocusOnTab: showIndicator
 
-    property bool showIndicator: !!_controller
+    property bool showIndicator: !!_controller && !!_vehicleLinkManager
+                                 && !_vehicleLinkManager.communicationLost
     property bool waitForParameters: false
+    readonly property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
+    readonly property var _vehicleLinkManager: _activeVehicle ? _activeVehicle.vehicleLinkManager : null
     readonly property var _controller: QGroundControl.corePlugin
                                        ? QGroundControl.corePlugin.uniRcChannelController : null
     readonly property var _linkStatus: _controller ? _controller.linkStatus : null
