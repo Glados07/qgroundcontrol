@@ -21,15 +21,34 @@ ToolIndicatorPage {
     required property var linkStatus
     readonly property bool available: !!linkStatus && linkStatus.available
     readonly property bool lightTheme: linkPalette.globalTheme === QGCPalette.Light
-    readonly property string qualityText: !available ? qsTr("Not available")
+    readonly property string qualityTier: !available ? qsTr("Not available")
                                           : linkStatus.qualityLevel === 2 ? qsTr("Strong")
                                           : linkStatus.qualityLevel === 1 ? qsTr("Medium") : qsTr("Weak")
+    readonly property string qualityText: available
+                                          ? formatQuality(qualityTier, linkStatus.signalQuality)
+                                          : qsTr("Not available")
     readonly property color qualityColor: !available ? (lightTheme ? "#737d86" : "#99a5ae")
                                           : linkStatus.qualityLevel === 2 ? (lightTheme ? "#087f73" : "#49d7bd")
                                           : linkStatus.qualityLevel === 1 ? (lightTheme ? "#a66309" : "#efb957")
                                           : (lightTheme ? "#bd3e43" : "#f27e82")
 
     QGCPalette { id: linkPalette }
+
+    function formatQuality(tier, value) {
+        return qsTr("%1 (%2)").arg(tier).arg(value)
+    }
+
+    function maximumQualityWidth() {
+        // Reserve every signed value so live updates cannot resize the drawer.
+        let maximum = 0
+        const tiers = [qsTr("Strong"), qsTr("Medium"), qsTr("Weak")]
+        for (const tier of tiers) {
+            for (let value = -15; value <= 30; ++value) {
+                maximum = Math.max(maximum, valueMetrics.advanceWidth(formatQuality(tier, value)))
+            }
+        }
+        return maximum
+    }
 
     FontMetrics {
         id: captionMetrics
@@ -65,9 +84,7 @@ ToolIndicatorPage {
                 captionMetrics.advanceWidth(qsTr("Signal quality"))) + 4
             readonly property real valueTextWidth: Math.max(
                 valueMetrics.advanceWidth("100%"),
-                valueMetrics.advanceWidth(qsTr("Strong")),
-                valueMetrics.advanceWidth(qsTr("Medium")),
-                valueMetrics.advanceWidth(qsTr("Weak")),
+                root.maximumQualityWidth(),
                 valueMetrics.advanceWidth(qsTr("Not available"))) + 4
             readonly property real naturalColumnWidth: Math.max(captionTextWidth, valueTextWidth)
                                                        + ScreenTools.defaultFontPixelHeight * 0.6

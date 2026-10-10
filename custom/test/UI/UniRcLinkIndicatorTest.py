@@ -46,14 +46,16 @@ class LinkStatus(QObject):
     valid = False
     strength = 0
     quality = 0
+    raw_quality = -15
     available = Property(bool, lambda self: self.valid, notify=statusChanged)
     strengthPercent = Property(int, lambda self: self.strength, notify=statusChanged)
     strengthLevel = Property(int, lambda self: self.strength // 20, notify=statusChanged)
     qualityLevel = Property(int, lambda self: self.quality, notify=statusChanged)
-    signalQuality = Property(int, lambda self: (-15, 5, 10)[self.quality], notify=statusChanged)
+    signalQuality = Property(int, lambda self: self.raw_quality, notify=statusChanged)
 
-    def update(self, strength, quality, available=True):
+    def update(self, strength, quality, available=True, raw_quality=None):
         self.strength, self.quality, self.valid = strength, quality, available
+        self.raw_quality = (-15, 5, 10)[quality] if raw_quality is None else raw_quality
         self.statusChanged.emit()
 
 
@@ -330,16 +332,26 @@ Item {
             click()
             detail_strength = window.page.findChild(QQuickItem, "uniRcDetailStrength").property("text")
             assert detail_strength == f"{percent}%", (percent, detail_strength, window.page.property("available"), WARNINGS)
-            assert window.page.findChild(QQuickItem, "uniRcDetailQuality").property("text") == ("弱", "中", "强")[quality]
+            assert window.page.findChild(QQuickItem, "uniRcDetailQuality").property("text") == f'{("弱", "中", "强")[quality]}（{controller.status.raw_quality}）'
             check_bounds()
             assert view.grabWindow().save(str(OUTPUT / f"{'light' if light else 'dark'}-{percent:03}.png"))
+        detail_quality = window.page.findChild(QQuickItem, "uniRcDetailQuality")
+        drawer_width = window.page.width()
+        opened_count = window.opened_count
+        for raw_quality in (-15, -1, 0, 4, 5, 9, 10, 12, 30):
+            quality = 2 if raw_quality >= 10 else 1 if raw_quality >= 5 else 0
+            controller.status.update(100, quality, raw_quality=raw_quality)
+            settle()
+            assert detail_quality.property("text") == f'{("弱", "中", "强")[quality]}（{raw_quality}）'
+            assert window.opened_count == opened_count and abs(window.page.width() - drawer_width) < 1
+            check_bounds()
         controller.status.update(100, 2, False)  # stale values must not leak to the UI
         settle()
         assert strength.property("text") == "--" and not icon.property("available")
         assert window.page.findChild(QQuickItem, "uniRcDetailStrength").property("text") == "未获取"
         assert window.page.findChild(QQuickItem, "uniRcDetailQuality").property("text") == "未获取"
         assert view.grabWindow().save(str(OUTPUT / f"{'light' if light else 'dark'}-unknown.png"))
-    print("PASS: six strength levels, independent quality/color, stale state, real drawer click and translations")
+    print("PASS: strength levels, live signed quality values/tier boundaries, stale state, real drawer click and translations")
 
     def check_gimbal_position():
         gimbal_item = find_item(root, "gimbalIndicator")
@@ -378,12 +390,15 @@ Item {
         click()
         captured = view.grabWindow()
         assert captured.save(str(OUTPUT / f"preview-{name}.png"))
-        captures.append(captured.copy(360, 0, 440, 280))
-    contact_sheet = QImage(896, 576, QImage.Format_ARGB32)
+        surface = root.findChild(QQuickItem, "drawerSurface")
+        crop_left = max(0, int(surface.x() - 12))
+        captures.append(captured.copy(crop_left, 0, captured.width() - crop_left, 280))
+    cell_width = max(capture.width() for capture in captures)
+    contact_sheet = QImage(cell_width * 2 + 16, 576, QImage.Format_ARGB32)
     contact_sheet.fill(QColor("#333333"))
     painter = QPainter(contact_sheet)
     for index, captured in enumerate(captures):
-        painter.drawImage((index % 2) * 456, (index // 2) * 296, captured)
+        painter.drawImage((index % 2) * (cell_width + 16), (index // 2) * 296, captured)
     painter.end()
     assert contact_sheet.save(str(OUTPUT / "overview-dark.png"))
 
@@ -417,6 +432,11 @@ Item {
         check_bounds()
         assert touch_area.width() >= 44 and touch_area.height() >= 44
         assert view.grabWindow().save(str(OUTPUT / f"narrow-large-font-{'light' if light else 'dark'}.png"))
+        controller.status.update(100, 0, raw_quality=-15)
+        settle()
+        check_bounds()
+        assert window.page.findChild(QQuickItem, "uniRcDetailQuality").property("text") == "弱（-15）"
+        assert view.grabWindow().save(str(OUTPUT / f"narrow-negative-{'light' if light else 'dark'}.png"))
         controller.status.update(100, 2, False)
         settle()
         check_bounds()

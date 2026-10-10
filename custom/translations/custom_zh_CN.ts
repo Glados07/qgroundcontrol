@@ -1137,6 +1137,10 @@
 <context>
     <name>UniRcLinkIndicatorPage</name>
     <message>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
         <source>Air Link</source>
         <translation>图传链路</translation>
     </message>

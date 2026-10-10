@@ -1113,6 +1113,10 @@
 <context>
     <name>UniRcLinkIndicatorPage</name>
     <message>
+        <source>%1 (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Air Link</source>
         <translation type="unfinished"></translation>
     </message>
