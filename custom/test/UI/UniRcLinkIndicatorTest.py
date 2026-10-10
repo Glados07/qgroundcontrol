@@ -314,6 +314,36 @@ Item {
         assert surface.x() >= 0 and surface.x() + surface.width() <= root.width()
         assert surface.y() + surface.height() <= root.height()
 
+    # Start with the longest quality value on the first drawer opening. The
+    # native Loader must reserve the natural text width before fitting fonts.
+    for base_font in (12, 14):
+        style.scale_value = base_font / 11
+        style.changed.emit()
+        window.current_width = 731
+        window.widthChanged.emit()
+        view.resize(731, 411)
+        controller.status.update(100, 0, raw_quality=-15)
+        settle()
+        click()
+        check_bounds()
+        for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
+            label = window.page.findChild(QQuickItem, name)
+            actual_size = label.property("fontInfo").property("pointSize").toNumber()
+            assert actual_size >= base_font * 1.5, (base_font, name, actual_size, window.page.width())
+        for name in ("uniRcDetailStrength", "uniRcDetailQuality"):
+            label = window.page.findChild(QQuickItem, name)
+            actual_size = label.property("fontInfo").property("pointSize").toNumber()
+            assert actual_size >= base_font * 2.9, (base_font, name, actual_size, window.page.width())
+        assert view.grabWindow().save(str(OUTPUT / f"landscape-{base_font}pt.png"))
+        window.close_drawer()
+    print("PASS: first-open 731x411 layout keeps enlarged captions and equal values at 12pt/14pt base fonts")
+    style.scale_value = 1.0
+    style.changed.emit()
+    window.current_width = 800
+    window.widthChanged.emit()
+    view.resize(800, 560)
+    settle()
+
     for light in (False, True):
         style.light_value = light
         style.changed.emit()

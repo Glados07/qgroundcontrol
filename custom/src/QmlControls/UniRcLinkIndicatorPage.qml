@@ -53,13 +53,13 @@ ToolIndicatorPage {
     FontMetrics {
         id: captionMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 1.25
+        font.pointSize: ScreenTools.defaultFontPointSize * 1.6
     }
 
     FontMetrics {
         id: valueMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 2.4
+        font.pointSize: ScreenTools.defaultFontPointSize * 3.0
         font.bold: true
     }
 
@@ -69,9 +69,10 @@ ToolIndicatorPage {
 
             // Size from actual translated text, not the width of a Latin glyph.
             // Reserve the same outer padding as the native indicator drawer.
-            width: Math.min(Math.max(ScreenTools.defaultFontPixelHeight * 20,
-                                     naturalColumnWidth * 2 + horizontalOverhead),
-                            Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
+            readonly property real preferredContentWidth: Math.min(
+                Math.max(ScreenTools.defaultFontPixelHeight * 20,
+                         naturalColumnWidth * 2 + horizontalOverhead),
+                Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
             spacing: ScreenTools.defaultFontPixelHeight * 0.8
 
             readonly property bool compact: mainWindow.width < ScreenTools.defaultFontPixelHeight * 20
@@ -124,6 +125,9 @@ ToolIndicatorPage {
             }
 
             GridLayout {
+                // Feed the natural width into layout negotiation so the parent
+                // Loader cannot squeeze the first-open page down to its header.
+                Layout.preferredWidth: content.preferredContentWidth - content.sidePadding * 2
                 Layout.fillWidth: true
                 Layout.leftMargin: content.sidePadding
                 Layout.rightMargin: content.sidePadding
