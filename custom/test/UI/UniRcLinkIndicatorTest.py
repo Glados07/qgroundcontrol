@@ -332,14 +332,14 @@ Item {
         for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert base_font * 1.05 <= actual_size <= base_font * 1.25, (base_font, name, actual_size, window.page.width())
+            assert base_font <= actual_size <= base_font * 1.15, (base_font, name, actual_size, window.page.width())
         for name in ("uniRcDetailStrength", "uniRcDetailQuality"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert base_font * 1.7 <= actual_size <= base_font * 1.9, (base_font, name, actual_size, window.page.width())
+            assert base_font * 1.55 <= actual_size <= base_font * 1.75, (base_font, name, actual_size, window.page.width())
         surface = root.findChild(QQuickItem, "drawerSurface")
-        assert surface.width() <= root.width() * 0.65, surface.width()
-        assert surface.height() <= root.height() * 0.45, surface.height()
+        assert surface.width() <= root.width() * 0.6, surface.width()
+        assert surface.height() <= root.height() * 0.4, surface.height()
         assert view.grabWindow().save(str(OUTPUT / f"landscape-{base_font}pt-{'light' if light else 'dark'}.png"))
         window.close_drawer()
     print("PASS: compact first-open 731x411 drawer, balanced fonts at 12pt/14pt and both palettes")
