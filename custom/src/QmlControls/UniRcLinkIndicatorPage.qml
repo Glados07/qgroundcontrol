@@ -53,13 +53,13 @@ ToolIndicatorPage {
     FontMetrics {
         id: captionMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 1.6
+        font.pointSize: ScreenTools.defaultFontPointSize * 1.15
     }
 
     FontMetrics {
         id: valueMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 3.0
+        font.pointSize: ScreenTools.defaultFontPointSize * 1.8
         font.bold: true
     }
 
@@ -70,14 +70,14 @@ ToolIndicatorPage {
             // Size from actual translated text, not the width of a Latin glyph.
             // Reserve the same outer padding as the native indicator drawer.
             readonly property real preferredContentWidth: Math.min(
-                Math.max(ScreenTools.defaultFontPixelHeight * 20,
+                Math.max(ScreenTools.defaultFontPixelHeight * 15,
                          naturalColumnWidth * 2 + horizontalOverhead),
                 Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
-            spacing: ScreenTools.defaultFontPixelHeight * 0.8
+            spacing: ScreenTools.defaultFontPixelHeight * 0.5
 
-            readonly property bool compact: mainWindow.width < ScreenTools.defaultFontPixelHeight * 20
-            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * (compact ? 0.35 : 0.6)
-            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * (compact ? 0.45 : 0.75)
+            readonly property bool compact: mainWindow.width < ScreenTools.defaultFontPixelHeight * 15
+            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * (compact ? 0.3 : 0.4)
+            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * (compact ? 0.35 : 0.5)
             readonly property real horizontalOverhead: sidePadding * 2 + columnSpacing * 2 + 1
             readonly property real columnWidth: Math.max(1, (width - horizontalOverhead) / 2)
             readonly property real captionTextWidth: Math.max(
@@ -88,27 +88,29 @@ ToolIndicatorPage {
                 root.maximumQualityWidth(),
                 valueMetrics.advanceWidth(qsTr("Not available"))) + 4
             readonly property real naturalColumnWidth: Math.max(captionTextWidth, valueTextWidth)
-                                                       + ScreenTools.defaultFontPixelHeight * 0.6
-            readonly property real captionPointSize: captionMetrics.font.pointSize
-                                                     * Math.min(1, columnWidth / captionTextWidth)
+                                                       + ScreenTools.defaultFontPixelHeight * 0.35
+            // Keep captions smaller when narrow screens also scale the values.
+            readonly property real captionPointSize: Math.min(
+                captionMetrics.font.pointSize * Math.min(1, columnWidth / captionTextWidth),
+                valuePointSize * 0.8)
             // Both values share one fitted size, including unknown status.
             // Independent Text.Fit would shrink 100% but leave the quality larger.
             readonly property real valueScale: Math.min(1, columnWidth / valueTextWidth)
             readonly property real valuePointSize: valueMetrics.font.pointSize * valueScale
             readonly property real valueHeight: Math.ceil(valueMetrics.height * valueScale)
-                                                + ScreenTools.defaultFontPixelHeight * 0.4
+                                                + ScreenTools.defaultFontPixelHeight * 0.25
 
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: content.sidePadding
                 Layout.rightMargin: content.sidePadding
-                Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.4
+                Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.25
                 spacing: ScreenTools.defaultFontPixelWidth
 
                 UniRcSignalIcon {
                     id: strengthIcon
 
-                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.6
+                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.3
                     Layout.preferredHeight: Layout.preferredWidth
                     available: root.available
                     strengthLevel: root.available ? root.linkStatus.strengthLevel : 0
@@ -118,7 +120,7 @@ ToolIndicatorPage {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Air Link")
-                    font.pointSize: ScreenTools.defaultFontPointSize * 1.3
+                    font.pointSize: ScreenTools.defaultFontPointSize * 1.15
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -131,10 +133,10 @@ ToolIndicatorPage {
                 Layout.fillWidth: true
                 Layout.leftMargin: content.sidePadding
                 Layout.rightMargin: content.sidePadding
-                Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.6
+                Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.4
                 columns: 3
                 columnSpacing: content.columnSpacing
-                rowSpacing: ScreenTools.defaultFontPixelHeight * 0.3
+                rowSpacing: ScreenTools.defaultFontPixelHeight * 0.25
 
                 QGCLabel {
                     objectName: "uniRcDetailStrengthCaption"

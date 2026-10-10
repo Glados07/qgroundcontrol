@@ -304,7 +304,9 @@ Item {
         quality_size = detail_quality.property("fontInfo").property("pointSize").toNumber()
         assert strength_size > 0 and abs(strength_size - quality_size) < 0.01, (strength_size, quality_size)
         for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
-            assert window.page.findChild(QQuickItem, name).property("lineCount") == 1
+            caption = window.page.findChild(QQuickItem, name)
+            assert caption.property("lineCount") == 1
+            assert caption.property("fontInfo").property("pointSize").toNumber() < strength_size
         strength_pos = detail_strength.mapToItem(window.page, QPointF(0, 0))
         quality_pos = detail_quality.mapToItem(window.page, QPointF(0, 0))
         assert quality_pos.x() > strength_pos.x() and abs(quality_pos.y() - strength_pos.y()) < 1
@@ -316,8 +318,9 @@ Item {
 
     # Start with the longest quality value on the first drawer opening. The
     # native Loader must reserve the natural text width before fitting fonts.
-    for base_font in (12, 14):
+    for base_font, light in ((12, False), (12, True), (14, False), (14, True)):
         style.scale_value = base_font / 11
+        style.light_value = light
         style.changed.emit()
         window.current_width = 731
         window.widthChanged.emit()
@@ -329,14 +332,17 @@ Item {
         for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert actual_size >= base_font * 1.5, (base_font, name, actual_size, window.page.width())
+            assert base_font * 1.05 <= actual_size <= base_font * 1.25, (base_font, name, actual_size, window.page.width())
         for name in ("uniRcDetailStrength", "uniRcDetailQuality"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert actual_size >= base_font * 2.9, (base_font, name, actual_size, window.page.width())
-        assert view.grabWindow().save(str(OUTPUT / f"landscape-{base_font}pt.png"))
+            assert base_font * 1.7 <= actual_size <= base_font * 1.9, (base_font, name, actual_size, window.page.width())
+        surface = root.findChild(QQuickItem, "drawerSurface")
+        assert surface.width() <= root.width() * 0.65, surface.width()
+        assert surface.height() <= root.height() * 0.45, surface.height()
+        assert view.grabWindow().save(str(OUTPUT / f"landscape-{base_font}pt-{'light' if light else 'dark'}.png"))
         window.close_drawer()
-    print("PASS: first-open 731x411 layout keeps enlarged captions and equal values at 12pt/14pt base fonts")
+    print("PASS: compact first-open 731x411 drawer, balanced fonts at 12pt/14pt and both palettes")
     style.scale_value = 1.0
     style.changed.emit()
     window.current_width = 800
