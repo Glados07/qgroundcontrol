@@ -19,6 +19,10 @@ ToolIndicatorPage {
     waitForParameters: false
 
     required property var linkStatus
+    readonly property real detailScale: 2 / 3
+    readonly property real detailFontPointSize: ScreenTools.defaultFontPointSize * detailScale
+    readonly property real detailFontHeight: ScreenTools.defaultFontPixelHeight * detailScale
+    readonly property real detailFontWidth: ScreenTools.defaultFontPixelWidth * detailScale
     readonly property bool available: !!linkStatus && linkStatus.available
     readonly property bool lightTheme: linkPalette.globalTheme === QGCPalette.Light
     readonly property string qualityTier: !available ? qsTr("Not available")
@@ -53,13 +57,13 @@ ToolIndicatorPage {
     FontMetrics {
         id: captionMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 1.05
+        font.pointSize: root.detailFontPointSize * 1.05
     }
 
     FontMetrics {
         id: valueMetrics
         font.family: ScreenTools.normalFontFamily
-        font.pointSize: ScreenTools.defaultFontPointSize * 1.65
+        font.pointSize: root.detailFontPointSize * 1.65
         font.bold: true
     }
 
@@ -70,25 +74,25 @@ ToolIndicatorPage {
             // Size from actual translated text, not the width of a Latin glyph.
             // Reserve the same outer padding as the native indicator drawer.
             readonly property real preferredContentWidth: Math.min(
-                Math.max(ScreenTools.defaultFontPixelHeight * 13.5,
+                Math.max(root.detailFontHeight * 13.5,
                          naturalColumnWidth * 2 + horizontalOverhead),
                 Math.max(1, mainWindow.width - ScreenTools.defaultFontPixelHeight * 1.5))
-            spacing: ScreenTools.defaultFontPixelHeight * 0.4
+            spacing: root.detailFontHeight * 0.4
 
-            readonly property bool compact: mainWindow.width < ScreenTools.defaultFontPixelHeight * 13.5
-            readonly property real sidePadding: ScreenTools.defaultFontPixelHeight * (compact ? 0.25 : 0.35)
-            readonly property real columnSpacing: ScreenTools.defaultFontPixelHeight * (compact ? 0.3 : 0.4)
+            readonly property bool compact: mainWindow.width < root.detailFontHeight * 13.5
+            readonly property real sidePadding: root.detailFontHeight * (compact ? 0.25 : 0.35)
+            readonly property real columnSpacing: root.detailFontHeight * (compact ? 0.3 : 0.4)
             readonly property real horizontalOverhead: sidePadding * 2 + columnSpacing * 2 + 1
             readonly property real columnWidth: Math.max(1, (width - horizontalOverhead) / 2)
             readonly property real captionTextWidth: Math.max(
                 captionMetrics.advanceWidth(qsTr("Signal strength")),
-                captionMetrics.advanceWidth(qsTr("Signal quality"))) + 4
+                captionMetrics.advanceWidth(qsTr("Signal quality"))) + 4 * root.detailScale
             readonly property real valueTextWidth: Math.max(
                 valueMetrics.advanceWidth("100%"),
                 root.maximumQualityWidth(),
-                valueMetrics.advanceWidth(qsTr("Not available"))) + 4
+                valueMetrics.advanceWidth(qsTr("Not available"))) + 4 * root.detailScale
             readonly property real naturalColumnWidth: Math.max(captionTextWidth, valueTextWidth)
-                                                       + ScreenTools.defaultFontPixelHeight * 0.25
+                                                       + root.detailFontHeight * 0.25
             // Keep captions smaller when narrow screens also scale the values.
             readonly property real captionPointSize: Math.min(
                 captionMetrics.font.pointSize * Math.min(1, columnWidth / captionTextWidth),
@@ -98,19 +102,19 @@ ToolIndicatorPage {
             readonly property real valueScale: Math.min(1, columnWidth / valueTextWidth)
             readonly property real valuePointSize: valueMetrics.font.pointSize * valueScale
             readonly property real valueHeight: Math.ceil(valueMetrics.height * valueScale)
-                                                + ScreenTools.defaultFontPixelHeight * 0.2
+                                                + root.detailFontHeight * 0.2
 
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: content.sidePadding
                 Layout.rightMargin: content.sidePadding
-                Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.2
-                spacing: ScreenTools.defaultFontPixelWidth
+                Layout.topMargin: root.detailFontHeight * 0.2
+                spacing: root.detailFontWidth
 
                 UniRcSignalIcon {
                     id: strengthIcon
 
-                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.2
+                    Layout.preferredWidth: root.detailFontHeight * 1.2
                     Layout.preferredHeight: Layout.preferredWidth
                     available: root.available
                     strengthLevel: root.available ? root.linkStatus.strengthLevel : 0
@@ -120,7 +124,7 @@ ToolIndicatorPage {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Air Link")
-                    font.pointSize: ScreenTools.defaultFontPointSize * 1.05
+                    font.pointSize: root.detailFontPointSize * 1.05
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -133,10 +137,10 @@ ToolIndicatorPage {
                 Layout.fillWidth: true
                 Layout.leftMargin: content.sidePadding
                 Layout.rightMargin: content.sidePadding
-                Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.3
+                Layout.bottomMargin: root.detailFontHeight * 0.3
                 columns: 3
                 columnSpacing: content.columnSpacing
-                rowSpacing: ScreenTools.defaultFontPixelHeight * 0.2
+                rowSpacing: root.detailFontHeight * 0.2
 
                 QGCLabel {
                     objectName: "uniRcDetailStrengthCaption"
@@ -158,8 +162,8 @@ ToolIndicatorPage {
                     Layout.rowSpan: 2
                     Layout.preferredWidth: 1
                     Layout.fillHeight: true
-                    Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.2
-                    Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.2
+                    Layout.topMargin: root.detailFontHeight * 0.2
+                    Layout.bottomMargin: root.detailFontHeight * 0.2
                     color: linkPalette.groupBorder
                     opacity: 0.4
                 }
@@ -179,6 +183,7 @@ ToolIndicatorPage {
                 }
 
                 QGCLabel {
+                    id: strengthValue
                     objectName: "uniRcDetailStrength"
                     Layout.row: 1
                     Layout.column: 0
@@ -193,9 +198,19 @@ ToolIndicatorPage {
                     wrapMode: Text.NoWrap
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
+                    transform: Translate {
+                        x: strengthInk.advanceWidth / 2
+                           - strengthInk.tightBoundingRect.x - strengthInk.tightBoundingRect.width / 2
+                    }
+                    TextMetrics {
+                        id: strengthInk
+                        font: strengthValue.font
+                        text: strengthValue.text
+                    }
                 }
 
                 QGCLabel {
+                    id: qualityValue
                     objectName: "uniRcDetailQuality"
                     Layout.row: 1
                     Layout.column: 2
@@ -210,6 +225,17 @@ ToolIndicatorPage {
                     wrapMode: Text.NoWrap
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
+                    // Center the visible glyphs, including the whole quality
+                    // value, rather than the full-width bracket's trailing space.
+                    transform: Translate {
+                        x: qualityInk.advanceWidth / 2
+                           - qualityInk.tightBoundingRect.x - qualityInk.tightBoundingRect.width / 2
+                    }
+                    TextMetrics {
+                        id: qualityInk
+                        font: qualityValue.font
+                        text: qualityValue.text
+                    }
                 }
             }
         }

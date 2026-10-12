@@ -315,6 +315,29 @@ Item {
         surface = root.findChild(QQuickItem, "drawerSurface")
         assert surface.x() >= 0 and surface.x() + surface.width() <= root.width()
         assert surface.y() + surface.height() <= root.height()
+        if window.page.property("available"):
+            # Check rendered ink, not the text box: a full-width closing bracket
+            # can leave the box centered while the visible quality looks leftward.
+            frame = view.grabWindow()
+            ratio = frame.width() / root.width()
+            for value, caption_name in ((detail_strength, "uniRcDetailStrengthCaption"),
+                                        (detail_quality, "uniRcDetailQualityCaption")):
+                caption = window.page.findChild(QQuickItem, caption_name)
+                column_pos = caption.mapToScene(QPointF(0, 0))
+                value_pos = value.mapToScene(QPointF(0, 0))
+                color = value.property("color")
+                ink_columns = []
+                for x in range(int(column_pos.x() * ratio), int((column_pos.x() + caption.width()) * ratio)):
+                    for y in range(int(value_pos.y() * ratio), int((value_pos.y() + value.height()) * ratio)):
+                        pixel = frame.pixelColor(x, y)
+                        if max(abs(pixel.red() - color.red()), abs(pixel.green() - color.green()),
+                               abs(pixel.blue() - color.blue())) < 24:
+                            ink_columns.append(x)
+                            break
+                assert ink_columns, value.property("text")
+                ink_center = (ink_columns[0] + ink_columns[-1] + 1) / (2 * ratio)
+                column_center = column_pos.x() + caption.width() / 2
+                assert abs(ink_center - column_center) <= 1.5, (value.property("text"), ink_center, column_center)
 
     # Start with the longest quality value on the first drawer opening. The
     # native Loader must reserve the natural text width before fitting fonts.
@@ -332,14 +355,14 @@ Item {
         for name in ("uniRcDetailStrengthCaption", "uniRcDetailQualityCaption"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert base_font <= actual_size <= base_font * 1.15, (base_font, name, actual_size, window.page.width())
+            assert base_font * 0.65 <= actual_size <= base_font * 0.75, (base_font, name, actual_size, window.page.width())
         for name in ("uniRcDetailStrength", "uniRcDetailQuality"):
             label = window.page.findChild(QQuickItem, name)
             actual_size = label.property("fontInfo").property("pointSize").toNumber()
-            assert base_font * 1.55 <= actual_size <= base_font * 1.75, (base_font, name, actual_size, window.page.width())
+            assert base_font <= actual_size <= base_font * 1.2, (base_font, name, actual_size, window.page.width())
         surface = root.findChild(QQuickItem, "drawerSurface")
-        assert surface.width() <= root.width() * 0.6, surface.width()
-        assert surface.height() <= root.height() * 0.4, surface.height()
+        assert surface.width() <= root.width() * 0.42, surface.width()
+        assert surface.height() <= root.height() * 0.3, surface.height()
         assert view.grabWindow().save(str(OUTPUT / f"landscape-{base_font}pt-{'light' if light else 'dark'}.png"))
         window.close_drawer()
     print("PASS: compact first-open 731x411 drawer, balanced fonts at 12pt/14pt and both palettes")
