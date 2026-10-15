@@ -10,3 +10,14 @@ set(QGC_DISABLE_APM_MAVLINK ON CACHE BOOL "Disable APM Dialect" FORCE)
 set(QGC_DISABLE_APM_PLUGIN ON CACHE BOOL "Disable APM Plugin" FORCE)
 set(QGC_DISABLE_APM_PLUGIN_FACTORY ON CACHE BOOL "Disable APM Plugin Factory" FORCE)
 set(QGC_DISABLE_PX4_PLUGIN_FACTORY ON CACHE BOOL "Disable PX4 Plugin Factory" FORCE)
+
+# 使用包含 FuelCellController 消息的 MAVLink C 头文件。
+set(QGC_MAVLINK_GIT_REPO
+    "https://github.com/Glados07/c_library_v2.git"
+    CACHE STRING "URL to MAVLink Git Repo" FORCE
+)
+
+set(QGC_MAVLINK_GIT_TAG
+    "a2924cf346ee42d52a842853fd82d64aa79b209e"
+    CACHE STRING "Tag of MAVLink Git Repo" FORCE
+)
