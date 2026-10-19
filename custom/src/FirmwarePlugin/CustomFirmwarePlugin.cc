@@ -130,6 +130,10 @@ const QVariantList &CustomFirmwarePlugin::toolIndicators(const Vehicle *vehicle)
             _toolIndicatorList.append(fuelStatusIndicator);
         }
 
+        const QVariant fuelCellIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/FuelCellControllerIndicator.qml"));
+        const auto fuelIndex = _toolIndicatorList.indexOf(fuelStatusIndicator);
+        _toolIndicatorList.insert(fuelIndex + 1, fuelCellIndicator);
+
         const QVariant gpsIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/VehicleGPSIndicator.qml"));
         const QVariant proximityRadarIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/ProximityRadarIndicator.qml"));
         const auto gpsIndex = _toolIndicatorList.indexOf(gpsIndicator);

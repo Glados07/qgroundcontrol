@@ -1095,4 +1095,316 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>FuelCellControllerIndicator</name>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="20"/>
+        <source>Waiting for status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="22"/>
+        <source>Never connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="23"/>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="24"/>
+        <source>Disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="25"/>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FuelCellControllerManager</name>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="115"/>
+        <source>Flight controller session changed. The previous FCS request result is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="132"/>
+        <source>Flight controller communication was lost. The FCS request result is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="181"/>
+        <source>FCS device connection was lost. The request result is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="190"/>
+        <source>Flight controller temporarily rejected the FCS command: device is not connected or has disconnected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="192"/>
+        <source>Flight controller denied the FCS command: request ID conflicts with the command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="194"/>
+        <source>Flight controller does not support this FCS command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="196"/>
+        <source>Flight controller did not accept the FCS command (result %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="234"/>
+        <source>Flight controller session changed. Please confirm the operation again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="237"/>
+        <source>FCS device status is unavailable or the device is not connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="240"/>
+        <source>No MAVLink 2 control link is available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="244"/>
+        <source>Waiting for FCS command confirmation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="273"/>
+        <source>FCS control link is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="285"/>
+        <source>Failed to send the FCS command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="297"/>
+        <source>FCS status or control link is unavailable. The request result is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="299"/>
+        <source>FCS request confirmation timed out. The result is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FuelCellControllerPage</name>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Powering on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Power on complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Entering standby</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Standby</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Starting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Start complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Stopping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Stop complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Fault shutdown in progress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Fault shutdown complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <source>Emergency stop in progress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <source>Emergency stop complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="169"/>
+        <source>FCS Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="163"/>
+        <source>FCS On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="177"/>
+        <source>FCS Emergency Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <source>Waiting for status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="28"/>
+        <source>Never connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="29"/>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="30"/>
+        <source>Disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="31"/>
+        <source>Unknown (telemetry expired)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="38"/>
+        <source>%1: Waiting for flight controller confirmation...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="41"/>
+        <source>Flight controller accepted %1. Check FCS system status for progress.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="43"/>
+        <source>Operation failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="45"/>
+        <source>Execution result unconfirmed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="51"/>
+        <source>Waiting for valid telemetry. Controls are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="52"/>
+        <source>Device is not connected or has disconnected. Controls are unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="53"/>
+        <source>Control link is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="76"/>
+        <source>Confirm %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="77"/>
+        <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="110"/>
+        <source>Fuel Cell Controller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="115"/>
+        <source>Device connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="119"/>
+        <source>FCS system status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="124"/>
+        <source>Lithium battery SOC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="131"/>
+        <source>Flight controller setpoints</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="136"/>
+        <source>Bus voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="140"/>
+        <source>Bus current</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="144"/>
+        <source>Requested power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="151"/>
+        <source>FCS control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="156"/>
+        <source>Current command</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

@@ -281,6 +281,10 @@ set_source_files_properties(
     PROPERTIES QT_RESOURCE_ALIAS FuelStatusIndicatorPage.qml
 )
 set_source_files_properties(
+    src/QmlControls/FuelCellControllerPage.qml
+    PROPERTIES QT_RESOURCE_ALIAS FuelCellControllerPage.qml
+)
+set_source_files_properties(
     src/QmlControls/ProximityRadarIndicatorPage.qml
     PROPERTIES QT_RESOURCE_ALIAS ProximityRadarIndicatorPage.qml
 )
@@ -294,6 +298,7 @@ qt_add_qml_module(CustomModule
     RESOURCE_PREFIX /qml
     QML_FILES
         src/QmlControls/FuelStatusIndicatorPage.qml
+        src/QmlControls/FuelCellControllerPage.qml
         src/QmlControls/ProximityRadarIndicatorPage.qml
         src/FlightDisplay/GeneratorBusVoltageAlert.qml
     NO_PLUGIN
@@ -379,6 +384,8 @@ file(GLOB_RECURSE ANDROID_CUSTOM_SOURCES CONFIGURE_DEPENDS
 set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController/FuelCellControllerManager.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController/FuelCellControllerManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.cc
@@ -648,6 +655,22 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     )
     target_link_libraries(GimbalModeControllerTest PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME GimbalModeControllerTest COMMAND $<TARGET_FILE:GimbalModeControllerTest>)
+
+    qt_add_executable(FuelCellControllerManagerTest
+        test/FuelCellController/FuelCellControllerManagerTest.cc
+        test/FuelCellController/Stubs/TestDoubles.h
+        src/FuelCellController/FuelCellControllerManager.cc
+        src/FuelCellController/FuelCellControllerManager.h
+    )
+    target_include_directories(FuelCellControllerManagerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/FuelCellController/Stubs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController
+        ${CMAKE_SOURCE_DIR}/src/MAVLink
+        ${mavlink_SOURCE_DIR}
+        ${mavlink_SOURCE_DIR}/all
+    )
+    target_link_libraries(FuelCellControllerManagerTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME FuelCellControllerManagerTest COMMAND $<TARGET_FILE:FuelCellControllerManagerTest>)
 
     qt_add_executable(SiyiModeQueryTest
         test/Gimbal/SiyiModeQueryTest.cc

@@ -11,6 +11,7 @@
 #include "Android/UniRcChannelController.h"
 #include "Comms/DefaultCommunicationLinkInstaller.h"
 #include "FactMetaData.h"
+#include "FuelCellController/FuelCellControllerManager.h"
 #include "Gimbal/GimbalAzimuthProvider.h"
 #include "Gimbal/GimbalCenterCoordinator.h"
 #include "Gimbal/GimbalModeController.h"
@@ -187,6 +188,11 @@ void CustomPlugin::init()
 
     _ensureFlyViewCustomSettings();
 
+    qmlRegisterUncreatableType<FuelCellControllerManager>(
+        "Custom.FuelCell", 1, 0, "FuelCellControllerManager",
+        "Use QGroundControl.corePlugin.fuelCellController");
+    _ensureFuelCellController();
+
     _ensureGimbalAzimuthProvider();
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
@@ -202,6 +208,9 @@ void CustomPlugin::init()
                     &QCoreApplication::aboutToQuit,
                     this,
                     [this]() {
+                        if (_fuelCellController) {
+                            _fuelCellController->shutdown();
+                        }
                         if (_gimbalCenterCoordinator) {
                             _gimbalCenterCoordinator->cancel();
                         }
@@ -222,6 +231,9 @@ void CustomPlugin::init()
 
 void CustomPlugin::cleanup()
 {
+    if (_fuelCellController) {
+        _fuelCellController->shutdown();
+    }
     if (_gimbalCenterCoordinator) {
         _gimbalCenterCoordinator->cancel();
     }
@@ -326,6 +338,12 @@ QObject *CustomPlugin::gimbalModeController()
 {
     _ensureGimbalModeController();
     return _gimbalModeController;
+}
+
+QObject *CustomPlugin::fuelCellController()
+{
+    _ensureFuelCellController();
+    return _fuelCellController;
 }
 
 GimbalCenterCoordinator *CustomPlugin::gimbalCenterCoordinatorObject()
@@ -469,6 +487,13 @@ void CustomPlugin::_ensureGimbalModeController()
         _ensureGimbalCenterCoordinator();
         connect(_gimbalCenterCoordinator, &GimbalCenterCoordinator::gimbalActionRequestStarted,
                 _gimbalModeController, &GimbalModeController::cancelModeCommand);
+    }
+}
+
+void CustomPlugin::_ensureFuelCellController()
+{
+    if (!_fuelCellController) {
+        _fuelCellController = new FuelCellControllerManager(this);
     }
 }
 

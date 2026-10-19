@@ -1119,4 +1119,316 @@
         <translation>其他云台操作已取消本次模式切换。</translation>
     </message>
 </context>
+<context>
+    <name>FuelCellControllerIndicator</name>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="20"/>
+        <source>Waiting for status</source>
+        <translation>等待状态</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="22"/>
+        <source>Never connected</source>
+        <translation>未连接</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="23"/>
+        <source>Connected</source>
+        <translation>已连接</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="24"/>
+        <source>Disconnected</source>
+        <translation>断连</translation>
+    </message>
+    <message>
+        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="25"/>
+        <source>Unknown</source>
+        <translation>状态未知</translation>
+    </message>
+</context>
+<context>
+    <name>FuelCellControllerManager</name>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="115"/>
+        <source>Flight controller session changed. The previous FCS request result is unknown.</source>
+        <translation>飞控会话已切换，原 FCS 请求结果未知。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="132"/>
+        <source>Flight controller communication was lost. The FCS request result is unknown.</source>
+        <translation>飞控通信中断，FCS 请求结果未知。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="181"/>
+        <source>FCS device connection was lost. The request result is unknown.</source>
+        <translation>FCS 设备连接中断，请求结果未知。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="190"/>
+        <source>Flight controller temporarily rejected the FCS command: device is not connected or has disconnected.</source>
+        <translation>飞控暂时拒绝 FCS 指令：设备未连接或已断连。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="192"/>
+        <source>Flight controller denied the FCS command: request ID conflicts with the command.</source>
+        <translation>飞控拒绝 FCS 指令：请求编号与指令冲突。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="194"/>
+        <source>Flight controller does not support this FCS command.</source>
+        <translation>飞控不支持该 FCS 指令。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="196"/>
+        <source>Flight controller did not accept the FCS command (result %1).</source>
+        <translation>飞控未接受 FCS 指令（结果 %1）。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="234"/>
+        <source>Flight controller session changed. Please confirm the operation again.</source>
+        <translation>飞控会话已变化，请重新确认操作。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="237"/>
+        <source>FCS device status is unavailable or the device is not connected.</source>
+        <translation>FCS 设备状态不可用或未连接。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="240"/>
+        <source>No MAVLink 2 control link is available.</source>
+        <translation>没有可用的 MAVLink 2 控制链路。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="244"/>
+        <source>Waiting for FCS command confirmation.</source>
+        <translation>正在等待 FCS 指令确认。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="273"/>
+        <source>FCS control link is unavailable.</source>
+        <translation>FCS 控制链路不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="285"/>
+        <source>Failed to send the FCS command.</source>
+        <translation>FCS 指令发送失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="297"/>
+        <source>FCS status or control link is unavailable. The request result is unknown.</source>
+        <translation>FCS 状态或控制链路不可用，请求结果未知。</translation>
+    </message>
+    <message>
+        <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="299"/>
+        <source>FCS request confirmation timed out. The result is unknown.</source>
+        <translation>FCS 请求确认超时，结果未知。</translation>
+    </message>
+</context>
+<context>
+    <name>FuelCellControllerPage</name>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Powering on</source>
+        <translation>上电中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Power on complete</source>
+        <translation>上电完成</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Entering standby</source>
+        <translation>进入待机中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <source>Standby</source>
+        <translation>待机</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Starting</source>
+        <translation>启动中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Start complete</source>
+        <translation>启动完成</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Running</source>
+        <translation>运行中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <source>Stopping</source>
+        <translation>关机中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Stop complete</source>
+        <translation>关机完成</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Fault shutdown in progress</source>
+        <translation>故障关机中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <source>Fault shutdown complete</source>
+        <translation>故障关机完成</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <source>Emergency stop in progress</source>
+        <translation>急停中</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <source>Emergency stop complete</source>
+        <translation>急停完成</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="169"/>
+        <source>FCS Off</source>
+        <translation>FCS 关机</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="163"/>
+        <source>FCS On</source>
+        <translation>FCS 开机</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="177"/>
+        <source>FCS Emergency Stop</source>
+        <translation>FCS 急停</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <source>Waiting for status</source>
+        <translation>等待状态</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="28"/>
+        <source>Never connected</source>
+        <translation>未连接</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="29"/>
+        <source>Connected</source>
+        <translation>已连接</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="30"/>
+        <source>Disconnected</source>
+        <translation>断连</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="31"/>
+        <source>Unknown (telemetry expired)</source>
+        <translation>状态未知（遥测已失效）</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="38"/>
+        <source>%1: Waiting for flight controller confirmation...</source>
+        <translation>%1：正在等待飞控确认……</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="41"/>
+        <source>Flight controller accepted %1. Check FCS system status for progress.</source>
+        <translation>飞控已接受%1指令；动作进度请查看 FCS 系统状态。</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="43"/>
+        <source>Operation failed: %1</source>
+        <translation>操作失败：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="45"/>
+        <source>Execution result unconfirmed: %1</source>
+        <translation>未确认执行结果：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="51"/>
+        <source>Waiting for valid telemetry. Controls are unavailable.</source>
+        <translation>等待有效遥测，控制不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="52"/>
+        <source>Device is not connected or has disconnected. Controls are unavailable.</source>
+        <translation>设备未连接或已断连，控制不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="53"/>
+        <source>Control link is unavailable.</source>
+        <translation>控制链路不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="76"/>
+        <source>Confirm %1</source>
+        <translation>确认%1</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="77"/>
+        <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
+        <translation>确认向飞控 #%1 的燃料电池控制器发送%2指令？</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="110"/>
+        <source>Fuel Cell Controller</source>
+        <translation>燃料电池控制器</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="115"/>
+        <source>Device connection</source>
+        <translation>设备连接</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="119"/>
+        <source>FCS system status</source>
+        <translation>FCS 系统状态</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="124"/>
+        <source>Lithium battery SOC</source>
+        <translation>锂电池 SOC</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="131"/>
+        <source>Flight controller setpoints</source>
+        <translation>飞控下发参数</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="136"/>
+        <source>Bus voltage</source>
+        <translation>母线电压</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="140"/>
+        <source>Bus current</source>
+        <translation>母线电流</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="144"/>
+        <source>Requested power</source>
+        <translation>请求功率</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="151"/>
+        <source>FCS control</source>
+        <translation>FCS 控制</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="156"/>
+        <source>Current command</source>
+        <translation>当前控制指令</translation>
+    </message>
+</context>
 </TS>
