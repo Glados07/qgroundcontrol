@@ -1095,11 +1095,11 @@ void Joystick::_executeButtonAction(const QString &action, bool buttonDown)
         }
     } else if (action == _buttonActionGripperGrab) {
         if (buttonDown) {
-            emit gripperAction(GRIPPER_ACTION_GRAB);
+            emit gripperAction(GRIPPER_ACTION_CLOSE);
         }
     } else if (action == _buttonActionGripperRelease) {
         if (buttonDown) {
-            emit gripperAction(GRIPPER_ACTION_RELEASE);
+            emit gripperAction(GRIPPER_ACTION_OPEN);
         }
     } else if (action == _buttonActionLandingGearDeploy) {
         if (buttonDown) {

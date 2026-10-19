@@ -4017,10 +4017,10 @@ void Vehicle::sendGripperAction(QGCMAVLink::GRIPPER_OPTIONS gripperOption)
 {
     switch(gripperOption) {
         case QGCMAVLink::Gripper_release:
-            setGripperAction(GRIPPER_ACTION_RELEASE);
+            setGripperAction(GRIPPER_ACTION_OPEN);
             break;
         case QGCMAVLink::Gripper_grab:
-            setGripperAction(GRIPPER_ACTION_GRAB);
+            setGripperAction(GRIPPER_ACTION_CLOSE);
             break;
         case QGCMAVLink::Invalid_option:
             qDebug("unknown function");
