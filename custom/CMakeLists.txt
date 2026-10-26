@@ -292,6 +292,14 @@ set_source_files_properties(
     src/FlightDisplay/GeneratorBusVoltageAlert.qml
     PROPERTIES QT_RESOURCE_ALIAS GeneratorBusVoltageAlert.qml
 )
+set_source_files_properties(
+    src/QmlControls/PowerSystemBattery.qml
+    PROPERTIES QT_RESOURCE_ALIAS PowerSystemBattery.qml
+)
+set_source_files_properties(
+    src/QmlControls/PowerSystemIndicatorPage.qml
+    PROPERTIES QT_RESOURCE_ALIAS PowerSystemIndicatorPage.qml
+)
 qt_add_qml_module(CustomModule
     URI Custom.Widgets
     VERSION 1.0
@@ -299,6 +307,8 @@ qt_add_qml_module(CustomModule
     QML_FILES
         src/QmlControls/FuelStatusIndicatorPage.qml
         src/QmlControls/FuelCellControllerPage.qml
+        src/QmlControls/PowerSystemBattery.qml
+        src/QmlControls/PowerSystemIndicatorPage.qml
         src/QmlControls/ProximityRadarIndicatorPage.qml
         src/FlightDisplay/GeneratorBusVoltageAlert.qml
     NO_PLUGIN

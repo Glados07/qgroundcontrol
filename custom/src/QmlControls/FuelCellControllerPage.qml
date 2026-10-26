@@ -11,6 +11,8 @@ ToolIndicatorPage {
     id: root
 
     required property var manager
+    property real contentWidth: Math.min(ScreenTools.defaultFontPixelWidth * 44,
+                                         mainWindow.width - ScreenTools.defaultFontPixelWidth * 4)
     readonly property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var _confirmationDialog: null
 
@@ -99,100 +101,130 @@ ToolIndicatorPage {
         }
     }
 
+    component StatusField: Item {
+        id: field
+        property string label
+        property string labelText
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        implicitHeight: Math.max(nameLabel.implicitHeight, valueLabel.implicitHeight)
+        QGCLabel {
+            id: nameLabel
+            width: Math.max(0, (field.width - ScreenTools.defaultFontPixelWidth * 2) * 0.45)
+            text: field.label
+            wrapMode: Text.Wrap
+        }
+        QGCLabel {
+            id: valueLabel
+            anchors.right: parent.right
+            width: Math.max(0, (field.width - ScreenTools.defaultFontPixelWidth * 2) * 0.55)
+            text: field.labelText
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignRight
+        }
+    }
+
     contentComponent: Component {
-        ColumnLayout {
-            width: Math.min(ScreenTools.defaultFontPixelWidth * 44,
-                            mainWindow.width - ScreenTools.defaultFontPixelWidth * 4)
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+        // Bound the Loader's implicit width; long wrapped text must not widen the pane.
+        Item {
+            implicitWidth: root.contentWidth
+            implicitHeight: content.implicitHeight
+            ColumnLayout {
+                id: content
+                width: parent.width
+                spacing: ScreenTools.defaultFontPixelHeight / 2
 
-            SettingsGroupLayout {
-                Layout.fillWidth: true
-                heading: qsTr("Fuel Cell Controller")
-                showDividers: false
-                contentSpacing: ScreenTools.defaultFontPixelHeight / 4
-
-                LabelledLabel {
-                    label: qsTr("Device connection")
-                    labelText: root.connectionText
-                }
-                LabelledLabel {
-                    label: qsTr("FCS system status")
-                    labelText: root.manager.fcsState >= 0 && root.manager.fcsState < root._fcsStates.length
-                               ? root._fcsStates[root.manager.fcsState] : "—"
-                }
-                LabelledLabel {
-                    label: qsTr("Lithium battery SOC")
-                    labelText: root.formatValue(root.manager.socPercent, 1, "%")
-                }
-            }
-
-            SettingsGroupLayout {
-                Layout.fillWidth: true
-                heading: qsTr("Flight controller setpoints")
-                showDividers: false
-                contentSpacing: ScreenTools.defaultFontPixelHeight / 4
-
-                LabelledLabel {
-                    label: qsTr("Bus voltage")
-                    labelText: root.formatValue(root.manager.busVoltage, 1, "V")
-                }
-                LabelledLabel {
-                    label: qsTr("Bus current")
-                    labelText: root.formatValue(root.manager.busCurrent, 1, "A")
-                }
-                LabelledLabel {
-                    label: qsTr("Requested power")
-                    labelText: root.formatValue(root.manager.requestedPower, 0, "W")
-                }
-            }
-
-            SettingsGroupLayout {
-                Layout.fillWidth: true
-                heading: qsTr("FCS control")
-                showDividers: false
-                contentSpacing: ScreenTools.defaultFontPixelHeight / 2
-
-                LabelledLabel {
-                    label: qsTr("Current command")
-                    labelText: root.commandText(root.manager.acceptedCommand)
-                }
-                RowLayout {
+                SettingsGroupLayout {
                     Layout.fillWidth: true
-                    QGCButton {
-                        Layout.fillWidth: true
-                        text: qsTr("FCS On")
-                        enabled: root.manager.canControl
-                        onClicked: root.confirmCommand(1)
+                    heading: qsTr("Fuel Cell Controller")
+                    showDividers: false
+                    contentSpacing: ScreenTools.defaultFontPixelHeight / 4
+
+                    StatusField {
+                        label: qsTr("Device connection")
+                        labelText: root.connectionText
                     }
-                    QGCButton {
-                        Layout.fillWidth: true
-                        text: qsTr("FCS Off")
-                        enabled: root.manager.canControl
-                        onClicked: root.confirmCommand(0)
+                    StatusField {
+                        label: qsTr("FCS system status")
+                        labelText: root.manager.fcsState >= 0 && root.manager.fcsState < root._fcsStates.length
+                                   ? root._fcsStates[root.manager.fcsState] : "—"
+                    }
+                    StatusField {
+                        label: qsTr("Lithium battery SOC")
+                        labelText: root.formatValue(root.manager.socPercent, 1, "%")
                     }
                 }
-                // 急停有独立门限，普通请求等待确认时仍可抢占。
-                QGCButton {
-                    Layout.fillWidth: true
-                    text: qsTr("FCS Emergency Stop")
-                    enabled: root.manager.canEmergencyStop
-                    backgroundColor: enabled ? QGroundControl.globalPalette.colorRed : QGroundControl.globalPalette.button
-                    textColor: enabled ? "white" : QGroundControl.globalPalette.buttonText
-                    onClicked: root.confirmCommand(2)
-                }
-            }
 
-            QGCLabel {
-                Layout.fillWidth: true
-                visible: text.length > 0
-                text: root.requestText
-                wrapMode: Text.WordWrap
-            }
-            QGCLabel {
-                Layout.fillWidth: true
-                visible: text.length > 0
-                text: root.controlHint
-                wrapMode: Text.WordWrap
+                SettingsGroupLayout {
+                    Layout.fillWidth: true
+                    heading: qsTr("Flight controller setpoints")
+                    showDividers: false
+                    contentSpacing: ScreenTools.defaultFontPixelHeight / 4
+
+                    StatusField {
+                        label: qsTr("Bus voltage")
+                        labelText: root.formatValue(root.manager.busVoltage, 1, "V")
+                    }
+                    StatusField {
+                        label: qsTr("Bus current")
+                        labelText: root.formatValue(root.manager.busCurrent, 1, "A")
+                    }
+                    StatusField {
+                        label: qsTr("Requested power")
+                        labelText: root.formatValue(root.manager.requestedPower, 0, "W")
+                    }
+                }
+
+                SettingsGroupLayout {
+                    Layout.fillWidth: true
+                    heading: qsTr("FCS control")
+                    showDividers: false
+                    contentSpacing: ScreenTools.defaultFontPixelHeight / 2
+
+                    StatusField {
+                        label: qsTr("Current command")
+                        labelText: root.commandText(root.manager.acceptedCommand)
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QGCButton {
+                            Layout.fillWidth: true
+                            text: qsTr("FCS On")
+                            enabled: root.manager.canControl
+                            onClicked: root.confirmCommand(1)
+                        }
+                        QGCButton {
+                            Layout.fillWidth: true
+                            text: qsTr("FCS Off")
+                            enabled: root.manager.canControl
+                            onClicked: root.confirmCommand(0)
+                        }
+                    }
+                    // 急停有独立门限，普通请求等待确认时仍可抢占。
+                    QGCButton {
+                        Layout.fillWidth: true
+                        text: qsTr("FCS Emergency Stop")
+                        enabled: root.manager.canEmergencyStop
+                        backgroundColor: enabled ? QGroundControl.globalPalette.colorRed : QGroundControl.globalPalette.button
+                        textColor: enabled ? "white" : QGroundControl.globalPalette.buttonText
+                        onClicked: root.confirmCommand(2)
+                    }
+                }
+
+                QGCLabel {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: text.length > 0
+                    text: root.requestText
+                    wrapMode: Text.Wrap
+                }
+                QGCLabel {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: text.length > 0
+                    text: root.controlHint
+                    wrapMode: Text.Wrap
+                }
             }
         }
     }

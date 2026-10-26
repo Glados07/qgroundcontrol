@@ -123,16 +123,14 @@ const QVariantList &CustomFirmwarePlugin::toolIndicators(const Vehicle *vehicle)
         const QVariant fuelStatusIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/FuelStatusIndicator.qml"));
         const auto batteryIndex = _toolIndicatorList.indexOf(batteryIndicator);
 
-        // Keep Fuel Status immediately after Battery so conditional indicators cannot shift it.
+        const QVariant powerSystemIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/PowerSystemIndicator.qml"));
+        const auto powerIndex = batteryIndex >= 0 ? batteryIndex : _toolIndicatorList.size();
         if (batteryIndex >= 0) {
-            _toolIndicatorList.insert(batteryIndex + 1, fuelStatusIndicator);
+            _toolIndicatorList[powerIndex] = powerSystemIndicator;
         } else {
-            _toolIndicatorList.append(fuelStatusIndicator);
+            _toolIndicatorList.append(powerSystemIndicator);
         }
-
-        const QVariant fuelCellIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/FuelCellControllerIndicator.qml"));
-        const auto fuelIndex = _toolIndicatorList.indexOf(fuelStatusIndicator);
-        _toolIndicatorList.insert(fuelIndex + 1, fuelCellIndicator);
+        _toolIndicatorList.insert(powerIndex + 1, fuelStatusIndicator);
 
         const QVariant gpsIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/VehicleGPSIndicator.qml"));
         const QVariant proximityRadarIndicator = QVariant::fromValue(QUrl::fromUserInput("qrc:/Custom/qml/QGroundControl/Toolbar/ProximityRadarIndicator.qml"));

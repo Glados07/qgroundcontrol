@@ -5,16 +5,21 @@ QML 入口为 `QGroundControl.corePlugin.fuelCellController`。
 
 ## 地面站界面
 
-连接活动飞控后，顶部工具栏显示 FCS 图标与连接状态；点击展开详情面板。
-尚无消息显示“等待状态”，遥测超时显示“状态未知”，不混同设备 CAN 断连。
-详情展示连接状态、FCS 实际状态、锂电池 SOC、飞控下发的母线电压/电流/请求功率及当前指令。
-所有数值只读，无效数据以 `—` 显示；设备断连时仍可展示有效飞控遥测中的下发参数。
+连接活动飞控后，顶部显示合并的 PowerSystemIndicator：FCS 图形，右侧为 PMU 实测母线电压和功率。
+主图标沿用电池电压状态配色；仅 FCS 断连、故障关机或急停状态显示红色角标。
+点击后宽屏左右显示电池详情/四项低电量配置和 FCS 详情，窄屏使用标签页，同一车辆记住最近选择。
+参数尚未就绪只影响配置区；飞控失联后电池旧测量值显示占位、配置禁用，FCS 沿用后端失联处理。
+FCS 区显示连接状态、实际状态、锂电池 SOC、飞控下发的母线电压/电流/请求功率及当前指令。
+左侧测量值和右侧下发值各自读取原有来源，不互相替代；PMU 回退时二者可能不同。
+数值只读，无效数据以 `—` 显示。没有新增电池报文级超时或 PMU 回退标志。
 
 开机、关机和 FCS 急停均需一次确认；确认框捕获会话编号，会话失效或面板销毁时关闭。
 普通请求等待期间急停仍可操作。结果提示区分“飞控已接受”与设备实际完成，超时显示结果未知。
 界面不重发、不自动发送指令；FCS 急停不调用飞控锁定或四旋翼电机停转功能。
 
-- `FuelCellControllerIndicator.qml`：顶部入口与连接摘要。
+- `PowerSystemIndicator.qml`：合并顶部入口、电源数值和 FCS 红角标。
+- `PowerSystemIndicatorPage.qml`：左右栏/标签页布局。
+- `PowerSystemBattery.qml`：常驻电池数据、配色及按需加载的详情和配置。
 - `FuelCellControllerPage.qml`：详情、操作确认和结果反馈。
 - `Custom.FuelCell.FuelCellControllerManager`：只暴露后端枚举，实例仍由 `CustomPlugin` 管理。
 
@@ -35,7 +40,7 @@ QML 入口为 `QGroundControl.corePlugin.fuelCellController`。
 设备未连接或断连时，SOC 和 FCS 状态无效；母线值只要遥测新鲜就仍可读取。
 `Unknown` 表示地面站不知道设备状态，不等于 PX4 判断的 CAN 断连。
 
-母线三项暂由 PX4 控制台设置，地面站没有修改接口。`acceptedCommand` 与 `fcsState` 分别表示
+母线三项由飞控维护，地面站没有修改接口。`acceptedCommand` 与 `fcsState` 分别表示
 飞控保存的指令和设备实际执行进度：飞控接受急停后，设备可能先返回状态 11，再返回完成状态 12。
 
 ## FCS 操作

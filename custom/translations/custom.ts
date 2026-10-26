@@ -2,77 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.1">
 <context>
-    <name>BatteryIndicator</name>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="64"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="69"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="75"/>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="110"/>
-        <source>n/a</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
-        <source>Power %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="219"/>
-        <source>Status</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="224"/>
-        <source>Power State</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="229"/>
-        <source>Measured Voltage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="234"/>
-        <source>Power</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="239"/>
-        <source>Current</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="244"/>
-        <source>Consumed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="259"/>
-        <source>Low Power Failsafe</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="264"/>
-        <source>Vehicle Action</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="270"/>
-        <source>Low Voltage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="275"/>
-        <source>Critical Voltage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/BatteryIndicator.qml" line="280"/>
-        <source>Emergency Voltage</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>GeneratorBusVoltageAlert</name>
     <message>
         <location filename="../src/FlightDisplay/GeneratorBusVoltageAlert.qml" line="59"/>
@@ -1096,34 +1025,6 @@
     </message>
 </context>
 <context>
-    <name>FuelCellControllerIndicator</name>
-    <message>
-        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="20"/>
-        <source>Waiting for status</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="22"/>
-        <source>Never connected</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="23"/>
-        <source>Connected</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="24"/>
-        <source>Disconnected</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/toolbar/FuelCellControllerIndicator.qml" line="25"/>
-        <source>Unknown</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>FuelCellControllerManager</name>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="115"/>
@@ -1204,206 +1105,293 @@
 <context>
     <name>FuelCellControllerPage</name>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
         <source>Powering on</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
         <source>Power on complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
         <source>Entering standby</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="19"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
         <source>Standby</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
         <source>Starting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
         <source>Start complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
         <source>Running</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="20"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
         <source>Stopping</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
         <source>Stop complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
         <source>Fault shutdown in progress</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
         <source>Fault shutdown complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
         <source>Emergency stop in progress</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
         <source>Emergency stop complete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="169"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="198"/>
         <source>FCS Off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="163"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="192"/>
         <source>FCS On</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="177"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="206"/>
         <source>FCS Emergency Stop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="28"/>
         <source>Waiting for status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="28"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="30"/>
         <source>Never connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="29"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="31"/>
         <source>Connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="30"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="32"/>
         <source>Disconnected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="31"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="33"/>
         <source>Unknown (telemetry expired)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="38"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="40"/>
         <source>%1: Waiting for flight controller confirmation...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="41"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="43"/>
         <source>Flight controller accepted %1. Check FCS system status for progress.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="43"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="45"/>
         <source>Operation failed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="45"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="47"/>
         <source>Execution result unconfirmed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="51"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="53"/>
         <source>Waiting for valid telemetry. Controls are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="52"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="54"/>
         <source>Device is not connected or has disconnected. Controls are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="53"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="55"/>
         <source>Control link is unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="76"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="78"/>
         <source>Confirm %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="77"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="79"/>
         <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="110"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="139"/>
         <source>Fuel Cell Controller</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="115"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="144"/>
         <source>Device connection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="119"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="148"/>
         <source>FCS system status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="124"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="153"/>
         <source>Lithium battery SOC</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="131"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="160"/>
         <source>Flight controller setpoints</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="136"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="165"/>
         <source>Bus voltage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="140"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="169"/>
         <source>Bus current</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="144"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="173"/>
         <source>Requested power</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="151"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="180"/>
         <source>FCS control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="156"/>
+        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="185"/>
         <source>Current command</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PowerSystemBattery</name>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="83"/>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="88"/>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="114"/>
+        <source>Power Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="119"/>
+        <source>Power State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="123"/>
+        <source>Measured Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="127"/>
+        <source>Power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="131"/>
+        <source>Current</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="135"/>
+        <source>Consumed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="143"/>
+        <source>Power configuration is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="143"/>
+        <source>Waiting for parameters...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="166"/>
+        <source>Low Power Failsafe</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="172"/>
+        <source>Vehicle Action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="182"/>
+        <source>Low Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="189"/>
+        <source>Critical Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="196"/>
+        <source>Emergency Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PowerSystemIndicatorPage</name>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="34"/>
+        <source>Power Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="42"/>
+        <source>Fuel Cell</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
