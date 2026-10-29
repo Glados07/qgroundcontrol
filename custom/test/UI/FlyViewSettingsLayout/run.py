@@ -20,7 +20,7 @@ import PySide6
 os.environ["QT_PLUGIN_PATH"] = str(Path(PySide6.__file__).parent / "plugins")
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(Path(os.environ["QT_PLUGIN_PATH"]) / "platforms")
 
-from PySide6.QtCore import (QObject, Property, QResource, Signal, Slot, QUrl,
+from PySide6.QtCore import (QObject, Property, QResource, Signal, Slot, QUrl, QCoreApplication,
                             QPoint, QPointF, QTranslator, QMetaObject, Q_ARG,
                             Qt, qInstallMessageHandler)
 from PySide6.QtGui import QGuiApplication, QColor, QFontDatabase
@@ -133,7 +133,7 @@ class Chinese(QTranslator):
         "Zoom Step": "变焦步长", "Enabled": "启用", "Channel Values": "通道实时数值",
         "SDK Interface": "SDK 接口", "SDK Bluetooth Address": "SDK 蓝牙地址",
         "SDK Serial Port": "SDK 串口", "Baud Rate": "波特率", "Bluetooth": "蓝牙",
-        "SIYI A8 Mini Gimbal Camera": "思翼 A8 Mini 云台相机", "UniPod MT11 Gimbal Camera": "UniPod MT11 云台相机",
+        "SIYI A8 Mini Gimbal Camera": "思翼 A8 Mini 云台相机", "Rouke": "Rouke",
         "SDK Host": "SDK 主机地址", "SDK Port": "SDK 端口", "3D View": "3D 视图",
         "Minimum Altitude": "最低高度", "Maximum Altitude": "最高高度",
         "Go To Location Max Distance": "前往目标位置的最大距离",
@@ -171,6 +171,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resource", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--translation", help="Production QM file layered over test translations")
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
@@ -217,6 +218,10 @@ def main():
     gimbal.setProperty("showUniRcSettings", True)  # Android-visible layout on desktop.
     translator = Chinese()
     app.installTranslator(translator)
+    production_translator = QTranslator()
+    if args.translation:
+        assert production_translator.load(args.translation), "Could not load production translations"
+        app.installTranslator(production_translator)
     view.engine().retranslate()
 
     cases = [(320, 700, 1.0, False), (480, 800, 1.0, False),
@@ -301,7 +306,7 @@ def main():
     settle()
     checklist = next(item for item in descendants(root)
                      if "FlyViewFactSwitch" in item.metaObject().className()
-                     and item.property("text") == Chinese.labels["Use Preflight Checklist"])
+                     and item.property("text") == QCoreApplication.translate("FlyViewSettings", "Use Preflight Checklist"))
     old = core.app["useChecklist"].get_value()
     point = checklist.mapToScene(QPointF(10, checklist.height() / 2))
     QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(int(point.x()), int(point.y())))
@@ -311,7 +316,7 @@ def main():
 
     combo_row = next(item for item in descendants(root)
                      if "FlyViewFactComboBox" in item.metaObject().className()
-                     and item.property("label") == Chinese.labels["SDK Interface"])
+                     and item.property("label") == QCoreApplication.translate("GimbalControlSettingsGroup", "SDK Interface"))
     combo = next(item for item in descendants(combo_row)
                  if item.metaObject().className().startswith("FactComboBox"))
     bluetooth_row = root.findChild(QQuickItem, "uniRcBluetoothAddressRow")
@@ -350,12 +355,38 @@ def main():
 
     host_row = next(item for item in descendants(root)
                     if "FlyViewFactTextField" in item.metaObject().className()
-                    and item.property("label") == Chinese.labels["SDK Host"])
+                    and item.property("label") == QCoreApplication.translate("GimbalControlSettingsGroup", "SDK Host"))
     field = next(item for item in descendants(host_row)
                  if item.metaObject().className().startswith("FactTextField"))
     field.setProperty("text", "192.168.144.26")
     assert QMetaObject.invokeMethod(field, "editingFinished", Qt.DirectConnection)
     assert core.gimbal["sdkHost"].get_value() == "192.168.144.26"
+
+    for key, label, value in (("roukeYawSpeedLimit", "Maximum Yaw Speed (protocol value)", "12"),
+                              ("roukePitchSpeedLimit", "Maximum Pitch Speed (protocol value)", "6")):
+        row = next(item for item in descendants(root)
+                   if "FlyViewFactTextField" in item.metaObject().className()
+                   and item.property("label") == QCoreApplication.translate("GimbalControlSettingsGroup", label))
+        field = next(item for item in descendants(row)
+                     if item.metaObject().className().startswith("FactTextField"))
+        field.setProperty("text", value)
+        assert QMetaObject.invokeMethod(field, "editingFinished", Qt.DirectConnection)
+        assert str(core.gimbal[key].get_value()) == value, key
+    for key, label in (("roukeYawReversed", "Reverse CH11 yaw direction"),
+                       ("roukePitchReversed", "Reverse CH12 pitch direction")):
+        row = next(item for item in descendants(root)
+                   if "FlyViewFactSwitch" in item.metaObject().className()
+                   and item.property("text") == QCoreApplication.translate("GimbalControlSettingsGroup", label))
+        position = row.mapToItem(content, QPointF(0, 0)).y()
+        flick.setProperty("contentY", max(0, min(position, flick.property("contentHeight") - view.height())))
+        settle()
+        old_value = core.gimbal[key].get_value()
+        point = row.mapToScene(QPointF(10, row.height() / 2))
+        QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(int(point.x()), int(point.y())))
+        settle()
+        assert core.gimbal[key].get_value() != old_value, key
+        core.gimbal[key].set_value(old_value)
+    print("PASS: Rouke yaw/pitch protocol-speed fields and CH11/CH12 reverse switches write through to Facts")
 
     core.viewer["useExternal3DMapSource"].set_value(True)
     settle()

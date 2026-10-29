@@ -438,7 +438,7 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
-        <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
+        <source>Set video stream addresses here. Configure camera controls under Fly View settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -448,12 +448,12 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
-        <source>RTSP URL 2</source>
+        <source>RTSP URL 2 (Rouke)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
+        <source>Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -527,6 +527,10 @@
     <message>
         <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="173"/>
         <source>MT11</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -609,6 +613,54 @@
     <message>
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="184"/>
         <source>UniPod MT11 Gimbal Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI Box UDP Host</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AI Box UDP Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local UDP Port (0: automatic)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload address defaults to 0. Set -1 to disable commands. Configure the Rouke stream under Video settings, RTSP URL 2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CH11 controls yaw, CH12 controls pitch, and CH14 centers the Rouke gimbal. Center both sticks before operating; release CH14 before pressing it again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum Yaw Speed (protocol value)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum Pitch Speed (protocol value)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverse CH11 yaw direction</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverse CH12 pitch direction</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The protocol does not specify speed units or limits. Use values confirmed by the payload vendor.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1142,6 +1194,167 @@
     </message>
     <message>
         <source>Weak</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraControl</name>
+    <message>
+        <source>Waiting for payload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Awaiting payload response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload control unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take Photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SD: %1 · LOCAL: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Photos: SD %1 / LOCAL %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RoukePayloadController</name>
+    <message>
+        <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set a valid Rouke IPv4 address and UDP port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot bind the Rouke UDP socket: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set the payload address supplied by the AI-box vendor before sending controls.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke controls need an enabled UDP endpoint and a configured payload address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wait for the pending Rouke command acknowledgement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to send Rouke fragment %1/%2: %3. The command was not fully sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke view must be LR1 (4) or OV2735 (5).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke rejected command %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No acknowledgement for Rouke command %1; device state is unknown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke acknowledged %1 after an earlier timeout or partial send. Without a transaction ID, device state remains unknown until a new endpoint session.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RoukeControlManager</name>
+    <message>
+        <source>A Rouke local photo is still being processed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to capture the Rouke local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save the Rouke local video frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to start Rouke local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No decoded Rouke video frame is available for a local photo.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke local recording stopped because its video stream ended.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Rouke video receiver was detached during local recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The configured local video format is invalid.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timed out starting Rouke local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Timed out stopping Rouke local video recording.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

@@ -61,7 +61,7 @@ SettingsPage {
         Layout.fillWidth:   true
         heading:            qsTr("Connection")
         headingDescription: _isRTSP
-                            ? qsTr("Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.")
+                            ? qsTr("Set video stream addresses here. Configure camera controls under Fly View settings.")
                             : ""
         visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP || _requiresUDPUrl)
 
@@ -76,14 +76,14 @@ SettingsPage {
         LabelledFactTextField {
             Layout.fillWidth:           true
             textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("RTSP URL 2")
+            label:                      qsTr("RTSP URL 2 (Rouke)")
             fact:                       _videoCustomSettings.secondaryRtspUrl
             visible:                    _isRTSP
         }
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.")
+            text: qsTr("Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.")
             visible: _isRTSP
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize

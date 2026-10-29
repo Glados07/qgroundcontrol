@@ -46,6 +46,74 @@
             "default": false
         },
         {
+            "name": "roukeEnabled",
+            "shortDesc": "Enable Rouke payload control",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "roukePayloadAddress",
+            "shortDesc": "Rouke MAVLink payload address",
+            "longDesc": "The vendor-confirmed default payload address is 0. -1 explicitly disables payload commands. Existing saved values are preserved.",
+            "type": "int32",
+            "min": -1,
+            "max": 65535,
+            "default": 0
+        },
+        {
+            "name": "roukeUdpHost",
+            "shortDesc": "Rouke AI box UDP host",
+            "type": "string",
+            "default": "192.168.144.110"
+        },
+        {
+            "name": "roukeUdpPort",
+            "shortDesc": "Rouke AI box UDP port",
+            "type": "uint32",
+            "min": 1,
+            "max": 65535,
+            "default": 8888
+        },
+        {
+            "name": "roukeLocalPort",
+            "shortDesc": "Rouke local UDP port",
+            "longDesc": "0 selects a local port automatically. Replies must return to this socket; configure a fixed port if required by the AI box.",
+            "type": "uint32",
+            "min": 0,
+            "max": 65535,
+            "default": 0
+        },
+        {
+            "name": "roukeYawSpeedLimit",
+            "shortDesc": "Rouke maximum yaw speed (protocol value)",
+            "longDesc": "Raw gimbal_speed_ctrl value. The vendor document does not specify units or hardware limits; 10000 is only a software input bound.",
+            "type": "int32",
+            "min": 1,
+            "max": 10000,
+            "default": 10
+        },
+        {
+            "name": "roukePitchSpeedLimit",
+            "shortDesc": "Rouke maximum pitch speed (protocol value)",
+            "longDesc": "Raw gimbal_speed_ctrl value. Confirm units and hardware limits with the vendor before increasing it.",
+            "type": "int32",
+            "min": 1,
+            "max": 10000,
+            "default": 5
+        },
+        {
+            "name": "roukeYawReversed",
+            "shortDesc": "Reverse Rouke yaw channel",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "name": "roukePitchReversed",
+            "shortDesc": "Reverse Rouke pitch channel",
+            "type": "bool",
+            "default": false
+        },
+        {
             "name": "mt11Enabled",
             "shortDesc": "Enable UniPod MT11 camera control",
             "type": "bool",

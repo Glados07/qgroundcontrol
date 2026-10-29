@@ -1,8 +1,8 @@
 /****************************************************************************
  *
  * Fly View 右侧相机控制区域覆盖。
- * 启用思翼私有 SDK 相机模块时，加载合并后的缩放/拍照/录像控制栏；
- * 关闭模块时自动回退 QGC 原生 PhotoVideoControl。
+ * 启用 A8 Mini 或柔克负载时，加载对应的相机控制栏；
+ * 两个模块均关闭时自动回退 QGC 原生 PhotoVideoControl。
  *
  ****************************************************************************/
 
@@ -27,13 +27,13 @@ ColumnLayout {
     property var _gimbalManager: QGroundControl.corePlugin
                                  ? QGroundControl.corePlugin.gimbalControlManager
                                  : null
-    property var _mt11Manager: QGroundControl.corePlugin
-                              ? QGroundControl.corePlugin.mt11ControlManager
+    property var _roukeManager: QGroundControl.corePlugin
+                              ? QGroundControl.corePlugin.roukeControlManager
                               : null
     property bool _a8Enabled: Boolean(_gimbalManager && _gimbalManager.enabled)
-    property bool _mt11Enabled: Boolean(_mt11Manager && _mt11Manager.enabled)
-    property bool _usePrivateCameraControl: _a8Enabled || _mt11Enabled
-    property int _selectedCamera: 0 // 0: A8 Mini, 1: MT11
+    property bool _roukeEnabled: Boolean(_roukeManager && _roukeManager.enabled)
+    property bool _usePrivateCameraControl: _a8Enabled || _roukeEnabled
+    property int _selectedCamera: 0 // 0: A8 Mini, 1: Rouke
     readonly property real _cameraSelectorHeight: Math.max(
                                                       ScreenTools.defaultFontPixelHeight * 2.25,
                                                       ScreenTools.isMobile
@@ -57,15 +57,15 @@ ColumnLayout {
     }
 
     function normalizeSelectedCamera() {
-        if (_selectedCamera === 0 && !_a8Enabled && _mt11Enabled) {
+        if (_selectedCamera === 0 && !_a8Enabled && _roukeEnabled) {
             selectCamera(1)
-        } else if (_selectedCamera === 1 && !_mt11Enabled && _a8Enabled) {
+        } else if (_selectedCamera === 1 && !_roukeEnabled && _a8Enabled) {
             selectCamera(0)
         }
     }
 
     on_A8EnabledChanged: normalizeSelectedCamera()
-    on_Mt11EnabledChanged: normalizeSelectedCamera()
+    on_RoukeEnabledChanged: normalizeSelectedCamera()
     Component.onCompleted: normalizeSelectedCamera()
 
     TerrainProgress {
@@ -91,7 +91,7 @@ ColumnLayout {
         Rectangle {
             id: cameraSelector
 
-            visible: root._a8Enabled && root._mt11Enabled
+            visible: root._a8Enabled && root._roukeEnabled
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: root._cameraSelectorTabWidth * 2
                                    + cameraSelector.innerMargin * 2
@@ -133,7 +133,7 @@ ColumnLayout {
                         readonly property bool selected: root._selectedCamera === cameraIndex
                         readonly property var cameraManager: cameraIndex === 0
                                                                      ? root._gimbalManager
-                                                                     : root._mt11Manager
+                                                                     : root._roukeManager
                         readonly property bool cameraOnline: Boolean(cameraManager
                                                                      && cameraManager.sdkResponding)
 
@@ -170,7 +170,7 @@ ColumnLayout {
 
                             QGCLabel {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: cameraTab.cameraIndex === 0 ? qsTr("A8 Mini") : qsTr("MT11")
+                                text: cameraTab.cameraIndex === 0 ? qsTr("A8 Mini") : qsTr("Rouke")
                                 color: cameraTabMouse.pressed && !cameraTab.selected
                                        ? "#15212a"
                                        : (cameraTab.selected ? "white" : "#d4e0e6ea")
@@ -199,7 +199,7 @@ ColumnLayout {
             active: root._usePrivateCameraControl
             visible: Boolean(active && item)
             source: root._selectedCamera === 1
-                    ? "qrc:/Custom/qml/QGroundControl/FlightDisplay/MT11CameraControl.qml"
+                    ? "qrc:/Custom/qml/QGroundControl/FlightDisplay/RoukeCameraControl.qml"
                     : "qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml"
             Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
             Layout.preferredWidth: item ? item.implicitWidth : 0
@@ -208,7 +208,7 @@ ColumnLayout {
             Layout.minimumHeight: Layout.preferredHeight
 
             readonly property var selectedManager: root._selectedCamera === 1
-                                                   ? root._mt11Manager
+                                                   ? root._roukeManager
                                                    : root._gimbalManager
 
             onLoaded: {

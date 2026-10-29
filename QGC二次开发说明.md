@@ -7,11 +7,11 @@
 | 项目 | 内容 |
 |---|---|
 | 工程 | `qgroundcontrol_viewer3d` |
-| 分支 | `SecDev/ft/sdk` |
+| 分支 | `SecDev/rouke` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `6becc69d6` + 当前工作区；本次同步范围为 UniRC 图传详情整体缩小约三分之一、数值可见字形居中及对应验证说明，其他模块保留既有核对范围 |
-| 文档更新 | 2026-10-10 |
+| 本次代码核对基线 | `cdf92e859` + 当前工作区；本次同步柔克负载替换、MAVLink 53022 连续字节流分段与重组、独立 UDP 控制、第二路视频及 UniRC CH11/CH12 转向、CH14 回中 |
+| 文档更新 | 2026-10-29 |
 
 ## 阅读导航
 
@@ -26,7 +26,7 @@
 | 按功能查阅 | 模块入口 |
 |:---|:---|
 | 场景与画面 | [3.1 三维视图](#viewer3d) · [3.2 双视频与解码](#video) · [3.8 双罗盘](#compass) |
-| 相机与操控 | [3.3 A8 Mini](#a8) · [3.4 MT11](#mt11) · [3.5 本地媒体](#media) · [3.6 云台姿态](#gimbal) · [3.7 UniRC](#unirc) |
+| 相机与操控 | [3.3 A8 Mini](#a8) · [3.4 柔克负载](#rouke) · [3.5 本地媒体](#media) · [3.6 云台姿态](#gimbal) · [3.7 UniRC](#unirc) |
 | 飞控与遥测 | [3.9 电源与燃料](#power) · [3.10 距离提示](#radar) · [3.11 通信](#comms) · [3.12 PX4 定制](#px4) |
 | 产品配置 | [3.13 设置与翻译](#settings) |
 
@@ -49,12 +49,12 @@
 | 模块 | 当前已实现 | 验证状态与下一步 |
 |---|---|---|
 | Viewer3D | OSM、外部模型、可选 Google 3D；本地场景显示飞行器与任务 | 已集成；按目标平台验证导入、坐标配准和可选 WebEngine 能力 |
-| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；桌面 MT11 播放已有实测；双路实播缩放及 Android 双路、交换源和持续播放仍需完整验收 |
+| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；历史 MT11 播放记录不代表柔克验证；柔克视频、双路持续播放及 Android 硬解需验收 |
 | A8 Mini 相机 | 缩放、拍照、录像、能力查询与播放后停滞恢复 | 已有真机使用及新版目视播放正常反馈；当前缩放与长期稳定性需按矩阵回归 |
-| MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制、CH11/CH12 转向 | 协议、通道映射和 UDP 停控已有主机测试；手势、模式画面及 Android 转向链路待真机验收 |
-| 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
+| 柔克负载 | 独立 UDP 承载 MAVLink 2/53022，切视角、对焦、回中、拍照及显式录像启停；CH11/CH12 速度转向、CH14 回中；完整控制帧按每段最多 128 字节连续发送，接收端重组长回应；绑定 Video 2 本地媒体 | 厂家确认 payload_addr 默认为 0、支持连续字节流重组；速度采用协议原始值，单位与设备上限待厂商确认；主机验证范围见 4.1，完整 Qt 6/Android 与硬件待验收 |
+| 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，柔克断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
-| UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch；`0x44` 图传强度、质量分档及原始值显示 | 图传查询、状态过期与顶部入口已接入，主机验证范围见 4.1；完整 Qt 6/Android 构建及两种接口真机路由待验证，既有蓝牙通道、CH9 和基础回中实测不替代新增图传验收 |
+| UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、A8 CH9 变倍、CH10 回中/俯视交替；Rouke CH11 偏转、CH12 俯仰、CH14 回中；`0x44` 图传强度、质量分档及原始值显示 | 主机验证范围见 4.1；完整 Qt 6/Android 构建及两种接口真机路由待验证，既有蓝牙通道、CH9 和基础回中实测不替代新增 Rouke 操控与图传验收 |
 | [双罗盘](#compass) | 飞行器航向与倒装 A8 主画面的云台世界方位角；固定机体时右转方位角增大、左转减小 | 倒装反馈方向、模式相关 C++ 及罗盘联动主机回归通过，证据范围见 4.1；Android 倒装实机方向及跟随/锁定待验收，范围见 4.2 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
@@ -91,6 +91,9 @@ custom/
                                                             # ② 关联关系：同时引用 custom 文件和保留复用的原生 QML/材质；新增界面或移动资源后需同步路径，CMake 负责打包，CustomPlugin 的 URL 拦截器负责将页面请求导向对应资源。
 ├── cmake/
                                                             # 构建选项覆盖
+│   ├── CustomMavlink.cmake
+                                                            # ① 柔克方言构建接入：校验 XML/上游头指纹，在构建目录组装上游头文件和自定义 rouke 方言。
+                                                            # ② 延后为最终应用添加优先 include 路径，使原生解析器与 Inspector 同时识别 53022；不改原生源码或上游依赖缓存。
 │   └── CustomOverrides.cmake
                                                             # ① 产品构建配置：设置 Custom-QGroundControl 应用名称，集中指定本产品采用的 QGC 编译开关，作为主工程配置阶段读取的覆盖文件。
                                                             # ② 替换边界：关闭原生 Viewer3D、APM 相关目标/方言和原生 PX4 Factory，由 custom/CMakeLists.txt 接入定制实现；新增替换项时需同步核对源码列表及工厂注册，避免两套实现同时构建。
@@ -114,18 +117,18 @@ custom/
                                                             # ② 对象归属：保存各 Settings/Manager 的实例及退出状态，声明默认配置、资源重定向、三维注册和媒体收尾相关入口；新增全局业务服务需在此声明，再由 CustomPlugin.cc 创建和接线。
 │   ├── CustomPlugin.cc
                                                             # ① 产品启动总装：创建设置与业务 Manager，安装默认链路/视频设置、中文翻译和 QML URL 拦截器，注册 Viewer3D 类型；将这些对象接入原生 QGCCorePlugin 生命周期并提供给界面。
-                                                            # ② 运行接线：mavlinkMessage 将消息交给方位角 Provider 并过滤自动视频信息，模式控制器自行订阅 Vehicle 消息；主/次视频项和接收器分别接 A8/MT11，安装尺寸探针与恢复逻辑，退出时收尾媒体、第二路视频和后台发布。
+                                                            # ② 运行接线：mavlinkMessage 将消息交给方位角 Provider 并过滤自动视频信息，模式控制器自行订阅 Vehicle 消息；主/次视频项和接收器分别接 A8/柔克，安装尺寸探针与恢复逻辑，退出时收尾媒体、第二路视频和后台发布。
 │   ├── Android/
                                                             # Android 媒体桥与 UniRC Bluetooth/UART2 通道控制、图传链路状态
 │   │   ├── AndroidMediaLibrary.cc
                                                             # ① JNI 适配实现：调用 QGCCustomMediaLibrary 的静态方法，转换 QString、Java 返回对象及异常结果，为暂存、发布、配额清理和等待提供统一 C++ 入口。
                                                             # ② 媒体链路：相机 Manager 完成截图或关闭录像文件后调用发布接口，Java 负责公共目录提交与恢复；新增存储能力时需同步本文件、AndroidMediaLibrary.h 和 Java 方法签名。
 │   │   ├── AndroidMediaLibrary.h
-                                                            # ① 平台媒体接口声明：提供暂存目录、旧媒体源目录、文件发布、已发布录像清理、等待发布和媒体删除方法，供 A8/MT11 本地照片与录像逻辑共用。
+                                                            # ① 平台媒体接口声明：提供暂存目录、旧媒体源目录、文件发布、已发布录像清理、等待发布和媒体删除方法，供 A8/柔克本地照片与录像逻辑共用。
                                                             # ② 调用约定：以 C++ 路径、文件类型和执行结果隔离 Android Java API；Manager 负责生成文件与控制录制，本接口只承接平台存储操作，具体 JNI 签名和结果转换在同名 .cc。
 │   │   ├── UniRcChannelController.cc
                                                             # ① 接收链路：依据启用开关、前后台状态和 SDK 接口选择打开 UART2 或建立 RFCOMM 连接，开启 20 Hz 通道上报并以 1 Hz 查询图传信息；共用 StreamParser，分别更新 16 路输入与 UniRcLinkStatus，图传回包不刷新通道 watchdog。
-                                                            # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；首包/持续输入超时、失联或切后台时停止动作、清空输入并按条件重连。
+                                                            # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；独立将 CH11/12/14 转给 Rouke Manager；首包/持续输入超时、失联或切后台时停止动作并按条件重连。
 │   │   ├── UniRcChannelController.h
                                                             # ① UniRC 控制器契约：声明 bluetoothConnected、uartConnected、transportConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10、linkStatus 和诊断信息等 QML 属性，以及 shutdown 退出接口。
                                                             # ② 异步状态：保存互斥的 Bluetooth socket/UART2 传输、请求发送阶段、首包及输入 watchdog、图传轮询定时器和通道动作状态；持有 UniRcLinkStatus，生命周期变化同时清理输入与图传状态。
@@ -207,19 +210,22 @@ custom/
                                                             # ① 飞行页工具条动作定义：组合原生 GuidedActions 和定制三维切换按钮，设置按钮名称、图标、可见/可用条件及当前页面状态。
                                                             # ② 三维入口：根据 Viewer3D 开关和当前显示状态，在 3D View/Fly 间切换并调用三维容器；入口图形来自 city_3d_map_icon.svg，场景加载与模型交互在 Viewer3D 目录。
 │   │   ├── FlyViewTopRightColumnLayout.qml
-                                                            # ① 右上列外观与相机选择：组合地形下载进度、cameraSelector 胶囊、cameraTab 标签、A8/MT11 在线状态点和相机面板；标签颜色、尺寸、间距及选中状态在此设置。
+                                                            # ① 右上列外观与相机选择：组合地形下载进度、cameraSelector 胶囊、cameraTab 标签、A8 Mini/Rouke 在线状态点和相机面板；标签颜色、尺寸、间距及选中状态在此设置。
                                                             # ② 面板切换：selectCamera/normalizeSelectedCamera 维护 _selectedCamera，cameraControlLoader 加载相应控制栏；两种私有相机均关闭时回退到原生拍照录像控件，整列页面锚点仍在原生 FlyViewWidgetLayer.qml。
 │   │   ├── GeneratorBusVoltageAlert.qml
                                                             # ① 母线告警条：required vehicle 指定所属车辆，读取 COM_GEN_V_LOW、COM_GEN_V_LOW_T 与母线电压，绘制告警文本/底色；车辆、参数、遥测或通信不可用时隐藏提示。
                                                             # ② 延时确认：_updateWarningState/_completePendingTransition 记录连续低于/高于阈值的时间，到期才进入/解除；等于阈值取消当前计时，无效数据保留已确认状态，切车重新建立状态，由覆盖层负责位置。
 │   │   ├── GimbalCameraControl.qml
                                                             # ① 相机控制栏主要 UI 文件：controlColumn 纵向排列变倍、模式、拍照、录像、计时及 SD/LOCAL 标记；panelColor/panelBorderColor/panelPadding/actionSize/itemSpacing 定义底色、边框、留白、按钮尺寸与间距，zoomControl 嵌入变倍子组件。
-                                                            # ② 交互与状态：photoButton 调 takePhoto、videoButton 调 toggleVideoRecording，按 Manager 的可用/pending/会话属性更新按钮、闪光和 recordingTimeText；modeButton/videoModeMenu 提供 MT11 三种画面模式，A8 直接使用本组件，MT11 由包装文件注入 Manager。
+                                                            # ② 交互与状态：photoButton 调 takePhoto、videoButton 调 toggleVideoRecording，按 Manager 的可用/pending/会话属性更新按钮、闪光和 recordingTimeText；保留历史模式入口的兼容属性；当前 A8 使用本组件，柔克使用独立 RoukeCameraControl。
 │   │   ├── GimbalZoomControl.qml
                                                             # ① 变倍子组件 UI：zoomColumn 排列 zoomInButton、targetZoomLabel、actualZoomLabel 和 zoomOutButton，定义 +/− 按钮、倍率文字、颜色及尺寸属性；外层 GimbalCameraControl 会传入尺寸/配色覆盖默认值。
                                                             # ② 手势实现：MouseArea 保存按下时的 Manager，holdThresholdMs=420 识别长按、holdStartRetryMs=100 重试启动；短按调用步进，长按调用连续变倍，释放/隐藏/切相机/应用失活时结束或取消，倍率边界由 Manager/Policy 决定。
+│   │   ├── RoukeCameraControl.qml
+                                                            # ① 柔克相机面板：绑定 roukeControlManager，提供 LR1/OV2735、对焦、回中、拍照和显式录像/停止。
+                                                            # ② 分别显示 SD、LOCAL、pending 与错误；不显示未提供协议的变倍、红外及云台速度操作。
 │   │   └── MT11CameraControl.qml
-                                                            # ① MT11 相机面板包装：通过 controlLoader 加载共享 GimbalCameraControl，加载后绑定 mt11ControlManager，开启 thermalControlsVisible 并关闭额外实测倍率显示。
+                                                            # ① 历史 MT11 保留面板（本分支不加载）：MT11 相机面板包装：通过 controlLoader 加载共享 GimbalCameraControl，加载后绑定 mt11ControlManager，开启 thermalControlsVisible 并关闭额外实测倍率显示。
                                                             # ② 接口转接：向父层提供加载项的隐式尺寸和 closeTransientUi，用于相机切换时关闭菜单；面板布局、拍照/录像按钮在 GimbalCameraControl，变倍按钮外观和手势在 GimbalZoomControl。
 │   ├── FlightMap/
                                                             # 飞行页使用的图形资源
@@ -258,7 +264,7 @@ custom/
                                                             # ① 回中/俯视事务接口：声明 requestCenter、requestNextCh10Action 等入口及请求状态，供顶部工具栏与 UniRC 共用；保存本次车辆、云台、管理组件和动作版本。
                                                             # ② 事务成员：声明控制权检查、配置 ACK、预激活、最终角度命令、定时器与取消处理；关联 Ch10GimbalActionState，使命令完成只更新对应请求的动作顺序。
 │   │   ├── GimbalControl.SettingsGroup.json
-                                                            # ① 设置元数据：定义 A8/MT11 启用、SDK 地址/端口、各自变倍步长、本地媒体开关、UniRC 蓝牙/反向配置、MAVLink 自动视频和 Android 硬解策略的类型、默认值、范围及说明。
+                                                            # ① 设置元数据：定义 A8 设置与柔克启用、UDP 端点/本地端口/地址码，并保留历史 MT11 键、本地媒体开关、UniRC 蓝牙/反向配置、MAVLink 自动视频和 Android 硬解策略的类型、默认值、范围及说明。
                                                             # ② 加载关系：GimbalControlSettings 按设置键创建 Fact，GimbalControlSettingsGroup/VideoSettings 绑定并编辑，Manager 订阅变化；新增设置要同步 JSON、C++ getter 和界面，已有用户值的兼容处理在 Settings.cc。
 │   │   ├── GimbalControlManager.cc
                                                             # ① 变倍与设备控制：通过 SiyiSdk 查询卡录分辨率/最大倍率/实测倍率，结合拉流尺寸与 A8MiniZoomPolicy 解锁能力；短按发绝对目标，长按发方向并推进显示档位，停止后查询、对齐和确认，同时协调触摸与 UniRC 的动作所有权。
@@ -270,8 +276,8 @@ custom/
                                                             # ① Fact 创建与保存：注册 GimbalControl 设置组和全部配置项，使 SDK 端点、相机开关、步长及 Android/UniRC 策略可被界面编辑并由 Manager 响应。
                                                             # ② 兼容规则：按版本处理 MT11 默认 SDK 主机从 .25 到 .24 的配置迁移，以及缺失/空 UniRC 蓝牙地址的默认补全；保留不属于迁移范围的用户值，默认元数据仍来自同名 JSON。
 │   │   ├── GimbalControlSettings.h
-                                                            # ① 设置访问声明：按 GimbalControl 组提供 A8、MT11、UniRC、本地媒体和视频策略的 Fact getter 与键名，供 QML 及业务 Manager 使用同一份持久化配置。
-                                                            # ② 关联文件：字段类型、默认值和范围由 GimbalControl.SettingsGroup.json 提供，创建与迁移在 .cc；A8 使用 zoomStep，MT11 使用独立 mt11ZoomStep，避免两个控制器共用错误配置。
+                                                            # ① 设置访问声明：按 GimbalControl 组提供 A8、柔克、历史 MT11、UniRC、本地媒体和视频策略的 Fact getter 与键名，供 QML 及业务 Manager 使用同一份持久化配置。
+                                                            # ② 关联文件：字段类型、默认值和范围由 GimbalControl.SettingsGroup.json 提供，创建与迁移在 .cc；柔克新键使用 rouke 前缀；旧 mt11 键保留以便跨分支合并，不驱动本分支柔克协议。
 │   │   ├── GimbalHeadingTelemetry.cc
                                                             # ① 样本接收：拒绝非有限角度、无效或乱序时间；处理设备启动时间重复/回退，避免旧报文延长缓存寿命，并在确认设备重启时清理旧时序状态。
                                                             # ② 来源选择：优先取时间最新的 ATTITUDE/ATTITUDE_QUATERNION，时间相同时选四元数，高延迟航向仅作后备；独立检查各样本寿命，供 GimbalAzimuthProvider 获取准确航向或无效结果。
@@ -283,7 +289,7 @@ custom/
                                                             # ② 会话归并：将 SD 是否录制、SD 命令 pending 和本地实际状态组合成会话录制/可用结果；GimbalControlManager 执行决策并处理异步结果，避免将临时 pending 当成已经取得录像所有权。
 │   │   ├── GimbalMediaSessionPolicy.h
                                                             # ① A8 本地录像状态模型：LocalState 定义录制意图、设置/拉流状态、实际录制、所有权、外部会话、启动/停止 pending 及启动阻塞；LocalAction 声明需要执行的动作。
-                                                            # ② 纯接口：localAction 计算下一步，recordingSessionCapturing/recordingAvailable 计算 UI 会话状态与按钮可用性；不直接控制接收器，MT11 对应逻辑由其 Manager 自行维护。
+                                                            # ② 纯接口：localAction 计算下一步，recordingSessionCapturing/recordingAvailable 计算 UI 会话状态与按钮可用性；不直接控制接收器，柔克对应逻辑由 RoukeControlManager 自行维护。
 │   │   ├── GimbalModeController.cc
                                                             # ① 模式采样：按活动车辆/云台选择路由，产品 A8 路由用 SDK 查询确认实际模式，其余结合 MAVLink 状态；约 2 s 查询、3.5 s 样本有效期，失效发布 Unknown，切换上下文更新 sessionRevision。
                                                             # ② 切换闭环：冻结点击目标，确认控制权后发零角速度的模式命令并等待 ACK，A8 再发明确 SDK 模式设置，延迟查询验证反馈；5 s 超时或会话变化取消，只有实际反馈确认才完成按钮状态切换。
@@ -295,7 +301,7 @@ custom/
                                                             # ② 输出整理：captureGeometry 将目标物理像素换算为逻辑抓图尺寸，保持完整源画面等比缩放；prepareImageForSaving 修正小数 DPR 舍入，源/目标比例不一致时居中补黑边，交由 Manager 保存。
 │   │   ├── GimbalPhotoCapturePolicy.h
                                                             # ① 本地照片几何接口：CaptureGeometry 记录输出像素、有效画面像素和 Qt Quick 逻辑抓图尺寸；提供源尺寸选择、像素上限检查、DPR 换算与保存前图像整理方法。
-                                                            # ② 职责边界：输入协商视频尺寸、目标尺寸和设备像素比，输出稳定截图几何；A8/MT11 Manager 负责是否有解码帧、调用抓图和保存线程，本策略不读取相机或启动录制。
+                                                            # ② 职责边界：输入协商视频尺寸、目标尺寸和设备像素比，输出稳定截图几何；A8/柔克 Manager 负责是否有解码帧、调用抓图和保存线程，本策略不读取相机或启动录制。
 │   │   ├── GimbalVideoStreamSupport.cc
                                                             # ① 默认流安装：通过版本标记处理空值/已知旧默认值，将主路设为 rtsp://192.168.144.25:8554/main.264，并保证合适的接收超时；Android 未保存低延迟配置时安装产品默认值。
                                                             # ② 自动发现控制：mavlinkAutoVideoStream 关闭时过滤 VIDEO_STREAM_INFORMATION，防止飞控自动视频消息替换手工主路配置；用户已有自定义地址按迁移条件保留，修改默认规则需同步版本与条件。
@@ -303,35 +309,59 @@ custom/
                                                             # ① 主视频配置接口：installA8MiniDefaults 安装产品视频默认值，shouldFilterMavlinkMessage 根据设置判断是否屏蔽自动视频信息，供 CustomPlugin 初始化和 MAVLink 分发调用。
                                                             # ② 作用范围：复用原生 VideoManager 的设置与消息入口，不在此创建接收器；A8 默认流迁移与自动发现开关实现在 .cc，第二路 URL 由 VideoCustomSettings 独立维护。
 │   │   ├── Mt11ControlManager.cc
-                                                            # ① 设备动作实现：短按使用 0x0F 绝对目标且受 30 倍协议边界约束，长按使用 0x05 方向控制并处理更高混合倍率；结合反馈、档位对齐、保活/超时控制停止，另管理三种视频模式的请求与确认。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：设备动作实现：短按使用 0x0F 绝对目标且受 30 倍协议边界约束，长按使用 0x05 方向控制并处理更高混合倍率；结合反馈、档位对齐、保活/超时控制停止，另管理三种视频模式的请求与确认。
                                                             # ② 第二路媒体：从 Video 2 解码项截图，协调 SD 与本地录像并发布文件；断流清除本地录像意图，恢复后不自动续录，停止超时可继续重试；本类开始录像未独立调用容量清理，不能据此声称 MT11 单独持续执行配额。
 │   │   ├── Mt11ControlManager.h
-                                                            # ① MT11 业务接口：声明独立变倍、拍照、录像、VideoMode 及兼容 thermal 属性，提供 target/actual 倍率、模式 known/pending、SD 与本地录像会话和错误等 QML 状态。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 业务接口：声明独立变倍、拍照、录像、VideoMode 及兼容 thermal 属性，提供 target/actual 倍率、模式 known/pending、SD 与本地录像会话和错误等 QML 状态。
                                                             # ② 依赖与异步成员：保存 Mt11Sdk、能力/倍率轮询、长按保活/停止状态和 Video 2 媒体引用；共享面板通过统一动作接口调用本类，接收器切换与退出通过媒体清理接口收尾。
 │   │   ├── Mt11GimbalController.cc
-                                                            # ① MT11 转向控制：将 CH11/CH12 映射为 0x07 的 Yaw/Pitch 有符号速度，处理中位死区、双轴中位确认、350 ms 输入超时和停止重发；运动刷新仅由新通道帧驱动。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 转向控制：将 CH11/CH12 映射为 0x07 的 Yaw/Pitch 有符号速度，处理中位死区、双轴中位确认、350 ms 输入超时和停止重发；运动刷新仅由新通道帧驱动。
                                                             # ② 生命周期：复用 Mt11ControlManager 的 SDK，禁用/切端点/析构前向旧设备发完剩余停止包；新会话必须重新收到双轴中位，避免恢复旧输入。
 │   │   ├── Mt11GimbalController.h
-                                                            # ① 输入接口：setAvailable、updateChannels 和 cancel 分别接收 Manager 可用状态、UniRC 两路值和上游取消；不改变 A8/MAVLink 云台动作状态。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：输入接口：setAvailable、updateChannels 和 cancel 分别接收 Manager 可用状态、UniRC 两路值和上游取消；不改变 A8/MAVLink 云台动作状态。
                                                             # ② 状态归属：保存 SDK 弱引用、输入 watchdog、停止重试及 armed/moving 状态，供同目录实现与桌面 UDP 测试共用。
 │   │   ├── Mt11Protocol.cc
-                                                            # ① 字节编解码：构造并校验 MT11 帧及 CRC；连续变倍 ACK 按小端 16 位数除以 10 解码，最大/当前倍率按整数与小数两个字节解码，避免混合倍率读错。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：字节编解码：构造并校验 MT11 帧及 CRC；连续变倍 ACK 按小端 16 位数除以 10 解码，最大/当前倍率按整数与小数两个字节解码，避免混合倍率读错。
                                                             # ② 模式与反馈：用 0x11 命令编码 [00 02]、[02 00]、[03 02] 三种画面模式，解析 0x10/0x11 及相机功能反馈；Mt11Sdk 派发解析结果，Manager 更新模式/倍率/录像状态。
 │   │   ├── Mt11Protocol.h
-                                                            # ① MT11 协议声明：定义命令、视频模式、倍率与功能反馈结构，以及帧封装、CRC 和各载荷解析入口，作为 Mt11Sdk 与控制器之间的设备数据契约。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 协议声明：定义命令、视频模式、倍率与功能反馈结构，以及帧封装、CRC 和各载荷解析入口，作为 Mt11Sdk 与控制器之间的设备数据契约。
                                                             # ② 编码区分：连续变倍反馈和最大/当前倍率反馈采用不同编码，视频模式有三种固定载荷；接口只返回协议值及校验结果，命令是否可发、何时重试由 SDK/Manager 判断。
 │   │   ├── Mt11Sdk.cc
-                                                            # ① 请求发送与验证：向配置的 MT11 IP/端口发送 Mt11Protocol 帧，接收时校验源地址/端口和帧内容，并用约 1.5 s 的近期命令窗口关联普通 ACK。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：请求发送与验证：向配置的 MT11 IP/端口发送 Mt11Protocol 帧，接收时校验源地址/端口和帧内容，并用约 1.5 s 的近期命令窗口关联普通 ACK。
                                                             # ② 反馈派发：将倍率、状态、视频模式等结果发为业务信号；异步 0x0B 功能反馈不依赖普通请求窗口，错误交给 Manager 展示和处理，socket 的存在不等于设备已经响应。
 │   │   ├── Mt11Sdk.h
-                                                            # ① MT11 UDP 服务接口：声明端点设置、变倍/状态/视频模式/拍照录像命令及反馈信号，保存 socket、帧序号和近期请求关联状态。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 UDP 服务接口：声明端点设置、变倍/状态/视频模式/拍照录像命令及反馈信号，保存 socket、帧序号和近期请求关联状态。
                                                             # ② 分层关系：Protocol 提供字节编码，Sdk 负责发送和分发设备回复，Mt11ControlManager 决定业务时序；该端点独立于 A8 SiyiSdk，防止两台相机反馈互相影响。
 │   │   ├── Mt11ZoomPolicy.cc
-                                                            # ① 档位计算：按最小倍率锚定步长，将原始实测值对齐为合法显示目标，方向参数决定恰好位于两档中点时的取舍；与共用 ZoomStepPolicy 保持档位定义一致。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：档位计算：按最小倍率锚定步长，将原始实测值对齐为合法显示目标，方向参数决定恰好位于两档中点时的取舍；与共用 ZoomStepPolicy 保持档位定义一致。
                                                             # ② 短按边界：独立检查实际倍率与 30 倍绝对命令范围，保留精确 30 倍终点；设备更高的混合倍率反馈不直接变成可发送的短按绝对目标，由连续变倍路径处理。
 │   │   ├── Mt11ZoomPolicy.h
-                                                            # ① MT11 档位契约：定义 MinimumZoom=1 与 AbsoluteCommandMaximumZoom=30，声明 isDisplayTarget、tapTarget、alignedDisplayTarget 纯函数。
+                                                            # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 档位契约：定义 MinimumZoom=1 与 AbsoluteCommandMaximumZoom=30，声明 isDisplayTarget、tapTarget、alignedDisplayTarget 纯函数。
                                                             # ② 输入职责：measuredZoom 决定是否越过绝对命令边界，displayZoom 用于合法档位规划；输出目标供 Manager 发送，设备最大混合倍率和长按通信仍由 Manager 维护。
+│   │   ├── RoukeControlManager.cc
+                                                            # ① 柔克业务与第二路媒体：把相机动作交给 RoukePayloadController，复用成熟的截图、录像所有权、异步收尾及 Android 发布逻辑。
+                                                            # ② 绑定 Video 2；照片尺寸来自视频协商结果，断流结束本地录制；SD 状态由 ACK 确认，视频与控制独立。
+│   │   ├── RoukeControlManager.h
+                                                            # ① 柔克 Manager 契约：向 QML 暴露启用、控制可用、反馈状态、视角、设备/本地录像、照片计数及错误。
+                                                            # ② 保存控制器与第二路 item/receiver、抓图 worker、录制生命周期成员；由 CustomPlugin 创建和退出收尾。
+│   │   ├── RoukeGimbalController.cc
+                                                            # ① 柔克遥控姿态：CH11/CH12 映射为 yaw_speed/pitch_speed 协议值，roll_speed 固定 0；双轴归中后解锁，50 ms 刷新最新速度，350 ms 输入失效时停止。
+                                                            # ② 回中优先：CH14 释放/按下沿或面板回中先停速度，再发独立回中请求；结束后重新归中解锁，失联、后台、配置改变时撤销输入。
+│   │   ├── RoukeGimbalController.h
+                                                            # ① 遥控姿态接口：setConfiguration 设置双轴速度限值与反向，updateChannels 接收 CH11/12/14，cancel 停止，centerGimbal 供按键和面板共用。
+                                                            # ② 保存中位/按键解锁状态、最新双轴速度、输入时效、发送节拍及零速补发计数，不保存非零运动命令队列。
+│   │   ├── RoukePayloadController.cc
+                                                            # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流，再校验 JSON ACK。
+                                                            # ② 相机命令与回中分别等待 ACK；速度刷新不占 pending，同一命令分片连续写出；接收帧起始时标记两类本地请求版本，配置变化取消旧请求及半帧；payload_addr 默认 0，-1 禁控。
+│   │   ├── RoukePayloadController.h
+                                                            # ① 载荷命令接口：提供 C++ sendCommand(command, data)、sendGimbalSpeed 与拍照、显式录像状态写入、切视角、对焦、回中及独立 gimbalCenterPending 反馈属性。
+                                                            # ② 保存独立收发状态、有限数量的字节流重组缓存、命令和响应超时、视角/录像 known 状态及观察到的地址，不占用飞控 MAVLink 通道。
+│   │   ├── RoukeProtocol.cc
+                                                            # ① 柔克纯编解码：紧凑 UTF-8 JSON 组成 F0 E0、LE16 长度、JSON、00、F1 E1 帧。
+                                                            # ② splitFrame 按 128 字节连续切分；StreamDecoder 缓存半帧并按内层长度重组，严格检查长度、头尾、零校验、UTF-8 和 JSON 信封，坏帧重新寻找帧头。
+│   │   ├── RoukeProtocol.h
+                                                            # ① 纯协议接口：encodeRequest、encodeFrame、decodeFrame、splitFrame、StreamDecoder；定义每段 128、JSON 65535、完整帧 65542 和帧开销 7 字节上限。
+                                                            # ② 请求固定 msdk→psdk；编解码、分段和重组不访问网络，供 Controller 与独立协议测试共用。
 │   │   ├── SiyiProtocol.cc
                                                             # ① 帧与载荷实现：生成协议帧、计算 CRC 并校验 ACK，解析 0x05 连续倍率、0x0F 绝对变倍、0x18 当前倍率、0x16 最大倍率、0x20 卡录分辨率等字段。
                                                             # ② 相机功能：编解码 0x0A 状态/模式、0x0C 操作及 0x0B 功能反馈等载荷；本文件确定字段长度、比例与字节序，SiyiSdk 负责传输，GimbalControlManager 根据结果推进业务状态。
@@ -350,6 +380,33 @@ custom/
 │   │   └── ZoomStepPolicy.h
                                                             # ① 共用倍率档位接口：声明 isAlignedZoom、alignmentTarget 和 stepTarget，统一 A8/MT11 的档位合法性、实测对齐与单步前进规则。
                                                             # ② 输入输出：使用当前倍率、步长、最小/最大倍率及方向计算目标；档位以最小倍率为基准，精确最大值始终可作为终点，设备能力和通信状态不属于本接口。
+│   ├── MAVLink/
+                                                            # 柔克消息定义与生成方言
+│   │   ├── rouke.xml
+                                                            # ① 定义 53022/VK_PAYLOAD_DATA_RELAY，并 include 上游 all.xml。
+                                                            # ② 字段保持用户协议：uint16 payload_addr、uint8 reserve/data_len、uint8[128] data；只能以 MAVLink 2 发送该 ID。
+│   │   └── generated/
+                                                            # 可重生成并提交的方言产物
+│   │       └── rouke/
+                                                            # 由固定版本 mavgen 生成，不直接手改
+│   │           ├── generation.json
+                                                            # ① 生成溯源：保存 XML/上游头指纹及依赖、生成器版本和 CRC_EXTRA。
+                                                            # ② CMake 配置核对指纹；上游变化需重新生成并审阅差异。
+│   │           ├── mavlink.h
+                                                            # ① 方言总入口：选择 MAVLink 2 线格式并包含 rouke.h。
+                                                            # ② 通过构建优先 include 路径供原生 MAVLinkLib.h 和全部业务代码使用。
+│   │           ├── rouke.h
+                                                            # ① 完整消息表：保留上游 376 条消息，并加入 53022 的长度、CRC 与 Inspector 信息。
+                                                            # ② 复用未修改的 all 方言头，避免仅局部 include 导致原生解析器不认识新消息。
+│   │           ├── mavlink_msg_vk_payload_data_relay.h
+                                                            # ① 生成的结构体与 pack/encode/decode 函数：消息字段体 132 字节，CRC_EXTRA=37。
+                                                            # ② data_len 指出 data[128] 内本段有效字节数；字段名、次序、数组长度的变化都必须同步两端生成文件，本次分段不改变 XML 或生成头。
+│   │           ├── testsuite.h
+                                                            # ① mavgen 生成的消息序列化测试入口。
+                                                            # ② 由独立回归覆盖实际消息头及解析器；本文件属于生成产物。
+│   │           └── version.h
+                                                            # ① 生成方言版本与稳定构建日期。
+                                                            # ② 由重生成脚本固定日期以保证可重复生成，不用于判断设备在线状态。
 │   ├── QmlControls/
                                                             # 通用遥测控件、详情页和三维模块声明
 │   │   ├── BatteryIndicator.qml
@@ -389,10 +446,10 @@ custom/
                                                             # ① 飞行页附加设置声明：在独立 C++ 设置类中提供两条罗盘显示开关的键名和 Fact getter，向 CustomPlugin/QML 暴露配置访问接口。
                                                             # ② 存储关系：设置归入原生 FlyView 组，元数据来自 FlyViewCustom.SettingsGroup.json，具体组注册和 Fact 创建位于 .cc；扩展飞行页附加开关时同步这三处。
 │   │   ├── VideoCustom.SettingsGroup.json
-                                                            # ① 第二路视频元数据：定义 secondaryRtspUrl 字符串 Fact，默认 rtsp://192.168.144.24:8554/video1，作为 Video 设置组的定制补充。
-                                                            # ② 消费关系：VideoSettings 提供输入框，VideoCustomSettings 管理保存/兼容，DualVideoManager 读取地址启停第二路；该 URL 不等同于 MT11 SDK 地址，控制协议和视频连接可独立配置。
+                                                            # ① 第二路视频元数据：定义 secondaryRtspUrl 字符串 Fact，默认 rtsp://192.168.144.100:8554/live，作为 Video 设置组的定制补充。
+                                                            # ② 消费关系：VideoSettings 提供输入框，VideoCustomSettings 管理保存/兼容，DualVideoManager 读取地址启停第二路；该 URL 不等同于柔克 AI 盒子控制地址，控制协议和视频连接可独立配置。
 │   │   ├── VideoCustomSettings.cc
-                                                            # ① 配置兼容实现：仅当 Video/secondaryRtspUrl 不存在时读取旧 GimbalControl/mt11RtspUrl，将精确匹配旧默认 .25/video1 的值迁为 .24/video1。
+                                                            # ① 配置兼容实现：先兼容旧 GimbalControl/mt11RtspUrl，再一次性将精确匹配旧 .25/.24:8554/video1 的地址迁到柔克 .100:8554/live；保留其他自定义值及空值。
                                                             # ② 保留规则：用户自定义值包括空字符串均保留，旧键也保留；随后注册 QML 类型并创建 secondaryRtspUrl Fact，供 VideoSettings 编辑与 DualVideoManager 订阅刷新。
 │   │   └── VideoCustomSettings.h
                                                             # ① 第二路设置接口：声明 VideoCustomSettings 与 secondaryRtspUrl 键名/Fact getter，使界面和 DualVideoManager 使用统一的第二路地址。
@@ -432,10 +489,10 @@ custom/
                                                             # ① 通用设置页面：保留语言、单位、音频、保存路径与品牌图等原生选项，定制基础字体大小输入及增减按钮，便于桌面和 Android 调整整体可读性。
                                                             # ② 字号链路：控件修改 appSettings.appFontPointSize Fact，ScreenTools 和全局控件随之刷新；Android 首次字体默认值由 CustomPlugin 的元数据调整安装，当前用户字号由设置系统持久化。
 │   │   │   ├── GimbalControlSettingsGroup.qml
-                                                            # ① 云台配置 UI：显示 A8/MT11 启用、各自 SDK 主机/端口与变倍步长；Android 区域提供 UniRC 启用和接口选择、按接口显示的蓝牙 MAC 或 UART2 参数、CH1～CH16 网格及 A8 区的 CH9 反向设置。
-                                                            # ② 数据绑定：编辑 GimbalControlSettings Fact，读取 UniRcChannelController.channelValues 显示 16 路实时通道网格，按开关调整字段可用性；这是配置页，相机控制栏按钮与排版位于 FlightDisplay/GimbalCameraControl.qml。
+                                                            # ① 云台配置 UI：显示 A8 SDK/变倍参数及柔克启用、AI 盒子 UDP 地址/端口、本地端口与 payload_addr；Android 区域提供 UniRC 启用和接口选择、按接口显示的蓝牙 MAC 或 UART2 参数、CH1～CH16 网格及 A8 区的 CH9 反向设置。
+                                                            # ② 数据绑定：编辑 GimbalControlSettings Fact，读取 UniRcChannelController.channelValues 显示 16 路实时通道网格，按开关调整字段可用性；Rouke 提供地址码、CH11/12 速度原始值与反向配置，说明 CH14 回中；相机栏分别使用 GimbalCameraControl.qml 和 RoukeCameraControl.qml。
 │   │   │   ├── VideoSettings.qml
-                                                            # ① 视频配置 UI：组合主路源类型/URL、第二路 RTSP URL、低延迟、超时、画面适配、录制格式及存储限额，加入 MAVLink 自动发现、Android 硬解和本地媒体开关。
+                                                            # ① 视频配置 UI：组合主路源类型/URL、标注柔克的第二路 RTSP URL、低延迟、超时、画面适配、录制格式及存储限额，加入 MAVLink 自动发现、Android 硬解和本地媒体开关；页面提示相机控制在飞行视图设置中配置。
                                                             # ② 设置作用：分别绑定原生 VideoSettings、VideoCustomSettings 和 GimbalControlSettings，按平台/源类型显示字段；本地媒体开关控制解码帧照片/本地录像，SD 相机录制独立，配额实际触发点见 A8 Manager。
 │   │   │   └── Viewer3DSettingsGroup.qml
                                                             # ① 三维设置 UI：提供总开关、OSM/外部模型/Google 地图选择、API Key、文件选择与导入状态，以及外部原点经纬高、单位、比例、yaw、默认层高和高度偏置。
@@ -466,7 +523,7 @@ custom/
                                                             # ② 恢复与退出：用 URI+generation 排除旧回调，首帧失败结合硬件解码候选重试，重连采用 1/2/4/8/15 s 退避；cleanup 先通知媒体使用者再释放对象，QML 用其状态显示 Video 2 和画面尺寸。
 │   │   ├── DualVideoManager.h
                                                             # ① 独立第二路视频接口：暴露 enabled/hasVideo/duplicateSource/streaming/decoding、videoSize/aspectRatio、fullScreen 及 videoReceiver/videoItem，声明 initVideoItem、startVideo、stopVideo、cleanup。
-                                                            # ② 生命周期成员：保存第二路 receiver/sink 对应显示项、窗口、当前 URI/管线 generation、主路占用 URI 和重连/首帧定时器；释放前后信号供 MT11 媒体逻辑收尾，不复用主路接收器。
+                                                            # ② 生命周期成员：保存第二路 receiver/sink 对应显示项、窗口、当前 URI/管线 generation、主路占用 URI 和重连/首帧定时器；释放前后信号供柔克媒体逻辑收尾，不复用主路接收器。
 │   │   └── VideoReceiver/
                                                             # 接收器扩展
 │   │       └── GStreamer/
@@ -527,7 +584,7 @@ custom/
                                                             # ② 状态组成：保存当前 URI/generation、编码/工厂、已接收帧证据和首帧 watchdog；这是主路的恢复驱动，第二路等价时序由 DualVideoManager 自身实现。
 │   │           ├── PulledVideoResolutionProbe.cc
                                                             # ① 尺寸采集：观察 sink pad 的协商 caps，读取宽高并等待对应协商下的真实解码 buffer 到达后再发布，避免只有 CAPS 尚未出帧就确认能力；随对象生命周期清理探针，排除 thermal 接收器。
-                                                            # ② 能力链路：发布接收器尺寸通知及可选回调；CustomPlugin 将主路尺寸排队交给 GimbalControlManager，MT11 读取第二路 receiver.videoSizeChanged；本文件只报告真实协商结果，倍率上限及照片条件由各 Manager/Policy 判断。
+                                                            # ② 能力链路：发布接收器尺寸通知及可选回调；CustomPlugin 将主路尺寸排队交给 GimbalControlManager，柔克读取第二路 receiver.videoSizeChanged；本文件只报告真实协商结果，倍率上限及照片条件由各 Manager/Policy 判断。
 │   │           └── PulledVideoResolutionProbe.h
                                                             # ① 协商尺寸探针接口：install 接收 GStreamer sink、QObject 生命周期对象及可选 ResolutionHandler 回调，返回是否成功安装非 thermal 视频探针。
                                                             # ② 数据契约：回调输出解码/显示链路协商得到的 QSize，供产品相机判断真实拉流尺寸；不使用 PIP 控件宽高代替视频分辨率，也不改变接收器画面布局。
@@ -746,6 +803,9 @@ custom/
 │   │   ├── DualPipResizeTest.py
                                                             # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
                                                             # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
+│   │   ├── RoukeCameraControlTest.py
+                                                            # ① 柔克面板回归：加载生产 QML，检查选择视角、对焦、回中、拍照、显式录像启停和状态绑定。
+                                                            # ② 使用测试服务替身与离屏场景，覆盖窄屏、字号及控制/本地媒体不同可用状态；不代表实际网络和设备响应。
 │   │   └── GimbalCompassTest.py
                                                             # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、左右转方位标签接近中心、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
                                                             # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
@@ -862,12 +922,34 @@ custom/
 │   │   ├── Mt11ProtocolTest.cc
                                                             # ① MT11 协议测试：核对连续/绝对变倍、相机编码参数和三种视频模式的帧字节、CRC、严格解码、多帧完整性，以及倍率/功能反馈的不同载荷格式。
                                                             # ② 策略联测：验证 Mt11ZoomPolicy 的显示档位、30 倍绝对命令终点及实测值边界；测试不依赖 MT11 网络设备，修改命令或倍率规则后可先执行该桌面目标。
+│   │   ├── RoukeProtocolTest.cc
+                                                            # ① 柔克帧回归：验证标准命令、中文 UTF-8、ACK、128/129 分段边界、真实超长命令及 LE16 容量上限。
+                                                            # ② 检查逐字节/跨中文边界重组、连帧、残帧恢复、头尾/校验/长度错误、非法 JSON/字段类型及失败输出不变；无需真实设备。
+│   │   ├── RoukePayloadControllerTest.cc
+                                                            # ① 独立本机 UDP 回归：验证 53022 连续分段封装、长 ACK 重组、来源/地址过滤和状态确认。
+                                                            # ② 测试半帧失效、命令失败、超时、端点切换及私有收发状态；具体通过范围以 4.1 的结果为准。
+│   │   ├── RoukeGimbalControllerTest.cc
+                                                            # ① 遥控运动回归：真实本机 UDP 接收端独立拼接 53022 数据，检查双轴协议值、中位解锁、量程/死区、刷新、停轴、断流和零速补发。
+                                                            # ② 回中与隔离：检查 CH14 边沿、先停再回中、回中后重新归中、相机 pending 下停止，以及配置变化和方向反转；不控制实际设备。
+│   │   ├── RoukeStubs/
+                                                            # 柔克独立控制测试的最小依赖入口
+│   │   │   └── MAVLinkLib.h
+                                                            # ① 测试方言入口：包含真实生成的 mavlink.h，提供 Controller 所需消息类型和编解码。
+                                                            # ② 只由独立测试 include 路径使用，不替换应用原生 MAVLinkLib；网络收发仍使用真实 QUdpSocket。
 │   │   ├── SiyiModeQueryTest.cc
                                                             # ① A8 模式查询通信测试：使用本地 UDP 端点核对明确模式命令的线上字节、当前查询端口和配置来源匹配，并检查普通相机请求报文保持有效。
                                                             # ② 请求隔离：模拟取消、重连、查询过期与零序号回复，确认旧 socket/旧请求反馈不会被接受或干扰普通轮询；测试生产 SiyiSdk 和 Protocol 的模式通道，不要求连接实际相机。
 │   │   └── SiyiProtocolTest.cc
                                                             # ① A8 协议/能力测试：检查连续与绝对变倍帧、相机编码参数、严格帧/CRC、多帧报文、ACK 和倍率载荷，覆盖非法字段及不同卡录/拉流分辨率能力。
                                                             # ② 档位联测：验证 A8MiniZoomPolicy/ZoomStepPolicy 的上限、短按序列、长按推进、方向到位、精确端点和 TargetTracker 反馈确认；为 Manager 上层状态提供底层规则保证，不直接驱动设备。
+│   ├── MAVLink/
+                                                            # 柔克方言独立编译回归
+│   │   ├── CMakeLists.txt
+                                                            # ① 独立构建入口：接收 ROUKE_UPSTREAM_MAVLINK，组装与产品相同的头文件路径。
+                                                            # ② 可不依赖完整 Qt 6 QGC 应用运行消息测试；不替代产品构建。
+│   │   └── RoukeMavlinkTest.cc
+                                                            # ① 消息回归：通过真实 MAVLinkLib 包装检查 53022 CRC、Inspector、短帧零尾截断和满容量。
+                                                            # ② 坏 CRC 必须拒绝，同时保留原生 HEARTBEAT 和 QGC 通道状态；无需设备网络。
 │   ├── UI/
                                                             # 实际 QML 的布局与交互验证
 │   │   ├── UniRcLinkIndicatorTest.py
@@ -916,6 +998,9 @@ custom/
                                                             # ② 格式契约联测：检查 MT11 主机选 byte-stream、其他 URI 保留既有路径，以及 H.265 caps 允许未知帧率；仅验证 Route/Caps/StreamFormat 纯规则，不等同 Android MediaCodec 实机成功解码。
 ├── tools/
                                                             # 实机采集等开发工具
+│   ├── generate_rouke_mavlink.py
+                                                            # ① 可重复生成柔克方言：使用固定 MAVLink XML、pymavlink 与 c_library_v2 版本，生成 custom 内的附加方言。
+                                                            # ② 支持 --check 比较提交结果，核对原生消息表未变；不修改上游 checkout、缓存或原生 src。
 │   └── a8-video-capture.sh
                                                             # ① Ubuntu/ADB 实机采集工具：start 以诊断日志参数重启 QGC 并在设备上持续采集，支持拔掉 USB 后使用双路视频，再重连执行 finish 拉取日志和归档。
                                                             # ② 使用条件：检查设备约 1 GiB 可用空间，采集设置约 15 min/512 MiB 上限，可用 ANDROID_SERIAL 选设备、A8_CAPTURE_OUTPUT_DIR 指定输出；仅供开发取证，不参与 APK 运行功能，完整步骤见 4.3。
@@ -955,12 +1040,12 @@ custom/
 | 1. 配置工程 | 根 CMake → CustomOverrides → custom/CMakeLists | 启用 CustomPlugin，收集 custom 与复用的原生源文件；QML 模块和 QRC 分别接入 |
 | 2. 插件创建 | `CustomPlugin::instance()` / `customInstance()` | 返回应用级插件实例；构造时先设置 GStreamer/GIO 网络策略 |
 | 3. 产品初始化 | `CustomPlugin::init()` | 安装空列表默认链路、加载翻译，依次创建 Settings 与业务对象，注册 Viewer3D 类型 |
-| 4. 依赖创建 | `_ensureGimbalControlManager()`、`_ensureMt11ControlManager()` 等 | 先确保 Settings 存在，再以插件为 parent 创建业务对象；getter 也使用同一 ensure 路径 |
-| 5. 跨模块接线 | `_ensureGimbalModeController()`、`_ensureDualVideoManager()` | 模式事务响应新的姿态动作取消；第二路 receiver/item 变化同步给 MT11 |
+| 4. 依赖创建 | `_ensureGimbalControlManager()`、`_ensureRoukeControlManager()` 等 | 先确保 Settings 存在，再以插件为 parent 创建业务对象；getter 也使用同一 ensure 路径 |
+| 5. 跨模块接线 | `_ensureGimbalModeController()`、`_ensureDualVideoManager()` | 模式事务响应新的姿态动作取消；第二路 receiver/item 变化同步给柔克 |
 | 6. 视频策略 | `AndroidVideoDecoderPolicy::apply()`、`GimbalVideoStreamSupport::installA8MiniDefaults()` | 解码候选和默认视频设置在实际管线启动前就绪 |
 | 7. 页面与视频对象 | `createQmlApplicationEngine()`、`createVideoSink()` | 安装 QML URL 拦截器；按 receiver 身份绑定相机、分辨率与恢复观察器 |
 | 8. 持续数据 | `mavlinkMessage()`、各对象的 connect/timer | 姿态送 Provider，自动视频源按设置过滤；相机 SDK、UniRC Bluetooth/UART2 和 receiver 回调各自驱动状态 |
-| 9. 退出 | `aboutToQuit` 直接连接、`cleanup()` | 取消姿态请求、关闭 UniRC，`_shutdownMt11Video()` 收尾第二路，A8 `shutdownLocalMedia(true)` 收尾主路，最后解除 interceptor 与翻译 |
+| 9. 退出 | `aboutToQuit` 直接连接、`cleanup()` | 取消姿态请求、关闭 UniRC，`_shutdownRoukeVideo()` 收尾第二路，A8 `shutdownLocalMedia(true)` 收尾主路，最后解除 interceptor 与翻译 |
 
 业务对象由插件持有，单次命令和管线又有自己的会话标识。阅读异步实现时同时查看“对象何时创建/销毁”和“本次请求何时失效”，二者不是同一个生命周期。
 
@@ -974,7 +1059,7 @@ flowchart TB
     Settings["Settings / Fact：配置与持久化"]
     Scene["Viewer3D：地图、车辆、任务"]
     Video["VideoManager / DualVideoManager：两路视频"]
-    Camera["GimbalControlManager / Mt11ControlManager：相机与媒体"]
+    Camera["GimbalControlManager / RoukeControlManager：相机与媒体"]
     Posture["CenterCoordinator / ModeController：姿态与模式"]
     Rc["UniRcChannelController：遥控器通道"]
     Azimuth["GimbalAzimuthProvider：遥测方位角"]
@@ -988,7 +1073,7 @@ flowchart TB
     Plugin --> Rc
     Plugin --> Azimuth
     Video -->|"画面、尺寸、录制状态"| Camera
-    Rc -->|"CH9"| Camera
+    Rc -->|"A8 CH9；Rouke CH11/12/14"| Camera
     Rc -->|"CH10"| Posture
     Scene --> UI
     Camera --> UI
@@ -1002,8 +1087,8 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 |:---|:---|:---|
 | `viewer3DSettings`、`external3DMapManager` | 三维设置、模型选择/转换 | Viewer3D 设置页与场景 |
 | `flyViewCustomSettings`、`gimbalControlSettings`、`videoCustomSettings` | 罗盘、相机、UniRC、视频配置 | 设置页及各 Manager |
-| `dualVideoManager` | 第二路 receiver、尺寸和播放状态 | 第二路视频显示项、MT11 本地媒体 |
-| `gimbalControlManager`、`mt11ControlManager` | 设备能力、相机命令和各自媒体会话 | 右侧相机栏 |
+| `dualVideoManager` | 第二路 receiver、尺寸和播放状态 | 第二路视频显示项、柔克本地媒体 |
+| `gimbalControlManager`、`roukeControlManager` | 设备能力、相机命令和各自媒体会话 | 右侧相机栏 |
 | `gimbalCenterCoordinator`、`gimbalModeController` | 共享姿态事务、实际模式读取和切换 | 顶部云台栏、UniRC |
 | `gimbalAzimuthProvider` | 当前 MAVLink 云台的有效世界方位角 | 顶部云台栏、云台罗盘 |
 | `uniRcChannelController` | Bluetooth/UART2 传输、SDK 通道状态、CH1～CH16，以及独立的 `linkStatus` 图传状态 | UniRC 设置区、动作转发及顶部图传信号入口 |
@@ -1031,25 +1116,26 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 | `src/Camera/SimulatedCameraControl.cc` | 使用 `hasVideoChanged` 通知更新模拟相机的视频可用状态 |
 | `translations/qgc_json_zh_CN.ts` | 原生参数枚举翻译与元数据项数、分隔符保持一致 |
 
-这里的 **generation** 是一次管线或请求会话的标识。异步回调同时核对对象、URI 和 generation，确保旧连接的返回值不会驱动新会话。原生视频层提供通用机制；A8/MT11 地址分类、硬解候选和恢复决策由 custom 提供。
+这里的 **generation** 是一次管线或请求会话的标识。异步回调同时核对对象、URI 和 generation，确保旧连接的返回值不会驱动新会话。原生视频层提供通用机制；A8/柔克地址分类、硬解候选和恢复决策由 custom 提供。
 
 UniRC UART2 的新增实现完全位于 `custom/src/Android`，由 `custom/CMakeLists.txt` 接入；沿用原生 `src` 的模块层级和 `.h/.cc` 命名方式。板载 `/dev/ttyHS2` 直接使用 POSIX 接口，不经过原生 LinkManager 或 `QGCUsbSerialManager.java`，本次无需修改原生串口/USB 实现。
 
 ### 2.5 数据链路与控制对象
 
-运行时需要分别理解下面四条链路。它们可以共享网络，但由不同对象建立、确认和释放。
+运行时需要分别理解下面五条链路。它们可以共享网络，但由不同对象建立、确认和释放。
 
 | 链路 | 输入与输出 | 当前负责人 | 连接成立的观察点 |
 |:---|:---|:---|:---|
 | 飞控 MAVLink | 飞控遥测、参数、云台姿态命令 | 原生 LinkManager/Vehicle + custom 飞控与云台模块 | Vehicle 出现；参数与云台各自完成加载/发现 |
-| 相机 UDP SDK | 倍率、拍照/录像、设备状态和模式 | `SiyiSdk`、`Mt11Sdk` | 收到对应设备的有效状态/应答 |
+| A8 UDP SDK | 倍率、拍照/录像、设备状态和模式 | `SiyiSdk` | 收到 A8 的有效状态/应答 |
+| 柔克 MAVLink UDP | JSON 控制帧按每段最多 128 字节封装到连续 MAVLink 2/53022 | `RoukePayloadController` | 同源字节流重组出端点、地址码和协议均匹配的完整负载回应 |
 | RTSP 视频 | 压缩视频、解码帧、本地录像支路 | VideoManager、DualVideoManager、GstVideoReceiver | 对应路有 source、decoder 输出及 sink 首帧 |
 | UniRC Bluetooth/UART2 | `0x42` 提供 16 通道与动作输入；`0x44` 提供图传信息 | UniRcChannelController、UniRcSerialPort、通道 Policy、UniRcLinkStatus | 通道需合法 `0x42` 流及动作初始保护；图传需 3 s 内合法 `0x44` 回包，二者独立判断 |
 
 三个界面选择的含义不同：
 
 - **PIP 主视图选择**：决定地图/Video 1/Video 2 的显示位置。
-- **右侧相机选择**：决定用户操作 A8 还是 MT11 的私有 SDK。
+- **右侧相机选择**：决定用户操作 A8 SDK 还是柔克 53022 控制接口。
 - **顶部活动云台**：由活动 Vehicle 的 GimbalController 决定，负责 MAVLink 姿态与方位角。
 
 扩展时应沿对应链路取状态。例如，SDK 在线只能说明控制通道收到回应，视频是否可用要检查该路解码状态；点击相机选择器也不应改变 MAVLink 活动云台。
@@ -1204,7 +1290,7 @@ Balsam 转换由独立 QProcess 执行，同一时刻只运行一个导入。工
 | 视频设置 | 默认值/行为 |
 |---|---|
 | 原生 `Video/rtspUrl`（Video 1） | 安装默认值时补入 `rtsp://192.168.144.25:8554/main.264` |
-| `Video/secondaryRtspUrl`（Video 2） | `rtsp://192.168.144.24:8554/video1`；留空禁用第二路 |
+| `Video/secondaryRtspUrl`（Video 2） | `rtsp://192.168.144.100:8554/live`；留空禁用第二路 |
 | 原生 `rtspTimeout` | A8 默认地址初始化时至少为 20 s |
 | 原生 `lowLatencyMode` | Android A8 默认拓扑中，未保存过该项时设为 true |
 | `GimbalControl/mavlinkAutoVideoStream` | false；保持手工视频源可编辑，修改后重启 |
@@ -1212,7 +1298,7 @@ Balsam 转换由独立 QProcess 执行，同一时刻只运行一个导入。工
 
 第二路启用要求原生视频源为 RTSP、视频已开启、URL 2 非空且不与主路占用的源重复。两路不依赖相机 SDK 开关；SDK IP 与 RTSP URL 分开配置。
 
-**当前产品绑定**：相机及本地媒体仍按 **Video 1 → A8 Mini、Video 2 → MT11** 绑定。PIP 主次切换只改变布局；手动交换 URL 不会自动交换媒体管理器。更改 URL 前先结束本地录像并等待收尾。
+**当前产品绑定**：相机及本地媒体按 **Video 1 → A8 Mini、Video 2 → 柔克** 绑定。PIP 主次切换只改变布局；手动交换 URL 不会自动交换媒体管理器。更改 URL 前先结束本地录像并等待收尾。
 
 #### 3.2.2 视频启动与恢复流程
 
@@ -1238,9 +1324,9 @@ Balsam 转换由独立 QProcess 执行，同一时刻只运行一个导入。工
 `CustomPlugin::createVideoSink()` 通过 receiver 的父对象判断是否属于 DualVideoManager，通过 thermal 身份排除热成像原生支路：
 
 - 主路：调用 A8 Manager 的 `setMainVideoItem()`、`setMainVideoReceiver()`；主路录像启动结果进入 `handleMainVideoRecordingStartResult()`。
-- 第二路：调用 MT11 Manager 的 `setVideoItem()`、`setVideoReceiver()`；DualVideoManager 对象变更信号持续同步这组绑定。
+- 第二路：调用柔克 Manager 的 `setVideoItem()`、`setVideoReceiver()`；DualVideoManager 对象变更信号持续同步这组绑定。
 - 非 thermal sink：安装 `PulledVideoResolutionProbe::install()`，从协商 CAPS 获取源尺寸，通过 `setNegotiatedPulledVideoResolution()` 送到对应相机 Manager。
-- `videoObjectsAboutToBeReleased` 在释放前同步执行 MT11 `shutdownLocalMedia(true)` 并解绑；`videoObjectsReleased` 后调用 `finalizeDetachedLocalMedia()`，避免媒体回调继续访问已销毁显示对象。
+- `videoObjectsAboutToBeReleased` 在释放前同步执行柔克 `shutdownLocalMedia(true)` 并解绑；`videoObjectsReleased` 后调用 `finalizeDetachedLocalMedia()`，避免媒体回调继续访问已销毁显示对象。
 
 **三视图 PIP 如何切换**
 
@@ -1283,7 +1369,7 @@ RTSP 使用 GStreamer 原生 Auto 传输协商，GIO 默认直连；确需代理
 #### 3.2.3 Android 硬解工作模式
 
 - 开关开启时，仅使用符合条件的厂商 MediaCodec。H.265 优先经过 `qgcandroidh265hwdec` 适配器，失败按接收器、URI 和输入格式执行有界的硬解候选切换；运行中不改变全局候选 rank，也不自动转软件解码。
-- A8 首代保留 `hvc1/AU → adapter → byte-stream/AU → MediaCodec`。默认 MT11 主机匹配后首代采用原生 `byte-stream/AU`。其他 H.265 源只有进入解码失败恢复条件后，才尝试切换输入格式。
+- A8 首代保留 `hvc1/AU → adapter → byte-stream/AU → MediaCodec`。柔克使用通用解码流程；本分支不沿用 MT11 专属的首代 parser 格式强制设置，H.265 输入格式与硬解能力按真实码流及恢复策略处理。
 - byte-stream 管线重发参数集，并在解码输入端等待同一访问单元中的有效 SPS/PPS/IRAP。adapter 统一 decoder 输入 CAPS，帧率允许范围值，不固定伪造为 25 fps。
 - 首帧超时、已确认的 decoder 分支错误或解码启动失败才能推进对应恢复；普通网络错误和已健康播放的另一条流不参与候选切换。
 - 关闭硬解开关后恢复原生自动选择，供诊断对照使用。
@@ -1291,7 +1377,7 @@ RTSP 使用 GStreamer 原生 Auto 传输协商，GIO 默认直连；确需代理
 **硬解策略如何接入**
 
 1. `AndroidVideoDecoderPolicy::apply()` 在 GStreamer 初始化后、decodebin 创建前建立厂商候选，并注册 H.265 适配器。
-2. `AndroidH265StreamFormatPolicy::parserOutputFormatForUri()` 根据 RTSP 主机与 MT11 SDK 主机匹配结果选择格式；插件在创建 sink 前设置 receiver 属性。GstVideoReceiver 在启动新 generation 时冻结该属性。
+2. 历史 `AndroidH265StreamFormatPolicy` 保留为 MT11 纯策略及回归来源；当前插件不再按 MT11 主机强制初始格式。GstVideoReceiver 在启动新 generation 时冻结通用格式配置。
 3. `AndroidH265HardwareDecoderAdapter` 负责规范化码流并连接实际 MediaCodec；`AndroidH265DecoderCapsPolicy` 提供 decoder 输入的 byte-stream/AU CAPS；码流格式选择和厂商候选选择是两个独立步骤。
 4. 主路 `_handlePipelineError()` / `_restartAfterDecoderFailure()`，或第二路 `_handleDecodeStartupTimeout()`，将本代事实交给 `AndroidH265DecoderFallback::prepareHardwareRetry()`。
 5. Fallback 使用 `AndroidH265DecoderRoutePolicy::orderedRetryFactories()` 去重排序，再由 `nextRoute()` 推进；URI 改变由 `install()` 安装的观察逻辑清理，输入格式改变由 `resetForCurrentInputFormat()` 重建该格式下的尝试状态。
@@ -1299,7 +1385,7 @@ RTSP 使用 GStreamer 原生 Auto 传输协商，GIO 默认直连；确需代理
 
 #### 3.2.4 A8 播放后停滞恢复
 
-Android 上已出画面的 A8 RTSP 会话额外监测 RTP、解析后媒体和 RTCP 时钟报告。当前台、未录像且媒体停滞达到 6 s 时，可请求重建；近期时钟跳变伴随 RTP 和媒体同时停止时采用 2 s 条件。每代最多触发一次，同 URI 每 60 s 最多两次。单个异常时钟报告不会单独触发重启，MT11 不使用这项 A8 策略。
+Android 上已出画面的 A8 RTSP 会话额外监测 RTP、解析后媒体和 RTCP 时钟报告。当前台、未录像且媒体停滞达到 6 s 时，可请求重建；近期时钟跳变伴随 RTP 和媒体同时停止时采用 2 s 条件。每代最多触发一次，同 URI 每 60 s 最多两次。单个异常时钟报告不会单独触发重启，柔克不使用这项 A8 策略。
 
 运行时接线位于 `A8RtspStreamRecovery::install()`。内部观察器的 `attach()` 安装 RTP、解析后媒体和 RTCP 探针，`tick()` 汇总时间戳并调用 `A8RtspRecoveryPolicy::evaluate()`。策略用 `begin()` / `displayed()` / `stop()` 跟踪当前代次，用 `senderReport()` 与 `clockJump()` 处理 RTCP 时钟证据；对象释放时 `detachProbes()` 拆除探针。它处理“已经播放后停滞”，首帧阶段仍由上一节的解码恢复负责。
 
@@ -1344,11 +1430,11 @@ flowchart LR
 | 三视图与 PIP 操作 | `FlightDisplay/FlyView.qml`、`DualPipView.qml` | FlyView 创建地图/Video 1/Video 2，DualPipView 保存主辅位置并实现交换、展开、缩放与独立窗口。 |
 | PIP 缩放验证 | `custom/test/FlightDisplay/DualPipResizeTest.py` | 加载实际 DualPipView 与原生 PipState，检查鼠标位移和两个辅窗尺寸一致、边界限幅、取消/重拖及内容项归属。 |
 | 第二路实际画面 | `FlightDisplay/FlyViewSecondaryVideo.qml`、`FlightDisplayViewSecondaryVideo.qml` | 外层维护 PipState、全屏及弹窗重启；内层创建视频显示项、等待提示、适配/裁剪和参考线，再把窗口/显示项交给 Manager。 |
-| 视频配置输入 | `UI/AppSettings/VideoSettings.qml`；`Settings/VideoCustomSettings.h/.cc`、`VideoCustom.SettingsGroup.json`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面编辑第二路 URL 和解码策略；VideoCustom 持久化第二路地址，GimbalControl 保存 Android 策略及 MT11 端点等关联配置。 |
+| 视频配置输入 | `UI/AppSettings/VideoSettings.qml`；`Settings/VideoCustomSettings.h/.cc`、`VideoCustom.SettingsGroup.json`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面编辑第二路 URL 和解码策略；VideoCustom 持久化第二路地址，GimbalControl 保存 Android 策略及柔克端点等关联配置。 |
 | 主路与第二路生命周期 | `CustomPlugin.cc`；`VideoManager/DualVideoManager.h/.cc`；原生 `src/VideoManager/` | 主路复用原生 VideoManager；第二路独立持有 receiver/sink、处理重复源和重连；插件把各路显示项、恢复和相机媒体接口接起来。 |
 | A8 主路缺省值 | `Gimbal/GimbalVideoStreamSupport.h/.cc` | 在启动/消息入口安装主路默认视频配置，并按产品开关过滤 MAVLink 自动流信息，避免相机设置被自动 URI 接管。 |
 | Android 解码器初选 | `AndroidVideoDecoderPolicy.h/.cc`、`AndroidH265HardwareDecoderAdapter.h/.cc` | 启动策略建立厂商候选；H.265 适配器规范化封装并连接实际 MediaCodec。 |
-| parser 与 decoder 格式衔接 | `AndroidH265StreamFormatPolicy.h/.cc`、`AndroidH265DecoderCapsPolicy.h/.cc` | 前者根据 URI/MT11 地址选择初始 parser 格式；后者提供 adapter 内部 decoder 接收的 byte-stream/AU CAPS。 |
+| parser 与 decoder 格式衔接 | `AndroidH265StreamFormatPolicy.h/.cc`、`AndroidH265DecoderCapsPolicy.h/.cc` | 前者保留历史 MT11 格式策略，当前柔克产品不调用；后者仍提供 adapter 内部 decoder 接收的 byte-stream/AU CAPS。 |
 | 候选切换与首帧恢复 | `AndroidH265DecoderRoutePolicy.h/.cc`、`AndroidH265DecoderFallback.h/.cc`、`AndroidVideoDecoderRecovery.h/.cc`；`DualVideoManager.h/.cc` | 纯策略给出候选顺序，Fallback 保存逐路尝试状态；主路观察器与第二路 Manager 分别根据首帧/错误事实启动有界恢复。 |
 | A8 播放后停滞恢复 | `A8RtspRecoveryPolicy.h/.cc`、`A8RtspStreamRecovery.h/.cc` | StreamRecovery 安装 RTP/媒体/RTCP 探针并采样；Policy 判断时钟证据、停滞和恢复额度，再向运行层返回恢复决策。 |
 | 画面分辨率反馈 | `PulledVideoResolutionProbe.h/.cc`；两种相机 Manager | 从实际协商的 sink 获取像素尺寸，反馈给对应相机，用于倍率能力门控与本地照片尺寸选择。 |
@@ -1440,7 +1526,7 @@ GimbalCameraControl / GimbalZoomControl
 - `cameraSystemStatusReceived` / `functionFeedbackReceived` → SD 状态、拍照/录像反馈。
 - `communicationError` → Manager 错误显示与当前动作处理。
 
-模式查询另用专用 mode socket 和 requestId 隔离，见 3.6；普通相机 socket 的接收规则与 MT11 的近期请求窗口规则不同。拍照/录像的公开入口为 `takePhoto()`、`toggleVideoRecording()`，本地支路实现集中说明于 3.5。
+模式查询另用专用 mode socket 和 requestId 隔离，见 3.6；普通相机 socket 的接收规则与柔克的串行 JSON ACK 规则不同。拍照/录像的公开入口为 `takePhoto()`、`toggleVideoRecording()`，本地支路实现集中说明于 3.5。
 
 #### 3.3.4 操作完成条件与协议分工
 
@@ -1464,7 +1550,7 @@ GimbalCameraControl / GimbalZoomControl
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
 | 启用、端点和倍率步长 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc`、`GimbalControl.SettingsGroup.json` | 设置页写入 Fact；Manager 读取开关、SDK 地址/端口和步长，配置 SDK 并更新按钮能力。 |
-| 相机选择与面板创建 | `FlightDisplay/FlyViewTopRightColumnLayout.qml`；原生 `src/FlightDisplay/FlyViewWidgetLayer.qml` | custom 右侧列负责 A8/MT11 标签和 Loader，给 A8 面板绑定 gimbalControlManager；原生父布局决定整列锚点和外边距。 |
+| 相机选择与面板创建 | `FlightDisplay/FlyViewTopRightColumnLayout.qml`；原生 `src/FlightDisplay/FlyViewWidgetLayer.qml` | custom 右侧列负责 A8 Mini/Rouke 标签和 Loader，给 A8 面板绑定 gimbalControlManager；原生父布局决定整列锚点和外边距。 |
 | 面板外观与操作反馈 | `FlightDisplay/GimbalCameraControl.qml`；原生 `qmlimages/camera_photo.svg`、`camera_video.svg` 图标资源 | 共享面板组织变倍、拍照、录像、计时及 SD/LOCAL 标识；按钮调用 Manager，反馈属性驱动禁用、颜色、闪烁和录制状态。 |
 | 变倍输入与目标显示 | `FlightDisplay/GimbalZoomControl.qml`；`Gimbal/GimbalControlManager.h/.cc` | QML 区分短按/长按并在释放、隐藏、切换时取消；Manager 根据能力和当前动作所有者生成目标、发命令并处理回读。 |
 | 倍率合法性与能力范围 | `Gimbal/A8MiniZoomPolicy.h/.cc`、`ZoomStepPolicy.h/.cc`；分辨率探针 | A8 策略结合拉流/卡录分辨率确定能力，StepPolicy 计算合法档位和精确上限；能力结果回到 Manager 和 UI。 |
@@ -1472,148 +1558,149 @@ GimbalCameraControl / GimbalZoomControl
 | 照片与录像 | `Gimbal/GimbalControlManager.h/.cc`；媒体策略、主路 receiver 与 Android 媒体桥 | Manager 同时发设备 SD 命令并维护 Video 1 本地媒体意图；保存、分段、发布的完整文件组合见 3.5.6。 |
 | 验证 | `custom/test/Gimbal/SiyiProtocolTest.cc`、`SiyiModeQueryTest.cc` | 分别覆盖帧/倍率策略及专用模式查询关联；真实画面、设备动作和长期稳定性仍按验收矩阵核对。 |
 
-**共享相机栏的 UI 分工与加载关系**
+**两种相机栏的 UI 分工与加载关系**
 
 ~~~text
 原生 FlyViewWidgetLayer.qml
-└── FlyViewTopRightColumnLayout.qml       右侧列与 A8/MT11 选择标签
-    ├── A8 → GimbalCameraControl.qml     绑定 A8 Manager
-    └── MT11 → MT11CameraControl.qml     注入 MT11 Manager、启用模式入口
-               └── GimbalCameraControl.qml
-                   ├── GimbalZoomControl.qml     + / 倍率 / − 与变倍手势
-                   ├── modeButton/videoModeMenu MT11 视频模式
-                   ├── photoButton/videoButton  拍照、录像与计时
-                   └── recordingStatusRow       SD / LOCAL 状态
+└── FlyViewTopRightColumnLayout.qml       右侧列与 A8 Mini/Rouke 选择标签
+    ├── A8 → GimbalCameraControl.qml     绑定 GimbalControlManager
+    │          ├── GimbalZoomControl.qml  变倍与手势
+    │          └── photo/video/status     拍照、录像与 SD/LOCAL
+    └── Rouke → RoukeCameraControl.qml  绑定 RoukeControlManager
+               ├── LR1/OV2735           视角切换
+               ├── Focus/Center         对焦与回中
+               └── Photo/Record/Stop    拍照、明确录像启停与状态
 ~~~
 
 `GimbalCameraControl.qml` 的 `controlColumn` 决定内部顺序，`panelColor/panelBorderColor/panelPadding` 定义面板，`actionSize/itemSpacing` 定义尺寸和间距。`photoSuccessFlash`、`recordingTimeText()`、`sdRecordingBadge/localRecordingBadge` 分别处理成功闪烁、计时和支路状态。
 
-该面板把尺寸/颜色传给 `GimbalZoomControl.qml` 的 `controlSize/controlSpacing` 等属性，因此统一调整整栏样式时应同时看父组件传值。倍率区的 `zoomInButton/zoomOutButton/targetZoomLabel` 定义具体外观；`holdThresholdMs/holdStartRetryMs` 决定手势识别时机。共享面板的外观修改同时作用于 A8 与 MT11。
+该面板把尺寸/颜色传给 `GimbalZoomControl.qml` 的 `controlSize/controlSpacing` 等属性，因此统一调整整栏样式时应同时看父组件传值。倍率区的 `zoomInButton/zoomOutButton/targetZoomLabel` 定义具体外观；`holdThresholdMs/holdStartRetryMs` 决定手势识别时机。柔克使用独立面板，修改其控件布局需查看 `RoukeCameraControl.qml`。
 
 ---
 
-<a id="mt11"></a>
+<a id="rouke"></a>
 
-### 3.4 UniPod MT11 相机
+### 3.4 柔克负载（MAVLink 53022）
 
-#### 3.4.1 功能与设置
+#### 3.4.1 功能与工作模式
 
-MT11 使用独立 UDP socket、请求状态和媒体管理器，复用相机栏外观，增加视频模式选择。飞行页右侧相机选择器切换当前操作对象；控制对象选择不改变视频 URL 或顶部 MAVLink 活动云台。
+本分支的 Video 2 和右侧第二个相机面板改为柔克。A8 Mini 保持 Video 1；旧 MT11 源码、设置键和回归测试留在仓库，产品构建排除旧 MT11 业务源码，不再实例化 Mt11Sdk 或接通其 UniRC 路由。
 
-| `GimbalControl` 设置键 | 默认值 |
-|---|---|
-| `mt11Enabled` | true |
-| `mt11SdkHost`、`mt11SdkPort` | `192.168.144.24`、37260 |
-| `mt11ZoomStep` | 1.0x，范围 0.1～29.0 |
+当前接入 LR1/OV2735 视角切换、一次对焦、云台回中、拍照及显式开始/停止录像，并通过 UniRC CH11/CH12 控制偏转/俯仰速度，CH14 触发回中。SD 支路经柔克回执确认，本地媒体沿独立 Video 2 处理，详见 3.5。Rouke 独立相机栏没有放大/缩小按钮，也不复用 A8 的变倍控件；现用 SEL85F18 是定焦镜头，厂商协议未提供变倍命令。LR1/OV2735 是两路图像源选择，不能据此推断广角、红外或朝向。
 
-#### 3.4.2 使用与工作模式
+#### 3.4.2 配置与使用
 
-1. 在“应用设置 → 飞行视图 → 云台相机 → UniPod MT11”启用模块，填写 MT11 SDK 地址和端口。
-2. 需要画面与本地保存时，另在 Video 页填写 URL 2；SDK 端点与 RTSP 地址各自配置。确认 Video 2 有画面。
-3. 在飞行页右侧选择 MT11，观察 SDK 状态，再操作变倍、模式、拍照或录像。模式回读和实际视频画面分别确认。
-
-| 操作 | 当前行为 |
-|---|---|
-| 短按 +/− | 在 1.0～30.0x 内按步长发送 `0x0F`；最后不足一步时到精确 30.0x |
-| 长按 +/− | 420 ms 后以 `0x05` 连续变倍，可覆盖设备混合倍率；产品上限封顶 165.1x |
-| 高于 30x 时短按 | 不发送绝对倍率命令；使用长按回到支持范围 |
-| 选择视频模式 | 变焦、热成像、变焦+热成像拼接；等待设备确认后更新 |
-| 拍照/录像 | 独立控制 MT11 SD 支路及绑定的 Video 2 本地媒体 |
-| UniRC CH11/CH12 | CH11 控制 Yaw、CH12 控制 Pitch；以私有 SDK `0x07` 发送双轴转向速度，回中停止，详见 3.4.6 |
-
-`mt11ZoomStep` 控制目标档位，不控制镜头连续变倍速度；MT11 的 `0x05` 变倍命令没有速度字段。长按期间每 450 ms 保活同方向，实际 `0x18` 倍率用于进展和端点判断。普通松手通常发送停止；具有严格端点确认时可省略普通停止，取消或退出仍执行停止。60 s 内没有请求方向的有效倍率进展时，watchdog 结束动作。
-
-#### 3.4.3 实现流程
-
-**独立对象与输入入口**
-
-`MT11CameraControl.qml` 为共享相机面板注入 `QGroundControl.corePlugin.mt11ControlManager`。它与 A8 共用 QML 手势逻辑，但使用独立 `Mt11ControlManager`、`Mt11Sdk`、socket、定时器和媒体状态。
-
-| 功能 | 具体入口 / 方法 | 实现机制 |
-|:---|:---|:---|
-| 启用与配置 | `_settingsChanged()`、`_configureSdkEndpoint()` | 应用 MT11 端点，取消旧动作、清理旧请求与能力，再建立本会话状态 |
-| 状态探测 | `_pollSdk()` | 查询相机、视频模式、最大/当前倍率及卡录尺寸；在线状态只由有效设备回复维持 |
-| 短按 | `zoomIn()/zoomOut()` → `_sendZoomStep()` → `setZoom()` | `Mt11ZoomPolicy::tapTarget()` 用实测倍率检查 30x 协议边界，用显示目标计算下一档 |
-| 发送绝对倍率 | `setZoom()` → `Mt11Sdk::sendAbsoluteZoom()` | 检查目标合法、撤销上一 hold 的延迟停止，记录 pending 目标，立即更新目标显示 |
-| 确认绝对倍率 | `_pollPendingAbsoluteZoom()`、`_handleCurrentZoom()`、`_handleAbsoluteZoomConfirmationTimeout()` | 持续查询实测值，完成或超时清理命令等待；普通发送成功不代表镜头到位 |
-| 长按启动 | `startZoomWithPressDuration()` → `_startPendingContinuousZoom()` | 捕获本次运动参考，清理旧绝对命令的确认状态，立即发送新方向 |
-| 长按运行 | `_pollContinuousZoom()`、`_observeZoomFeedback()` | 450 ms 方向保活；使用实测进展更新 watchdog、方向水位及端点确认 |
-| 显示对齐 | `_alignDisplayToMeasured()` → `Mt11ZoomPolicy::alignedDisplayTarget()` | 将设备观察值映射回当前配置允许的显示档位 |
-| 松手/取消 | `stopZoom()`、`cancelZoom()`、`_finishContinuousZoomState()` | 先撤销待发送方向和保活，再执行停止；取消始终按生命周期停止语义处理 |
-
-**连续操作如何衔接**
-
-`startZoomWithPressDuration()` 会读取正在等待的绝对目标或当前实测作为本次运动参考。新 hold 可以接管旧 `0x0F` 的本地等待状态，也可以结束上一次松手后的等待；不需要把旧目标确认完才能开始新方向。旧延迟停止通过 `_retireContinuousZoomStopRetry()` 退役，防止它随后停掉新手势。
-
-`_zoomBoundaryReached()` 结合实测证据判断端点；正常松手在严格确认端点时可省略一次普通停止，`cancelZoom()` 则清除端点保持并发送停止。QML 保存物理按压是否仍有效，定时重试不能在释放后重新发方向。
-
-**视频模式设置与回读**
-
-1. 共享面板的模式选择调用 `setVideoMode()`，Manager 检查在线/在途状态并取消缩放。
-2. `Mt11Sdk::setVideoMode()` → `Mt11Protocol::setVideoModePacket()`，生成 `0x11`：变焦 `[00 02]`、热成像 `[02 00]`、拼接 `[03 02]`。
-3. SDK 将有效 `0x10/0x11` 模式 payload 统一解析为 `videoModeReceived(mainStream, subStream)`；Manager 的 `_handleVideoMode()` 识别组合、更新已知模式并处理等待目标。
-4. `_handleVideoModeCommandTimeout()` 负责超时退出。模式相关能力重新查询，卡录尺寸通过 `_handleRecordingStreamParameters()` 重建，避免沿用上一画面模式的照片目标尺寸。
-5. 界面的 `videoModeKnown`、`videoModePending` 和模式值各自绑定；实际画面由 RTSP 流输出，SDK 回读与视频内容需要分别验收。
-
-**MT11 收包规则与倍率编码**
-
-`Mt11Sdk::_readPendingDatagrams()` 核对配置的 IP 和端口，`Mt11Protocol::decodeDatagram()` 校验帧，`_dispatchAck()` 用 `_takePendingCommand()` 匹配最近 1.5 s 内同命令的请求。异步 `0x0B` 功能反馈不要求普通 ACK 请求窗口；非法 payload 不延长原窗口。
-
-`parseManualZoomAckPayload()` 将 `0x05` 回复按“小端无符号 16 位 / 10”解析；`parseZoomValuePayload()` 将 `0x16/0x18` 按“整数位字节 + 小数位字节 / 10”解析。两种编码不能共用一个倍率解码公式。Protocol 的表示范围、设备报告上限和产品控制上限也分别由协议、Manager 和 Policy 约束。
-
-#### 3.4.4 手势衔接与模式确认
-
-共享 QML 手势层记录本次按压的 Manager。短按在释放时选择步进目标；超过 420 ms 则进入 hold。轻微手指漂移不会立即吃掉仍在按住的动作，真正释放/取消时先清除待发送方向，防止松手后运动被定时器重新启动。
-
-MT11 将“目标”“实测”“命令等待”分开维护：
-
-| 状态 | 作用 |
-|:---|:---|
-| `currentZoom` | 控制栏显示的目标倍率 |
-| `actualZoom / actualZoomKnown` | `0x18` 实测值与有效性，供能力和进展判断 |
-| `zoomCommandPending` | 绝对倍率请求仍在等待确认 |
-| `continuousZoomActive` | 本次长按连续运动仍有效 |
-| `videoModeKnown / videoModePending` | 已知模式与正在执行的切换事务 |
-
-例如步长为 2.0x 时，短按目标序列为 `1/3/5/…/29/30`，反向使用相同档位。倍率超过 30x 时通过长按缩小回到绝对命令支持范围，再使用短按微调。
-
-模式弹层只在 SDK 在线且没有模式请求在途时开放。用户选择后进入等待态，设备回包确认后更新选中项；弹层关闭不代表切换已成功。视频模式变化会使卡录尺寸等能力失效，需重新查询；验收要同时确认模式反馈和 RTSP 中的实际画面。
-
-#### 3.4.5 功能对应的文件与资源协作
-
-| 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
-|:---|:---|:---|
-| MT11 设置与启用 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 保存独立 SDK 端点、开关和倍率步长；驱动 MT11 Manager 重新配置，并影响模式/变倍按钮是否可用。 |
-| 面板选择与型号注入 | `FlightDisplay/FlyViewTopRightColumnLayout.qml`、`MT11CameraControl.qml` | 选择器决定加载 MT11 包装；包装再加载共享栏，绑定 mt11ControlManager 并启用 thermalControlsVisible。 |
-| 共享外观与模式菜单 | `FlightDisplay/GimbalCameraControl.qml`、`GimbalZoomControl.qml`；原生相机图标和 `InstrumentValueIcons/view-carousel.svg` | 共用拍照、录像、状态与变倍 UI；modeButton/videoModeMenu/modeOption 展示 ZOOM、IR、MIX，并调用 Manager.setVideoMode。外观分工见 3.3.5。 |
-| 变倍与模式事务 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11ZoomPolicy.h/.cc`、`ZoomStepPolicy.h/.cc` | Manager 区分短按绝对倍率与长按运动，策略计算可达目标/反馈对齐；模式事务通过回读确认，QML 展示实际结果。 |
-| 独立 UDP 与反馈校验 | `Gimbal/Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | Protocol 编解码两种倍率及视频模式；SDK 校验来源和近期请求，分发 ACK/异步反馈，避免与 A8 状态混用。 |
-| 第二路画面与本地媒体 | `VideoManager/DualVideoManager.h/.cc`；`Gimbal/Mt11ControlManager.h/.cc`；第二路视频 QML | 第二路接收器和显示项供 MT11 抓图/录像使用；媒体会话和文件命名由 MT11 Manager 独立维护。完整保存链路见 3.5。 |
-| 遥控转向 | `Android/UniRcChannelController.h/.cc`；`Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc` | UniRC 将索引 10/11 的通道值交给 Manager；Controller 负责速度映射、初始保护和停止，通过同一 MT11 SDK 发送 `0x07`。 |
-| 验证 | `custom/test/Gimbal/Mt11ProtocolTest.cc`、`Mt11GimbalControllerTest.cc`；共享设置布局检查 | 协议测试验证命令字节、倍率编码和目标边界；转向测试通过本机 UDP 检查双轴输入与停控，真机方向和 Android 时序仍需验收。 |
-
-#### 3.4.6 MT11 遥控双轴转向（CH11 / CH12）
-
-协议依据为 **UniPod MT11 SDK V0.1.0.pdf 第 6 页，私有 SDK 的云台转向 `0x07`**。该命令以两个 `int8_t` 表示转向速度，载荷顺序为 `[turn_yaw, turn_pitch]`；不是绝对角度，也不是以 °/s 为单位的角速度。正 Yaw 向右、正 Pitch 向上，负值相反，0 停止对应轴。ACK 是单字节 `sta`：1 成功，0 出错。
-
-| 通道输入 | CH11 → Yaw | CH12 → Pitch |
+| `GimbalControl` 设置键 | 默认值或条件 | 生效方式 |
 |---|---|---|
-| 1050 | -100，向左 | -100，向下 |
-| 1500 | 0，停止 | 0，停止 |
-| 1950 | +100，向右 | +100，向上 |
-| 1475～1525（包含边界） | 中位死区，0 | 中位死区，0 |
+| `roukeEnabled` | true | 启停柔克模块 |
+| `roukeUdpHost`、`roukeUdpPort` | `192.168.144.110`、8888 | 向 AI 盒子发送完整 MAVLink 2 数据包 |
+| `roukeLocalPort` | 0，系统自动分配本地 UDP 端口 | 回包需返回该 socket；厂商若固定回传端口，在此配置 |
+| `roukePayloadAddress` | 0，厂家确认的默认地址；有效范围 0～65535，-1 显式禁控 | 新安装默认使用 0；保留已有保存值，已有 -1 需手动改为 0 才可发送 |
+| `roukeYawSpeedLimit`、`roukePitchSpeedLimit` | 10、5 | CH11/CH12 满量程的速度协议值，沿用文档速度示例；软件允许 1～10000，不代表设备许可范围，也不表示 °/s |
+| `roukeYawReversed`、`roukePitchReversed` | false、false | 分别反转 CH11 偏转、CH12 俯仰方向，需按实际安装验证 |
+| `Video/secondaryRtspUrl` | `rtsp://192.168.144.100:8554/live` | 第二路视频，可独立于控制链路播放 |
 
-这是软件对通道数值的方向约定；遥控器实体拨轮/摇杆增加数值的方向需在真机核对。中位死区为本项目的抗抖设置，不是 PDF 协议要求。死区外按 `sign(d) × max(1, round((abs(d) - 25) × 100 / 425))` 映射，其中 `d = clamp(channel, 1050, 1950) - 1500`；因此保持 ±100 端点，死区外从低速连续增加。900～2100 为输入合理性检查范围，合理但超出标定端点的值饱和到 ±100；任一轴超出合理范围，立即停止两轴并重新要求中位。
+1. 在“应用设置 → 飞行视图 → Rouke”核对 AI 盒子端点 `192.168.144.110:8888` 与厂家确认的默认地址码 0。页面提供启用、远端 IP/端口、本地端口、负载地址、双轴速度协议值及方向反转。默认值不覆盖已有保存值；若旧安装保存为 -1，手动改为 0。IP/端口不是 payload_addr，不能从 IP 推算地址码。
+2. 在“应用设置 → 视频 → RTSP 地址2（Rouke）”（英文 `RTSP URL 2 (Rouke)`）核对 `rtsp://192.168.144.100:8554/live`。升级仅将精确匹配旧出厂 `.25/.24:8554/video1` 的地址一次性迁到新默认值，已保存的其他地址或空值保持原意。
+3. 在飞行页右侧选择“Rouke”，中英文界面均保留此名称，按需要执行单条命令并等待回执。控制栏经 QRC 加载 `RoukeCameraControl.qml` 并绑定 `roukeControlManager`；旧 MT11 面板不在产品资源中。录像使用明确的“录像”与“停止”，连接恢复后未知 SD 状态不能当作停止状态。
+4. 开启本地保存后，设备控制不可用仍可尝试保存本地解码画面；分别观察 SD 和 LOCAL 的结果。
+5. 使用遥控器前先让 CH11、CH12 双轴归中，CH14 先释放再按下。CH14 只执行 Rouke 回中，不与 A8 CH10 的回中/俯视交替共用状态；操作与保护规则见 3.7.2。拍照/录像等待回执期间仍可操控云台和请求回中。
 
-**接线与可用条件**：`CustomPlugin` 先创建 MT11 Manager，再注入 `UniRcChannelController`；合法 `0x42` 帧独立于 CH9/CH10 检查，将 `channels.at(10)` / `channels.at(11)` 送入 `updateUniRcGimbalChannels()` → `Mt11GimbalController::updateChannels()` → `Mt11Sdk::sendGimbalRotation()` → `Mt11Protocol::gimbalRotationPacket()`。复用 `mt11Enabled`、SDK IP 和端口，不增加设置键，不依赖相机标签选择、视频播放、飞控连接或 MAVLink 云台控制权。两路输入不修改 A8 的 CH10 交替状态。
+显式设置地址码为 -1 时 socket 可接收并观察合法回包地址，但观察值仅供诊断，不自动覆盖设置或启用命令。UDP 本地写出成功不代表负载执行成功，视频出画面也不代表控制链路在线。
 
-启用 UniRC 和 MT11，保持应用前台，并等待 MT11 `sdkResponding=true` 后，让 **CH11、CH12 同时进入中位死区**。首次连接、SDK 不可用、Bluetooth/UART2 断流、输入异常、后台返回和配置切换后均重新要求该步骤；偏置输入不会在恢复连接时自动续转。CH9/CH10 无效或改变 CH9 反向设置只复位 A8 输入，不打断 MT11；CH11/CH12 无效也不取消 A8 动作。
+#### 3.4.3 协议封装、容量与反馈
 
-**发送与停止**：每份有效通道输入都发送当前非零双轴速度，随现有 20 Hz 通道流刷新，单轴回中只清零该轴。双轴回中立即发送 `[00 00]`，随后以 100 ms 间隔补发两份；保持中位不持续刷停止包。新转向先取消旧的停止重试，避免延迟停止打断新动作。独立 350 ms 输入 watchdog 及上游断连/后台/关闭路径均停止两轴并解除中位确认状态；没有新输入时，定时器只可能发送停止包。
+**调用链**：`RoukeCameraControl.qml` → `RoukeControlManager` → `RoukePayloadController` → `RoukeProtocol` → `VK_PAYLOAD_DATA_RELAY` → 独立 UDP → AI 盒子。
 
-Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止包，避免它们误发到新设备。UDP 发送成功仅代表本地写出，三份停止包不能保证在网络完全中断时到达设备。`0x07` 回复沿现有来源 IP/端口、CRC、ACK 标志和 1.5 s 近期请求窗口校验；`sta=0` 取消转向并显示错误，不将 ACK 当作云台到达某个角度的反馈。沿用 SDK 固定序号 0 的关联方式，不宣称能区分同命令的每次刷新。
+内层帧为 `F0 E0 + JSON字节数(LE16) + UTF-8紧凑JSON + 00 + F1 E1`；JSON 保留 `source=msdk`、`target=psdk`、`type=req`、`cmd`、空 `msg`、`code=0`、`data`。长度按 UTF-8 字节数计算，7 字节头尾不计入 LE16 字段。先生成完整内层帧，再切成连续字节段；每条 53022 的 `data_len` 只记录本段有效长度。
 
-**验证边界**：本次使用 Windows / Qt 5.14.2 / MSVC 的独立主机测试程序，`Mt11GimbalControllerTest` 23 项、`Mt11ProtocolTest` 14 项、`UniRcProtocolTest` 23 项通过（计数包含初始化和收尾）。生产 CMake 中新增转向 CTest 目标；完整 Qt 6/Android 构建和真机测试尚未完成。设备验收需核对两轴正负方向、同时转向、端点/死区、单轴回中、双轴停止、断流/后台/禁用、端点切换与恢复后的中位保护，并确认 A8 CH9/CH10 同时使用不受影响。
+外层消息 `id=53022`、名称 `VK_PAYLOAD_DATA_RELAY`：`payload_addr:uint16`、`reserve:uint8`（当前发送 0）、`data_len:uint8`、`data:uint8[128]`，消息字段体为 132 字节，`CRC_EXTRA=37`。ID 超过 MAVLink 1 的范围，因此使用 MAVLink 2。新增消息必须进入 XML 并重新生成方言总表，单独手写一个头文件不足以让原生接收解析器识别该消息。
+
+飞控与负载之间也使用 53022，因此地面站、飞控及负载/AI 盒子三端必须采用一致的 XML 消息定义、字段布局和 CRC_EXTRA。当前地面站实现直接通过独立 UDP 向 AI 盒子发送该消息，不经活动 Vehicle 的飞控链路转发；飞控侧是否识别及转发仍需与对应固件核对。
+
+| 已接入命令 | `data` | 完整柔克帧字节数（空 msg） |
+|---|---|---|
+| `lr1_switch_view` | `view_type:4` LR1 / `5` OV2735 | 118 |
+| `lr1_take_photo` | `{}` | 104 |
+| `lr1_record` | `action:0` 开始 / `1` 停止 | 110 |
+| `lr1_focus` | `{}` | 99 |
+| `gimbal_center` | `{}` | 103 |
+| `gimbal_speed_ctrl` | `yaw_speed`、`pitch_speed`、`roll_speed:0` | 示例 yaw_speed=10、pitch_speed=5 时 152；数值位数与正负号影响长度 |
+
+**容量边界**：128 字节是单条 53022 的 `data` 容量。完整柔克帧可以跨多条消息，JSON 受 LE16 长度字段限制最多 65535 字节，加头尾后最多 65542 字节；这只是编解码边界，设备实际可接受长度仍需联调。以下按《控制命令M400.md》的示例参数，使用实际 Qt `QJsonDocument::Compact` 序列化、将 `msg` 清空，计算 UTF-8 JSON 字节数再加 7 字节头尾；95 个 `req` 示例中共有 18 个需要多条 53022，包含 17 个业务请求和 1 个反向 `voice_play` 请求。它们是协议容量审计，不表示本版已接入表中全部业务或消息方向。
+
+| 分组 | 命令 | 示例方向 | 完整帧字节数 |
+|---|---|---|---|
+| 镜头 | `lr1_distance_threshold` | msdk → psdk | 129 |
+| 镜头 | `lr1_ov2735_exposure_time` | msdk → psdk | 133 |
+| 云台 | `gimbal_speed_ctrl` | msdk → psdk | 152 |
+| 云台 | `gimbal_absolute_angle` | msdk → psdk | 159 |
+| 云台 | `gimbal_relative_angle` | msdk → psdk | 158 |
+| 飞控 | `flight_set_disconnect_behavior` | msdk → osdk | 132 |
+| 飞控 | `flight_set_gps_home` | msdk → osdk | 157 |
+| 飞控 | `flight_position_ctrl` | msdk → osdk | 170 |
+| 飞控 | `flight_velocity_ctrl` | msdk → osdk | 194 |
+| 航线 | `waypoint_dynamic_upload` | msdk → osdk | 157 |
+| 巡检配置 | `set_turbine_config` | msdk → osdk | 321 |
+| 巡检配置 | `param_set_altitude` | msdk → osdk | 147 |
+| 巡检配置 | `param_set_recognition_angle` | msdk → osdk | 131 |
+| 巡检配置 | `photo_set_info` | osdk → psdk | 314 |
+| 巡检配置 | `inspection_set_index` | msdk → osdk | 207 |
+| 系统 | `time_sync` | msdk → osdk | 163 |
+| 系统 | `mop_get_file` | msdk → psdk | 152 |
+| 反向语音推送 | `voice_play` | psdk → msdk | 140 |
+
+长度随参数位数、字符串内容及实际 msg 变化。例如 `lr1_distance_threshold` 的 `distance_cm=30～99` 可装入一条 53022，取 500 时为表中的 129 字节，分为 128 + 1；`lr1_ov2735_exposure_time` 在文档规定 0～500 范围内均需要两条。Qt 会把整数值的浮点数如 `10.0` 写成 `10`，故 `waypoint_set_cruise_speed` 的文档示例恰好为 128 字节，可单条发送。321 字节帧分为 128 + 128 + 65，JSON 的字段及 UTF-8 字节原样保留，中文字符也允许跨分段边界。
+
+**连续流分段约定**：按厂家确认的连续字节流方式，`splitFrame()` 每次取最多 128 个原始字节，逐段填入一条 53022；同一控制帧的分段连续发送，每条各自是完整 MAVLink 2 UDP 数据包。`payload_addr` 使用配置值（默认 0）、`reserve=0`、`data_len=1～128`，`data` 未使用部分清零。不增加片号、总片数或额外头尾，第二段从上一段截断处继续，MAVLink 包序号随每条消息正常递增。
+
+以 152 字节帧为例：内层 JSON 长度为 145，LE16 字段为 `91 00`。第一条携带帧的前 128 字节，第二条携带余下 24 字节；接收端看到第一条的 `F0 E0 91 00`，便知道完整帧需要 `145 + 7 = 152` 字节。缓存前 128 字节后再追加后 24 字节，凑齐后才校验头尾、UTF-8 和 JSON 并处理命令/回执。第二条自身没有“属于上一命令”的编号，归属依靠同一来源连续流的接收进度，因此同一流中的不同命令分段不能交错。
+
+接收端在来源 IP/端口过滤后，按 `payload_addr + system ID + component ID` 分开缓存，最多保留 8 个未完成流。`StreamDecoder` 按内层 LE16 长度等待完整帧，支持半个帧头、中文跨段、一段内多帧及坏帧后的重新同步；合法 UTF-8 JSON 不含原始 `F0 E0` 字节对，未完成帧前出现新帧头时可丢弃旧残留并重新开始。半帧连续 3500 ms 无后续字节即失效，在处理后续分段前清理；配置变化清空缓存。每个内层帧开始接收时记录当时的相机请求序号与回中请求序号，完整回执只关联同版本的等待请求；新命令不再整体清空接收流，避免丢弃另一类命令已经开始的长 ACK。速度刷新不改变这些序号，也不清除长回应。缓存上限、过期和本地请求版本都是地面站保护策略，不是额外线上字段或厂商超时规范。
+
+该方案不增加 UDP 乱序整理、分片重传或丢包补齐。MAVLink CRC 只验证各条消息，包序号不作为内层命令的分片编号；完整内层帧的长度和格式校验不能替代可靠传输。厂商文档尚未给出异常链路的重传及事务关联规范，实际丢包、乱序和设备缓冲恢复仍需联调。CH11/CH12 使用速度命令的原始协议值；文档没有确认角度/速度的单位、范围和绝对角参考系，因此不把原始值标成 °/s，也不根据机体朝向或北向猜测坐标。
+
+| 阶段 | 实现入口 | 输入、处理与输出 |
+|---|---|---|
+| 配置 | `RoukePayloadController::setConfiguration()` | 绑定独立 socket，核对 IPv4/端口/地址码，取消旧 pending，清除已知状态及半帧缓存 |
+| 相机命令 | `sendCommand()` → `_writeCommand()` → `encodeRequest()` → `splitFrame()` | 相机侧只允许一个 pending；完整帧分为最多 128 字节的连续分段，以私有 MAVLink 2 状态编码（system 255/component 190）；全部写出后更新相机请求序号并等待 ACK，不借用飞控通道；显式录像停止可排队到相机请求结束后发送 |
+| 速度刷新 | `sendGimbalSpeed()` → `_writeCommand()` | 双轴最新速度整帧连续写出，不占相机/回中 pending、不改请求序号、不清接收半帧；速度 ACK 只更新回应和错误，不证明某次刷新已执行 |
+| 回中 | `centerGimbal()` → `_writeCommand()` | 先尽力停止此前速度，使用独立 `gimbalCenterPending`、请求序号及 3.5 s 定时器；相机请求与回中互不等待 |
+| 写出失败 | `_writeCommand()` | 停止后续分段并显示错误，不自动重发该相机/回中动作；已写出部分分段时将相应设备状态保守置为未知，不能将本地部分写出视为命令成功 |
+| 收包 | `_readDatagrams()` → `_handleMessage()` → `StreamDecoder` | 过滤来源 IP/端口，逐报文 MAVLink CRC/ID 校验，再核对 reserve、data_len 并分流重组；完整帧通过 source/target、地址码和 JSON 校验后处理 |
+| 完成 | 同 cmd 的 `ack`、`code=0/1` | 成功才更新视角、录像已知状态或照片计数；拒绝显示设备 msg，不把本地发送当成功 |
+| 超时与失效 | 命令 3.5 s；回应新鲜度 15 s | 命令不自动重发；15 s 无合法负载回应时视角/录像置未知；配置变化取消 pending 和排队停止并清除旧会话 |
+
+厂商 JSON 没有事务序号。相机和回中各自只能按 cmd 与等待窗口关联，不能证明超时后再次发送同名命令时的迟到 ACK 属于哪次请求。因此某命令发生超时或部分发送失败后，本次端点会话中该命令的后续 ACK 只视为可能回应，保持设备状态未知、不增加照片成功计数，直至重新建立端点会话。同一 UDP 数据报及跨包内层帧都保留起始时的本地请求序号，避免前一条 ACK 触发排队停止后，剩余重复 ACK 或旧半帧又确认新停止请求；这个本地序号不写入 MAVLink 或 JSON，不能解决全部网络迟到情况。显式停止仍可发送，但不能据此承诺设备已停止或动作恰好执行一次；需要实际设备反馈和厂家事务关联约定。
+
+长 ACK 通过同一连续流重组路径处理，较长中文错误说明或较大 `data` 无需塞入单条 53022。只有完成内层帧校验后才更新回应新鲜度、结束 pending 或显示设备结果，单独收到一个合法 MAVLink 分段不等于收到完整 ACK。
+
+**云台控制方式的选择**
+
+| 方式 | 命令含义 | 合适的交互 |
+|---|---|---|
+| 速度 `gimbal_speed_ctrl` | 指定各轴持续转动的速度和方向，0 表示停止该轴 | 回中式摇杆：偏离中位越多转得越快，松手后保持当前视角 |
+| 绝对角度 `gimbal_absolute_angle` | 转到参考零点下的目标姿态，同一目标重复发送不会累加角度 | 已知坐标系的预置姿态、数值定位 |
+| 相对角度 `gimbal_relative_angle` | 从执行时的当前姿态继续转过给定增量，多次执行会累加 | 单次微调、明确的步进按钮 |
+
+例如当前偏转为 +20°，绝对目标 +30° 表示到 +30°；相对增量 +30° 表示从 +20° 再转到 +50°。此例只解释概念，不能直接把角度数字填进协议；厂商文档未说明角度比例、正方向或参考系。绝对角并不自动等于相对正北。CH11/CH12 使用速度模式，避免把摇杆松手归中变成云台回中，也避免在连续通道帧中重复累加相对角命令。
+
+速度帧使用 `yaw_speed`、`pitch_speed`、`roll_speed` 三个整数字段，当前滚转固定 0。默认偏转/俯仰上限分别取文档示例 10/5，设置和说明统一称“协议值”；未把示例值推断成物理速度或设备极限。速度刷新与回中等待独立于相机 pending，拍照、录像或对焦 ACK 不会阻塞零速停止，回中 ACK 也不当作已到达中心的姿态遥测。
+
+#### 3.4.4 文件、构建与合并维护
+
+| 功能环节 | 文件 / 资源组 | 协作关系 |
+|:---|:---|:---|
+| 设置与面板 | `Gimbal/GimbalControlSettings.h/.cc`、JSON；`UI/AppSettings/GimbalControlSettingsGroup.qml`；`FlightDisplay/RoukeCameraControl.qml` | 独立 rouke 设置键驱动控制器，面板绑定反馈和明确动作 |
+| 第二路媒体业务 | `Gimbal/RoukeControlManager.h/.cc`；`CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 插件绑定 Video 2，Manager 分开管理设备控制与本地媒体 |
+| 遥控云台 | `Android/UniRcChannelController.h/.cc`；`Gimbal/RoukeGimbalController.h/.cc` | 接收 CH11/12/14，映射双轴速度、处理 CH14 回中边沿与中位解锁，管理刷新和停转 |
+| 控制传输与帧 | `Gimbal/RoukePayloadController.h/.cc`、`RoukeProtocol.h/.cc` | Controller 管网络、分段发送、接收流生命周期、请求和 ACK；Protocol 管内层编解码、切分、字节流重组和严格校验 |
+| MAVLink 方言 | `MAVLink/rouke.xml`、`MAVLink/generated/rouke/`；`custom/cmake/CustomMavlink.cmake` | 新方言 include 上游 all；构建目录组合生成头，应用优先包含新方言，使解析器和 Inspector 都认识 53022 |
+| 可重复生成 | `custom/tools/generate_rouke_mavlink.py` | 固定上游/生成器版本，校验原生 376 条消息表与指纹；支持 `--check`，禁止手改生成头 |
+| 资源与历史实现 | `custom/CMakeLists.txt`、`custom/custom.qrc` | 产品构建和 QML 改用 Rouke；旧 MT11 源文件/设置/测试保留供后续分支合并比对 |
+| 验证 | `custom/test/Gimbal/RoukeProtocolTest.cc`、`RoukePayloadControllerTest.cc`、`RoukeGimbalControllerTest.cc`；`custom/test/MAVLink/` | 分别覆盖内层帧、UDP 分段与 ACK 状态、通道速度/回中保护及完整 MAVLink；实机转发、运动、视频及媒体按 4.2 验收 |
+
+本次业务和方言接入均落在 `custom/`，继续沿用原生 `src` 的模块层级及 `.h/.cc` 命名。合并时同时核对 XML、生成器版本/清单、应用 include 优先级及 QRC，避免出现“发包正常但原生解析器丢弃新 ID”的半接入状态。
 
 ---
 
@@ -1629,7 +1716,7 @@ Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止
 - 开启后，每次拍照/录像同时尝试 SD 与 LOCAL 两条支路；无卡或 SDK 失败只影响 SD，视频条件满足时 LOCAL 仍能工作。
 - 观察各支路状态和错误。按钮动作成功、文件暂存成功、公共图库发布成功是不同阶段。
 - 本地照片来自解码画面；本地录像复用压缩码流。即使照片按 4K 输出，若 RTSP 只提供 1080P，也只有 1080P 的原始细节。
-- A8 本地录像断流后可在条件恢复时自动另起分段；MT11 断流停止本地支路，恢复画面后需结束原会话、重新开始录像。SD 支路的状态独立观察。
+- A8 本地录像断流后可在条件恢复时自动另起分段；柔克断流停止本地支路，恢复画面后需结束原会话、重新开始录像。SD 支路的状态独立观察。
 
 #### 3.5.2 本地照片流程
 
@@ -1638,37 +1725,37 @@ Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止
 | 步骤 | 方法 / 对象 | 处理细节 |
 |:---|:---|:---|
 | 1. 检查入口 | 各 Manager 的 `_captureLocalVideoFrame()` | 对应路必须正在解码、视频项和窗口有效、目录可写；pending 与 grab lifetime 共同限制每路只允许一个任务 |
-| 2. 确定源尺寸 | negotiated size → 接收器/VideoManager 尺寸 → item implicit size → item × DPR | 源尺寸描述真实视频。A8 在 Manager 中逐级回退，MT11 使用 `GimbalPhotoCapturePolicy::resolveSourcePixelSize()` |
-| 3. 确定输出尺寸 | 有效卡录尺寸优先，否则源尺寸 | MT11 的 `0x20` 需连续两份一致回复，4.5 s 内持续刷新；`isPixelSizeWithinBounds()` 检查长边 4096、短边 2160 及总像素限制 |
+| 2. 确定源尺寸 | negotiated size → 接收器/VideoManager 尺寸 → item implicit size → item × DPR | 源尺寸描述真实视频。A8 在 Manager 中逐级回退，柔克使用 `GimbalPhotoCapturePolicy::resolveSourcePixelSize()` |
+| 3. 确定输出尺寸 | A8 有效卡录尺寸优先；柔克使用视频源尺寸 | 柔克协议没有卡录尺寸查询，不发送旧 `0x20`；`isPixelSizeWithinBounds()` 检查长边 4096、短边 2160 及总像素限制 |
 | 4. 计算抓图几何 | `GimbalPhotoCapturePolicy::captureGeometry()` | 返回 outputPixelSize、contentPixelSize、grabLogicalSize；把物理输出与 Qt 逻辑尺寸/DPR 分开 |
 | 5. 异步抓图 | `QQuickItem::grabToImage()` → `QQuickItemGrabResult::ready` | 快照文件名、尺寸和请求序号；5 s 定时器限制抓图等待；lifetime 对象保持 grab result 至回调完成 |
-| 6. 图像整理与写盘 | A8 `saveLocalPhotoImage()`；MT11 `savePhoto()` | 在各自单线程照片池运行，调用 `prepareImageForSaving()` 修正小数 DPR 舍入、等比缩放与居中黑边 |
+| 6. 图像整理与写盘 | A8 `saveLocalPhotoImage()`；柔克 `savePhoto()` | 在各自单线程照片池运行，调用 `prepareImageForSaving()` 修正小数 DPR 舍入、等比缩放与居中黑边 |
 | 7. 原子提交 | `QImageWriter` + `QSaveFile` | JPEG quality=100；编码成功且 commit 完成才作为成品 |
 | 8. 返回界面 | queued 回调 → 计数、pending、错误属性 | 重新核对请求身份，防止旧任务改变新任务的等待状态；成功后进入平台发布 |
 
-照片文件名包含时间戳及 `_local_NNN`，MT11 增加 `MT11_` 前缀。切换视频项、窗口销毁或超时时，旧抓图不再拥有当前请求；worker 已持有的图像按其快照完成写盘，退出流程等待 worker 结束。Android 成品的发布阶段见 3.5.4。
+照片文件名包含时间戳及 `_local_NNN`，柔克增加 `Rouke_` 前缀。切换视频项、窗口销毁或超时时，旧抓图不再拥有当前请求；worker 已持有的图像按其快照完成写盘，退出流程等待 worker 结束。Android 成品的发布阶段见 3.5.4。
 
 #### 3.5.3 本地录像流程
 
 **入口、状态与录像分支**
 
-`toggleVideoRecording()` 进入各 Manager 的 `_startRecordingSession()` / `_stopRecordingSession()`，分别维护 SD 目标和本地意图。两个 Manager 都通过自己绑定的 receiver 调用 `startRecording(outputFile, format)`；GstVideoReceiver 从压缩码流分支接入录像 parser/mux，写 MKV/MOV/MP4，不重新编码屏幕画面。
+A8 的 `toggleVideoRecording()` 经 `_startRecordingSession()` / `_stopRecordingSession()`，柔克由 `startRecording()/stopRecording()` 直接编排 SD 命令与本地意图。两个 Manager 都通过自己绑定的 receiver 调用 `startRecording(outputFile, format)`；GstVideoReceiver 从压缩码流分支接入录像 parser/mux，写 MKV/MOV/MP4，不重新编码屏幕画面。
 
 | 状态 | 在实现中的含义 |
 |:---|:---|
-| intent | 用户希望本地录像；A8 可在断流期间保留，MT11 在本路流结束时清除 |
+| intent | 用户希望本地录像；A8 可在断流期间保留，柔克在本路流结束时清除 |
 | startPending | 已发出启动请求，尚未确认本次文件真正启动 |
 | owned / ownershipConfirmed | 启动结果成功且输出匹配本次请求，才获得停止该录像的资格 |
 | active | 本地支路当前被计入录制；A8 还区分“观察外部会话”与“自己拥有” |
 | stopPending | 已请求停止，等待接收器停止及容器收尾 |
 | issued file bases | 记录已发出的分段请求，旧请求未解决前不并发认领下一段 |
 
-**A8 与 MT11 的执行路径**
+**A8 与柔克的执行路径**
 
-| 阶段 | A8 / Video 1 | MT11 / Video 2 |
+| 阶段 | A8 / Video 1 | 柔克 / Video 2 |
 |:---|:---|:---|
 | 决定动作 | `_reconcileLocalRecording()` 构造 LocalState，调用 `GimbalMediaSessionPolicy::localAction()` | 会话入口及 receiver 状态回调直接管理本路状态 |
-| 创建分段 | `_startLocalRecording()` 校验目录、格式、意图与主 receiver，生成文件并置 pending | `_startLocalRecording()` 为第二路生成带 MT11 前缀的文件并置 pending |
+| 创建分段 | `_startLocalRecording()` 校验目录、格式、意图与主 receiver，生成文件并置 pending | `_startLocalRecording()` 为第二路生成带柔克前缀的文件并置 pending |
 | 启动确认 | `handleMainVideoRecordingStartResult()` 匹配主路启动结果与输出路径 | `handleVideoRecordingStartResult()` 匹配第二路结果与已发出的文件 |
 | 状态变化 | `_handleVideoStreamingChanged()`、`_handleVideoRecordingChanged()` | `_handleReceiverStreamingChanged()`、`_handleReceiverRecordingChanged()` |
 | 停止 | `_stopLocalRecording()` 只停止已确认拥有的主路录像 | `_stopLocalRecording()` 只停止本 Manager 拥有的第二路录像 |
@@ -1679,9 +1766,9 @@ Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止
 
 共享 Policy 中 `StartOwned`、`StopOwned`、`ConfirmOwned` 对应自己发起的录像；`AdoptExternal` / `ReleaseExternal` 供 A8 观察已有原生录像状态。**观察外部会话不会取得停止权**：结束本地会话时只解除观察，不停止外部入口的录像。
 
-两路启动等待定时器均为 3 s，停止等待每轮为 5 s。A8 停止超时最多补发一次，仍失败则结束 pending 并报告错误；MT11 在仍拥有且 receiver 仍录制时继续重发停止，未设置相同的一次重试上限。启动确认前发生禁用、退出或其他取消时，先记录意图，匹配的迟到成功结果取得所有权后再补偿停止。
+两路启动等待定时器均为 3 s，停止等待每轮为 5 s。A8 停止超时最多补发一次，仍失败则结束 pending 并报告错误；柔克在仍拥有且 receiver 仍录制时继续重发停止，未设置相同的一次重试上限。启动确认前发生禁用、退出或其他取消时，先记录意图，匹配的迟到成功结果取得所有权后再补偿停止。
 
-**断流处理按相机区分**：A8 结束当前分段，在同一用户意图、本地开关和会话有效且前段已收尾时自动创建新文件；视频仍健康而录制异常结束时，会阻止立即反复启动，等待用户或新流会话。MT11 清除本地意图并报告流结束，不因 Video 2 恢复而续录；原会话仍可能保留 SD 录制或用户请求状态，需先结束原会话再开始新的录制。
+**断流处理按相机区分**：A8 结束当前分段，在同一用户意图、本地开关和会话有效且前段已收尾时自动创建新文件；视频仍健康而录制异常结束时，会阻止立即反复启动，等待用户或新流会话。柔克清除本地意图并报告流结束，不因 Video 2 恢复而续录；原会话仍可能保留 SD 录制或用户请求状态，需先结束原会话再开始新的录制。
 
 显式停止、关闭本地开关或退出会结束相应本地录制意图。两种 Manager 正常退出各自最多等 3 s 录像收尾，再等待照片 worker；公共媒体发布另有 120 s 等待上限。
 
@@ -1696,7 +1783,7 @@ Manager 禁用、修改端点和析构前，同步向旧端点发完剩余停止
 
 Android 通过 `AndroidMediaLibrary` 的 JNI 桥交给 Java 发布：API 29+ 使用 MediaStore，旧平台通过公共目录与 MediaScanner。启动时补扫已挂载卷的当前及受支持旧暂存目录；成功发布后清理源文件。
 
-**容量清理的触发边界**：当前 `cleanupOldLocalVideos()` 由 A8 `_startLocalRecording()` 在开始新分段前调用，并检查 `Video/enableStorageLimit` 与 `maxVideoSize`。桌面统计目录中 MKV/MOV/MP4 的总量，只删除符合 `_local_数字.扩展名` 的旧录像；Android 将清理请求交给公共图库登记表。MT11 开始录像没有独立调用此清理入口，因此仅录制 MT11 时不能把该容量设置理解为持续自动限额。
+**容量清理的触发边界**：当前 `cleanupOldLocalVideos()` 由 A8 `_startLocalRecording()` 在开始新分段前调用，并检查 `Video/enableStorageLimit` 与 `maxVideoSize`。桌面统计目录中 MKV/MOV/MP4 的总量，只删除符合 `_local_数字.扩展名` 的旧录像；Android 将清理请求交给公共图库登记表。柔克开始录像没有独立调用此清理入口，因此仅录制柔克时不能把该容量设置理解为持续自动限额。
 
 已发布的公共文件可在卸载后保留；发布前的应用暂存文件不具备这一保证。Android 清理范围仅为当前安装登记且可访问的公共录像，可包含两种相机已发布的文件；卸载重装建立新管理边界。发布期间暂存源与公共副本可能并存，设备实际占用可高于录像配额。
 
@@ -1744,7 +1831,7 @@ SD 与 LOCAL 并行执行，一条失败不会回滚另一条。照片按钮返�
 | 本地录像启动结果尚未返回 | 按钮等待；因禁用/退出等取消时保留请求身份，迟到成功后补偿停止 |
 | 主/第二路由其他入口正在录像 | 不认领该文件；只停止本 Manager 已确认拥有的录像 |
 | A8 本地录像遇到断流 | 结束当前分段，保留有效意图，流恢复且前段收尾后续录 |
-| MT11 本地录像遇到断流 | 清除本地意图并结束当前文件，恢复后需重新开始录制 |
+| 柔克本地录像遇到断流 | 清除本地意图并结束当前文件，恢复后需重新开始录制 |
 | 公共图库发布失败 | 已写成的暂存文件保留，下次启动重试 |
 
 录像界面的计时依据 `recordingSessionCapturing`：至少一条支路确认在录制时推进。A8 SD 的 `0x0C` 是切换动作，发送后的暂定状态需由 `0x0A` 确认，不能仅凭命令发送就认定 SD 正在录制。停止时也区分“请求已发送”“receiver 已停止”“容器已封装”“图库已发布”。
@@ -1756,9 +1843,9 @@ SD 与 LOCAL 并行执行，一条失败不会回滚另一条。照片按钮返�
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
 | 媒体开关与操作入口 | `UI/AppSettings/VideoSettings.qml`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON；`FlightDisplay/GimbalCameraControl.qml` | localMediaStorageEnabled 决定是否同时保存本地媒体；相机栏向所选 Manager 发动作，设备 SD 命令与本地支路独立执行，并分别显示状态。 |
-| 两路会话与所有权 | `Gimbal/GimbalControlManager.h/.cc`、`Mt11ControlManager.h/.cc` | A8 对应主路，MT11 对应第二路；分别维护抓图请求、录像意图、pending、输出文件名及已认领录像，隔离切换和迟到回调。 |
+| 两路会话与所有权 | `Gimbal/GimbalControlManager.h/.cc`、`RoukeControlManager.h/.cc` | A8 对应主路，柔克对应第二路；分别维护抓图请求、录像意图、pending、输出文件名及已认领录像，隔离切换和迟到回调。 |
 | 照片尺寸与写盘 | `Gimbal/GimbalPhotoCapturePolicy.h/.cc`；两种 Manager；`PulledVideoResolutionProbe.h/.cc`（GStreamer 目录） | 探针提供源尺寸，Policy 计算 DPR/像素限制及补边；Manager 从绑定显示项异步抓图并交 worker 写盘，使用请求快照完成回调。 |
-| 录像决策与分段 | `Gimbal/GimbalMediaSessionPolicy.h/.cc`；两种 Manager；主路 VideoManager 与 `VideoManager/DualVideoManager.h/.cc` | A8 使用 Policy 决策并支持有效意图下的断流续录；MT11 在自身 Manager 中维护状态，断流清除意图。两路 receiver 均封装压缩码流，恢复行为不同。 |
+| 录像决策与分段 | `Gimbal/GimbalMediaSessionPolicy.h/.cc`；两种 Manager；主路 VideoManager 与 `VideoManager/DualVideoManager.h/.cc` | A8 使用 Policy 决策并支持有效意图下的断流续录；柔克在自身 Manager 中维护状态，断流清除意图。两路 receiver 均封装压缩码流，恢复行为不同。 |
 | Android 平台桥 | `Android/AndroidMediaLibrary.h/.cc`；`custom/android/src/org/mavlink/qgroundcontrol/QGCCustomMediaLibrary.java` | C++ 统一传递目录、发布与等待请求；Java 选择卷、暂存、提交 MediaStore/媒体扫描、重试和清理录像配额。 |
 | 退出和发布收尾 | `CustomPlugin.cc`；两种 Manager；Android 媒体桥 | 插件协调停止录像、等待照片 worker 与公共发布；只有录像封装完成后才进入发布，失败暂存保留供后续恢复。 |
 | 自动验证 | `custom/test/Gimbal/GimbalPhotoCapturePolicyTest.cc`、`GimbalMediaSessionPolicyTest.cc` | 检查照片尺寸计算与 A8 会话决策；实际文件完整性、双路隔离、图库和卸载保留仍需平台验收。 |
@@ -1898,7 +1985,7 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 1. 在 UniGCS 将“遥控 SDK 连接方式”设为 UART2，并确认当前数传 1/2 组合允许 SDK 使用 UART2。QGC 只选择应用侧传输，不替代 UniGCS 的设备路由配置。
 2. QGC 保持 UniRC SDK 启用、SDK 接口为 UART2；固定使用板载串口 `/dev/ttyHS2`、115200 波特率、8N1、无流控。UART2 不需要蓝牙配对、MAC 或“附近设备”权限；设置页显示固定串口信息。
 3. 保持 QGC 前台运行，确认 CH1～CH16 网格由 `--` 变为实时数值。串口打开本身不代表 SDK 路由已通，首次合法 `0x42` 通道帧才激活 `sdkRouteActive`，网格据此显示实际通道值。
-4. CH9 先回中、CH10 先释放后再操作。控制 MT11 时启用其 SDK，等待在线后让 CH11/CH12 同时回中，详见 3.4.6。
+4. CH9 先回中、CH10 先释放后再操作；Rouke 的 CH11/CH12 双轴也先归中，CH14 先释放再按下。CH11 控制偏转、CH12 控制俯仰，CH14 只控制 Rouke 回中，参数和协议边界见 3.4。
 
 同一 SDK 接口同时查询图传信息，无需新增设置。飞控通信正常时，顶部云台图标左侧显示图传信号入口，点击查看并排的强度百分比和质量分档，质量右侧括号实时显示 SDK 原始值；无飞控连接或通信丢失时隐藏入口。SDK 后台查询独立于飞控连接，数据来源与无效状态见 3.7.6。
 
@@ -1926,9 +2013,14 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 | CH10 | 先 ≤1250 释放，再 ≥1750 按下 | 按下沿触发一次；持续按住不重复 |
 | CH10 下一动作 | 初始为回中；动作确认后交替 | 回中 → 俯仰 -90° → 回中 |
 | CH7/CH8 | 合理值越出 [1400,1600] | 将下一次 CH10 复位为回中，不额外发送姿态命令 |
-| CH11/CH12 | MT11 SDK 可用后，先同时进入 1475～1525 | 解除双轴初始保护；CH11 为 Yaw、CH12 为 Pitch，1050/1500/1950 对应 -100/0/+100 转向速度 |
+| CH11/CH12 | 初次连接、恢复或配置变化后，双轴同时位于 [1400,1600] | 解除初始保护；随后 CH11 控制偏转速度、CH12 控制俯仰速度，回到死区即停对应轴 |
+| CH14 | 先 ≤1250 释放，再 ≥1750 按下 | 按下沿执行一次 Rouke 回中；持续按住不重复，先停止速度控制，优先于同帧的 CH11/12 输入 |
 
 通道合理范围为 900～2100。CH9/CH10 无效时停用 A8 动作并重新等待初始状态；合法 SDK 回包仍维持当前 SDK 通道路由状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。Bluetooth 与 UART2 使用相同映射和动作保护。
+
+Rouke 双轴沿用 SDK 默认 1050～1950 量程和 1500 中值，包含端点的 1400～1600 为死区。死区外按剩余 350 的行程线性映射到配置速度上限，并按整数取整；紧邻死区的非零输入至少输出 1，合理范围内超过标称端点的值按满量程饱和。CH11 对应 yaw，CH12 对应 pitch，默认通道较大输出正数，两个方向可分别反转。原始速度单位和正方向需按厂家说明与实际安装校准。
+
+最新双轴目标以 50 ms（20 Hz）节拍刷新，不积压旧运动命令；输入超过 350 ms 未更新、任一 Rouke 通道越界或控制被取消时停止。停转先立即发送全零速度，再以 50 ms 间隔最多补发两次零速；这只是 UDP 上的尽力停转，不保证设备收到。回中请求前先停止速度并取消后续零速补发，避免补发打断回中。CH14 回中优先于同帧的转向输入，回中等待结束或失败后必须收到新的双轴中位输入才能重新转动。重新连接时还要求 CH14 释放，持续按住不会补触发回中。
 
 #### 3.7.3 实现流程
 
@@ -1952,12 +2044,12 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 
 `_handleChannelPacket()` 对合法目标帧先刷新 watchdog、保存实际通道值，再调用 `UniRcChannelPolicy::update(CH7, CH8, CH9, CH10, reversed)`。Policy 只返回 channelsValid、zoomDirection/changed、manualAttitudeInputDetected 和 ch10Pressed，不直接操作设备。
 
-1. CH9/CH10 越界：Policy 调用 `linkLost()` / `reset()`，清除已允许动作的状态，重新要求 CH9 回中、CH10 释放；控制器通过 `_resetA8Input()` 停掉当前 A8 动作。合法 SDK 帧仍刷新连接 watchdog，MT11 独立检查 CH11/CH12。
+1. CH9/CH10 越界：Policy 调用 `linkLost()` / `reset()`，清除已允许动作的状态，重新要求 CH9 回中、CH10 释放；控制器通过 `_resetA8Input()` 停掉当前 A8 动作。合法 SDK 帧仍刷新连接 watchdog，Rouke 通道使用独立校验与状态。
 2. 有手动姿态输入：先调用协调器 `noteManualAttitudeInput()`，把下一 CH10 动作复位。
 3. CH9 方向改变：`_applyZoomDirection()` → `_tryStartZoom()` → A8 `startUniRcZoom()`；回中调用停止，暂不可启动时按当前输入状态重试。
 4. CH10 出现按下沿：调用 `requestNextCh10Action()`。下一动作由共享协调器确认结果决定，不由传输层计数翻转。
 
-每份合法通道帧中，控制器独立将索引 10/11 交给 MT11 Manager 的 `updateUniRcGimbalChannels()`；MT11 双轴独立判断中位、范围与 SDK 可用状态，不复用 CH7/8 的 A8 手动姿态检测。其 `0x07` 映射和停止时序见 3.4.6。
+每份合法通道帧保存全部 16 路数值，并把索引 10/11/13（CH11/CH12/CH14）交给 `RoukeControlManager::updateUniRcGimbalChannels()` → `RoukeGimbalController::updateChannels()`。它与 A8 的通道策略独立，输出 `gimbal_speed_ctrl` / `gimbal_center`，不调用旧 MT11 SDK。
 
 通道数组从 0 开始，因此源码索引 6/7/8/9 对应界面的 CH7/CH8/CH9/CH10。同帧先处理手动姿态再处理 CH10，确保“手动后按键”以回中为目标。CH9 与触控 hold 区分持有者，触控释放不能停掉拨轮接管后的动作。
 
@@ -1965,9 +2057,9 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 
 `_inputWatchdogExpired()` 先读取当前传输的待收数据，再按写入队列、收到字节、合法帧、目标通道帧区分阶段；`_receiveTimeoutMessage()` / `diagnosticSummary()` 输出对应运行状态。`_scheduleTransportFailure()` 立即清空动作、解除 SDK 路由状态并安排关闭，符合运行条件时在 10 s 后重试所选接口；不会自动切到另一接口。`_closeTransport()` 停定时器、复位 parser、解除旧传输信号并释放连接。
 
-收到过通道帧后的正常关闭会尽力发送三份 Off 请求。UART2 同步尝试非阻塞写出后立即释放 fd，不等待串口排空；断流、设备错误或内核拥塞时不能保证远端收到停止上报请求。本地 A8/MT11 停控和输入保护先执行，不依赖远端确认。
+收到过通道帧后的正常关闭会尽力发送三份 Off 请求。UART2 同步尝试非阻塞写出后立即释放 fd，不等待串口排空；断流、设备错误或内核拥塞时不能保证远端收到停止上报请求。本地 A8 停控和输入保护先执行，不依赖远端确认。
 
-失焦、禁用、配置变化和 `shutdown()` 同样进入停止路径；`_resetInput()` 同时调用 MT11 `cancelUniRcGimbal()`。重新建立连接后重新等待 CH9 回中、CH10 释放及 CH11/CH12 同时回中；连接成功本身不会恢复上一方向。
+失焦、禁用、配置变化和 `shutdown()` 同样进入停止路径；`_resetInput()` 取消 A8 与 Rouke 当前输入。重新建立连接后仍等待 A8 CH9 回中、CH10 释放，以及 Rouke CH11/CH12 双轴归中、CH14 释放；连接成功本身不会恢复上一方向。Rouke 端点或速度/方向设置改变时也停止旧动作，并重新要求中位解锁。
 
 #### 3.7.4 从传输建立到动作可用
 
@@ -1977,7 +2069,7 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 | `uartConnected` | `/dev/ttyHS2` 打开且串口参数设置完成 | UART2 本地传输可用，尚未证明设备回包 |
 | `transportConnected` | 当前 Bluetooth 或 UART2 传输建立 | 控制器提供统一传输状态属性，当前设置页未单独显示该状态 |
 | `sdkRouteActive` | 收到合法目标 `0x42` 通道帧 | 当前连接已接通 SDK 通道路由 |
-| `channelInputActive` | 合法通道帧中的 CH9/CH10 值通过范围检查 | A8 可进入动作策略；不代表 MT11 双轴已完成中位确认 |
+| `channelInputActive` | 合法通道帧中的 CH9/CH10 值通过范围检查 | A8 可进入动作策略；不表示柔克控制或视频已连接 |
 | `channelValues` | 保存最新 16 路实际值 | 设置页可以查看映射是否正确 |
 
 控制器通过 `diagnosticStage`、`diagnosticSummary` 和 `lastError` 向 QML 提供诊断属性，并将连接、发送、接收和错误事件写入 `gcs.custom.android.unircchannel` 日志；当前设置页只显示接口参数与通道网格，未单独展示诊断文字。阶段先区分 `RFCOMM_CONNECTING` / `RFCOMM_CONNECTED` 与 `UART2_OPENING` / `UART2_OPEN`，随后共用 `REQUEST_0X42_QUEUED`、`REQUEST_0X42_TRANSMITTED`、`SDK_FRAME_NO_0X42` 和 `SDK_ROUTE_ACTIVE`；收到字节但尚无合法 SDK 帧时分别记录 `BT_RX_NO_SDK_FRAME` / `UART2_RX_NO_SDK_FRAME`。串口无法打开时，错误包含 `/dev/ttyHS2`、系统调用和 errno；本地已写出但无数据时，错误说明需要检查 UniGCS UART2 SDK 路由。
@@ -2008,7 +2100,7 @@ CH10 的典型操作序列：
 | 顶部图传入口 | `QmlControls/FlyViewToolBarIndicators.qml`、`UniRcLinkIndicatorPage.qml`、`UniRcSignalIcon.qml`；`UI/toolbar/UniRcLinkIndicator.qml` | 同名工具栏覆盖在车辆云台指标前插入图传，通信正常时显示；摘要与详情共用状态，QRC alias 和 Custom.Widgets 模块接入资源，见 3.7.6。 |
 | 通道值转动作 | `Android/UniRcChannelPolicy.h/.cc`；`UniRcChannelController.h/.cc` | Policy 判断有效范围、CH9 死区/方向、CH10 按下沿及 CH7/8 手动输入；Controller 根据连接和新鲜度执行或释放动作。 |
 | CH9 连续变倍 | `Gimbal/GimbalControlManager.h/.cc` | 接收遥控方向并维护 UniRC 动作持有者；回中、失联、禁用等条件释放运动，与相机栏触控输入协调。 |
-| CH11/CH12 转向 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc`、`Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | 接入任一接口的合法通道帧，以独立 MT11 SDK 发送 `0x07`；双轴中位/范围保护、超时、停止重发及端点变更清理见 3.4.6。 |
+| Rouke CH11/CH12/CH14 | `Android/UniRcChannelController.h/.cc`；`Gimbal/RoukeControlManager.h/.cc`、`RoukeGimbalController.h/.cc`、`RoukePayloadController.h/.cc` | Controller 取索引 10/11/13，GimbalController 负责中位保护、双轴速度和回中边沿，PayloadController 经 53022 分段发送；不经过 A8 或 MT11 SDK。 |
 | CH10 姿态交替 | `Gimbal/GimbalCenterCoordinator.h/.cc`、`Ch10GimbalActionState.h` | 请求复用共享回中/俯视事务，动作完成与手动输入更新下一动作，顶部控制也使用同一状态。 |
 | 验证 | `custom/test/Android/UniRcProtocolTest.cc`、`UniRcLinkStatusTest.cc`、`UniRcSerialPortTest.cc`；`custom/test/UI/UniRcLinkIndicatorTest.py` 及设置布局检查 | 分别验证协议/混合帧、图传分档/时效、平台串口和 QML 显示/展开；设备路由、轮询与通道动作同时运行仍需真机验收。 |
 
@@ -2080,7 +2172,7 @@ Android 净配置的应用默认字号由 `CustomPlugin::adjustSettingMetaData()
 
 两条罗盘都加载 [FlyViewCompassBar.qml](custom/src/FlightDisplay/FlyViewCompassBar.qml)，外观共用；创建、位置和显隐在 [FlyViewCustomLayer.qml](custom/src/FlightDisplay/FlyViewCustomLayer.qml)。修改共同外观会同时影响两条；需要不同样式时，通过组件属性由两个 Loader 分别传入。
 
-两者是遥测界面，不写入视频 OSD。顶部控制栏和顶部罗盘对应产品 A8 Mini（Video 1），MT11 对应 Video 2：地图或 MT11 作为主画面、A8 仅在辅窗/独立窗口中时，不显示顶部罗盘，也不占用顶部 inset。显隐依据实际 PIP 状态，与右侧 A8/MT11 相机控制面板的选中项、MT11 视频模式无关；没有有效姿态时不显示伪造角度。视频全屏时覆盖层隐藏。此绑定以 Video 1=A8、Video 2=MT11 的产品接线为准，不按任意 RTSP URL 自动识别设备。
+两者是遥测界面，不写入视频 OSD。顶部控制栏和顶部罗盘对应产品 A8 Mini（Video 1），柔克对应 Video 2：地图或柔克作为主画面、A8 仅在辅窗/独立窗口中时，不显示顶部罗盘，也不占用顶部 inset。显隐依据实际 PIP 状态，与右侧 A8/柔克相机控制面板的选中项、柔克视角无关；没有有效姿态时不显示伪造角度。视频全屏时覆盖层隐藏。此绑定以 Video 1=A8、Video 2=柔克的产品接线为准，不按任意 RTSP URL 自动识别设备。
 
 A8 Mini 在飞机上倒装使用，安装/反馈方向约定由方位角计算链路处理；显示层直接使用其世界方位角。顶部与底部使用相同的标准方位排列：朝北 0° 时 W 在左、E 在右；90° 对应东、180° 对应南、270° 对应西。两条罗盘的数值分别表示云台世界方位角和机头航向，不要求二者相同；安装方向是产品输入约定，不提供独立设置开关。
 
@@ -2130,7 +2222,7 @@ legacy 分支的安装方向是固定产品输入约定：倒装 A8 的反馈 ya
 
 **QML 绘制与布局**
 
-`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`，不作刻度镜像。顶部 Loader 额外检查活动云台、Provider.valid、通信状态及 `a8VideoIsMain`；无效时卸载该显示项。`a8VideoIsMain` 默认 false，由 `FlyView.qml` 绑定主视频 `hasVideo`、`videoControl.pipState.state === fullState` 和三维视图未打开这三个条件，不能用“主画面不是地图”代替，否则 MT11 主画面也会误显示。
+`FlyViewCustomLayer.qml` 创建两个 Loader：底部保留组件的 Vehicle 航向默认绑定；顶部在 `onLoaded` 中用 `Qt.binding()` 覆盖 `directionDegrees`，并设置 `indicatorPrefix="Gimbal"`，不作刻度镜像。顶部 Loader 额外检查活动云台、Provider.valid、通信状态及 `a8VideoIsMain`；无效时卸载该显示项。`a8VideoIsMain` 默认 false，由 `FlyView.qml` 绑定主视频 `hasVideo`、`videoControl.pipState.state === fullState` 和三维视图未打开这三个条件，不能用“主画面不是地图”代替，否则柔克主画面也会误显示。
 
 样式入口集中在 `FlyViewCompassBar.qml`：`compassBar` 定义条背景，`headingIndicator/headingLabel` 定义中心角度框，`compassArrowIndicator` 加载 `FlightMap/Images/compassPointer.svg`；`implicitWidth`、`_barHeight`、`_pointerSize` 控制尺寸。两条的位置、边距和可用宽度由对应 Loader 的 anchors/width/x 决定。
 
@@ -2182,7 +2274,7 @@ feedbackYaw 从 -10° 变为 5°，世界方位角 = wrap180(130° + 5°) = 135�
 | 双罗盘创建与位置 | `FlightDisplay/FlyViewCustomLayer.qml`、`FlyView.qml` | 飞行页传入 A8 主画面状态；底部 Loader 使用默认航向绑定，顶部显式绑定 Provider.absoluteYaw；分别处理显隐、上下位置和避让。 |
 | 航向读取、刻度与指针绘制 | `FlightDisplay/FlyViewCompassBar.qml`；`FlightMap/Images/compassPointer.svg` | 默认 directionDegrees 读取 Vehicle.heading.rawValue，顶部实例覆盖此输入；两条使用相同标准刻度，安装/反馈方向和参考系换算由后端完成。 |
 | 验证 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc`；AzimuthStubs | 分别检查数学换算、来源/时序和活动对象匹配；生产 Provider 用例覆盖倒装接入的左右转正负方向及跟随/锁定配对输入，不以桌面正装采集记录证明倒装方向；设备运动和失联表现按真机矩阵核对。 |
-| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、左右转时东西标签向中心接近、两条独立航向、中心数值不变、北向环绕、地图/A8/MT11 切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
+| 显示回归 | `custom/test/FlightDisplay/GimbalCompassTest.py`；CompassStubs | 加载实际 Compass/CustomLayer/DualPipView/PipState 和 FlyView 显隐绑定，检查标准刻度、左右转时东西标签向中心接近、两条独立航向、中心数值不变、北向环绕、地图/A8/柔克切换、辅窗/独立窗口/三维、无效数据及 inset 释放；替身不进入产品。 |
 
 ---
 
@@ -2449,7 +2541,7 @@ Fact 是 QGC 的设置/参数对象：C++ 管理值与元数据，QML 绑定显�
 |---|---|---|
 | `Viewer3D` | 地图模式、文件与配准 | 飞行视图 → 3D View |
 | `FlyView` 的两个 custom 键 | 双罗盘显隐 | 飞行视图 → Instrument Panel |
-| `GimbalControl` | A8/MT11、UniRC、本地媒体和视频策略 | 飞行视图 → 云台相机；Video |
+| `GimbalControl` | A8/柔克、UniRC、本地媒体和视频策略 | 飞行视图 → 云台相机；Video |
 | 原生 `Video` 分组中的 `secondaryRtspUrl` | 由 VideoCustomSettings 提供的第二路 URL | Video |
 | 原生 `Video` | 主视频、录制格式、容量等 | Video |
 | 根级 `appFontPointSize` | 应用字号/界面缩放 | General |
@@ -2548,23 +2640,55 @@ JSON 资源名与实际 QSettings 分组不要求同名：`FlyViewCustomSettings
 - 当前 `cmake/CustomOptions.cmake` 将 `QGC_BUILD_TESTING` 依赖于 `CMAKE_BUILD_TYPE=Debug`；Release 下会关闭测试。`custom/CMakeLists.txt` 仅在测试开启且非 Android/iOS 时注册桌面用例。
 - 新增 C++、QML、资源或 Java overlay 后，重新运行 CMake，检查目标源码、QRC alias 与合并后的 Android 文件。
 
+柔克 MAVLink 方言在配置阶段从固定上游头和 `custom/src/MAVLink/generated/rouke` 组成构建目录头文件树；原生 `MAVLinkLib.h` 最终优先选择柔克方言。XML 或上游消息表指纹不一致时配置直接报错，需按生成脚本指定的依赖版本重新生成并复核。
+
+~~~sh
+python custom/tools/generate_rouke_mavlink.py --mavlink-source <pinned-mavlink-source> --library <pinned-c-library-v2> --check
+cmake -S custom/test/MAVLink -B <mavlink-test-build> -DROUKE_UPSTREAM_MAVLINK=<pinned-c-library-v2>
+cmake --build <mavlink-test-build>
+ctest --test-dir <mavlink-test-build> --output-on-failure
+~~~
+
+2026-10-28 连续流主机验证使用 Windows / Qt 5.14.2 / MSVC 独立重编：`RoukeProtocolTest` 14 项通过、0 失败、0 跳过（含初始化和收尾），覆盖内层帧、128/129/152 字节分段、真实长命令、中文跨段、逐字节和多帧重组、LE16 容量上限、半帧与中断帧头恢复、缓存边界和非法输入。日志为 `tmp/rouke-protocol-test/result-stream.txt`。
+
+2026-10-29 `RoukePayloadControllerTest` 使用 Qt 5.14.2/MSVC 的真实本机 UDP，32 项通过、0 失败、0 跳过（含初始化和收尾，约 16.45 s）：保留分段精确字节及顺序、长 ACK 重组、错误端点/地址过滤、发送者流隔离、半帧过期、配置切换、排队停止和同名迟到 ACK 保持未知检查，并新增相机 pending 下速度/零速发送、独立回中 ACK 与超时、速度原始字段校验及双类请求的长 ACK 互不干扰。当前按内层帧开始接收时的本地请求序号拒绝旧回应，不再通过新命令清空全部接收残片；重复 START ACK 仍不能确认随后排队的 STOP。日志为 `tmp/rouke-controller-test/realtime-test-results.txt`。地面发送标识为 system 255/component 190，接收按端点、载荷地址及 psdk→msdk JSON 校验，不猜测设备的 system/component 值。
+
+同日新增 `RoukeGimbalControllerTest`，在 Qt 5.14.2/MSVC 中局部编译生产控制器并使用本机 UDP，22 项通过、0 失败、0 跳过（含初始化和收尾，约 2.47 s）。测试端独立按帧头/长度拼接 53022，验证 1050～1950 量程、1500 中位、1400～1600 死区、默认双轴 10/5 协议值、反向设置、首次中位保护、50 ms 刷新、350 ms 超时、非法通道停止、CH14 边沿和先停再回中、回中 ACK 后重新归中、相机 pending 不阻止停止及配置切换。日志为 `tmp/rouke-gimbal-test/gimbal-test-results.txt`。这些结果只证明主机代码与本机报文契约，未完成 Qt 6/Android 全应用构建或实际负载联调。
+
+同日既有 `UniRcProtocolTest` 回归 48 项通过、0 失败，保留 A8 通道策略及 UniRC 解析检查，日志为 `tmp/unirc-link-protocol-test/rouke-regression-results.txt`。
+
+2026-10-27 独立 `RoukeMavlinkTest` 已通过，涵盖 53022 总表/CRC/Inspector、短帧与满 128 字节、坏 CRC 拒绝、原生 HEARTBEAT 及私有收发状态不污染 QGC 通道；生成脚本 `--check` 一致。同时通过独立 CMake 主/子目录工程验证延后注入的 include 优先级，最终真实 MAVLinkLib 仍使用新方言。本次连续流实现未修改 XML 或生成头，普通产品构建复用已提交头文件，不要求 Python/pymavlink；更改 XML 或升级 MAVLink 时才重新生成。以上结果不代表完整 Qt 6/Android 应用构建或柔克硬件验收通过。
+
+本次设置页在 Windows / Qt 6/PySide6 6.10.2 使用真实资源完成 8 组离屏检查，覆盖 320～1920 宽度、150% 字号、深浅主题和 Fact 绑定；该结果不覆盖完整应用及目标遥控器显示。
+
+`RoukeCameraControlTest.py` 在同一 Qt 6.10.2 环境通过：用 rcc 构建真实 QRC，加载生产面板与既有测试服务替身，覆盖离线本地存储、动作分发、视角只反映 ACK 状态、未知 SD 状态和 pending 时显式停止、禁用隐藏及无 QML 错误；面板截图已目视复核。2026-10-28 界面同步后再次通过上述检查，中文 QM 编译成功，共 264 条已完成译文。设置布局脚本增加可选 `--translation`，加载生产 QM 后 8 组尺寸/字号/主题及 Fact 写回检查通过；离屏预览实际 QRC 相机栏和 Rouke 设置组，核对“A8 Mini / Rouke”、`192.168.144.110:8888`、本地端口 0、地址码 0 和新提示，截图位于 `debug/rouke-ui-20261028/preview/`。视频设置第二路标注为“RTSP 地址2（Rouke）”，删除了跨 128 字节转发尚待确认的旧界面提示。测试替身不产生真实设备动作，结果不扩展为完整应用构建或硬件验收。
+
+2026-10-29 Rouke 相机栏复验通过，并新增“相机 pending 时回中可用、回中 pending 时相机对焦仍可用”的独立门禁检查。设置页 8 组尺寸/字号/主题检查与新增双轴速度字段、CH11/CH12 反向开关 Fact 写回均通过；真实 QRC 中文预览确认 10/5 默认协议值、通道提示及新控件完整显示，无 QML 绑定错误，截图位于 `debug/rouke-rc-ui-20261029/`。中文 QM 共 270 条完成译文；实际遥控器、AI 盒子和负载动作仍按 4.2 验收。
+
 以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用测试，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
 cmake -S . -B <desktop-build> -DCMAKE_BUILD_TYPE=Debug -DQGC_BUILD_TESTING=ON
 cmake --build <desktop-build> --parallel
 ctest --test-dir <desktop-build>/custom --output-on-failure
+# 仅执行柔克方言、内层协议和 UDP 控制回归
+cmake --build <desktop-build> --target check_rouke_payload
 ~~~
 
 | 测试/工具位置 | 覆盖范围 |
 |---|---|
 | `custom/test/Gimbal/SiyiProtocolTest.cc`、`SiyiModeQueryTest.cc` | A8 协议、倍率策略、模式查询 |
-| `custom/test/Gimbal/Mt11ProtocolTest.cc` | MT11 编解码、模式、倍率与端点策略 |
-| `custom/test/Gimbal/Mt11GimbalControllerTest.cc` | CH11/CH12 映射、死区、恢复保护、UDP 双轴刷新/停止、无效值、超时、端点隔离和 ACK 校验 |
+| `custom/test/Gimbal/RoukeProtocolTest.cc` | 柔克 JSON 帧、UTF-8 字节长度、128/129/152 字节分段、LE16 容量、半帧/连帧重组、坏帧恢复及字段校验 |
+| `custom/test/Gimbal/RoukePayloadControllerTest.cc` | 独立 UDP 的 53022 连续分段、长 ACK 重组、错误端点/地址拒绝、半帧过期、超时与状态隔离 |
+| `custom/test/Gimbal/RoukeGimbalControllerTest.cc` | CH11/12 双轴速度映射、死区/中位解锁、刷新与零速停止、CH14 回中边沿、超时及相机 pending 隔离 |
+| `custom/test/MAVLink/` | 方言生成一致性、CRC/Inspector、完整编码解析、原生消息与通道状态保留 |
+| `custom/test/Gimbal/Mt11ProtocolTest.cc` | 历史 MT11 协议保留测试，不代表本分支柔克能力 |
+| `custom/test/Gimbal/Mt11GimbalControllerTest.cc` | 历史 MT11 保留测试：CH11/CH12 映射、死区、恢复保护、UDP 双轴刷新/停止、无效值、超时、端点隔离和 ACK 校验 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc`、`GimbalPhotoCapturePolicyTest.cc` | 媒体会话、尺寸和 DPR |
 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、倒装 A8 左右转反馈方向与跟随/锁定配对输入、显式参考系、航向时效、活动云台匹配 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
+| `custom/test/FlightDisplay/RoukeCameraControlTest.py` | 柔克生产相机面板的动作、状态绑定、未知状态停止和布局；独立离屏服务替身 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC `0x42`/`0x44` 请求与回包、signed8 质量及字段边界、混合帧、通道保护和 CH10 状态 |
@@ -2575,10 +2699,11 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **16 个 C++ CTest 用例**；五个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放、云台罗盘与图传指示器（罗盘脚本使用 PySide6 自带 rcc 生成临时资源包）：
+当前 custom 的 C++ CTest 清单以 `custom/CMakeLists.txt` 为准；Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放、云台罗盘与图传指示器（罗盘脚本使用 PySide6 自带 rcc 生成临时资源包）：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
+python custom/test/FlightDisplay/RoukeCameraControlTest.py
 python custom/test/FlightDisplay/DualPipResizeTest.py
 python custom/test/FlightDisplay/GimbalCompassTest.py
 python custom/test/UI/UniRcLinkIndicatorTest.py
@@ -2612,7 +2737,7 @@ UART2 设置页的既有验证以 Qt 6/PySide6 完成 8 组分辨率、150% 字�
 
 ~~~sh
 ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQueryTest)$' --output-on-failure
-ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest|UniRcLinkStatusTest|UniRcSerialPortTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(RoukeMavlinkTest|RoukeProtocolTest|RoukePayloadControllerTest|RoukeGimbalControllerTest|UniRcProtocolTest|UniRcLinkStatusTest|UniRcSerialPortTest)$' --output-on-failure
 ~~~
 
 验证的交付物按层次区分：CMake/编译结果确认接入和类型依赖；策略测试确认纯逻辑；QML 检查及截图确认绑定/布局；新 APK 的真机日志与实际画面确认平台和设备行为。第 1 节的进度应与实际完成的层次对应。
@@ -2625,17 +2750,19 @@ ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControl
 
 | 范围 | 必测行为 |
 |---|---|
-| 视频 | A8、MT11 各自位于 URL 1/2；同时播放与交换；持续至少 10 min；断流重连；PIP 切换、前后台、surface 重建 |
+| 视频 | A8、柔克各自位于 URL 1/2；同时播放与交换；持续至少 10 min；断流重连；PIP 切换、前后台、surface 重建 |
 | PIP 缩放 | 双路播放及地图作为辅窗时，分别拖动上下手柄；连续放大/缩小、快速反向、拖出辅窗、触及上下限并返回、释放/取消后重拖、主辅切换及父窗口改变大小；确认跟手、无跳变和视频持续显示 |
 | Android 解码 | 按 receiver/generation 确认 CAPS、source、实际 decoder、decoder 输出和 sink 首帧；保持硬解，健康另一条流不被重建 |
 | A8 停滞恢复 | 连续至少 5 次关闭/打开 QGC，每次双路播放至少 120 s；无停滞时不重建；恢复遵守次数限制 |
-| 相机 | A8 各分辨率上限；MT11 短按 1～30x、长按全倍率、释放/取消/反向；三种 MT11 模式实际画面 |
-| 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、MT11 断流停止/手动重开；容量清理触发、停止重试和退出封装 |
+| 相机 | A8 原有能力回归；柔克核对厂家默认 payload_addr=0，已有保存值不得被升级覆盖；核对发往 .110:8888 的 MAVLink 2/53022；切视角、对焦、回中、拍照、显式录像启停与失败/超时状态；显式配置 -1 时不可发命令 |
+| 柔克协议与升级 | 抓包核对 CRC_EXTRA=37、data_len、内层 UTF-8 长度和回包源端口；152 字节为 128 + 24、321 字节为 128 + 128 + 65，同帧分段连续且字节无增删；长 ACK 重组、丢包/乱序后的半帧失效与下一完整帧恢复；旧默认视频迁移及自定义/空值保留；改地址码/端点后旧回包不能改变当前状态 |
+| 本地媒体 | SD/LOCAL 各自成功与失败；两路独立；PIP 大小不降低输出目标；A8 断流续录、柔克断流停止/手动重开；容量清理触发、停止重试和退出封装 |
 | Android 图库 | 同卷保存、失败重试、公开发布、切换存储卷；已发布媒体卸载后保留 |
 | 云台姿态/模式 | RC 接管后 Center/Tilt 90/Lock/Follow；重连同步、等待期间失联/切车；迟到 ACK 不执行旧动作 |
-| 双罗盘 | A8 按机载方式倒装：机体固定、朝北时分别右转/左转云台，核对方位角递增向东/递减向西、跨北连续及 W 左 E 右；跟随时核对机体与云台叠加，锁定时仅转基座核对世界方位保持、遥控转云台时核对目标可改变，并核对俯仰向上为正；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
+| 双罗盘 | A8 按机载方式倒装：机体固定、朝北时分别右转/左转云台，核对方位角递增向东/递减向西、跨北连续及 W 左 E 右；跟随时核对机体与云台叠加，锁定时仅转基座核对世界方位保持、遥控转云台时核对目标可改变，并核对俯仰向上为正；地图/A8/柔克主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
 | UniRC UART2/蓝牙路由 | 净配置默认启用 UART2；升级保留旧接口和禁用值；UniGCS 路由与数传组合匹配；UART2 `/dev/ttyHS2`、115200 8N1 无流控；关闭蓝牙/拒绝附近设备权限时 UART2 仍工作；UART2 打开失败、已开无字节、有字节无 SDK 帧、合法帧无 `0x42`、有效通道流的诊断；接口往返切换、前后台、禁用与重连时只有一个传输且旧回调不影响新会话 |
-| UniRC 动作 | 两种接口分别验证 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
+| UniRC 动作 | 两种接口分别验证 16 通道、A8 CH9 回中/反向、CH10 交替、CH7/8 复位及顶部联动；Rouke CH11 偏转、CH12 俯仰、CH14 单次回中及方向反转；验证归中、越界、350 ms 断流、后台/禁用和配置切换停转，抓包确认使用 53022 而非 MT11 0x07 |
+| Rouke 运动边界与失联保护 | 向厂商确认速度整数的单位、范围、正负方向、绝对角参考系和零速含义；分别验证 SDK 通道断流、UDP 到 AI 盒子完全断网、AI 盒子到负载断链后的设备停转保护。地面站只能尽力发送零速，网络断开后不能保证送达；设备侧必须实际验证超时停转行为，不能从主机 watchdog 推断硬件已停止 |
 | UniRC 图传 | Bluetooth/UART2 上 1 Hz 单份 `0x44` 查询与 20 Hz 通道流并行；核对实际 CTRL/载荷及负质量编码；强度 0/20/40/60/80/100、质量 -15/4/5/9/10/30、越界帧拒绝；3 s 无回包过期、后台/禁用/接口切换/断线立即失效、恢复刷新；仅有 `0x44` 时通道动作仍超时停止；有 `0x42` 无 `0x44` 时通道保持而图传过期；无飞控连接或通信丢失时入口隐藏、通信恢复后显示于云台图标左侧，SDK 后台查询仍独立运行；详情质量括号值随 SDK 更新，同档变化仍刷新、失效仅显示“未获取”；深浅主题、窄屏与大字号下两个标题保持单行，100% 与“强（30）”“弱（-15）”等完整质量文字实际字号一致且无裁切 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |

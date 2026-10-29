@@ -1,5 +1,8 @@
 message(STATUS "QGC: Adding Custom Plugin")
 
+include(CustomMavlink)
+qgc_enable_rouke_mavlink()
+
 set_property(DIRECTORY ${CMAKE_SOURCE_DIR}
     APPEND PROPERTY COMPILE_DEFINITIONS
     QGC_CUSTOM_BUILD
@@ -366,6 +369,10 @@ file(GLOB_RECURSE GIMBAL_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal/*.h
 )
 
+# This product profile uses Rouke over MAVLink. Keep the previous backend and
+# its regression fixtures in source history without linking its UDP SDK.
+list(FILTER GIMBAL_SOURCES EXCLUDE REGEX "/Mt11[^/]*\\.(cc|h)$")
+
 file(GLOB_RECURSE COMMS_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms/*.h
@@ -434,6 +441,64 @@ set(CUSTOM_INCLUDE_DIRECTORIES
 if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     enable_testing()
+
+    qt_add_executable(RoukeProtocolTest
+        test/Gimbal/RoukeProtocolTest.cc
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukeProtocolTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal)
+    target_link_libraries(RoukeProtocolTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME RoukeProtocolTest COMMAND $<TARGET_FILE:RoukeProtocolTest>)
+    add_custom_target(check_rouke_protocol
+        COMMAND $<TARGET_FILE:RoukeProtocolTest>
+        DEPENDS RoukeProtocolTest
+    )
+
+    add_executable(RoukeMavlinkTest test/MAVLink/RoukeMavlinkTest.cc)
+    target_include_directories(RoukeMavlinkTest BEFORE PRIVATE
+        ${QGC_ROUKE_MAVLINK_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/src/MAVLink
+    )
+    add_test(NAME RoukeMavlinkTest COMMAND $<TARGET_FILE:RoukeMavlinkTest>)
+
+    qt_add_executable(RoukePayloadControllerTest
+        test/Gimbal/RoukePayloadControllerTest.cc
+        src/Gimbal/RoukePayloadController.cc
+        src/Gimbal/RoukePayloadController.h
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukePayloadControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/RoukeStubs
+        ${QGC_ROUKE_MAVLINK_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(RoukePayloadControllerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME RoukePayloadControllerTest COMMAND $<TARGET_FILE:RoukePayloadControllerTest>)
+    qt_add_executable(RoukeGimbalControllerTest
+        test/Gimbal/RoukeGimbalControllerTest.cc
+        src/Gimbal/RoukeGimbalController.cc
+        src/Gimbal/RoukeGimbalController.h
+        src/Gimbal/RoukePayloadController.cc
+        src/Gimbal/RoukePayloadController.h
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukeGimbalControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/RoukeStubs
+        ${QGC_ROUKE_MAVLINK_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(RoukeGimbalControllerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME RoukeGimbalControllerTest COMMAND $<TARGET_FILE:RoukeGimbalControllerTest>)
+    add_custom_target(check_rouke_payload
+        COMMAND $<TARGET_FILE:RoukeMavlinkTest>
+        COMMAND $<TARGET_FILE:RoukeProtocolTest>
+        COMMAND $<TARGET_FILE:RoukePayloadControllerTest>
+        COMMAND $<TARGET_FILE:RoukeGimbalControllerTest>
+        DEPENDS RoukeMavlinkTest RoukeProtocolTest RoukePayloadControllerTest RoukeGimbalControllerTest
+    )
     qt_add_executable(A8RtspRecoveryPolicyTest
         test/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicyTest.cc
         src/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicy.cc

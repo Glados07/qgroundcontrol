@@ -35,7 +35,7 @@
         <file alias="QGroundControl/FlightDisplay/FlyViewToolStripActionList.qml">src/FlightDisplay/FlyViewToolStripActionList.qml</file>
         <file alias="QGroundControl/FlightDisplay/FlyViewTopRightColumnLayout.qml">src/FlightDisplay/FlyViewTopRightColumnLayout.qml</file>
         <file alias="QGroundControl/FlightDisplay/GimbalCameraControl.qml">src/FlightDisplay/GimbalCameraControl.qml</file>
-        <file alias="QGroundControl/FlightDisplay/MT11CameraControl.qml">src/FlightDisplay/MT11CameraControl.qml</file>
+        <file alias="QGroundControl/FlightDisplay/RoukeCameraControl.qml">src/FlightDisplay/RoukeCameraControl.qml</file>
         <file alias="QGroundControl/FlightDisplay/GimbalZoomControl.qml">src/FlightDisplay/GimbalZoomControl.qml</file>
     </qresource>
 

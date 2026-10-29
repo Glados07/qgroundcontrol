@@ -438,8 +438,8 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
-        <source>Video 1 and Video 2 are generic RTSP inputs; camera SDK controls are configured separately.</source>
-        <translation>视频1和视频2为通用RTSP输入；相机SDK控制需单独配置。</translation>
+        <source>Set video stream addresses here. Configure camera controls under Fly View settings.</source>
+        <translation>在此设置视频流地址，相机控制请在“飞行视图”设置中配置。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
@@ -448,13 +448,13 @@
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
-        <source>RTSP URL 2</source>
-        <translation>RTSP地址2</translation>
+        <source>RTSP URL 2 (Rouke)</source>
+        <translation>RTSP 地址2（Rouke）</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>RTSP URL 2 uses an independent receiver. Leave it empty to disable the second video window.</source>
-        <translation>RTSP地址2使用独立接收器，留空可禁用第二个视频窗口。</translation>
+        <source>Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.</source>
+        <translation>视频2显示 Rouke 负载画面，地址留空可关闭第二路视频。</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
@@ -528,6 +528,10 @@
         <location filename="../src/FlightDisplay/FlyViewTopRightColumnLayout.qml" line="173"/>
         <source>MT11</source>
         <translation>MT11</translation>
+    </message>
+    <message>
+        <source>Rouke</source>
+        <translation>Rouke</translation>
     </message>
 </context>
 <context>
@@ -620,6 +624,54 @@
         <location filename="../src/UI/AppSettings/GimbalControlSettingsGroup.qml" line="184"/>
         <source>UniPod MT11 Gimbal Camera</source>
         <translation>UniPod MT11云台相机</translation>
+    </message>
+    <message>
+        <source>Rouke</source>
+        <translation>Rouke</translation>
+    </message>
+    <message>
+        <source>Payload Address</source>
+        <translation>负载地址</translation>
+    </message>
+    <message>
+        <source>AI Box UDP Host</source>
+        <translation>AI 盒子 UDP 地址</translation>
+    </message>
+    <message>
+        <source>AI Box UDP Port</source>
+        <translation>AI 盒子 UDP 端口</translation>
+    </message>
+    <message>
+        <source>Local UDP Port (0: automatic)</source>
+        <translation>本地 UDP 端口（0：自动）</translation>
+    </message>
+    <message>
+        <source>Payload address defaults to 0. Set -1 to disable commands. Configure the Rouke stream under Video settings, RTSP URL 2.</source>
+        <translation>负载地址默认为 0，设为 -1 可禁用控制命令。Rouke 取流地址请在“视频”设置的 RTSP 地址2中配置。</translation>
+    </message>
+    <message>
+        <source>CH11 controls yaw, CH12 controls pitch, and CH14 centers the Rouke gimbal. Center both sticks before operating; release CH14 before pressing it again.</source>
+        <translation>CH11 控制偏转、CH12 控制俯仰，CH14 控制 Rouke 云台回中。操作前先将双轴归中；CH14 需释放后再次按下。</translation>
+    </message>
+    <message>
+        <source>Maximum Yaw Speed (protocol value)</source>
+        <translation>最大偏转速度（协议值）</translation>
+    </message>
+    <message>
+        <source>Maximum Pitch Speed (protocol value)</source>
+        <translation>最大俯仰速度（协议值）</translation>
+    </message>
+    <message>
+        <source>Reverse CH11 yaw direction</source>
+        <translation>反转 CH11 偏转方向</translation>
+    </message>
+    <message>
+        <source>Reverse CH12 pitch direction</source>
+        <translation>反转 CH12 俯仰方向</translation>
+    </message>
+    <message>
+        <source>The protocol does not specify speed units or limits. Use values confirmed by the payload vendor.</source>
+        <translation>协议未注明速度单位及范围，请按负载厂商确认值配置。</translation>
     </message>
 </context>
 <context>
@@ -1167,6 +1219,167 @@
     <message>
         <source>Weak</source>
         <translation>弱</translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraControl</name>
+    <message>
+        <source>Waiting for payload</source>
+        <translation>等待负载回执</translation>
+    </message>
+    <message>
+        <source>Rouke connected</source>
+        <translation>Rouke 已响应</translation>
+    </message>
+    <message>
+        <source>Awaiting payload response</source>
+        <translation>等待负载响应</translation>
+    </message>
+    <message>
+        <source>Payload control unavailable</source>
+        <translation>负载控制不可用</translation>
+    </message>
+    <message>
+        <source>Focus</source>
+        <translation>对焦</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>回中</translation>
+    </message>
+    <message>
+        <source>Take Photo</source>
+        <translation>拍照</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>录像</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>SD: %1 · LOCAL: %2</source>
+        <translation>SD：%1 · 本地：%2</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>Recording</source>
+        <translation>录像中</translation>
+    </message>
+    <message>
+        <source>Stopped</source>
+        <translation>已停止</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation>处理中</translation>
+    </message>
+    <message>
+        <source>Photos: SD %1 / LOCAL %2</source>
+        <translation>照片：SD %1 / 本地 %2</translation>
+    </message>
+</context>
+<context>
+    <name>RoukePayloadController</name>
+    <message>
+        <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
+        <translation>Rouke 速度控制要求偏转和俯仰为整数协议值，滚转为 0。</translation>
+    </message>
+    <message>
+        <source>Set a valid Rouke IPv4 address and UDP port.</source>
+        <translation>请设置有效的 Rouke IPv4 地址和 UDP 端口。</translation>
+    </message>
+    <message>
+        <source>Cannot bind the Rouke UDP socket: %1</source>
+        <translation>无法绑定 Rouke UDP 端口：%1</translation>
+    </message>
+    <message>
+        <source>Set the payload address supplied by the AI-box vendor before sending controls.</source>
+        <translation>发送控制命令前，请设置 AI 盒子厂家提供的负载地址。</translation>
+    </message>
+    <message>
+        <source>Rouke controls need an enabled UDP endpoint and a configured payload address.</source>
+        <translation>Rouke 控制需要启用 UDP 通信并配置负载地址。</translation>
+    </message>
+    <message>
+        <source>Wait for the pending Rouke command acknowledgement.</source>
+        <translation>请等待当前 Rouke 命令的回执。</translation>
+    </message>
+    <message>
+        <source>Failed to send Rouke fragment %1/%2: %3. The command was not fully sent.</source>
+        <translation>Rouke 第 %1/%2 个分片发送失败：%3。命令尚未完整发出。</translation>
+    </message>
+    <message>
+        <source>Rouke view must be LR1 (4) or OV2735 (5).</source>
+        <translation>Rouke 视角必须为 LR1（4）或 OV2735（5）。</translation>
+    </message>
+    <message>
+        <source>Rouke rejected command %1.</source>
+        <translation>Rouke 拒绝执行命令 %1。</translation>
+    </message>
+    <message>
+        <source>No acknowledgement for Rouke command %1; device state is unknown.</source>
+        <translation>Rouke 命令 %1 未收到回执，设备状态未知。</translation>
+    </message>
+    <message>
+        <source>Rouke acknowledged %1 after an earlier timeout or partial send. Without a transaction ID, device state remains unknown until a new endpoint session.</source>
+        <translation>Rouke 命令 %1 曾超时或未完整发出。由于回执不含事务编号，无法区分迟到回执；新建通信会话前，设备状态保持未知。</translation>
+    </message>
+</context>
+<context>
+    <name>RoukeControlManager</name>
+    <message>
+        <source>A Rouke local photo is still being processed.</source>
+        <translation>上一张 Rouke 本地照片仍在处理中。</translation>
+    </message>
+    <message>
+        <source>Failed to capture the Rouke local video frame.</source>
+        <translation>Rouke 本地视频截图失败。</translation>
+    </message>
+    <message>
+        <source>Failed to save the Rouke local video frame.</source>
+        <translation>Rouke 本地照片保存失败。</translation>
+    </message>
+    <message>
+        <source>Failed to start Rouke local video recording.</source>
+        <translation>Rouke 本地录像启动失败。</translation>
+    </message>
+    <message>
+        <source>No decoded Rouke video frame is available for a local photo.</source>
+        <translation>尚无已解码的 Rouke 视频画面，无法本地拍照。</translation>
+    </message>
+    <message>
+        <source>Rouke local recording stopped because its video stream ended.</source>
+        <translation>Rouke 视频流已结束，本地录像停止。</translation>
+    </message>
+    <message>
+        <source>The Rouke video receiver was detached during local recording.</source>
+        <translation>Rouke 本地录像期间视频接收器已释放。</translation>
+    </message>
+    <message>
+        <source>The configured local video format is invalid.</source>
+        <translation>本地录像格式配置无效。</translation>
+    </message>
+    <message>
+        <source>The local photo save path is unavailable or not writable.</source>
+        <translation>本地照片保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <source>The local video save path is unavailable or not writable.</source>
+        <translation>本地录像保存路径不可用或不可写。</translation>
+    </message>
+    <message>
+        <source>Timed out starting Rouke local video recording.</source>
+        <translation>Rouke 本地录像启动超时。</translation>
+    </message>
+    <message>
+        <source>Timed out stopping Rouke local video recording.</source>
+        <translation>Rouke 本地录像停止超时。</translation>
     </message>
 </context>
 </TS>

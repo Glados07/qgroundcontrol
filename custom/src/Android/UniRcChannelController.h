@@ -23,7 +23,7 @@
 class GimbalCenterCoordinator;
 class GimbalControlManager;
 class GimbalControlSettings;
-class Mt11ControlManager;
+class RoukeControlManager;
 class UniRcSerialPort;
 
 Q_DECLARE_LOGGING_CATEGORY(UniRcChannelLog)
@@ -48,7 +48,7 @@ public:
     explicit UniRcChannelController(GimbalControlSettings *settings,
                                     GimbalControlManager *gimbalControlManager,
                                     GimbalCenterCoordinator *gimbalCenterCoordinator,
-                                    Mt11ControlManager *mt11ControlManager,
+                                    RoukeControlManager *roukeControlManager,
                                     QObject *parent = nullptr);
     ~UniRcChannelController() override;
 
@@ -142,7 +142,7 @@ private:
     QPointer<GimbalControlSettings> _settings;
     QPointer<GimbalControlManager> _gimbalControlManager;
     QPointer<GimbalCenterCoordinator> _gimbalCenterCoordinator;
-    QPointer<Mt11ControlManager> _mt11ControlManager;
+    QPointer<RoukeControlManager> _roukeControlManager;
     QBluetoothSocket *_socket = nullptr;
     UniRcSerialPort *_uart = nullptr;
     UniRcProtocol::StreamParser _parser;

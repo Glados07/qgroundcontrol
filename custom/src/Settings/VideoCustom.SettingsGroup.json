@@ -7,7 +7,7 @@
             "shortDesc": "Secondary RTSP video URL",
             "longDesc": "Feeds the second independent video window. Leave empty to disable the second video stream.",
             "type": "string",
-            "default": "rtsp://192.168.144.24:8554/video1"
+            "default": "rtsp://192.168.144.100:8554/live"
         }
     ]
 }
