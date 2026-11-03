@@ -2,16 +2,14 @@ cmake_minimum_required(VERSION 3.25)
 project(RoukeMavlinkStandalone LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(ROUKE_UPSTREAM_MAVLINK "" CACHE PATH "QGC pinned c_library_v2 checkout")
+set(ROUKE_UPSTREAM_MAVLINK "" CACHE PATH "Team c_library_v2 checkout containing message 53022 in all")
 if(NOT EXISTS "${ROUKE_UPSTREAM_MAVLINK}/all/all.h")
-    message(FATAL_ERROR "Set ROUKE_UPSTREAM_MAVLINK to the QGC pinned c_library_v2 checkout")
+    message(FATAL_ERROR "Set ROUKE_UPSTREAM_MAVLINK to the team c_library_v2 checkout used by QGC")
 endif()
-include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/CustomMavlink.cmake")
-qgc_prepare_rouke_mavlink("${ROUKE_UPSTREAM_MAVLINK}" "${CMAKE_CURRENT_BINARY_DIR}/mavlink" _rouke_include)
 add_executable(RoukeMavlinkTest RoukeMavlinkTest.cc)
 target_include_directories(RoukeMavlinkTest BEFORE PRIVATE
-    "${_rouke_include}"
-    "${CMAKE_CURRENT_LIST_DIR}/../../../src/MAVLink"
-    "${ROUKE_UPSTREAM_MAVLINK}")
+    "${ROUKE_UPSTREAM_MAVLINK}"
+    "${ROUKE_UPSTREAM_MAVLINK}/all"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../src/MAVLink")
 enable_testing()
 add_test(NAME RoukeMavlinkTest COMMAND RoukeMavlinkTest)
