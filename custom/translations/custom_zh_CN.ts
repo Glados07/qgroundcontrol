@@ -1406,17 +1406,4 @@
         <translation>紧急电压(立刻降落)</translation>
     </message>
 </context>
-<context>
-    <name>PowerSystemIndicatorPage</name>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="34"/>
-        <source>Power Status</source>
-        <translation>电源状态</translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="42"/>
-        <source>Fuel Cell</source>
-        <translation>燃料电池</translation>
-    </message>
-</context>
 </TS>

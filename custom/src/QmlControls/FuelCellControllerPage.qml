@@ -11,8 +11,6 @@ ToolIndicatorPage {
     id: root
 
     required property var manager
-    property real contentWidth: Math.min(ScreenTools.defaultFontPixelWidth * 44,
-                                         mainWindow.width - ScreenTools.defaultFontPixelWidth * 4)
     readonly property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var _confirmationDialog: null
 
@@ -127,7 +125,7 @@ ToolIndicatorPage {
     contentComponent: Component {
         // Bound the Loader's implicit width; long wrapped text must not widen the pane.
         Item {
-            implicitWidth: root.contentWidth
+            implicitWidth: ScreenTools.defaultFontPixelWidth * 44
             implicitHeight: content.implicitHeight
             ColumnLayout {
                 id: content

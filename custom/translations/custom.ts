@@ -1382,17 +1382,4 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
-<context>
-    <name>PowerSystemIndicatorPage</name>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="34"/>
-        <source>Power Status</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="42"/>
-        <source>Fuel Cell</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
 </TS>

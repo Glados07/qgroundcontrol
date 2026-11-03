@@ -15,16 +15,11 @@ Item {
     readonly property var manager: QGroundControl.corePlugin.fuelCellController
     readonly property var batteryModel: battery
     property bool showIndicator: battery.vehicleAvailable
-    property int selectedTab: 0
     readonly property bool fcsAlert: Boolean(manager && manager.telemetryFresh
                                             && (manager.connectionState === FuelCellControllerManager.Disconnected
                                                 || (manager.deviceDataValid && manager.fcsState >= 9 && manager.fcsState <= 12)))
 
     PowerSystemBattery { id: battery }
-    Connections {
-        target: battery
-        function onVehicleChanged() { control.selectedTab = 0 }
-    }
 
     Row {
         id: indicatorRow

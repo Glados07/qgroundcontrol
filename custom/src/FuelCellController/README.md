@@ -7,7 +7,7 @@ QML 入口为 `QGroundControl.corePlugin.fuelCellController`。
 
 连接活动飞控后，顶部显示合并的 PowerSystemIndicator：FCS 图形，右侧为 PMU 实测母线电压和功率。
 主图标沿用电池电压状态配色；仅 FCS 断连、故障关机或急停状态显示红色角标。
-点击后宽屏左右显示电池详情/四项低电量配置和 FCS 详情，窄屏使用标签页，同一车辆记住最近选择。
+点击后始终左右显示电池详情/四项低电量配置和 FCS 详情，不根据窗口宽度切换布局。
 参数尚未就绪只影响配置区；飞控失联后电池旧测量值显示占位、配置禁用，FCS 沿用后端失联处理。
 FCS 区显示连接状态、实际状态、锂电池 SOC、飞控下发的母线电压/电流/请求功率及当前指令。
 左侧测量值和右侧下发值各自读取原有来源，不互相替代；PMU 回退时二者可能不同。
@@ -18,7 +18,7 @@ FCS 区显示连接状态、实际状态、锂电池 SOC、飞控下发的母线
 界面不重发、不自动发送指令；FCS 急停不调用飞控锁定或四旋翼电机停转功能。
 
 - `PowerSystemIndicator.qml`：合并顶部入口、电源数值和 FCS 红角标。
-- `PowerSystemIndicatorPage.qml`：左右栏/标签页布局。
+- `PowerSystemIndicatorPage.qml`：固定左右栏布局。
 - `PowerSystemBattery.qml`：常驻电池数据、配色及按需加载的详情和配置。
 - `FuelCellControllerPage.qml`：详情、操作确认和结果反馈。
 - `Custom.FuelCell.FuelCellControllerManager`：只暴露后端枚举，实例仍由 `CustomPlugin` 管理。
