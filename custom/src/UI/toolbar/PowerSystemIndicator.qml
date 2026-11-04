@@ -102,9 +102,15 @@ Item {
             }
         }
     }
-    readonly property bool fcsAlert: Boolean(manager && manager.telemetryFresh
-                                            && (manager.connectionState === FuelCellControllerManager.Disconnected
-                                                || (manager.deviceDataValid && manager.fcsState >= 9 && manager.fcsState <= 12)))
+    // 0: none, 1: warning, 2: critical. Critical states take priority over current limiting.
+    readonly property int fcsAlertSeverity: {
+        if (!manager || !manager.telemetryFresh) return 0
+        if (manager.connectionState === FuelCellControllerManager.Disconnected) return 2
+        if (!manager.deviceDataValid) return 0
+        if (manager.fcsState >= 9 && manager.fcsState <= 12) return 2
+        if (manager.fcsState === 13) return 1
+        return 0
+    }
     readonly property bool showIndicator: batteryModel.vehicleAvailable
 
     Row {
@@ -127,8 +133,9 @@ Item {
                 width: ScreenTools.defaultFontPixelHeight / 2
                 height: width
                 radius: width / 2
-                visible: control.fcsAlert
-                color: QGroundControl.globalPalette.colorRed
+                visible: control.fcsAlertSeverity > 0
+                color: control.fcsAlertSeverity === 2 ? QGroundControl.globalPalette.colorRed
+                                                      : QGroundControl.globalPalette.colorOrange
                 border.color: QGroundControl.globalPalette.window
             }
         }

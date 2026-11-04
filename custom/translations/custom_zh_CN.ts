@@ -1194,6 +1194,16 @@
         <translation>急停完成</translation>
     </message>
     <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="30"/>
+        <source>Output current limited</source>
+        <translation>输出电流受限</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="72"/>
+        <source>Unknown state (%1)</source>
+        <translation>未知状态 (%1)</translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="26"/>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="198"/>
         <source>FCS Off</source>
@@ -1300,6 +1310,11 @@
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="153"/>
         <source>Lithium battery SOC</source>
         <translation>锂电池 SOC</translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="291"/>
+        <source>DCDC output current</source>
+        <translation>DCDC 输出电流</translation>
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="160"/>

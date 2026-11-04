@@ -27,6 +27,7 @@ class FuelCellControllerManager final : public QObject
     Q_PROPERTY(double busCurrent READ busCurrent NOTIFY statusChanged)
     Q_PROPERTY(double requestedPower READ requestedPower NOTIFY statusChanged)
     Q_PROPERTY(double socPercent READ socPercent NOTIFY statusChanged)
+    Q_PROPERTY(double dcdcOutputCurrent READ dcdcOutputCurrent NOTIFY statusChanged)
     Q_PROPERTY(int fcsState READ fcsState NOTIFY statusChanged)
     Q_PROPERTY(int acceptedCommand READ acceptedCommand NOTIFY statusChanged)
     Q_PROPERTY(bool canControl READ canControl NOTIFY statusChanged)
@@ -59,6 +60,7 @@ public:
     double busCurrent() const;
     double requestedPower() const;
     double socPercent() const;
+    double dcdcOutputCurrent() const;
     int fcsState() const;
     int acceptedCommand() const;
     bool canControl() const;

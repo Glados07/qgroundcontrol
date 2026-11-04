@@ -1170,6 +1170,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="30"/>
+        <source>Output current limited</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="72"/>
+        <source>Unknown state (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="26"/>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="198"/>
         <source>FCS Off</source>
@@ -1275,6 +1285,11 @@
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="153"/>
         <source>Lithium battery SOC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="291"/>
+        <source>DCDC output current</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

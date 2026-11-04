@@ -1,6 +1,6 @@
 # PowerSystemIndicator 测试计划与记录
 
-更新时间：2026-11-03。适用仓库：`/home/glados/app/qgroundcontrol`。
+更新时间：2026-11-04。适用仓库：`/home/glados/app/qgroundcontrol`。
 
 本文面向测试人员，集中保存 PowerSystemIndicator 的测试准备、测试用例、执行结果和证据边界。用户操作说明见 [README.md](README.md)，开发设计与变更记录见 [DEVELOP.md](DEVELOP.md)，FuelCellController 后端接口见 [后端 README](../../src/FuelCellController/README.md)。
 
@@ -70,8 +70,8 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- |
 | CAN2 控制帧 | 扩展 ID `0x19AFC002`，约每 100 ms 一帧，Life 每次发送推进并按 0～255 回绕 |
 | CAN2 控制负载 | Byte 0～1 电压、2～3 电流、4～5 功率，大端序；Byte 6 低 4 位为指令，Byte 7 为 Life |
-| CAN2 状态帧 | 扩展 ID `0x19AFC001`；Byte 0 低 4 位为 FCS 状态，Byte 1～2 为大端 SOC，Byte 7 为 Life |
-| CAN 字段比例 | 电压 0.1 V/位，电流 0.1 A/位，功率 1 W/位，SOC 0.1%/位 |
+| CAN2 状态帧 | 扩展 ID `0x19AFC001`；Byte 0 低 4 位为 FCS 状态，Byte 1～2 为大端 SOC，Byte 3～4 为大端 DCDC 输出电流，Byte 7 为 Life |
+| CAN 字段比例 | 电压 0.1 V/位，电流及 DCDC 输出电流 0.1 A/位，功率 1 W/位，SOC 0.1%/位 |
 | FCS CAN 状态有效期 | 自最后接受的新鲜状态起约 500 ms；持续重复 Life 不刷新有效期 |
 | PX4 状态发布 | 模块正常运行时约每 200 ms 发布，即使没有连接 FCS；连接变化和请求处理可额外触发发布 |
 | QGC FCS 遥测有效期 | `FUEL_CELL_STATUS` 无更新满 1 秒后无效；不等于 PX4 已判断 CAN2 断连 |
@@ -89,7 +89,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | B01 | 连接活动飞控，等待初始化遮罩结束，观察顶部并打开入口 | 显示唯一 PowerSystemIndicator，图形旁为 `— V` / `— W`，主图标中性色；无 PMU、Battery Source Disabled 不隐藏入口 | 待测 |
-| B02 | 查看左右详情及 PX4 `status` | 电池无数据时显示占位；驱动已启动且 MAVLink 状态正常到达时，右侧为 Never connected，SOC/设备状态无效，三个下发值为 0；若没有收到状态则应显示 Waiting for status，不能伪装成已连接 | 待测 |
+| B02 | 查看左右详情及 PX4 `status` | 电池无数据时显示占位；驱动已启动且 MAVLink 状态正常到达时，右侧为 Never connected，SOC/设备状态/DCDC 电流无效，三个下发值为 0；若没有收到状态则应显示 Waiting for status，不能伪装成已连接 | 待测 |
 | B03 | 查看四项配置和三个 FCS 按钮 | 参数齐全、链路正常时四项配置可编辑，不依赖电池采样；FCS 未连接时三个按钮均禁用，包括急停 | 待测 |
 | B04 | 关闭/打开面板，调整正常工作窗口尺寸；移除活动车辆 | 始终显示固定左右栏；上述界面动作不产生新的 FCS 控制请求；活动车辆移除后入口消失 | 待测 |
 
@@ -117,15 +117,16 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
-| F01 | 首次收到有效 CAN2 状态帧，对比抓包、驱动和 QGC | 驱动由 never connected 转 connected，Device link 为 OK；MAVLink connection_state 为 1，QGC 显示 Connected，SOC/实际状态正确；确认实际状态周期满足 500 ms 有效期 | 待测 |
-| F02 | 连续观察状态及 SOC；仿真器可补测 SOC 0%、100% 和中间小数 | 字节序及 0.1% 比例正确；0% 是有效值。FCS 状态来自设备反馈，不随用户按下按钮直接跳到完成 | 待测 |
-| F03 | 正常状态及状态 9/10、11/12 分别观察顶部 | 正常、普通停机完成不显示角标；新鲜有效的故障关机或急停状态显示红角标，主图标仍由电池状态决定。故障/急停状态覆盖可用仿真器完成并注明 | 待测 |
+| F01 | 首次收到有效 CAN2 状态帧，对比抓包、驱动和 QGC | 驱动由 never connected 转 connected，Device link 为 OK；MAVLink connection_state 为 1，QGC 显示 Connected，SOC/实际状态/DCDC 电流正确；确认实际状态周期满足 500 ms 有效期 | 待测 |
+| F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.0 A/6553.5 A 和中间值 | 字节序、0.1% 与 0.1 A 比例正确；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控 Bus current | 待测 |
+| F03 | 正常状态、9/10、11/12、13、14/15 分别观察顶部和详情 | 故障关机/急停显示红角标；13 显示“输出电流受限”、橙色角标和橙色文字；14/15 显示带原始码的未知状态且无角标。三者均不降低控制权限，主图标仍由电池状态决定 | 待测 |
 | F04 | 在允许控制时点击开机/关机/急停，然后取消确认 | 对话框标明指令和当前车辆；取消不发送新的控制请求、不改 PX4 保存值 | 待测 |
 | F05 | 确认 FCS On，记录整个链路 | 控制消息目标和编号正确；PX4 保存 command=1，CAN2 周期发送 1，母线值仍由 PMU 决定；QGC 区分“飞控已接受”与设备实际启动/运行进度 | 待测 |
 | F06 | 确认 FCS Off，记录整个链路 | PX4 保存 command=0，CAN2 持续发送 0；设备按协议返回停机状态，QGC 显示实际进度，不以确认消息直接认定停机完成 | 待测 |
 | F07 | 在允许的台架状态确认 FCS Emergency Stop | command=2 正确下发，实际反馈可见急停进度/完成；不调用飞控锁定、飞行终止或电机急停命令 | 待测 |
 | F08 | 在可控延迟确认条件下发普通请求，再确认急停 | 普通请求等待时急停仍可用；急停使用新编号，旧请求停止重试，迟到旧确认不结束急停请求，不重复抢占同一待确认急停 | 待测 |
 | F09 | 保持指定指令，打开/关闭详情、调整窗口 | 不产生额外 MAVLink 控制请求；CAN2 继续周期发送已保存指令。母线值无 QGC 编辑入口 | 待测 |
+| F10 | 在安全台架条件允许时使真实 FCS 进入限流，并与注入结果对照 | 真实设备状态和 DCDC 电流与 CAN/PX4/QGC 一致；不得为测试强行制造不安全或影响设备寿命的工况，条件不具备时记录“阻塞” | 待测 |
 
 若真实设备正常状态周期超过 500 ms，应记录驱动有效期与设备周期不匹配，不直接归因于接线问题。真实状态可能在两次遥测之间跨过短暂阶段，不要求 QGC 必须捕获每一个瞬态码。
 
@@ -135,7 +136,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | R01 | PMU 正常采样后停止其数据；分别覆盖发布 connected=false 和静默无新采样 | 前者按断连消息回退，后者自最后有效采样满 10 秒回退；保留最后有效编码电压，功率 3000 W，电流由该电压计算；指令不变。只能实现一种时，另一种保留待测 | 待测 |
 | R02 | 在 R01 中核对 PX4、CAN2、QGC 两侧，再恢复 PMU | PX4 status 显示 fallback，CAN2/右侧反映回退值；左侧仍独立使用 BATTERY_STATUS，可能占位或保持缓存，不被右侧覆盖。收到新有效采样后恢复 normal 和正常母线值，不自动改变启停指令 | 待测 |
-| R03 | 在曾连接 FCS 后停止 CAN2 状态发送，保持 PMU/MAVLink 正常 | 超过 500 ms 无接受的新状态后，ever connected 保持，Device link 变 error occured，connection_state=2；QGC 显示 Disconnected、红角标，SOC/实际状态无效，控制禁用；电池区继续正常 | 待测 |
+| R03 | 在曾连接 FCS 后停止 CAN2 状态发送，保持 PMU/MAVLink 正常 | 超过 500 ms 无接受的新状态后，ever connected 保持，Device link 变 error occured，connection_state=2；QGC 显示 Disconnected、红角标，SOC/实际状态/DCDC 电流无效，控制禁用；电池区继续正常 | 待测 |
 | R04 | 恢复 CAN2，先重复最后 Life，再发送已变化的有效 Life | 重复 Life 不恢复连接；已变化的有效状态恢复 OK/Connected 和有效设备值；不自动产生新的 QGC 控制请求。PX4 原保存指令仍按 CAN 周期发送，不把“无新请求”理解成停止 CAN 发送 | 待测 |
 | R05 | 仅屏蔽下行 FUEL_CELL_STATUS，保持心跳及电池消息 | 满 1 秒后 QGC FCS 状态为 Unknown/telemetry expired，控制禁用，角标不显示；电池状态仍有效。此时不能显示为已确认 CAN2 断连；恢复状态消息后重新有效 | 待测 |
 | R06 | 中断整条 QGC—飞控通信，并恢复 | 若活动车辆保留，电池旧值变占位、图标中性、配置禁用，FCS 无效；若车辆被移除，入口消失。待确认请求结果未知；恢复后不重放请求，仅恢复心跳不能使缓存 FCS 状态重新新鲜 | 待测 |
@@ -150,7 +151,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | U01 | 在正常工作窗口下分别用中英文和目标字体设置打开详情 | 始终左电池右 FCS，中间有分隔线；长状态/结果在栏内换行并可纵向滚动；没有两处已删除的小字，顶部入口不重复 | 待测 |
 | U02 | 打开详情后关闭重开，再切换车辆 | 每次均显示完整双栏；换车关闭当前面板，旧参数编辑器不复用于新车辆；界面动作不发送指令。无第二车辆时换车分支记为阻塞 | 待测 |
-| U03 | 读取四项参数，逐项修改后回读，结束恢复原值 | 显示/写入对应真实飞控参数；沿用标准范围校验、逐项提交及重启提示，FCS 三个母线值保持只读 | 待测 |
+| U03 | 读取四项参数，逐项修改后回读，结束恢复原值 | 显示/写入对应真实飞控参数；沿用标准范围校验、逐项提交及重启提示，FCS 三个母线值和 DCDC 电流保持只读 | 待测 |
 | U04 | 制造非法文本编辑后关闭面板并重开；有条件时编辑期间切车 | 错误输入不写入，关闭后不残留全局校验锁定；旧编辑不写入新车。不要将“顺序不合理但各自仍在范围内”误当成标准 Fact 必然拒绝 | 待测 |
 | U05 | 在参数下载过程中打开详情；用匹配的测试固件/环境补测缺少某一参数 | 仅配置区等待或不可用；状态和 FCS 不被阻塞。参数恢复后重新可用，失联时配置禁用 | 待测 |
 | U06 | 台架可控电压或仿真数据跨越三个阈值，并核对等于阈值边界 | 严格 `<` 比较；颜色绿/黄/橙/红与 DEVELOP.md 一致，FCS 角标不覆盖主图标配色；结束恢复阈值，不为测试降低真实设备到不允许的电压 | 待测 |
@@ -163,7 +164,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | E01 | CAN Life 按 254、255、0、1 发送；重复 Life；在有效期内前跳/倒退 | 回绕正常；重复计入 duplicates，不更新状态或有效期；前跳 1～127 接受并按差值计 missed，差值 128～255 计 out of order 且拒绝；分别重建序列基线后测各分支 | 待测 |
 | E02 | 持续相同 Life 超过有效期，再改变 Life；另测设备重启后的 Life 重置 | 相同 Life 不能保持/恢复连接；超时后任意已变化 Life 可建立新基线，未超时的大倒退不应直接接受 | 待测 |
-| E03 | 注入错误 ID/标准帧、错误 DLC、状态 13～15、SOC 超过 1000 | 非目标帧忽略；目标格式/范围错误帧拒绝且错误计数增长；无效帧不改变业务状态或刷新有效期；SOC 1000 合法 | 待测 |
+| E03 | 注入错误 ID/标准帧、错误 DLC、状态 13～16、SOC 超过 1000 和 DCDC 原始值 0/65535 | 状态 13 和未知状态 14～15 均为有效遥测，16 被 QGC 拒绝；DCDC 全部 uint16 范围均有效；SOC 1000 合法而超范围值拒绝。无效消息不改变业务状态或刷新有效期 | 待测 |
 | E04 | 在受控电池发布源中给出无效值、负电流、重复/倒退时间戳，再给新有效采样 | 无效采样不覆盖母线值或延长有效期；超时回退，重复/倒退采样不解除回退；新有效采样恢复。若不能隔离 PMU 发布源，不向真实总线混发来伪造该测试 | 待测 |
 | E05 | 保持新鲜 FUEL_CELL_STATUS，但使确认编号暂不匹配当前请求 | 约 500 ms 间隔、同编号最多 3 次，约 2 秒后结果未知；不清零 PX4 指令，不等同于未执行 | 待测 |
 | E06 | 同一来源最近请求同编号同指令重发，再同编号换指令；另测非法指令/错误目标 | 同指令返回原结果、不重新应用；冲突指令拒绝；非法指令不支持；目标不匹配被忽略，不能用未收到确认当作“已拒绝” | 待测 |
@@ -482,3 +483,37 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 5. 使用离屏平台、软件渲染和独立临时配置启动新构建应用 6 秒，并筛查 PowerSystem、QQml、类型不可用、模块缺失、属性赋值及内嵌模型函数错误；没有匹配日志。筛查命令因 `rg` 无匹配返回 1，该返回值表示没有筛查到相关错误，不是应用自行退出 0，也不能替代详情页交互测试。
 
 本次未连接活动飞控，未实际打开详情抽屉，未执行真实参数编辑、FCS 控制、断开重连、Android 构建、完整 QGC 测试集或长时间运行测试。因此本次结果只能证明优化后的源码能够编译链接、无车辆启动未记录目标错误且既有后端测试通过，不能证明真实界面与设备交互已经完成运行时验收。
+
+### 15. 2026-11-04：FCS 限流状态与 DCDC 输出电流适配
+
+本次增加状态 13 的橙色告警呈现、原始状态 14～15 的未知码显示，并在 FuelCellControllerManager 和详情页中增加 DCDC 输出电流。实际执行如下：
+
+1. Linux Debug 桌面目标完整构建通过，退出码 0；QML 缓存生成、资源编译和最终应用链接均完成：
+
+   ```sh
+   CCACHE_DISABLE=1 QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/Qt/Tools/CMake/bin/cmake --build \
+     /home/glados/app/qgroundcontrol/build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl FuelCellControllerManagerTest --parallel 4
+   ```
+
+2. `FuelCellControllerManagerTest` 实际运行结果为 **33 passed、0 failed、0 skipped**。新增覆盖 DCDC 0/65535 原始值及无效期、状态 13～15 保持控制权限、状态 16 拒绝和只读属性：
+
+   ```sh
+   QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     build/Desktop_Qt_6_8_3-Debug/Debug/FuelCellControllerManagerTest -silent
+   ```
+
+3. 按已确认取舍，在 `/tmp/power-system-indicator-focused/` 创建了不纳入仓库的聚焦离屏 QML 工具。它直接加载生产 `PowerSystemIndicator.qml` 和 `PowerSystemIndicatorPage.qml`，但使用轻量 QGC/车辆替身；结果为 **6 passed、0 failed、0 skipped**，无 QML 警告。覆盖：
+
+   - 状态 13 的橙色文字与橙色告警级别；
+   - 故障/断连红色优先级及遥测过期清除角标；
+   - 状态 14～15 的原始码文字和无角标处理；
+   - DCDC `0.0 A`、`6553.5 A` 和无效占位格式。
+
+   该临时工具不是 CMake/CTest 目标，不属于可重复的仓库回归测试，也不代表真实 Vehicle、GPU 窗口或 MAVLink/CAN 联调已通过。
+
+4. 中文 TS 经 Qt 6.8.3 `lrelease` 生成 **267 条已完成翻译、0 条未完成翻译**。本次只增加 `Output current limited`、`Unknown state (%1)` 和 `DCDC output current` 三个源文本；全量 `lupdate` 会引入仓库既有未同步文本，因此未保留其无关改动。
+5. `git diff --check` 无输出。
+
+尚未执行：真实 PX4/FCS/PMU 联调、CAN/MAVLink 注入、真实限流工况、真实 GPU 窗口视觉检查、长时间运行和 Android 构建。F01～F03、F10、R03 及 E03 已更新为后续台架验收清单；真实限流只在设备和安全条件允许时执行，否则记录为阻塞。

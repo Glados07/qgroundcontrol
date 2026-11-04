@@ -21,12 +21,13 @@ ToolIndicatorPage {
     readonly property int _commandEmergencyStop: 2
     property var _confirmationDialog: null
 
-    // 顺序对应协议 FUEL_CELL_DEVICE_STATE 的 0～12，不能用控制指令代替实际状态。
+    // 顺序对应协议 FUEL_CELL_DEVICE_STATE 的 0～13，不能用控制指令代替实际状态。
     readonly property var _fcsStates: [
         qsTr("Powering on"), qsTr("Power on complete"), qsTr("Entering standby"), qsTr("Standby"),
         qsTr("Starting"), qsTr("Start complete"), qsTr("Running"), qsTr("Stopping"),
         qsTr("Stop complete"), qsTr("Fault shutdown in progress"), qsTr("Fault shutdown complete"),
-        qsTr("Emergency stop in progress"), qsTr("Emergency stop complete")
+        qsTr("Emergency stop in progress"), qsTr("Emergency stop complete"),
+        qsTr("Output current limited")
     ]
     readonly property var _commands: [qsTr("FCS Off"), qsTr("FCS On"), qsTr("FCS Emergency Stop")]
     readonly property string connectionText: {
@@ -64,6 +65,12 @@ ToolIndicatorPage {
     function formatValue(value, decimals, unit) {
         const numericValue = Number(value)
         return Number.isFinite(numericValue) ? numericValue.toFixed(decimals) + " " + unit : "—"
+    }
+
+    function fcsStateText(state) {
+        if (state >= 0 && state < _fcsStates.length) return _fcsStates[state]
+        if (state === 14 || state === 15) return qsTr("Unknown state (%1)").arg(state)
+        return "—"
     }
 
     function commandText(command) {
@@ -123,6 +130,7 @@ ToolIndicatorPage {
         id: field
         property string label
         property string labelText
+        property color labelTextColor: QGroundControl.globalPalette.text
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         implicitHeight: Math.max(nameLabel.implicitHeight, valueLabel.implicitHeight)
@@ -138,6 +146,7 @@ ToolIndicatorPage {
             anchors.right: parent.right
             width: Math.max(0, (field.width - ScreenTools.defaultFontPixelWidth * 2) * 0.55)
             text: field.labelText
+            color: field.labelTextColor
             wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignRight
         }
@@ -269,13 +278,18 @@ ToolIndicatorPage {
             }
             StatusField {
                 label: qsTr("FCS system status")
-                labelText: fuelCellPane.manager.fcsState >= 0
-                           && fuelCellPane.manager.fcsState < fuelCellPane.controller._fcsStates.length
-                           ? fuelCellPane.controller._fcsStates[fuelCellPane.manager.fcsState] : "—"
+                labelText: fuelCellPane.controller.fcsStateText(fuelCellPane.manager.fcsState)
+                labelTextColor: fuelCellPane.manager.fcsState === 13
+                                ? QGroundControl.globalPalette.colorOrange
+                                : QGroundControl.globalPalette.text
             }
             StatusField {
                 label: qsTr("Lithium battery SOC")
                 labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 1, "%")
+            }
+            StatusField {
+                label: qsTr("DCDC output current")
+                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 1, "A")
             }
         }
 

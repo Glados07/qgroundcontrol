@@ -23,6 +23,7 @@ mavlink_fuel_cell_status_t status(int connection = FUEL_CELL_CONNECTION_STATE_OK
     result.bus_current = 80;
     result.requested_power = 500;
     result.soc = 755;
+    result.dcdc_output_current = 123;
     result.device_state = FUEL_CELL_DEVICE_STATE_RUNNING;
     result.connection_state = connection;
     return result;
@@ -95,13 +96,15 @@ private slots:
         QCOMPARE(manager.connectionState(), Manager::Unknown);
         QVERIFY(std::isnan(manager.busVoltage()));
         QVERIFY(std::isnan(manager.socPercent()));
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         QCOMPARE(manager.fcsState(), -1);
         QCOMPARE(manager.acceptedCommand(), -1);
         QVERIFY(!manager.canControl());
         QVERIFY(!manager.canEmergencyStop());
         QVERIFY(!manager.requestEmergencyStopFcs(manager.sessionRevision()));
         QVERIFY(vehicle.sent.isEmpty());
-        for (const auto *name : {"busVoltage", "busCurrent", "requestedPower", "socPercent", "acceptedCommand"}) {
+        for (const auto *name : {"busVoltage", "busCurrent", "requestedPower", "socPercent",
+                                 "dcdcOutputCurrent", "acceptedCommand"}) {
             const int index = manager.metaObject()->indexOfProperty(name);
             QVERIFY(index >= 0);
             QVERIFY(!manager.metaObject()->property(index).isWritable());
@@ -123,9 +126,11 @@ private slots:
         QCOMPARE(manager.requestedPower(), 500.0);
         QVERIFY(!manager.deviceDataValid());
         QVERIFY(std::isnan(manager.socPercent()));
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         receive(vehicle, status());
         QCOMPARE(manager.connectionState(), Manager::Connected);
         QCOMPARE(manager.socPercent(), 75.5);
+        QCOMPARE(manager.dcdcOutputCurrent(), 12.3);
         QCOMPARE(manager.fcsState(), int(FUEL_CELL_DEVICE_STATE_RUNNING));
         QVERIFY(manager.canControl());
         QVERIFY(manager.canEmergencyStop());
@@ -134,6 +139,7 @@ private slots:
         QVERIFY(!manager.canControl());
         QVERIFY(!manager.canEmergencyStop());
         QCOMPARE(manager.fcsState(), -1);
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         receive(vehicle, status());
         QCOMPARE(manager.connectionState(), Manager::Connected);
         QVERIFY(vehicle.sent.isEmpty()); // Connecting or recovering never sends a command.
@@ -152,7 +158,7 @@ private slots:
         sample.soc = 1001;
         receive(vehicle, sample);
         sample = status();
-        sample.device_state = 13;
+        sample.device_state = 16;
         receive(vehicle, sample);
         sample = status();
         sample.connection_state = 3;
@@ -160,13 +166,60 @@ private slots:
         sample = status();
         sample.control_command = 3;
         receive(vehicle, sample);
+        sample = status(FUEL_CELL_CONNECTION_STATE_ERROR_OCCURRED);
+        sample.device_state = 16; // Raw device state is always a four-bit value, even when currently invalid.
+        receive(vehicle, sample);
         QVERIFY(!manager.telemetryAvailable());
         sample = {}; // Zero is real valid data when the device is connected.
         sample.connection_state = FUEL_CELL_CONNECTION_STATE_OK;
         receive(vehicle, sample);
         QCOMPARE(manager.socPercent(), 0.0);
         QCOMPARE(manager.busVoltage(), 0.0);
+        QCOMPARE(manager.dcdcOutputCurrent(), 0.0);
         QCOMPARE(manager.fcsState(), 0);
+    }
+
+    void definedAndUnknownRawDeviceStatesRemainUsable()
+    {
+        Vehicle vehicle;
+        bind(vehicle);
+        Manager manager;
+        manager._timer.stop();
+
+        for (int state : {int(FUEL_CELL_DEVICE_STATE_OUTPUT_CURRENT_LIMITED), 14, 15}) {
+            auto sample = status();
+            sample.device_state = static_cast<uint8_t>(state);
+            receive(vehicle, sample);
+            QCOMPARE(manager.fcsState(), state);
+            QCOMPARE(manager.dcdcOutputCurrent(), 12.3);
+            QVERIFY(manager.canControl());
+            QVERIFY(manager.canEmergencyStop());
+        }
+    }
+
+    void dcdcOutputCurrentSupportsFullWireRangeAndDeviceValidity()
+    {
+        Vehicle vehicle;
+        bind(vehicle);
+        Manager manager;
+        manager._timer.stop();
+
+        auto sample = status();
+        sample.dcdc_output_current = 0;
+        receive(vehicle, sample);
+        QCOMPARE(manager.dcdcOutputCurrent(), 0.0);
+
+        sample.dcdc_output_current = std::numeric_limits<uint16_t>::max();
+        receive(vehicle, sample);
+        QCOMPARE(manager.dcdcOutputCurrent(), 6553.5);
+
+        sample.connection_state = FUEL_CELL_CONNECTION_STATE_ERROR_OCCURRED;
+        receive(vehicle, sample);
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
+
+        sample.connection_state = FUEL_CELL_CONNECTION_STATE_NEVER_CONNECTED;
+        receive(vehicle, sample);
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
     }
 
     void controlWireMessages_data()
@@ -369,6 +422,7 @@ private slots:
         QCOMPARE(manager.requestState(), Manager::Unconfirmed);
         QVERIFY(std::isnan(manager.busVoltage()));
         QVERIFY(std::isnan(manager.socPercent()));
+        QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         QVERIFY(!manager.requestEmergencyStopFcs(manager.sessionRevision()));
         receive(vehicle, status());
         QVERIFY(manager.telemetryFresh());
