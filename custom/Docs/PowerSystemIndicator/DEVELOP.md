@@ -19,11 +19,11 @@
 | FCS 异常提示位置 | 主图标上增加角标，详细原因在详情中查看 |
 | 电池数据缺失 | 保留入口，无效项显示 `— V`、`— W`；FCS 区仍可查看，不以 FCS 数值代替电池数值 |
 | 参数未就绪或缺失 | 仅配置区显示等待或不可用提示，不阻塞电池状态和 FCS 区 |
-| 组件组织 | 分别维护电池内容与 FCS 内容，组合组件负责布局，避免复制逻辑 |
+| 组件组织 | 前端只保留工具栏入口和详情页两个文件；常驻状态归入口，全部详情内容归详情页 |
 | 角标规则 | 仅设备断连、故障关机或急停状态显示红色角标，其他情况不显示 |
 | 飞控整体失联 | 电池数值改为无效占位，主图标中性色，配置禁用；FCS 沿用现有失联处理 |
 
-原计划拆分的电池模型、状态内容和故障保护配置三个文件，已按后续讨论合并为一个 `PowerSystemBattery.qml`。
+原计划拆分的电池模型、状态内容和故障保护配置先合并为 `PowerSystemBattery.qml`，后续又将其常驻状态并入工具栏入口、详情内容并入详情页，不再保留独立电池组件。
 
 ## 3. 顶部入口
 
@@ -83,7 +83,7 @@ FCS 状态不改变主图标的电池配色。
 
 配置继续使用标准 Fact 控件，保留原有校验、逐项提交及参数本身的重启要求。不新增统一保存按钮、批量事务或额外解锁条件。
 
-右栏复用现有 `FuelCellControllerPage.qml`，保留：
+右栏直接集成原 `FuelCellControllerPage.qml` 的以下内容：
 
 - 设备连接状态、FCS 实际状态、锂电池 SOC；
 - 飞控当前下发的母线电压、电流和请求功率，只读；
@@ -135,12 +135,10 @@ FCS 开机、关机、急停均保留现有确认机制。普通请求等待确�
 
 | 组件 | 职责 |
 | --- | --- |
-| `PowerSystemIndicator.qml` | 顶部图标、两行数值、角标和面板入口 |
-| `PowerSystemIndicatorPage.qml` | 固定双栏布局和车辆切换时关闭当前面板 |
-| `PowerSystemBattery.qml` | 常驻电池数据和配色逻辑，按需创建的电池详情与配置内容 |
-| `FuelCellControllerPage.qml` | 复用 FCS 详情、控制及确认流程，仅补充组合布局需要的宽度和文字适配 |
+| `PowerSystemIndicator.qml` | 常驻车辆、电池和参数状态，电池配色与数值计算，顶部图标、角标和详情入口 |
+| `PowerSystemIndicatorPage.qml` | 固定双栏、电池详情与配置、FCS 详情与控制、确认流程和页面生命周期 |
 
-电池常驻模型不依赖详情面板是否打开，避免关闭面板后顶部失去数据或重复维护状态。三个原计划的电池文件合并后，以函数和按需加载的 Component 保持内部职责清楚，不再新增独立模型或后端。
+电池常驻状态封装在工具栏文件内的 `batteryModel`，不依赖详情面板是否打开，避免关闭面板后顶部失去数据或重复维护状态。工具栏只向详情页提供 `manager` 和 `batteryModel` 两个依赖。详情页以文件内 `BatteryPane`、`FuelCellPane`、`StatusField` 划分界面职责，主布局只负责固定双栏组合，不再注册只被本功能使用一次的独立 QML 类型。
 
 通过 `CustomFirmwarePlugin` 在原 BatteryIndicator 位置替换为合并入口，保留独立 FuelStatusIndicator 的原有顺序。同步 QRC、QML 模块和翻译注册，移除不再使用的自定义电池覆盖及独立 FCS 顶部入口。
 
@@ -178,28 +176,28 @@ FCS 开机、关机、急停均保留现有确认机制。普通请求等待确�
 
 ## 9. 涉及文件
 
-以下路径均相对 QGC 仓库根目录，记录本次电源入口合并功能的代码范围。
+以下路径均相对 QGC 仓库根目录，记录当前电源入口合并功能的主要代码范围。
 
-新增三个 QML 文件：
+PowerSystemIndicator 前端只保留两个 QML 文件：
 
 - `custom/src/UI/toolbar/PowerSystemIndicator.qml`
 - `custom/src/QmlControls/PowerSystemIndicatorPage.qml`
-- `custom/src/QmlControls/PowerSystemBattery.qml`
 
-修改七个文件：
+主要集成和说明文件：
 
 - `custom/src/FirmwarePlugin/CustomFirmwarePlugin.cc`
-- `custom/src/QmlControls/FuelCellControllerPage.qml`
 - `custom/custom.qrc`
 - `custom/CMakeLists.txt`
 - `custom/translations/custom.ts`
 - `custom/translations/custom_zh_CN.ts`
 - `custom/src/FuelCellController/README.md`
 
-删除两个自定义入口文件：
+已删除的旧前端文件：
 
 - `custom/src/QmlControls/BatteryIndicator.qml`
 - `custom/src/UI/toolbar/FuelCellControllerIndicator.qml`
+- `custom/src/QmlControls/PowerSystemBattery.qml`
+- `custom/src/QmlControls/FuelCellControllerPage.qml`
 
 PowerSystemIndicator 文档固定为三份：
 
@@ -233,6 +231,21 @@ PowerSystemIndicator 文档固定为三份：
 
 - 将开发约定和开发日志集中到 `DEVELOP.md`。
 - 新建面向用户的 `README.md`，集中说明入口、状态、参数和 FCS 操作。
+
+### 2026-11-03：合并前端组件文件
+
+- 将常驻电池、参数和配色逻辑并入 `PowerSystemIndicator.qml`。
+- 将电池详情、参数编辑、FCS 状态、控制及确认流程并入 `PowerSystemIndicatorPage.qml`。
+- 删除仅由本功能引用的 `PowerSystemBattery.qml` 和 `FuelCellControllerPage.qml` 及其 QML 模块注册。
+- 保留参数控制器重建、Fact 固定绑定、会话修订校验和确认框销毁等生命周期保护。
+
+### 2026-11-03：整理前端内部结构
+
+- 将电池相关属性、参数控制器和格式化函数收拢到工具栏文件内的 `batteryModel`，减少工具栏根对象与详情页之间的接口数量。
+- 将详情页左右内容分别封装为文件内 `BatteryPane` 和 `FuelCellPane`，固定宽度约束集中在主双栏布局。
+- 将四个配置 Fact 按界面顺序集中为 `configurationFacts`，配置编辑器加载时一次固定绑定。
+- 用具名常量和统一发送函数代替散落的 FCS 指令数字；有限值检查统一使用 `Number.isFinite`。
+- 未改变用户可见文本、参数名称、状态判断、按钮门限或后端调用。
 - 将原 `VALIDATION.md` 的历史验证记录并入 `TEST.md`，与测试计划统一维护。
 - 删除旧 `DEV.md` 和 `VALIDATION.md`，目录固定保留 `DEVELOP.md`、`README.md`、`TEST.md`。
 - 本次只整理文档，不修改 PowerSystemIndicator 功能代码。

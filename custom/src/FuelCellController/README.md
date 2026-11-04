@@ -17,10 +17,8 @@ FCS 区显示连接状态、实际状态、锂电池 SOC、飞控下发的母线
 普通请求等待期间急停仍可操作。结果提示区分“飞控已接受”与设备实际完成，超时显示结果未知。
 界面不重发、不自动发送指令；FCS 急停不调用飞控锁定或四旋翼电机停转功能。
 
-- `PowerSystemIndicator.qml`：合并顶部入口、电源数值和 FCS 红角标。
-- `PowerSystemIndicatorPage.qml`：固定左右栏布局。
-- `PowerSystemBattery.qml`：常驻电池数据、配色及按需加载的详情和配置。
-- `FuelCellControllerPage.qml`：详情、操作确认和结果反馈。
+- `PowerSystemIndicator.qml`：常驻电池和参数状态，并提供顶部入口、电源数值和 FCS 红角标。
+- `PowerSystemIndicatorPage.qml`：固定左右栏，集中实现电池配置、FCS 详情、操作确认和结果反馈。
 - `Custom.FuelCell.FuelCellControllerManager`：只暴露后端枚举，实例仍由 `CustomPlugin` 管理。
 
 ## 状态读取

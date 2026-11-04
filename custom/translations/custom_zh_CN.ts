@@ -1127,281 +1127,278 @@
     </message>
 </context>
 <context>
-    <name>FuelCellControllerPage</name>
+    <name>PowerSystemIndicatorPage</name>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="21"/>
         <source>Powering on</source>
         <translation>上电中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="21"/>
         <source>Power on complete</source>
         <translation>上电完成</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="21"/>
         <source>Entering standby</source>
         <translation>进入待机中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="21"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="21"/>
         <source>Standby</source>
         <translation>待机</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="22"/>
         <source>Starting</source>
         <translation>启动中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="22"/>
         <source>Start complete</source>
         <translation>启动完成</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="22"/>
         <source>Running</source>
         <translation>运行中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="22"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="22"/>
         <source>Stopping</source>
         <translation>关机中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="23"/>
         <source>Stop complete</source>
         <translation>关机完成</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="23"/>
         <source>Fault shutdown in progress</source>
         <translation>故障关机中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="23"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="23"/>
         <source>Fault shutdown complete</source>
         <translation>故障关机完成</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="24"/>
         <source>Emergency stop in progress</source>
         <translation>急停中</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="24"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="24"/>
         <source>Emergency stop complete</source>
         <translation>急停完成</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="198"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="26"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="198"/>
         <source>FCS Off</source>
         <translation>FCS 关机</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="192"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="26"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="192"/>
         <source>FCS On</source>
         <translation>FCS 开机</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="26"/>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="206"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="26"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="206"/>
         <source>FCS Emergency Stop</source>
         <translation>FCS 急停</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="28"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="28"/>
         <source>Waiting for status</source>
         <translation>等待状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="30"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="30"/>
         <source>Never connected</source>
         <translation>未连接</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="31"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="31"/>
         <source>Connected</source>
         <translation>已连接</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="32"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="32"/>
         <source>Disconnected</source>
         <translation>断连</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="33"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="33"/>
         <source>Unknown (telemetry expired)</source>
         <translation>状态未知（遥测已失效）</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="40"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="40"/>
         <source>%1: Waiting for flight controller confirmation...</source>
         <translation>%1：正在等待飞控确认……</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="43"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="43"/>
         <source>Flight controller accepted %1. Check FCS system status for progress.</source>
         <translation>飞控已接受%1指令；动作进度请查看 FCS 系统状态。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="45"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="45"/>
         <source>Operation failed: %1</source>
         <translation>操作失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="47"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="47"/>
         <source>Execution result unconfirmed: %1</source>
         <translation>未确认执行结果：%1</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="53"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="53"/>
         <source>Waiting for valid telemetry. Controls are unavailable.</source>
         <translation>等待有效遥测，控制不可用。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="54"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="54"/>
         <source>Device is not connected or has disconnected. Controls are unavailable.</source>
         <translation>设备未连接或已断连，控制不可用。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="55"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="55"/>
         <source>Control link is unavailable.</source>
         <translation>控制链路不可用。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="78"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="78"/>
         <source>Confirm %1</source>
         <translation>确认%1</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="79"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="79"/>
         <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
         <translation>确认向飞控 #%1 的燃料电池控制器发送%2指令？</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="139"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="139"/>
         <source>Fuel Cell Controller</source>
         <translation>燃料电池控制器</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="144"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="144"/>
         <source>Device connection</source>
         <translation>设备连接</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="148"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="148"/>
         <source>FCS system status</source>
         <translation>FCS 系统状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="153"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="153"/>
         <source>Lithium battery SOC</source>
         <translation>锂电池 SOC</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="160"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="160"/>
         <source>Flight controller setpoints</source>
         <translation>飞控下发参数</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="165"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="165"/>
         <source>Bus voltage</source>
         <translation>母线电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="169"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="169"/>
         <source>Bus current</source>
         <translation>母线电流</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="173"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="173"/>
         <source>Requested power</source>
         <translation>请求功率</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="180"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="180"/>
         <source>FCS control</source>
         <translation>FCS 控制</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/FuelCellControllerPage.qml" line="185"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="185"/>
         <source>Current command</source>
         <translation>当前控制指令</translation>
     </message>
-</context>
-<context>
-    <name>PowerSystemBattery</name>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="83"/>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="88"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="83"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="88"/>
         <source>Unavailable</source>
         <translation>不可用</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="114"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="114"/>
         <source>Power Status</source>
         <translation>电源状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="119"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="119"/>
         <source>Power State</source>
         <translation>电源状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="123"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="123"/>
         <source>Measured Voltage</source>
         <translation>母线电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="127"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="127"/>
         <source>Power</source>
         <translation>功率</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="131"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="131"/>
         <source>Current</source>
         <translation>电流</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="135"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="135"/>
         <source>Consumed</source>
         <translation>已消耗</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="143"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="143"/>
         <source>Power configuration is unavailable.</source>
         <translation>电源配置不可用。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="143"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="143"/>
         <source>Waiting for parameters...</source>
         <translation>正在等待参数……</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="166"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="166"/>
         <source>Low Power Failsafe</source>
         <translation>电源低压故障保护</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="172"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="172"/>
         <source>Vehicle Action</source>
         <translation>故障保护动作</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="182"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="182"/>
         <source>Low Voltage</source>
         <translation>警告电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="189"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="189"/>
         <source>Critical Voltage</source>
         <translation>故障保护触发电压</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemBattery.qml" line="196"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="196"/>
         <source>Emergency Voltage</source>
         <translation>紧急电压(立刻降落)</translation>
     </message>

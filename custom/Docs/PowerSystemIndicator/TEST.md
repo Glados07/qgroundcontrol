@@ -416,3 +416,69 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 - `git diff --check` 无输出。
 
 本次没有重新构建 QGroundControl，也没有重新运行 QML、后端或实机测试。文档整理不构成任何功能项的新验收结果；功能验证状态继续以前述记录为准。
+
+### 13. 2026-11-03：前端组件文件合并
+
+本次将 PowerSystemIndicator 前端从四个 QML 文件合并为两个文件：常驻电池、参数及配色状态并入工具栏入口，电池配置和 FCS 详情、控制及确认流程并入详情页。没有修改 FuelCellController 后端、MAVLink 协议或参数定义。
+
+本次实际执行：
+
+1. 源码和注册静态检查通过：
+   - `custom/src` 范围内只剩 `PowerSystemIndicator.qml` 和 `PowerSystemIndicatorPage.qml` 两个 PowerSystemIndicator 前端文件；
+   - 非历史文档和翻译位置中不存在 `PowerSystemBattery` 或 `FuelCellControllerPage` 类型引用；
+   - 两个旧文件已从 `Custom.Widgets` 的资源别名和 `QML_FILES` 清单移除；
+   - `git diff --check` 无输出。
+2. 翻译检查通过：
+   - Qt 6.8.3 `lupdate` 从新详情页提取到 54 条源文本；`custom.ts` 和 `custom_zh_CN.ts` 的 `PowerSystemIndicatorPage` 上下文与其逐项一致；
+   - 两个 TS 文件可由 `xmllint` 解析，不再包含 `PowerSystemBattery` 或 `FuelCellControllerPage` 翻译上下文；
+   - 构建生成 264 条完成翻译、0 条未完成翻译。
+3. 桌面目标重新配置并完整构建通过，退出码 0。构建完成合并后 QML 的缓存生成、资源编译及应用最终链接：
+
+   ```sh
+   CCACHE_DISABLE=1 QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/Qt/Tools/CMake/bin/cmake --build \
+     /home/glados/app/qgroundcontrol/build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl --parallel 4
+   ```
+
+4. 现有后端测试目标重新检查后实际运行通过：
+
+   ```sh
+   QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/app/qgroundcontrol/build/Desktop_Qt_6_8_3-Debug/Debug/FuelCellControllerManagerTest -silent
+   ```
+
+   结果为 31 passed、0 failed、0 skipped。此次未修改后端，该结果只用于检查既有 FCS 管理器行为未出现已覆盖范围内的回归。
+5. 使用离屏平台、软件渲染和独立临时配置启动新构建应用 10 秒，应用进入正常事件循环后由 `timeout` 结束，因而命令退出码为预期的 124，不能记录为应用自行退出 0。日志没有出现 PowerSystem 新旧类型名、`not a type`、QML 模块缺失或属性赋值错误；另有既有的无网络、视频源不可达、参数元数据、字体和退出时数据库警告。
+
+本次未执行：
+
+- 连接活动飞控后打开详情抽屉并进行固定双栏视觉、滚动、长文字和触控检查；
+- 真实参数读取、修改、校验、断开重连及编辑器销毁检查；
+- FCS 开机、关机、急停、确认框和请求结果的真实 MAVLink/CAN 联调；
+- Android 组件构建、APK 打包、安装和真机显示；
+- QGC 全量测试集、长时间运行以及多个字体比例下的界面检查。
+
+因此，本次可以确认文件和注册已经合并、翻译上下文完整、桌面目标能够编译链接、无车辆的离屏应用启动未记录相关 QML 类型错误、现有后端测试通过；不能据此声称真实详情页视觉、参数编辑、设备控制或 Android 已完成验收。
+
+### 14. 2026-11-03：前端内部结构优化
+
+本次只整理合并后的两个 QML 文件：以文件内 `batteryModel` 收拢常驻电池状态，以 `BatteryPane` 和 `FuelCellPane` 划分详情页内容，并集中配置 Facts、FCS 指令常量及发送分派。没有修改用户可见文本、FuelCellController 后端、参数定义或协议。
+
+本次实际执行：
+
+1. `git diff --check` 无输出。
+2. Qt 6.8.3 `lupdate` 从优化后的详情页提取 54 条源文本，与 `custom.ts` 的 `PowerSystemIndicatorPage` 上下文逐项一致，因此本次无需修改翻译文件。
+3. 桌面目标增量构建通过，退出码 0；详情页完成 QML 缓存生成，应用完成最终链接：
+
+   ```sh
+   CCACHE_DISABLE=1 QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/Qt/Tools/CMake/bin/cmake --build \
+     /home/glados/app/qgroundcontrol/build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl FuelCellControllerManagerTest --parallel 4
+   ```
+
+4. `FuelCellControllerManagerTest` 实际运行结果为 31 passed、0 failed、0 skipped。
+5. 使用离屏平台、软件渲染和独立临时配置启动新构建应用 6 秒，并筛查 PowerSystem、QQml、类型不可用、模块缺失、属性赋值及内嵌模型函数错误；没有匹配日志。筛查命令因 `rg` 无匹配返回 1，该返回值表示没有筛查到相关错误，不是应用自行退出 0，也不能替代详情页交互测试。
+
+本次未连接活动飞控，未实际打开详情抽屉，未执行真实参数编辑、FCS 控制、断开重连、Android 构建、完整 QGC 测试集或长时间运行测试。因此本次结果只能证明优化后的源码能够编译链接、无车辆启动未记录目标错误且既有后端测试通过，不能证明真实界面与设备交互已经完成运行时验收。
