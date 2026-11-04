@@ -23,8 +23,6 @@ class FuelCellControllerManager final : public QObject
     Q_PROPERTY(bool telemetryFresh READ telemetryFresh NOTIFY statusChanged)
     Q_PROPERTY(ConnectionState connectionState READ connectionState NOTIFY statusChanged)
     Q_PROPERTY(bool deviceDataValid READ deviceDataValid NOTIFY statusChanged)
-    Q_PROPERTY(double busVoltage READ busVoltage NOTIFY statusChanged)
-    Q_PROPERTY(double busCurrent READ busCurrent NOTIFY statusChanged)
     Q_PROPERTY(double requestedPower READ requestedPower NOTIFY statusChanged)
     Q_PROPERTY(double socPercent READ socPercent NOTIFY statusChanged)
     Q_PROPERTY(double dcdcOutputCurrent READ dcdcOutputCurrent NOTIFY statusChanged)
@@ -56,8 +54,6 @@ public:
     bool telemetryFresh() const;
     ConnectionState connectionState() const;
     bool deviceDataValid() const { return connectionState() == Connected; }
-    double busVoltage() const;
-    double busCurrent() const;
     double requestedPower() const;
     double socPercent() const;
     double dcdcOutputCurrent() const;

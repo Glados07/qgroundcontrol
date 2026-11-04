@@ -89,7 +89,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | B01 | 连接活动飞控，等待初始化遮罩结束，观察顶部并打开入口 | 显示唯一 PowerSystemIndicator，图形旁为 `— V` / `— W`，主图标中性色；无 PMU、Battery Source Disabled 不隐藏入口 | 待测 |
-| B02 | 查看左右详情及 PX4 `status` | 电池无数据时显示占位；驱动已启动且 MAVLink 状态正常到达时，右侧为 Never connected，SOC/设备状态/DCDC 电流无效，三个下发值为 0；若没有收到状态则应显示 Waiting for status，不能伪装成已连接 | 待测 |
+| B02 | 查看左右详情及 PX4 `status` | 电池无数据时显示占位；驱动已启动且 MAVLink 状态正常到达时，右侧为 Never connected，SOC/设备状态/DCDC 电流无效，请求功率为 0；界面不显示母线电压和电流。若没有收到状态则应显示 Waiting for status，不能伪装成已连接 | 待测 |
 | B03 | 查看四项配置和三个 FCS 按钮 | 参数齐全、链路正常时四项配置可编辑，不依赖电池采样；FCS 未连接时三个按钮均禁用，包括急停 | 待测 |
 | B04 | 关闭/打开面板，调整正常工作窗口尺寸；移除活动车辆 | 始终显示固定左右栏；上述界面动作不产生新的 FCS 控制请求；活动车辆移除后入口消失 | 待测 |
 
@@ -102,12 +102,12 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | P01 | 接通 PMU，核对 `battery_status` 实例 0、驱动 PMU 模式及 CAN2 抓包 | 实例 0 来源符合单 PMU 假设，connected 为真，时间戳持续前进，电压/电流有效，驱动由 waiting 转 normal；CAN1 继续 DroneCAN，CAN2 周期发送私有帧 | 待测 |
-| P02 | 在至少三个稳定工况记录同一时段电压、电流和功率，包含允许条件下的零电流 | QGC 左侧/顶部来自电池数据，功率为其电压 × 电流；右侧和 CAN2 来自驱动控制值。零电流/零功率有效，不能显示占位 | 待测 |
-| P03 | 比较原始采样、CAN2 负载、`fuel_cell_status` 和右侧单位 | 驱动按原始同一采样计算功率，再分别四舍五入为 0.1 V、0.1 A、1 W；多字节序及 QGC 比例正确，不出现 10/100 倍错误 | 待测 |
+| P02 | 在至少三个稳定工况记录同一时段电压、电流和功率，包含允许条件下的零电流 | QGC 左侧/顶部来自电池数据，功率为其电压 × 电流；右侧只显示驱动请求功率，CAN2 抓包核对电压、电流和功率。零电流/零功率有效，不能显示占位 | 待测 |
+| P03 | 比较原始采样、CAN2 负载、`battery_status`、`fuel_cell_status` 和界面单位 | 驱动按原始同一采样计算功率，再分别四舍五入为 0.1 V、0.1 A、1 W；QGC 从 BATTERY_STATUS 显示测量值，从 FUEL_CELL_STATUS 显示请求功率，不出现 10/100 倍错误；FUEL_CELL_STATUS 不再包含母线电压和电流 | 待测 |
 | P04 | 同时观察两条总线，改变 PMU 工况 | PMU 更新引起 CAN2 母线三项变化；CAN2 指令及 TX Life 逻辑不受破坏；仅有 PMU 不使 FCS 连接状态变为 Connected | 待测 |
 | P05 | 空载及代表性负载下分别连续采集至少 3 分钟 | 记录 PMU CAN 发布和 uORB 更新的典型/最大间隔、采样数、时间戳及丢帧迹象，判断正常间隔是否远小于 10 秒；形成是否调整临时超时值的依据，不在测试中自动改值 | 待测 |
 
-数值比对应选稳定工况，考虑 CAN/MAVLink 不同采样时刻、显示精度和消息量化，不能要求所有异步界面数值逐帧完全一致。顶部功率为整数，右侧 CAN 设定电压/电流为一位小数；功率来自原始采样，不必严格等于两个已量化字段的乘积。
+数值比对应选稳定工况，考虑 CAN/MAVLink 不同采样时刻、显示精度和消息量化，不能要求所有异步界面数值逐帧完全一致。顶部测量功率和右侧请求功率均显示为整数；CAN 电压和电流只能通过驱动状态或抓包核对，功率来自原始采样，不必严格等于两个已量化字段的乘积。
 
 控制帧核对示例：若驱动当前值为 48.0 V、20.0 A、960 W、指令 1、Life 7，则负载应为 `01 E0 00 C8 03 C0 01 07`。该示例用于解码核对，不要求为测试强行将真实系统设置为此工况。
 
@@ -118,7 +118,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | F01 | 首次收到有效 CAN2 状态帧，对比抓包、驱动和 QGC | 驱动由 never connected 转 connected，Device link 为 OK；MAVLink connection_state 为 1，QGC 显示 Connected，SOC/实际状态/DCDC 电流正确；确认实际状态周期满足 500 ms 有效期 | 待测 |
-| F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.0 A/6553.5 A 和中间值 | 字节序、0.1% 与 0.1 A 比例正确；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控 Bus current | 待测 |
+| F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.0 A/6553.5 A 和中间值 | 字节序、0.1% 与 0.1 A 比例正确；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控内部 CAN 控制电流 | 待测 |
 | F03 | 正常状态、9/10、11/12、13、14/15 分别观察顶部和详情 | 故障关机/急停显示红角标；13 显示“输出电流受限”、橙色角标和橙色文字；14/15 显示带原始码的未知状态且无角标。三者均不降低控制权限，主图标仍由电池状态决定 | 待测 |
 | F04 | 在允许控制时点击开机/关机/急停，然后取消确认 | 对话框标明指令和当前车辆；取消不发送新的控制请求、不改 PX4 保存值 | 待测 |
 | F05 | 确认 FCS On，记录整个链路 | 控制消息目标和编号正确；PX4 保存 command=1，CAN2 周期发送 1，母线值仍由 PMU 决定；QGC 区分“飞控已接受”与设备实际启动/运行进度 | 待测 |
@@ -135,7 +135,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | R01 | PMU 正常采样后停止其数据；分别覆盖发布 connected=false 和静默无新采样 | 前者按断连消息回退，后者自最后有效采样满 10 秒回退；保留最后有效编码电压，功率 3000 W，电流由该电压计算；指令不变。只能实现一种时，另一种保留待测 | 待测 |
-| R02 | 在 R01 中核对 PX4、CAN2、QGC 两侧，再恢复 PMU | PX4 status 显示 fallback，CAN2/右侧反映回退值；左侧仍独立使用 BATTERY_STATUS，可能占位或保持缓存，不被右侧覆盖。收到新有效采样后恢复 normal 和正常母线值，不自动改变启停指令 | 待测 |
+| R02 | 在 R01 中核对 PX4、CAN2、QGC 两侧，再恢复 PMU | PX4 status 和 CAN2 抓包反映完整回退值，QGC 右侧只显示 3000 W 请求功率；左侧仍独立使用 BATTERY_STATUS，可能占位或保持缓存。收到新有效采样后恢复 normal 和正常母线值，不自动改变启停指令 | 待测 |
 | R03 | 在曾连接 FCS 后停止 CAN2 状态发送，保持 PMU/MAVLink 正常 | 超过 500 ms 无接受的新状态后，ever connected 保持，Device link 变 error occured，connection_state=2；QGC 显示 Disconnected、红角标，SOC/实际状态/DCDC 电流无效，控制禁用；电池区继续正常 | 待测 |
 | R04 | 恢复 CAN2，先重复最后 Life，再发送已变化的有效 Life | 重复 Life 不恢复连接；已变化的有效状态恢复 OK/Connected 和有效设备值；不自动产生新的 QGC 控制请求。PX4 原保存指令仍按 CAN 周期发送，不把“无新请求”理解成停止 CAN 发送 | 待测 |
 | R05 | 仅屏蔽下行 FUEL_CELL_STATUS，保持心跳及电池消息 | 满 1 秒后 QGC FCS 状态为 Unknown/telemetry expired，控制禁用，角标不显示；电池状态仍有效。此时不能显示为已确认 CAN2 断连；恢复状态消息后重新有效 | 待测 |
@@ -151,7 +151,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | U01 | 在正常工作窗口下分别用中英文和目标字体设置打开详情 | 始终左电池右 FCS，中间有分隔线；长状态/结果在栏内换行并可纵向滚动；没有两处已删除的小字，顶部入口不重复 | 待测 |
 | U02 | 打开详情后关闭重开，再切换车辆 | 每次均显示完整双栏；换车关闭当前面板，旧参数编辑器不复用于新车辆；界面动作不发送指令。无第二车辆时换车分支记为阻塞 | 待测 |
-| U03 | 读取四项参数，逐项修改后回读，结束恢复原值 | 显示/写入对应真实飞控参数；沿用标准范围校验、逐项提交及重启提示，FCS 三个母线值和 DCDC 电流保持只读 | 待测 |
+| U03 | 读取四项参数，逐项修改后回读，结束恢复原值 | 显示/写入对应真实飞控参数；沿用标准范围校验、逐项提交及重启提示，FCS 请求功率和 DCDC 电流保持只读，界面不存在母线电压/电流属性或显示项 | 待测 |
 | U04 | 制造非法文本编辑后关闭面板并重开；有条件时编辑期间切车 | 错误输入不写入，关闭后不残留全局校验锁定；旧编辑不写入新车。不要将“顺序不合理但各自仍在范围内”误当成标准 Fact 必然拒绝 | 待测 |
 | U05 | 在参数下载过程中打开详情；用匹配的测试固件/环境补测缺少某一参数 | 仅配置区等待或不可用；状态和 FCS 不被阻塞。参数恢复后重新可用，失联时配置禁用 | 待测 |
 | U06 | 台架可控电压或仿真数据跨越三个阈值，并核对等于阈值边界 | 严格 `<` 比较；颜色绿/黄/橙/红与 DEVELOP.md 一致，FCS 角标不覆盖主图标配色；结束恢复阈值，不为测试降低真实设备到不允许的电压 | 待测 |
@@ -329,7 +329,7 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 
 - 单 PMU，使用活动车辆第一个电池条目；不支持自动聚合或节点选择。
 - 不新增 PMU 报文级超时。飞控仍通信正常但 PMU 数据停止更新时，缓存的电池值可能继续显示。
-- 不新增 PMU 回退标志，不能仅凭左右测量值与设定值不同判断驱动异常。
+- 不新增 PMU 回退标志，不能仅凭左侧测量功率与右侧请求功率不同判断驱动异常；QGC 不显示实际 CAN 电压和电流。
 - 四项配置沿用 Fact 单项提交、原有取值校验及重启要求，不新增跨字段原子事务。
 - 长动作选项在收起的下拉框中可省略，展开内容沿用原控件。
 - FCS 遥测过期不显示红角标，详情显示未知或遥测不可用；这是已确认的交互选择。
@@ -517,3 +517,32 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 5. `git diff --check` 无输出。
 
 尚未执行：真实 PX4/FCS/PMU 联调、CAN/MAVLink 注入、真实限流工况、真实 GPU 窗口视觉检查、长时间运行和 Android 构建。F01～F03、F10、R03 及 E03 已更新为后续台架验收清单；真实限流只在设备和安全条件允许时执行，否则记录为阻塞。
+
+### 16. 2026-11-04：移除 FCS 母线电压和电流
+
+本次将 QGC 生成 MAVLink C 库固定到 `878811a906c723ff6f92f1b7a08970873bef430d`。该提交说明其由 XML `cbd82672e38add5bc4cbe132c28f62d304a02051` 生成；实际参与桌面构建的头文件中，`FUEL_CELL_STATUS` 长度为 14、CRC_EXTRA 为 218，且不存在 `bus_voltage`、`bus_current` 成员。
+
+实际执行结果：
+
+1. Linux Debug 桌面目标在清理目标产物后完整构建通过，退出码 0；共完成 1831 个步骤，包括修改后的详情页 QML 缓存生成、资源和翻译编译、FuelCellControllerManager 编译以及应用最终链接：
+
+   ```sh
+   CCACHE_DIR=/tmp/qgc-fuel-cell-adaptation/ccache \
+     CCACHE_TEMPDIR=/tmp/qgc-fuel-cell-adaptation/ccache-tmp \
+     QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     cmake --build build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl --parallel 4
+   ```
+
+   此前一次构建进程中断并留下零字节对象文件，其后的增量链接失败不能计为源码验证结果；对 `Custom-QGroundControl` 执行 Ninja 目标级清理后，上述从干净目标产物开始的重建和链接成功。
+2. `FuelCellControllerManagerTest` 目标检查通过，实际运行结果为 **33 passed、0 failed、0 skipped**。测试编译期固定检查长度 14 和 CRC 218，并验证 `busVoltage`、`busCurrent` 不再是 Qt 属性，`requestedPower` 等剩余属性仍为只读：
+
+   ```sh
+   QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     build/Desktop_Qt_6_8_3-Debug/Debug/FuelCellControllerManagerTest -silent
+   ```
+
+3. `custom.ts` 和 `custom_zh_CN.ts` 均通过 `xmllint --noout`；Qt 6.8.3 `lrelease` 从中文 TS 生成 **265 条已完成翻译、0 条未完成翻译**。FCS 的 `Bus voltage`、`Bus current` 源文本已经删除；左侧 BATTERY_STATUS 测量区的 `Measured Voltage` 及其中文翻译继续保留。
+4. 源码静态检查确认详情页的 Flight controller setpoints 分组仍存在且只显示 Requested power；FuelCellControllerManager 生产代码不再引用被协议删除的两个成员。`git diff --check` 无输出。
+
+本次按已确认范围未执行 Android 构建、APK 安装或真机验证，也未连接活动飞控并实际打开详情页。因此，现有证据可以确认新协议头可编译链接、后端属性和 QML 源码已适配、翻译可生成；不能替代真实窗口视觉、PX4/FCS/PMU/CAN 端到端联调或完整 QGC 测试集。新旧 `FUEL_CELL_STATUS` 布局不兼容，PX4 与 QGC 必须配套部署；删除字段后，QGC 只能从 BATTERY_STATUS 查看 PMU 测量值，不能再直接观察 PX4 实际下发到 CAN 的母线电压和电流。

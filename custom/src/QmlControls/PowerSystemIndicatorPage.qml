@@ -300,14 +300,6 @@ ToolIndicatorPage {
             contentSpacing: ScreenTools.defaultFontPixelHeight / 4
 
             StatusField {
-                label: qsTr("Bus voltage")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.busVoltage, 1, "V")
-            }
-            StatusField {
-                label: qsTr("Bus current")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.busCurrent, 1, "A")
-            }
-            StatusField {
                 label: qsTr("Requested power")
                 labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.requestedPower, 0, "W")
             }

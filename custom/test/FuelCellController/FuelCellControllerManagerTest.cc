@@ -15,12 +15,12 @@ mavlink_status_t *mavlink_get_channel_status(uint8_t channel) { return &m_mavlin
 
 namespace {
 using Manager = FuelCellControllerManager;
+static_assert(MAVLINK_MSG_ID_FUEL_CELL_STATUS_LEN == 14);
+static_assert(MAVLINK_MSG_ID_FUEL_CELL_STATUS_CRC == 218);
 
 mavlink_fuel_cell_status_t status(int connection = FUEL_CELL_CONNECTION_STATE_OK)
 {
     mavlink_fuel_cell_status_t result{};
-    result.bus_voltage = 245;
-    result.bus_current = 80;
     result.requested_power = 500;
     result.soc = 755;
     result.dcdc_output_current = 123;
@@ -84,7 +84,7 @@ private slots:
         _link.reset();
     }
 
-    void noTelemetryIsUnknownAndBusPropertiesAreReadOnly()
+    void noTelemetryIsUnknownAndPropertiesAreReadOnly()
     {
         Vehicle vehicle;
         bind(vehicle);
@@ -94,7 +94,6 @@ private slots:
         QVERIFY(!manager.telemetryAvailable());
         QVERIFY(!manager.telemetryFresh());
         QCOMPARE(manager.connectionState(), Manager::Unknown);
-        QVERIFY(std::isnan(manager.busVoltage()));
         QVERIFY(std::isnan(manager.socPercent()));
         QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         QCOMPARE(manager.fcsState(), -1);
@@ -103,7 +102,9 @@ private slots:
         QVERIFY(!manager.canEmergencyStop());
         QVERIFY(!manager.requestEmergencyStopFcs(manager.sessionRevision()));
         QVERIFY(vehicle.sent.isEmpty());
-        for (const auto *name : {"busVoltage", "busCurrent", "requestedPower", "socPercent",
+        QCOMPARE(manager.metaObject()->indexOfProperty("busVoltage"), -1);
+        QCOMPARE(manager.metaObject()->indexOfProperty("busCurrent"), -1);
+        for (const auto *name : {"requestedPower", "socPercent",
                                  "dcdcOutputCurrent", "acceptedCommand"}) {
             const int index = manager.metaObject()->indexOfProperty(name);
             QVERIFY(index >= 0);
@@ -121,8 +122,6 @@ private slots:
         QVERIFY(manager.telemetryAvailable());
         QVERIFY(manager.telemetryFresh());
         QCOMPARE(manager.connectionState(), Manager::NeverConnected);
-        QCOMPARE(manager.busVoltage(), 24.5);
-        QCOMPARE(manager.busCurrent(), 8.0);
         QCOMPARE(manager.requestedPower(), 500.0);
         QVERIFY(!manager.deviceDataValid());
         QVERIFY(std::isnan(manager.socPercent()));
@@ -174,7 +173,6 @@ private slots:
         sample.connection_state = FUEL_CELL_CONNECTION_STATE_OK;
         receive(vehicle, sample);
         QCOMPARE(manager.socPercent(), 0.0);
-        QCOMPARE(manager.busVoltage(), 0.0);
         QCOMPARE(manager.dcdcOutputCurrent(), 0.0);
         QCOMPARE(manager.fcsState(), 0);
     }
@@ -265,7 +263,6 @@ private slots:
         QCOMPARE(manager.requestState(), Manager::Pending);
         QCOMPARE(manager.requestedCommand(), command);
         QVERIFY(!manager.canControl());
-        QCOMPARE(manager.busVoltage(), 24.5);
         QCOMPARE(manager.acceptedCommand(), 0); // Requested command is not confirmed telemetry.
     }
 
@@ -300,11 +297,9 @@ private slots:
         auto sample = status();
         sample.response_request_id = control(vehicle.sent.last()).request_id;
         sample.control_command = FUEL_CELL_CONTROL_COMMAND_OFF;
-        sample.bus_voltage = 300;
         receive(vehicle, sample);
         QCOMPARE(manager.requestState(), Manager::Accepted);
         QCOMPARE(manager.acceptedCommand(), int(FUEL_CELL_CONTROL_COMMAND_OFF));
-        QCOMPARE(manager.busVoltage(), 30.0);
         QVERIFY(manager.lastError().isEmpty());
     }
 
@@ -420,7 +415,6 @@ private slots:
         QVERIFY(!manager.telemetryFresh());
         QCOMPARE(manager.connectionState(), Manager::Unknown);
         QCOMPARE(manager.requestState(), Manager::Unconfirmed);
-        QVERIFY(std::isnan(manager.busVoltage()));
         QVERIFY(std::isnan(manager.socPercent()));
         QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         QVERIFY(!manager.requestEmergencyStopFcs(manager.sessionRevision()));

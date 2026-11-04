@@ -1298,16 +1298,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="165"/>
-        <source>Bus voltage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="169"/>
-        <source>Bus current</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="173"/>
         <source>Requested power</source>
         <translation type="unfinished"></translation>

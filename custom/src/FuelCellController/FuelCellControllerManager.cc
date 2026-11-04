@@ -53,8 +53,6 @@ FuelCellControllerManager::ConnectionState FuelCellControllerManager::connection
     return telemetryFresh() ? static_cast<ConnectionState>(_status.connection_state) : Unknown;
 }
 
-double FuelCellControllerManager::busVoltage() const { return telemetryFresh() ? _status.bus_voltage * 0.1 : kUnavailable; }
-double FuelCellControllerManager::busCurrent() const { return telemetryFresh() ? _status.bus_current * 0.1 : kUnavailable; }
 double FuelCellControllerManager::requestedPower() const { return telemetryFresh() ? _status.requested_power : kUnavailable; }
 double FuelCellControllerManager::socPercent() const { return deviceDataValid() ? _status.soc * 0.1 : kUnavailable; }
 double FuelCellControllerManager::dcdcOutputCurrent() const

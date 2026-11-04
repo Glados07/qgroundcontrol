@@ -1322,16 +1322,6 @@
         <translation>飞控下发参数</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="165"/>
-        <source>Bus voltage</source>
-        <translation>母线电压</translation>
-    </message>
-    <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="169"/>
-        <source>Bus current</source>
-        <translation>母线电流</translation>
-    </message>
-    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="173"/>
         <source>Requested power</source>
         <translation>请求功率</translation>
