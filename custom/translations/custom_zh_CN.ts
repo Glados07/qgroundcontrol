@@ -765,6 +765,10 @@
 <context>
     <name>UniRcChannelController</name>
     <message>
+        <source>Failed to query the UniRC video link on %1: %2</source>
+        <translation>通过%1查询UniRC图传链路失败：%2</translation>
+    </message>
+    <message>
         <location filename="../src/Android/UniRcChannelController.cc" line="181"/>
         <source>The selected UniRC SDK interface is not supported.</source>
         <translation>所选UniRC SDK接口暂不受支持。</translation>
@@ -1406,6 +1410,52 @@
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="196"/>
         <source>Emergency Voltage</source>
         <translation>紧急电压(立刻降落)</translation>
+    </message>
+</context>
+<context>
+    <name>UniRcLinkIndicator</name>
+    <message>
+        <source>Air link</source>
+        <translation>图传</translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation>未获取</translation>
+    </message>
+</context>
+<context>
+    <name>UniRcLinkIndicatorPage</name>
+    <message>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
+        <source>Air Link</source>
+        <translation>图传链路</translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation>未获取</translation>
+    </message>
+    <message>
+        <source>Signal strength</source>
+        <translation>信号强度</translation>
+    </message>
+    <message>
+        <source>Signal quality</source>
+        <translation>信号质量</translation>
+    </message>
+    <message>
+        <source>Strong</source>
+        <translation>强</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation>中</translation>
+    </message>
+    <message>
+        <source>Weak</source>
+        <translation>弱</translation>
     </message>
 </context>
 </TS>

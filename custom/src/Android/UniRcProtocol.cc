@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * UniRC 10 Pro SDK framing helpers for periodic remote-control channels.
+ * UniRC 10 Pro SDK framing helpers for channels and link information.
  *
  ****************************************************************************/
 
@@ -11,6 +11,7 @@ constexpr quint8 kHeader0 = 0x55;
 constexpr quint8 kHeader1 = 0x66;
 constexpr quint8 kRequestControl = 0x01;
 constexpr quint8 kPeriodicResponseControl = 0x00;
+constexpr quint8 kAcknowledgementControl = 0x02;
 constexpr int kMinimumFrameSize = 10;
 constexpr int kMaximumPayloadSize = 512;
 
@@ -43,6 +44,20 @@ QByteArray UniRcProtocol::channelDataRequestPacket(quint8 frequencyCode,
     _appendLittleEndian16(packet, sequence);
     packet.append(static_cast<char>(CommandChannelData));
     packet.append(static_cast<char>(frequencyCode));
+    _appendLittleEndian16(packet, _crc16Xmodem(packet));
+    return packet;
+}
+
+QByteArray UniRcProtocol::linkInfoRequestPacket(quint16 sequence)
+{
+    QByteArray packet;
+    packet.reserve(kMinimumFrameSize);
+    packet.append(static_cast<char>(kHeader0));
+    packet.append(static_cast<char>(kHeader1));
+    packet.append(static_cast<char>(kRequestControl));
+    _appendLittleEndian16(packet, 0);
+    _appendLittleEndian16(packet, sequence);
+    packet.append(static_cast<char>(CommandLinkInfo));
     _appendLittleEndian16(packet, _crc16Xmodem(packet));
     return packet;
 }
@@ -105,6 +120,42 @@ bool UniRcProtocol::parseChannelData(const DecodedPacket& packet,
     }
 
     *channels = parsed;
+    return true;
+}
+
+bool UniRcProtocol::parseLinkInfo(const DecodedPacket& packet, LinkInfo* linkInfo)
+{
+    if (!linkInfo
+        || !packet.valid
+        || packet.control != kAcknowledgementControl
+        || packet.command != CommandLinkInfo
+        || packet.payload.size() != 8) {
+        return false;
+    }
+
+    const auto littleEndian16 = [&packet](int offset) {
+        return static_cast<quint16>(byteAt(packet.payload, offset))
+            | (static_cast<quint16>(byteAt(packet.payload, offset + 1)) << 8);
+    };
+    LinkInfo parsed;
+    parsed.videoUpKbps = littleEndian16(0) / 10.0;
+    parsed.videoDownMbps = littleEndian16(2) / 10.0;
+    parsed.channel = byteAt(packet.payload, 4);
+    const int rawStrength = littleEndian16(5);
+    parsed.signalStrength = static_cast<qint16>(
+        rawStrength < 0x8000 ? rawStrength : rawStrength - 0x10000);
+    // The V1.0 table labels this byte uint8_t but specifies -15..30.
+    // Decode its two's-complement signed value instead of wrapping negatives.
+    const int rawQuality = byteAt(packet.payload, 7);
+    parsed.signalQuality = static_cast<qint8>(
+        rawQuality < 0x80 ? rawQuality : rawQuality - 0x100);
+    if (parsed.channel < 1 || parsed.channel > 16
+        || parsed.signalStrength < 0 || parsed.signalStrength > 100
+        || parsed.signalQuality < -15 || parsed.signalQuality > 30) {
+        return false;
+    }
+
+    *linkInfo = parsed;
     return true;
 }
 

@@ -7,11 +7,11 @@
 | 项目 | 内容 |
 |---|---|
 | 工程 | `qgroundcontrol_viewer3d` |
-| 分支 | `SecDev/ft/control` |
+| 分支 | `SecDev/ft/sdk` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `33575aaa6` + 当前工作区；本次同步范围为倒装 A8 云台方位角方向、相关文件职责、计算示例与验证说明，其他模块保留既有核对范围 |
-| 文档更新 | 2026-09-29 |
+| 本次代码核对基线 | `6becc69d6` + 当前工作区；本次同步范围为 UniRC 图传详情整体缩小约三分之一、数值可见字形居中及对应验证说明，其他模块保留既有核对范围 |
+| 文档更新 | 2026-10-10 |
 
 ## 阅读导航
 
@@ -54,7 +54,7 @@
 | MT11 相机 | 独立 SDK、短按/长按变倍、三种视频模式、媒体控制、CH11/CH12 转向 | 协议、通道映射和 UDP 停控已有主机测试；手势、模式画面及 Android 转向链路待真机验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，MT11 断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
-| UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch | UART2 已接入，完整 Qt 6/Android 构建及真机路由待验证；蓝牙通道、CH9 和基础回中已有实测，动态交替、顶部联动和 MT11 双轴控制仍待真机验收 |
+| UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、CH9 变倍、CH10 回中/俯视交替、CH11 Yaw/CH12 Pitch；`0x44` 图传强度、质量分档及原始值显示 | 图传查询、状态过期与顶部入口已接入，主机验证范围见 4.1；完整 Qt 6/Android 构建及两种接口真机路由待验证，既有蓝牙通道、CH9 和基础回中实测不替代新增图传验收 |
 | [双罗盘](#compass) | 飞行器航向与倒装 A8 主画面的云台世界方位角；固定机体时右转方位角增大、左转减小 | 倒装反馈方向、模式相关 C++ 及罗盘联动主机回归通过，证据范围见 4.1；Android 倒装实机方向及跟随/锁定待验收，范围见 4.2 |
 | 电源、Fuel 与母线告警 | 电压/功率、多级低压状态、燃料详情、参数化母线告警 | 已集成；需结合当前飞控参数和遥测验收 |
 | Proximity Radar | 十方向距离、低于 5 m 的红色闪烁提示 | 已集成；需验证目标传感器方向与数据 |
@@ -116,7 +116,7 @@ custom/
                                                             # ① 产品启动总装：创建设置与业务 Manager，安装默认链路/视频设置、中文翻译和 QML URL 拦截器，注册 Viewer3D 类型；将这些对象接入原生 QGCCorePlugin 生命周期并提供给界面。
                                                             # ② 运行接线：mavlinkMessage 将消息交给方位角 Provider 并过滤自动视频信息，模式控制器自行订阅 Vehicle 消息；主/次视频项和接收器分别接 A8/MT11，安装尺寸探针与恢复逻辑，退出时收尾媒体、第二路视频和后台发布。
 │   ├── Android/
-                                                            # Android 媒体桥与 UniRC Bluetooth/UART2 通道控制
+                                                            # Android 媒体桥与 UniRC Bluetooth/UART2 通道控制、图传链路状态
 │   │   ├── AndroidMediaLibrary.cc
                                                             # ① JNI 适配实现：调用 QGCCustomMediaLibrary 的静态方法，转换 QString、Java 返回对象及异常结果，为暂存、发布、配额清理和等待提供统一 C++ 入口。
                                                             # ② 媒体链路：相机 Manager 完成截图或关闭录像文件后调用发布接口，Java 负责公共目录提交与恢复；新增存储能力时需同步本文件、AndroidMediaLibrary.h 和 Java 方法签名。
@@ -124,23 +124,29 @@ custom/
                                                             # ① 平台媒体接口声明：提供暂存目录、旧媒体源目录、文件发布、已发布录像清理、等待发布和媒体删除方法，供 A8/MT11 本地照片与录像逻辑共用。
                                                             # ② 调用约定：以 C++ 路径、文件类型和执行结果隔离 Android Java API；Manager 负责生成文件与控制录制，本接口只承接平台存储操作，具体 JNI 签名和结果转换在同名 .cc。
 │   │   ├── UniRcChannelController.cc
-                                                            # ① 接收链路：依据启用开关、前后台状态和 SDK 接口选择打开 UART2 或建立 RFCOMM 连接，发送 20 Hz 通道请求；蓝牙单独处理权限和 MAC，两个传输共用 StreamParser、16 路数值与诊断状态。
+                                                            # ① 接收链路：依据启用开关、前后台状态和 SDK 接口选择打开 UART2 或建立 RFCOMM 连接，开启 20 Hz 通道上报并以 1 Hz 查询图传信息；共用 StreamParser，分别更新 16 路输入与 UniRcLinkStatus，图传回包不刷新通道 watchdog。
                                                             # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；首包/持续输入超时、失联或切后台时停止动作、清空输入并按条件重连。
 │   │   ├── UniRcChannelController.h
-                                                            # ① UniRC 控制器契约：声明 bluetoothConnected、uartConnected、transportConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10 和诊断信息等 QML 属性，以及 shutdown 退出接口。
-                                                            # ② 异步状态：保存互斥的 Bluetooth socket/UART2 传输、权限/应用状态处理、请求发送阶段、首包及输入 watchdog、重连定时器和通道动作状态；通过设置、相机 Manager 与回中协调器连接输入和执行端。
+                                                            # ① UniRC 控制器契约：声明 bluetoothConnected、uartConnected、transportConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10、linkStatus 和诊断信息等 QML 属性，以及 shutdown 退出接口。
+                                                            # ② 异步状态：保存互斥的 Bluetooth socket/UART2 传输、请求发送阶段、首包及输入 watchdog、图传轮询定时器和通道动作状态；持有 UniRcLinkStatus，生命周期变化同时清理输入与图传状态。
 │   │   ├── UniRcChannelPolicy.cc
                                                             # ① 数值判定：检查 900～2100 的有效输入；CH9 在 1475～1525 回中后按方向输出并应用反向开关，CH10 用 ≤1250 释放、≥1750 按下判断有效边沿。
                                                             # ② 动作保护：CH7/8 超出 1400～1600 判为手动控制；CH9/10 非法输入清除已就绪状态，恢复后仍须重新回中/释放，避免控制器把失效数据或持续按住状态当成新操作。
 │   │   ├── UniRcChannelPolicy.h
                                                             # ① 纯通道策略接口：定义 CH7/8/9/10 输入的有效范围、方向与边沿状态，以及处理结果结构，向控制器返回需要执行的动作而不直接访问 SDK 传输或云台。
                                                             # ② 状态约定：CH9 必须先回中才能输出方向，CH10 必须先释放才能识别按下；保留反向配置和输入保护所需状态，规则实现位于同名 .cc，可由独立测试直接调用。
+│   │   ├── UniRcLinkStatus.cc
+                                                            # ① 图传状态实现：接收已解码的 LinkInfo，保存强度百分比和有符号质量，计算 0～5 格强度及弱/中/强质量分档；每份合法样本重新启动独立 3 s 过期定时器。
+                                                            # ② 失效与通知：相同样本也续期但不重复发属性变化；超时或 Controller 取消会话时清空有效状态和值，通知工具栏和详情页，不能延续遥控通道动作。
+│   │   ├── UniRcLinkStatus.h
+                                                            # ① 图传显示契约：声明 available、strengthPercent、strengthLevel、signalQuality、qualityLevel 属性及 statusChanged 信号，提供 update/invalidate 给 Controller 调用。
+                                                            # ② 对象边界：由 UniRcChannelController 持有，经 linkStatus 属性向 QML 暴露；只管理显示数据和新鲜度，不建立传输、不发命令，也不依赖 MAVLink Vehicle。
 │   │   ├── UniRcProtocol.cc
-                                                            # ① 编码与校验：封装 55 66 帧头、控制字、长度、序号、命令和 CRC16-XMODEM，生成开启 20 Hz 上报及关闭请求，检查通道包命令、长度与 CRC。
-                                                            # ② 流式解析：累积 Bluetooth/UART2 分段数据，处理半帧、连续多帧和无效帧重同步；将合法 0x42/32 字节载荷解码为 16 路数值，供 UniRcChannelController 更新界面和执行动作。
+                                                            # ① 编码与校验：封装 55 66 帧头、控制字、长度、序号、命令和 CRC16-XMODEM，生成 0x42 启停请求及 0x44 图传查询；分别校验目标命令、CTRL、长度与字段范围。
+                                                            # ② 流式解析：累积 Bluetooth/UART2 分段数据，处理半帧、连续多帧和无效帧重同步；0x42/32 字节解码为 16 路通道，0x44/8 字节解码为图传码率、通道、强度和有符号质量。
 │   │   ├── UniRcProtocol.h
-                                                            # ① UniRC 字节协议声明：定义命令、通道数据包、CRC 与启停通道请求接口；StreamParser 保存跨次接收的字节缓存，并向控制器输出完整解析结果。
-                                                            # ② 数据约定：通道上报包含 16 个 int16 数值，帧长、序号及数值采用协议规定的字节序；本文件负责通信数据契约，通道阈值和动作含义由 UniRcChannelPolicy 解释。
+                                                            # ① UniRC 字节协议声明：定义通道命令、图传命令、Channels/LinkInfo 数据结构、CRC、启停通道和图传查询接口；StreamParser 保存跨次接收缓存并输出完整帧。
+                                                            # ② 数据约定：通道上报含 16 个 int16，图传回包含两个 uint16 码率、uint8 通道、int16 强度和 signed8 质量；协议类解释字节与范围，通道动作由 UniRcChannelPolicy 处理，图传显示状态由 UniRcLinkStatus 管理。
 │   │   ├── UniRcSerialPort.cc
                                                             # ① 板载 UART2 实现：以 POSIX 非阻塞方式打开 /dev/ttyHS2，设置 115200 8N1、无流控，使用 QSocketNotifier 驱动读写；与 Android USB Host 串口管理器独立。
                                                             # ② 收发与清理：缓存短写/EAGAIN 后的剩余数据，处理系统调用错误并报告 errno；关闭时释放 fd 与通知器、使旧会话写入通知失效，不阻塞等待串口排空。
@@ -349,12 +355,21 @@ custom/
 │   │   ├── BatteryIndicator.qml
                                                             # ① 电池指示器及详情 UI：按活动车辆 batteries 列表显示图标、状态、电压/电流与电量，_formatPower 用电压×电流计算功率；点击打开电池详情和有关参数编辑。
                                                             # ② 状态规则：保留 FAILED/UNHEALTHY/CHARGING 等原生状态，其余按阈值判断低电压等级；_parameterFact 读取 UAVCAN 相关参数，元数据默认值在 CustomFirmwarePlugin，界面不通过显示逻辑强制改写飞控值。
+│   │   ├── FlyViewToolBarIndicators.qml
+                                                            # ① 原生同名工具栏覆盖：保留应用、车辆和模式指示器的 Repeater，复制各固件车辆指标列表，在首个 GimbalIndicator.qml 前插入图传；无云台条目时追加车辆列表末尾，无活动车辆或 SDK 控制器时不插入。
+                                                            # ② 资源接入：通过 custom.qrc 的原生同名 alias 和既有 CustomOverrideInterceptor 加载；仅新增图传入口，后续合并需对照原生 src/QmlControls 同名文件同步上游工具栏结构。
 │   │   ├── FuelStatusIndicatorPage.qml
                                                             # ① 燃油详情抽屉：布局剩余百分比、剩余量、最大容量、已消耗量、流量和温度等字段；用 valueString 显示数值，getFuelUnit 按燃油类型提供 ml/MPa，温度使用 Fact.units，并隐藏无效项目。
                                                             # ② 数据关联：由工具栏 FuelStatusIndicator 打开，_hasFuel 检查 fuelStatus.telemetryAvailable，各行检查 rawValue 是否有效；顶部图标颜色/百分比在 toolbar 文件，消息接收和 Fact 更新复用原生车辆系统。
 │   │   ├── ProximityRadarIndicatorPage.qml
                                                             # ① 避障雷达详情：将上、下及水平方向的距离条目排成详情列表，显示方向名称、测距数值、单位和接近告警样式，便于查看顶部汇总图标所代表的各方向状态。
                                                             # ② 模型复用：接收 ProximityRadarIndicator 构建的方向条目和告警阈值，仅展示有效测距并采用相同的阈值判断；本文件不解析 MAVLink，数据来自原生 distanceSensors Fact。
+│   │   ├── UniRcLinkIndicatorPage.qml
+                                                            # ① 图传详情抽屉：沿用 ToolIndicatorPage，以 detailScale=2/3 同步缩小内容字号和留白；保留网格首选宽度、等宽双栏、标题单行及数值共享实际字号，借助 TextMetrics 与 Translate 将两列数值的可见字形居中。
+                                                            # ② 实时绑定：直接使用指示器传入的 UniRcLinkStatus，质量分档右侧括号显示 signalQuality 原始值，如强（12）、弱（-15）；打开后随样本更新，无效时仅显示“未获取”。
+│   │   ├── UniRcSignalIcon.qml
+                                                            # ① 共用信号图标：绘制五根由左至右逐渐增高的竖条，按 0～5 格强度从左向右着色，低/中/高强度分别采用红/橙/绿色，支持深浅主题。
+                                                            # ② 状态区分：有效 0% 为五根红色空心竖条，零格填充；未知状态为灰色空心竖条，顶部摘要和详情共用图标，原始百分比与质量分档由状态对象提供。
 │   │   └── Viewer3D/
                                                             # 三维 QML 模块描述文件
 │   │       └── Models3D/
@@ -426,7 +441,7 @@ custom/
                                                             # ① 三维设置 UI：提供总开关、OSM/外部模型/Google 地图选择、API Key、文件选择与导入状态，以及外部原点经纬高、单位、比例、yaw、默认层高和高度偏置。
                                                             # ② 加载与写回：viewer3DRequiredFactsReady 检查插件/Fact 就绪后装入分组；模型按钮调用 External3DMapManager.importModelFile，其他字段写入 Viewer3DSettings，模式变化控制相关字段显隐并由三维后端重建/更新显示。
 │   │   └── toolbar/
-                                                            # 云台、Fuel、距离提示的顶部入口
+                                                            # 云台、Fuel、距离提示及 UniRC 图传的顶部入口
 │   │       ├── FuelStatusIndicator.qml
                                                             # ① 顶部燃油图标：读取活动车辆燃油遥测及 telemetryAvailable，绘制 FuelIcon.svg 和百分比文字；getFuelColor 按 >50%、>25% 和其余区间使用绿/橙/红色。
                                                             # ② 入口逻辑：getFuelText 格式化顶部摘要，仅有可用燃油数据时显示；点击通过 showIndicatorDrawer 打开 FuelStatusIndicatorPage，容量、流量、温度等详细字段由详情页组织。
@@ -438,9 +453,12 @@ custom/
 │   │       │   └── FuelIcon.svg
                                                             # ① 燃油图标矢量资源：定义顶部燃油指示器的图形轮廓，修改此文件可改变图标造型而不影响遥测数值或告警阈值。
                                                             # ② 加载关系：由 custom.qrc 打包、FuelStatusIndicator.qml 引用，缩放和动态着色由 QML 控制；点击展开、百分比文字与颜色区间均在指示器 QML 中定义。
-│   │       └── ProximityRadarIndicator.qml
+│   │       ├── ProximityRadarIndicator.qml
                                                             # ① 顶部避障汇总 UI：从 distanceSensors 的上/下及八个水平方向 Fact 构建 radarModel.entries，筛选有效距离，绘制雷达标识和近距离告警状态。
                                                             # ② 告警/详情：距离严格小于 alertDistanceMeters=5 m 时告警，并以 400 ms 节奏闪烁；点击把相同方向模型和阈值交给 ProximityRadarIndicatorPage，通信数据解析复用原生车辆遥测系统。
+│   │       └── UniRcLinkIndicator.qml
+                                                            # ① 顶部图传摘要：绑定 UniRcChannelController.linkStatus，仅在控制器存在且飞控通信正常时显示于云台图标左侧；有效强度显示五根递增竖条图标和百分比，图传数据无效时显示灰色图标及 --，无飞控连接或通信丢失时隐藏入口。
+                                                            # ② 详情入口：入口可见时，点击、回车、空格或辅助功能按下动作通过 showIndicatorDrawer 打开 UniRcLinkIndicatorPage；显示条件使用活动车辆的 vehicleLinkManager.communicationLost，展开不触发额外查询。
 │   ├── VideoManager/
                                                             # 第二路视频管理与运行期解码/恢复策略
 │   │   ├── DualVideoManager.cc
@@ -700,8 +718,11 @@ custom/
                                                             # 开发验证；C++ 按桌面测试开关构建，Python 检查单独运行
 │   ├── Android/
                                                             # UniRC 协议、通道策略与板载串口测试
+│   │   ├── UniRcLinkStatusTest.cc
+                                                            # ① 图传状态回归：验证有效 0% 与未知状态的区别、强度 0～5 格、质量弱/中/强边界、主动失效和恢复，检查属性变化信号。
+                                                            # ② 时间与输入边界：使用真实 Qt 定时器检查 3 s 过期、相同样本续期和非法样本不刷新有效状态；测试独立状态类，不替代完整 Controller 收发或 Android 固件验收。
 │   │   ├── UniRcProtocolTest.cc
-                                                            # ① UniRC 协议/通道回归：构造 20 Hz 请求及通道响应，验证 CRC、帧长、半帧/多帧、重同步和非法输入，同时检查 CH9 回中/反向、CH10 释放到按下边沿和 CH7/8 死区。
+                                                            # ① UniRC 协议/通道回归：构造 0x42 通道请求和 0x44 图传查询/响应，验证 CRC、帧长、CTRL、signed8 质量、字段范围、混合半帧/多帧与重同步，同时检查 CH9/10 动作和 CH7/8 死区。
                                                             # ② 动作状态验证：直接调用 UniRcProtocol、UniRcChannelPolicy 和 Ch10GimbalActionState，确认手动操作顺序、迟到 ACK 与动作轮换规则；作为桌面 QtTest 目标运行，不需要实际 Bluetooth/UART2 或遥控器。
 │   │   └── UniRcSerialPortTest.cc
                                                             # ① 串口传输回归：Unix 主机使用伪终端检查 115200 8N1、二进制接收、延迟写通知、短写/背压时字节顺序、缓存上限、关闭及旧会话通知隔离。
@@ -849,6 +870,9 @@ custom/
                                                             # ② 档位联测：验证 A8MiniZoomPolicy/ZoomStepPolicy 的上限、短按序列、长按推进、方向到位、精确端点和 TargetTracker 反馈确认；为 Manager 上层状态提供底层规则保证，不直接驱动设备。
 │   ├── UI/
                                                             # 实际 QML 的布局与交互验证
+│   │   ├── UniRcLinkIndicatorTest.py
+                                                            # ① 图传 QML 回归：用 PySide6 加载实际指示器、详情和共用图标，检查强度 0～5 格、质量分档及括号原始值、无数据、实时变化与展开，覆盖飞控连接显隐、云台前位置、标题单行、共享字号及可见字形居中。
+                                                            # ② 布局与接入边界：检查窄屏、深浅主题和大字号并输出截图，使用测试服务替身隔离真实遥控器；对生产资源接入和工具栏位置的检查不代表完整 Android 工具栏真机验证。
 │   │   └── FlyViewSettingsLayout/
                                                             # 离屏布局检查脚本和必要的 QGC 类型替身
 │   │       ├── ParameterEditorDialog.qml
@@ -982,7 +1006,7 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 | `gimbalControlManager`、`mt11ControlManager` | 设备能力、相机命令和各自媒体会话 | 右侧相机栏 |
 | `gimbalCenterCoordinator`、`gimbalModeController` | 共享姿态事务、实际模式读取和切换 | 顶部云台栏、UniRC |
 | `gimbalAzimuthProvider` | 当前 MAVLink 云台的有效世界方位角 | 顶部云台栏、云台罗盘 |
-| `uniRcChannelController` | Bluetooth/UART2 传输与 SDK 通道状态、CH1～CH16 | UniRC 设置区及动作转发 |
+| `uniRcChannelController` | Bluetooth/UART2 传输、SDK 通道状态、CH1～CH16，以及独立的 `linkStatus` 图传状态 | UniRC 设置区、动作转发及顶部图传信号入口 |
 
 ### 2.3 QML 与 Android 的接入方式
 
@@ -1020,7 +1044,7 @@ UniRC UART2 的新增实现完全位于 `custom/src/Android`，由 `custom/CMake
 | 飞控 MAVLink | 飞控遥测、参数、云台姿态命令 | 原生 LinkManager/Vehicle + custom 飞控与云台模块 | Vehicle 出现；参数与云台各自完成加载/发现 |
 | 相机 UDP SDK | 倍率、拍照/录像、设备状态和模式 | `SiyiSdk`、`Mt11Sdk` | 收到对应设备的有效状态/应答 |
 | RTSP 视频 | 压缩视频、解码帧、本地录像支路 | VideoManager、DualVideoManager、GstVideoReceiver | 对应路有 source、decoder 输出及 sink 首帧 |
-| UniRC Bluetooth/UART2 | 16 通道输入，转为 CH9/CH10 及 CH11/CH12 动作 | UniRcChannelController、UniRcSerialPort、通道 Policy | 合法 `0x42` 通道流，且各动作通道值有效并完成初始保护 |
+| UniRC Bluetooth/UART2 | `0x42` 提供 16 通道与动作输入；`0x44` 提供图传信息 | UniRcChannelController、UniRcSerialPort、通道 Policy、UniRcLinkStatus | 通道需合法 `0x42` 流及动作初始保护；图传需 3 s 内合法 `0x44` 回包，二者独立判断 |
 
 三个界面选择的含义不同：
 
@@ -1865,7 +1889,7 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 
 <a id="unirc"></a>
 
-### 3.7 UniRC 10 Pro Bluetooth/UART2 通道控制
+### 3.7 UniRC 10 Pro Bluetooth/UART2 通道控制与图传信息
 
 #### 3.7.1 配置与使用
 
@@ -1875,6 +1899,8 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 2. QGC 保持 UniRC SDK 启用、SDK 接口为 UART2；固定使用板载串口 `/dev/ttyHS2`、115200 波特率、8N1、无流控。UART2 不需要蓝牙配对、MAC 或“附近设备”权限；设置页显示固定串口信息。
 3. 保持 QGC 前台运行，确认 CH1～CH16 网格由 `--` 变为实时数值。串口打开本身不代表 SDK 路由已通，首次合法 `0x42` 通道帧才激活 `sdkRouteActive`，网格据此显示实际通道值。
 4. CH9 先回中、CH10 先释放后再操作。控制 MT11 时启用其 SDK，等待在线后让 CH11/CH12 同时回中，详见 3.4.6。
+
+同一 SDK 接口同时查询图传信息，无需新增设置。飞控通信正常时，顶部云台图标左侧显示图传信号入口，点击查看并排的强度百分比和质量分档，质量右侧括号实时显示 SDK 原始值；无飞控连接或通信丢失时隐藏入口。SDK 后台查询独立于飞控连接，数据来源与无效状态见 3.7.6。
 
 需要使用原蓝牙链路时，在 Android 开启蓝牙并配对内置 SDK 设备，在 UniGCS 选择蓝牙 SDK 路由，再将 QGC 的 SDK 接口切为 Bluetooth、填写 MAC 并允许“附近设备”权限。蓝牙地址仅在选择 Bluetooth 时显示；QGC 直接连接该 MAC，不负责扫描和配对。此前实测的“数传 1 = UDP、数传 2 = 关闭、SDK = 蓝牙”仅是蓝牙验证记录，不能据此认定 UART2 路由组合已验证。
 
@@ -1975,14 +2001,67 @@ CH10 的典型操作序列：
 | 功能环节 | 文件 / 资源组 | 在本功能中的协作关系 |
 |:---|:---|:---|
 | 配置与通道观察 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面选择 Bluetooth/UART2、按接口显示 MAC 或固定串口信息，并显示 CH1～CH16；Fact 保存设置，新增默认值不覆盖已保存选择。 |
-| 共用传输生命周期 | `Android/UniRcChannelController.h/.cc`；`CustomPlugin.cc` | 插件创建并连接控制器；控制器按接口建立互斥的 UART2 或 RFCOMM，共用前后台、20 Hz 请求、watchdog、断开和重连，蓝牙单独处理权限与 MAC。 |
+| 共用传输生命周期 | `Android/UniRcChannelController.h/.cc`；`CustomPlugin.cc` | 插件创建并连接控制器；控制器按接口建立互斥的 UART2 或 RFCOMM，共用前后台、20 Hz 通道上报请求、1 Hz 图传查询、watchdog、断开和重连，蓝牙单独处理权限与 MAC。 |
 | 板载 UART2 | `Android/UniRcSerialPort.h/.cc`；`custom/CMakeLists.txt` | CMake 将传输类纳入 custom；固定串口参数、非阻塞收发、短写缓存、系统错误和旧会话通知隔离由该类负责，不使用 USB 串口桥。 |
-| 字节流转通道值 | `Android/UniRcProtocol.h/.cc` | 生成启停请求，缓存接收字节并处理半帧/连帧，经 CRC/帧长校验输出 16 路 int16 通道。 |
+| 字节流解析 | `Android/UniRcProtocol.h/.cc` | 生成通道启停和图传查询请求，缓存接收字节并处理半帧/连帧，经 CRC/帧长校验分别输出 16 路 int16 通道和 LinkInfo。 |
+| 图传状态与过期 | `Android/UniRcLinkStatus.h/.cc`；`UniRcChannelController.h/.cc` | 图传状态独立维护 3 s 新鲜度、强度等级和质量分档；Controller 在后台、禁用、换接口或传输失败时立即取消。 |
+| 顶部图传入口 | `QmlControls/FlyViewToolBarIndicators.qml`、`UniRcLinkIndicatorPage.qml`、`UniRcSignalIcon.qml`；`UI/toolbar/UniRcLinkIndicator.qml` | 同名工具栏覆盖在车辆云台指标前插入图传，通信正常时显示；摘要与详情共用状态，QRC alias 和 Custom.Widgets 模块接入资源，见 3.7.6。 |
 | 通道值转动作 | `Android/UniRcChannelPolicy.h/.cc`；`UniRcChannelController.h/.cc` | Policy 判断有效范围、CH9 死区/方向、CH10 按下沿及 CH7/8 手动输入；Controller 根据连接和新鲜度执行或释放动作。 |
 | CH9 连续变倍 | `Gimbal/GimbalControlManager.h/.cc` | 接收遥控方向并维护 UniRC 动作持有者；回中、失联、禁用等条件释放运动，与相机栏触控输入协调。 |
 | CH11/CH12 转向 | `Gimbal/Mt11ControlManager.h/.cc`、`Mt11GimbalController.h/.cc`、`Mt11Sdk.h/.cc`、`Mt11Protocol.h/.cc` | 接入任一接口的合法通道帧，以独立 MT11 SDK 发送 `0x07`；双轴中位/范围保护、超时、停止重发及端点变更清理见 3.4.6。 |
 | CH10 姿态交替 | `Gimbal/GimbalCenterCoordinator.h/.cc`、`Ch10GimbalActionState.h` | 请求复用共享回中/俯视事务，动作完成与手动输入更新下一动作，顶部控制也使用同一状态。 |
-| 验证 | `custom/test/Android/UniRcProtocolTest.cc`、`UniRcSerialPortTest.cc`；设置布局检查 | 协议测试验证帧拆解、通道保护、反向和 CH10 边沿/共享状态；串口测试按平台验证伪终端收发或非 Unix 错误；布局脚本验证接口选择和 16 通道显示，设备路由及硬件动作需真机验收。 |
+| 验证 | `custom/test/Android/UniRcProtocolTest.cc`、`UniRcLinkStatusTest.cc`、`UniRcSerialPortTest.cc`；`custom/test/UI/UniRcLinkIndicatorTest.py` 及设置布局检查 | 分别验证协议/混合帧、图传分档/时效、平台串口和 QML 显示/展开；设备路由、轮询与通道动作同时运行仍需真机验收。 |
+
+#### 3.7.6 `0x44` 图传链路信息与顶部信号显示
+
+**使用与显示**
+
+启用 UniRC SDK 后，在当前 Bluetooth/UART2 传输上自动查询图传链路信息，不增加配置键。后台查询与状态维护独立于 MAVLink 飞控连接；界面入口另受飞控通信状态控制，无飞控连接或通信丢失时隐藏，通信正常时位于顶部云台图标左侧，显示“图传”信号图标及强度百分比，点击打开原生样式的详情抽屉。详情顶部将信号图标与“图传链路”标题排成一行，下方以两个等宽区域并排显示强度百分比与弱/中/强质量。质量分档右侧括号显示 SDK 实时原始 `signalQuality`，范围 -15～30，例如“强（12）”“中（7）”“弱（-15）”；同一档内数值变化也会刷新，数据无效时仅显示“未获取”，不保留旧括号值。内容宽度依据实际字体度量确定，并受窗口可用宽度约束；“信号强度”和“信号质量”两个标题及其下的百分比、质量值采用紧凑字号层级，标题保持单行，两个数值采用共享实际字号，确保 100% 与包含括号的质量文字字号一致。标签和数值分别居中，对应行保持统一高度，两区之间使用细分隔线，内容周围采用对称内边距和适量纵向留白。界面不显示档位文字或底部说明。图传状态与 RTSP 播放相互独立，信号有效不能作为相机视频已解码或遥控通道可用的证明。
+
+详情通过 `detailScale = 2/3` 统一缩小内容：`detailFontPointSize`、`detailFontHeight`、`detailFontWidth` 分别取 `ScreenTools` 默认字号、字高和字宽的 2/3，再沿用内部比例。强度/质量栏目标题及顶部“图传链路”标题为局部字号的 1.05 倍，两个数值为 1.65 倍，折算为应用默认字号的 0.7 倍和 1.1 倍；顶部图标为局部字高的 1.2 倍，即默认字高的 0.8 倍。测量百分比、完整的质量分档及括号数值、未知状态文字，按最宽文本计算适合两列的共享字号，覆盖负号和两位数，避免原始值更新时截断。栏目标题仍受两个数值实际字号的 80% 上限约束，避免窄屏下标题比数值更大。
+
+内容首选宽度 `preferredContentWidth` 取局部字高的 13.5 倍（即默认字高的 9 倍）和两列文字所需宽度中较大者，再限制于窗口可用范围；双栏 `GridLayout.Layout.preferredWidth` 设为该值扣除两侧内边距，让 `ColumnLayout` 自动生成正确的隐式宽度，供原生 `ToolIndicatorPage` 的 Loader/RowLayout 使用，保留首次展开时的自然宽度修复。原生抽屉外边距及窗口宽度上限扣除的 1.5 倍默认字高保持原生尺度，因此最终框体外尺寸不必恰好等于此前的 2/3。
+
+内部留白同步使用缩小后的局部字高 h（h 为默认字高的 2/3）：顶部与双栏之间间距为 0.4h，上/下边距为 0.2h/0.3h，栏目标题与数值行间距为 0.2h；左右内边距在紧凑/普通布局分别为 0.25h/0.35h，列间距分别为 0.3h/0.4h。每列文字的额外宽度余量为 0.25h，数值行额外高度为 0.2h，标题行的图标与文字间距采用局部字宽；同时维持标题单行、等宽双栏和两数值实际字号一致。
+
+两列数值分别使用 `TextMetrics`，绑定对应 Label 最终的 `font` 与完整 `text`，通过 `Translate.x = advanceWidth / 2 - tightBoundingRect.x - tightBoundingRect.width / 2` 校正可见字形的中心。这样将完整的“强（12）”“弱（-15）”等质量文字按实际笔画居中，消除全角右括号末尾留白造成的视觉偏左；百分比及“未获取”也使用同一方式。校正只影响绘制位置，保留等宽网格的尺寸与列位置，并随数值、有效状态和字号变化重新计算。
+
+Android 净配置的应用默认字号由 `CustomPlugin::adjustSettingMetaData()` 设为 12 pt，已有用户字号继续按保存值生效；图传详情的局部倍率不影响应用全局字号。以 12 pt 为基准，空间充足时栏目标题的目标字号为 8.4 pt、两个数值为 13.2 pt；窗口宽度不足时仍按实际文字宽度缩小，实际字体还受渲染舍入影响，因此需同时核对实际字号、框体占比与裁切情况，不能仅以配置倍率判断最终大小。
+
+图标采用五根底部对齐、由左至右逐渐增高的竖条，按 `strengthPercent / 20` 整数除法计算 0～5 格，并从左向右填充对应数量；设备文档列举的 0%、20%、40%、60%、80%、100% 分别对应 0～5 格，百分比保留接收到的合法原始值。入口可见时，有效 0% 显示五根红色空心竖条、零格填充及 0%；图传数据未知、过期或 SDK 关闭时，顶部显示灰色空心竖条图标和 `--`，详情显示“未获取”，避免把“未收到”当成“已测得 0%”。详情展开期间继续更新，无需反复关闭重开；飞控通信状态决定入口是否显示，不改变后台图传数据的新鲜度规则。
+
+**协议与分档约定**
+
+依据《UniRC 10 Pro V1.0》第 6.2.6 节（第 113 页），`0x44` 为无载荷单次查询，默认序号 0 的请求为 `55 66 01 00 00 00 00 44 05 DC`。它使用 `CTRL=1` 请求应答，不沿用 `0x42` 启停请求的三份重复发送。回复需通过整帧 CRC 校验，且 `CTRL=2`、`CMD=0x44`、载荷长度恰为 8 字节。
+
+| 载荷偏移 | 字段与解析 | 校验/当前显示用途 |
+|---|---|---|
+| 0～1 | `video_up`：uint16 小端，除以 10 得 Kbps | 解析为 `videoUpKbps`，当前详情未展示 |
+| 2～3 | `video_down`：uint16 小端，除以 10 得 Mbps | 解析为 `videoDownMbps`，当前详情未展示 |
+| 4 | `channel`：uint8 | 必须为 1～16；当前详情未展示 |
+| 5～6 | `signal_strength`：int16 小端 | 必须为 0～100；显示百分比及 0～5 格 |
+| 7 | `signal_quality`：8 位二进制补码有符号值 | 必须为 -15～30，无单位；按弱/中/强显示，右侧括号附实时原始值 |
+
+文档质量字段的类型列写作 `uint8_t`，但同一行的范围为 -15～30；实现按 signed8 解码，避免负数变成 241～255。原文“强：10 以上、中：5～10、弱：5 以下”在端点有歧义，本版明确采用 **弱 <5、中 5～9、强 ≥10**。强度原文称“五个档位”却列六个百分比，本版解释为零格加五档有效刻度。
+
+第 6.1 节（第 108 页）定义 CTRL 的 bit 0 为需应答、bit 1 为应答包；`0x44` 本身没有给出回复 HEX 示例，因此当前严格接受 `CTRL=2`，实际固件仍需验收。相邻 `0x47` 示例的请求序号为 0、回复序号为 2，不能假定设备回显请求序号；本版按当前传输、命令、CTRL、CRC、长度与字段范围接收，不强制匹配 SEQ，也不宣称区分每一轮查询的应答。
+
+**轮询、接收与失效链路**
+
+| 阶段 | 方法/对象 | 实际处理 |
+|---|---|---|
+| 开启查询 | `_startChannelStream()` → `_linkInfoPollTimer` | 完成通道请求排队后启动 1 s 周期，并立即尝试首轮图传查询 |
+| 发送门控 | `_requestLinkInfo()` → `_writePacket()` | 应用前台、SDK 启用、当前传输连接，且初始 `0x42` 已完成本地写出、发送队列为空时才写入一份查询；队列忙则跳过本轮，不堆积查询 |
+| 共用收包 | `_readAvailableTransportData()` → StreamParser | 同一字节流按命令分发；`0x42` 进入原通道流程，`0x44` 进入 `_handleLinkInfoPacket()` |
+| 更新图传 | `UniRcProtocol::parseLinkInfo()` → `UniRcLinkStatus::update()` | 全部字段合法后更新状态并重新开始 3 s 过期计时；相同数值回包也刷新新鲜度，畸形/越界包不续期 |
+| 更新界面 | `linkStatus.statusChanged` → 顶部指示器和详情 | 摘要与详情共用数据源，`available` 决定显示实时值还是“未获取”；入口另要求飞控通信正常，飞控连接状态不作为 SDK 查询条件 |
+| 失效清理 | 过期定时器 / `_closeTransport()` / `_scheduleTransportFailure()` → `invalidate()` | 3 s 无合法 `0x44` 回包则过期；后台、禁用、换接口、断线或传输失败立即停轮询并清空图传有效状态 |
+
+`0x44` 查询不计入 `0x42` 启动请求的发送计数；只有 `_requestAwaitingTransmission` 成立时，发送队列才可延长初始 `0x42` 的排队等待，后续图传查询的待写字节不会获得该等待窗口。图传回包只更新图传状态，不改变 `sdkRouteActive`、通道初始保护或 350 ms 输入 watchdog。即使持续收到 `0x44`，缺失 `0x42` 时仍按原通道停止与重连路径执行。反过来，`0x42` 持续正常也不能让失去 `0x44` 的图传数据显示保持有效。
+
+**接入与合并边界**
+
+生产文件全部放在 `custom`，对应原生 `src/Android`、`src/QmlControls` 和 `src/UI/toolbar` 的层级与命名。`custom.qrc` 为 `FlyViewToolBarIndicators.qml` 提供同名覆盖 alias，既有 `CustomOverrideInterceptor` 将原生请求导向 custom。覆盖保留原生三个指示器 Repeater，由 `vehicleToolIndicators()` 复制活动车辆所属固件的 `toolIndicators` 列表，在首个路径以 `/GimbalIndicator.qml` 结尾的条目前插入图传，保持其他指标相对顺序；无云台条目的固件（如 ArduSub）将图传追加到车辆列表末尾。无活动车辆时返回空列表，无 SDK 控制器时保留原列表；不再使用状态组末尾的独立 Loader。图传指示器还要求活动车辆的 `vehicleLinkManager` 存在且 `communicationLost == false`，失联隐藏后不占工具栏位置，不以 SDK 的 `transportConnected` 替代飞控通信判断。合并上游时应重点比对同名工具栏文件；指示器通过 QRC 加载，详情页和共用图标由 `custom/CMakeLists.txt` 注册到 `Custom.Widgets`，不修改原生工具栏或各 FirmwarePlugin 的指标列表。
 
 ---
 
@@ -2488,25 +2567,44 @@ ctest --test-dir <desktop-build>/custom --output-on-failure
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
-| `custom/test/Android/UniRcProtocolTest.cc` | UniRC 帧、通道保护及 CH10 状态 |
+| `custom/test/Android/UniRcProtocolTest.cc` | UniRC `0x42`/`0x44` 请求与回包、signed8 质量及字段边界、混合帧、通道保护和 CH10 状态 |
+| `custom/test/Android/UniRcLinkStatusTest.cc` | 图传 0～5 格及质量边界、有效 0% 与未知状态、3 s 过期、相同样本续期、主动失效和恢复 |
 | `custom/test/Android/UniRcSerialPortTest.cc` | Unix 伪终端串口参数、收发/背压、错误与会话隔离；非 Unix 主机检查关闭状态和平台错误，跳过 Unix 用例 |
+| `custom/test/UI/UniRcLinkIndicatorTest.py` | 生产图传 QML 的强度/质量/无数据状态、分档及括号原始值实时变化、飞控连接显隐与云台前位置；详情首开字号与框体占比、标题单行、两数值实际字号一致和可见字形居中，以及深浅主题/窄屏/大字号布局 |
 | `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
-当前 custom 注册 **15 个 C++ CTest 用例**；四个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放与云台罗盘（后者使用 PySide6 自带 rcc 生成临时资源包）：
+当前 custom 注册 **16 个 C++ CTest 用例**；五个 Python 检查脚本不由这组 CTest 自动执行。已安装 PySide6 时，可单独检查顶部模式 UI、PIP 缩放、云台罗盘与图传指示器（罗盘脚本使用 PySide6 自带 rcc 生成临时资源包）：
 
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
 python custom/test/FlightDisplay/DualPipResizeTest.py
 python custom/test/FlightDisplay/GimbalCompassTest.py
+python custom/test/UI/UniRcLinkIndicatorTest.py
 ~~~
 
-当前倒装 A8 方位角专项基于页首代码基线及工作区完成主机验证：Windows / Qt 5.14.2 / MSVC 独立重编的 `GimbalAzimuthProviderTest`、`GimbalAzimuthPolicyTest`、`GimbalHeadingTelemetryTest`、`GimbalModeControllerTest`、`SiyiModeQueryTest`、`SiyiProtocolTest` 六组 CTest 全部通过；Provider 的 XML 结果为 55 项通过、0 失败（含初始化与收尾），其中 38 个倒装安装约定的参数化场景全部通过，覆盖左右转、四向机头航向、北向环绕、跟随/锁定基座转动及俯仰/横滚下的方位角一致性。Windows / Qt/PySide6 6.10.2 离屏验证中，`GimbalCompassTest.py` 9/9、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。显示脚本分别验证真实 QML 显示/状态联动、鼠标缩放事件以及模式按钮绑定与回调，不代表完整 QGC 编译、目标 Qt Kit 或 APK 已通过。合成样本和桌面正装采集记录不能用作倒装方向验收证据；Android 倒装 A8 的实际左右转向、锁定/跟随及俯仰方向仍按 4.2 验收。
+既有倒装 A8 方位角专项基于 `33575aaa6` 及当时工作区完成主机验证：Windows / Qt 5.14.2 / MSVC 独立重编的 `GimbalAzimuthProviderTest`、`GimbalAzimuthPolicyTest`、`GimbalHeadingTelemetryTest`、`GimbalModeControllerTest`、`SiyiModeQueryTest`、`SiyiProtocolTest` 六组 CTest 全部通过；Provider 的 XML 结果为 55 项通过、0 失败（含初始化与收尾），其中 38 个倒装安装约定的参数化场景全部通过，覆盖左右转、四向机头航向、北向环绕、跟随/锁定基座转动及俯仰/横滚下的方位角一致性。Windows / Qt/PySide6 6.10.2 离屏验证中，`GimbalCompassTest.py` 9/9、`DualPipResizeTest.py` 5/5 和 `GimbalModeUiTest.py` 均通过。显示脚本分别验证真实 QML 显示/状态联动、鼠标缩放事件以及模式按钮绑定与回调，不代表完整 QGC 编译、目标 Qt Kit 或 APK 已通过。合成样本和桌面正装采集记录不能用作倒装方向验收证据；Android 倒装 A8 的实际左右转向、锁定/跟随及俯仰方向仍按 4.2 验收。
 
-UART2 接入的既有验证使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行 `UniRcProtocolTest`、`Mt11GimbalControllerTest`，各 23 项通过、0 失败（计数含初始化和收尾）；覆盖既有协议、A8 通道策略及 MT11 输入/停控回归。`UniRcSerialPortTest` 在同一 Windows 主机为 4 项通过、0 失败、7 项 Unix 伪终端测试跳过（计数含初始化和收尾）；仅确认关闭状态与非 Unix 平台错误，伪终端及实际 UART 收发尚未验证。
+本次 `0x44` 图传功能使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行 `UniRcProtocolTest`、`UniRcLinkStatusTest`，分别为 48 项、26 项通过，均 0 失败、0 跳过（计数含初始化和收尾）。覆盖查询精确字节、CTRL/长度/CRC/字段范围、signed8 质量、`0x42`/`0x44` 混合拆包、强度与质量分档、3 s 过期、相同样本续期及失效恢复；这是兼容性单元验证，不包含完整 Controller 与真实传输的时序联测。完整 Qt 6/Android 配置探测仍缺少 `Qt6Config.cmake`，尚未完成产品构建与两种 SDK 接口真机验收。
 
-设置页以 Qt 6/PySide6 完成 8 组分辨率、150% 字体及深浅主题布局检查，默认值、切换接口 Fact 写入、依赖行显隐、原 MAC 保留均通过；未发现 QML 绑定错误，中文翻译编译为 206 条已完成、0 条未完成。当前环境缺少 Qt 6.6 开发 Kit 的 `Qt6Config.cmake`，未完成完整 Qt 6/Android 构建，以上主机测试不等同于 Android UART2 真机验证。
+此前 `UniRcLinkIndicatorTest.py` 在 Windows / Qt 6/PySide6 离屏环境退出码为 0，四组检查全部通过，覆盖六种强度值、独立质量/颜色、过期值隐藏、真实点击和中文、工具栏资源接入、320 px 窄屏、150% 字号、深浅主题与触控尺寸，以及桌面无 Controller 时隐藏和 QML 错误检查。精简详情后重跑四组检查通过，中文 `lrelease` 编译为 218 条已完成、0 条未完成；深色总览和 320 px、150% 字号浅色预览已目视复核，强度与质量并排，档位文字与底部说明已移除，未见裁切。随后等宽双栏、居中对齐与留白优化也通过四组检查，翻译保持 218 条已完成、0 条未完成；当时 320 px、150% 字号的 100% 最宽百分比自适应缩放、两列未挤压，深浅主题及未知状态预览均已复核无裁切。
+
+此前连接显隐、入口位置与详情加宽后，增强版 `UniRcLinkIndicatorTest.py` 退出码为 0，五组检查全部通过：六种强度值、独立质量/颜色、过期、点击与翻译；`communicationLost` 时隐藏并释放位置，恢复后紧邻云台左侧；无 `activeVehicle` 时卸载，重连后仅保留一个入口；320 px、150% 字号、深浅主题及触控尺寸；无 SDK Controller 时不插入且无 QML 错误。各布局场景同时断言两数值的 `fontInfo.pointSize` 实际字号相等、两个标题 `lineCount == 1`、两数值同行以及两列宽度差不超过 1 px，中文 `lrelease` 保持 218 条已完成、0 条未完成。已目视复核深色总览、320 px/150% 字号浅色 100% 与“强”、窄屏未知状态深色预览，字号一致且无裁切。上述预览加载实际生产 QML 和原生详情页/标签组件，但应用服务、相邻指示器和 SDK 数据由测试替身提供；它是独立离屏测试场景，不是完整 QGC 运行截图，也未接入真实遥控器或 Bluetooth/UART2 传输。
+
+此前将图标改为五根递增竖条并放大强度/质量标题及数值后，再次运行 `UniRcLinkIndicatorTest.py`，退出码为 0，既有五组检查全部通过，中文 `lrelease` 保持 218 条已完成、0 条未完成。已目视复核 `overview-dark`、320 px/150% 字号浅色 100% 与“强”以及 `dark-000`：五根竖条形状清楚，两个标题和两个数值均放大，标题保持单行、两数值实际字号一致；有效 0% 的红色空心五条与未知状态的灰色空心五条可区分。此次验证仍属于上述生产 QML 离屏场景，不扩展完整 QGC 构建或真机验收结论。
+
+此前质量分档右侧增加括号原始值后，`UniRcLinkIndicatorTest.py` 退出码为 0，五组检查全部通过，中文 `lrelease` 为 219 条已完成、0 条未完成。在同一已打开详情中依次注入 -15/-1/0/4/5/9/10/12/30，确认同档数值实时刷新、符号与括号正确、分档边界正确，面板宽度不变且无需重新打开；失效后仅显示“未获取”，不残留数值。320 px、150% 字号的深浅主题补充“弱（-15）”场景，确认其与 100% 的实际字号一致、文字无裁切；`overview-dark` 与 `narrow-negative-light` 预览已目视复核。验证范围仍为生产 QML 离屏场景，完整 QGC 构建与真实 SDK 传输验收边界不变。
+
+此前单独将详情标题增至默认字号的 1.6 倍、两个数值增至 3.0 倍时，`UniRcLinkIndicatorTest.py` 原有五组检查全部通过，中文 `lrelease` 为 219 条已完成、0 条未完成；覆盖既有连接显隐、位置、质量括号值实时变化、窄屏、深浅主题和共享实际字号约束。随后首次打开专项发现自然宽度未正确传给父布局，改为双栏网格的首选宽度约束，并增加第六组回归：在 731×411 窗口、12 pt/14 pt 基准字号下首次直接打开 100%/“弱（-15）”，检查标题与数值实际字号。当轮最终布局调整及新增回归因工具执行环境故障未完成复测，最终 `git diff --check` 也未能运行；前述五组通过仅对应当时字体单独放大阶段。这些历史检查属于桌面生产 QML 离屏场景，不能替代 Android 真机显示验收。
+
+此前在紧凑版本上进一步收紧至栏目标题 1.05 倍、数值 1.65 倍及 13.5H 最小首选宽度后，`UniRcLinkIndicatorTest.py` 六组检查全部通过，中文 `lrelease` 为 219 条已完成、0 条未完成，无 QML 错误。731×411、12 pt/14 pt 和深浅主题的首次展开检查确认：标题实际字号在基准的 1.0～1.15 倍内，数值在 1.55～1.75 倍内，框体不超过窗口宽度的 60% 和高度的 40%；同时保留单行标题、等宽双栏和两数值实际字号一致。其余断连显隐、云台左侧位置、原始质量实时更新及 320 px/150% 字号检查均通过；12 pt 浅色横屏和窄屏负数预览已目视复核，清晰且无裁切。当轮结果属于生产 QML 桌面离屏验证，不能替代 Android 实机显示比例验收。
+
+本轮采用 `detailScale = 2/3` 并校正两数值可见字形中心后，`UniRcLinkIndicatorTest.py` 六组检查全部通过，中文 `lrelease` 为 219 条已完成、0 条未完成，无 QML 错误。731×411、12 pt/14 pt 和深浅主题的首次展开检查确认：标题实际字号在应用基准的 0.65～0.75 倍内，数值在 1.0～1.2 倍内，框体不超过窗口宽度的 42% 和高度的 30%。新增截图像素检查按两数值各自的文字颜色提取可见边界，确认其中心与对应栏目标题所在列的几何中心偏差不超过 1.5 px，覆盖强/中/弱、-15～30 范围的边界及实时数据、12 pt/14 pt 首次展开双主题和 320 px/150% 字号窄屏。既有连接显隐、位置、原始质量刷新、未知状态和等宽/共享字号检查均保留并通过；12 pt 浅色横屏及深色四态总览已目视复核，框体更紧凑，完整质量文字及括号整体居中。此结果仍为生产 QML 桌面离屏验证，Android 实机最终显示效果待确认。
+
+UART2 接入的既有验证使用 Windows / Qt 5.14.2 / MSVC 独立重编并执行当时的 `UniRcProtocolTest`、`Mt11GimbalControllerTest`，各 23 项通过、0 失败（计数含初始化和收尾）；覆盖既有协议、A8 通道策略及 MT11 输入/停控回归。`UniRcSerialPortTest` 在同一 Windows 主机为 4 项通过、0 失败、7 项 Unix 伪终端测试跳过（计数含初始化和收尾）；仅确认关闭状态与非 Unix 平台错误，伪终端及实际 UART 收发尚未验证。
+
+UART2 设置页的既有验证以 Qt 6/PySide6 完成 8 组分辨率、150% 字体及深浅主题布局检查，默认值、切换接口 Fact 写入、依赖行显隐、原 MAC 保留均通过；未发现 QML 绑定错误，当时中文翻译编译为 206 条已完成、0 条未完成。当前环境缺少 Qt 6.6 开发 Kit 的 `Qt6Config.cmake`，未完成完整 Qt 6/Android 构建，以上主机测试不等同于 Android UART2 真机验证。
 
 布局检查另需 Qt 6 的 `rcc`，会生成截图，完整命令见[布局测试 README](custom/test/UI/FlyViewSettingsLayout/README.md)。各 `*Stubs/` 目录只为测试补足依赖，不进入产品构建。翻译更新见[翻译 README](custom/translations/README.md)。主机纯策略测试不覆盖真实 MediaCodec、蓝牙、板载 UART2、USB、相机时序或 Android 画面。
 
@@ -2514,7 +2612,7 @@ UART2 接入的既有验证使用 Windows / Qt 5.14.2 / MSVC 独立重编并执�
 
 ~~~sh
 ctest --test-dir <desktop-build>/custom -R '^(GimbalModeControllerTest|SiyiModeQueryTest)$' --output-on-failure
-ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest|UniRcSerialPortTest)$' --output-on-failure
+ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControllerTest|UniRcProtocolTest|UniRcLinkStatusTest|UniRcSerialPortTest)$' --output-on-failure
 ~~~
 
 验证的交付物按层次区分：CMake/编译结果确认接入和类型依赖；策略测试确认纯逻辑；QML 检查及截图确认绑定/布局；新 APK 的真机日志与实际画面确认平台和设备行为。第 1 节的进度应与实际完成的层次对应。
@@ -2538,6 +2636,7 @@ ctest --test-dir <desktop-build>/custom -R '^(Mt11ProtocolTest|Mt11GimbalControl
 | 双罗盘 | A8 按机载方式倒装：机体固定、朝北时分别右转/左转云台，核对方位角递增向东/递减向西、跨北连续及 W 左 E 右；跟随时核对机体与云台叠加，锁定时仅转基座核对世界方位保持、遥控转云台时核对目标可改变，并核对俯仰向上为正；地图/A8/MT11 主画面往返切换、A8 辅窗/独立窗口、三维与全屏、罗盘开关及数据失效时检查显隐和 inset 释放 |
 | UniRC UART2/蓝牙路由 | 净配置默认启用 UART2；升级保留旧接口和禁用值；UniGCS 路由与数传组合匹配；UART2 `/dev/ttyHS2`、115200 8N1 无流控；关闭蓝牙/拒绝附近设备权限时 UART2 仍工作；UART2 打开失败、已开无字节、有字节无 SDK 帧、合法帧无 `0x42`、有效通道流的诊断；接口往返切换、前后台、禁用与重连时只有一个传输且旧回调不影响新会话 |
 | UniRC 动作 | 两种接口分别验证 16 通道、CH9 回中/反向、CH10 交替、CH7/8 复位、顶部联动；MT11 CH11 Yaw/CH12 Pitch 正负方向、同步双轴/单轴回中、死区/端点、断流/后台/禁用/切端点停止，以及恢复后的双轴中位保护 |
+| UniRC 图传 | Bluetooth/UART2 上 1 Hz 单份 `0x44` 查询与 20 Hz 通道流并行；核对实际 CTRL/载荷及负质量编码；强度 0/20/40/60/80/100、质量 -15/4/5/9/10/30、越界帧拒绝；3 s 无回包过期、后台/禁用/接口切换/断线立即失效、恢复刷新；仅有 `0x44` 时通道动作仍超时停止；有 `0x42` 无 `0x44` 时通道保持而图传过期；无飞控连接或通信丢失时入口隐藏、通信恢复后显示于云台图标左侧，SDK 后台查询仍独立运行；详情质量括号值随 SDK 更新，同档变化仍刷新、失效仅显示“未获取”；深浅主题、窄屏与大字号下两个标题保持单行，100% 与“强（30）”“弱（-15）”等完整质量文字实际字号一致且无裁切 |
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |
 

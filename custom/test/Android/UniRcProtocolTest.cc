@@ -51,6 +51,19 @@ QByteArray makeChannelFrame(const UniRcProtocol::Channels& channels,
     return makeFrame(control, UniRcProtocol::CommandChannelData, payload);
 }
 
+QByteArray makeLinkPayload(quint8 channel = 1,
+                           qint16 strength = 80,
+                           qint8 quality = 10)
+{
+    QByteArray payload;
+    appendLe16(payload, 1234); // 123.4 Kbps uplink.
+    appendLe16(payload, 567);  // 56.7 Mbps downlink.
+    payload.append(static_cast<char>(channel));
+    appendLe16(payload, static_cast<quint16>(strength));
+    payload.append(static_cast<char>(quality));
+    return payload;
+}
+
 UniRcChannelPolicy::Result updatePolicy(UniRcChannelPolicy& policy,
                                         qint16 channel9,
                                         qint16 channel10,
@@ -72,6 +85,12 @@ private slots:
     void rejectInvalidFramesAndResponses();
     void streamParserHandlesPartialAndMultipleFrames();
     void streamParserResynchronizes();
+    void exactLinkInfoRequest();
+    void decodeLinkInfoResponse();
+    void linkInfoRanges_data();
+    void linkInfoRanges();
+    void rejectInvalidLinkInfoFrames();
+    void streamParserHandlesMixedChannelAndLinkFrames();
     void zoomPolicyRequiresNeutralAfterStartupAndLoss();
     void zoomPolicyCanReverseDirection();
     void ch10PolicyUsesReleasedToPressedEdges();
@@ -253,6 +272,159 @@ void UniRcProtocolTest::streamParserResynchronizes()
         parser.append(bogusLength + validFrame);
     QCOMPARE(afterBogusLength.size(), 1);
     QVERIFY(afterBogusLength.first().valid);
+}
+
+void UniRcProtocolTest::exactLinkInfoRequest()
+{
+    QCOMPARE(UniRcProtocol::linkInfoRequestPacket(),
+             QByteArray::fromHex("556601000000004405dc"));
+    const auto request = UniRcProtocol::decodePacket(
+        UniRcProtocol::linkInfoRequestPacket(0x5678));
+    QVERIFY(request.valid);
+    QCOMPARE(request.control, quint8(1));
+    QCOMPARE(request.sequence, quint16(0x5678));
+    QCOMPARE(request.command, UniRcProtocol::CommandLinkInfo);
+    QVERIFY(request.payload.isEmpty());
+}
+
+void UniRcProtocolTest::decodeLinkInfoResponse()
+{
+    const auto packet = UniRcProtocol::decodePacket(
+        makeFrame(2, UniRcProtocol::CommandLinkInfo, makeLinkPayload(16, 60, -15)));
+    UniRcProtocol::LinkInfo actual;
+    QVERIFY(UniRcProtocol::parseLinkInfo(packet, &actual));
+    QCOMPARE(actual.videoUpKbps, 123.4);
+    QCOMPARE(actual.videoDownMbps, 56.7);
+    QCOMPARE(actual.channel, quint8(16));
+    QCOMPARE(actual.signalStrength, qint16(60));
+    QCOMPARE(actual.signalQuality, qint8(-15));
+
+    QByteArray maximumRates = makeLinkPayload(1, 0, 30);
+    for (int offset = 0; offset < 4; ++offset) {
+        maximumRates[offset] = static_cast<char>(0xff);
+    }
+    QVERIFY(UniRcProtocol::parseLinkInfo(UniRcProtocol::decodePacket(
+        makeFrame(2, UniRcProtocol::CommandLinkInfo, maximumRates)), &actual));
+    QCOMPARE(actual.videoUpKbps, 6553.5);
+    QCOMPARE(actual.videoDownMbps, 6553.5);
+    QCOMPARE(actual.signalStrength, qint16(0));
+    QCOMPARE(actual.signalQuality, qint8(30));
+}
+
+void UniRcProtocolTest::linkInfoRanges_data()
+{
+    QTest::addColumn<int>("channel");
+    QTest::addColumn<int>("strength");
+    QTest::addColumn<int>("quality");
+    QTest::addColumn<bool>("valid");
+    QTest::newRow("channel-zero") << 0 << 80 << 10 << false;
+    QTest::newRow("channel-one") << 1 << 80 << 10 << true;
+    QTest::newRow("channel-sixteen") << 16 << 80 << 10 << true;
+    QTest::newRow("channel-seventeen") << 17 << 80 << 10 << false;
+    QTest::newRow("negative-strength") << 1 << -1 << 10 << false;
+    QTest::newRow("zero-strength") << 1 << 0 << 10 << true;
+    QTest::newRow("non-tier-strength") << 1 << 39 << 10 << true;
+    QTest::newRow("maximum-strength") << 1 << 100 << 10 << true;
+    QTest::newRow("strength-too-high") << 1 << 101 << 10 << false;
+    QTest::newRow("signed-strength-minimum") << 1 << -32768 << 10 << false;
+    QTest::newRow("signed-strength-maximum") << 1 << 32767 << 10 << false;
+    QTest::newRow("quality-too-low") << 1 << 80 << -16 << false;
+    QTest::newRow("minimum-quality") << 1 << 80 << -15 << true;
+    QTest::newRow("negative-quality") << 1 << 80 << -1 << true;
+    QTest::newRow("zero-quality") << 1 << 80 << 0 << true;
+    QTest::newRow("medium-quality-boundary") << 1 << 80 << 5 << true;
+    QTest::newRow("strong-quality-boundary") << 1 << 80 << 10 << true;
+    QTest::newRow("maximum-quality") << 1 << 80 << 30 << true;
+    QTest::newRow("quality-too-high") << 1 << 80 << 31 << false;
+    QTest::newRow("signed-quality-minimum") << 1 << 80 << -128 << false;
+    QTest::newRow("signed-quality-maximum") << 1 << 80 << 127 << false;
+}
+
+void UniRcProtocolTest::linkInfoRanges()
+{
+    QFETCH(int, channel);
+    QFETCH(int, strength);
+    QFETCH(int, quality);
+    QFETCH(bool, valid);
+    const auto packet = UniRcProtocol::decodePacket(makeFrame(
+        2, UniRcProtocol::CommandLinkInfo,
+        makeLinkPayload(static_cast<quint8>(channel),
+                        static_cast<qint16>(strength),
+                        static_cast<qint8>(quality))));
+    QVERIFY(packet.valid);
+    UniRcProtocol::LinkInfo actual;
+    actual.videoUpKbps = 1.5;
+    actual.channel = 7;
+    actual.signalStrength = 55;
+    actual.signalQuality = 8;
+    QCOMPARE(UniRcProtocol::parseLinkInfo(packet, &actual), valid);
+    if (valid) {
+        QCOMPARE(actual.channel, static_cast<quint8>(channel));
+        QCOMPARE(actual.signalStrength, static_cast<qint16>(strength));
+        QCOMPARE(actual.signalQuality, static_cast<qint8>(quality));
+    } else {
+        // A rejected packet must never partially replace the last good data.
+        QCOMPARE(actual.videoUpKbps, 1.5);
+        QCOMPARE(actual.channel, quint8(7));
+        QCOMPARE(actual.signalStrength, qint16(55));
+        QCOMPARE(actual.signalQuality, qint8(8));
+    }
+}
+
+void UniRcProtocolTest::rejectInvalidLinkInfoFrames()
+{
+    const QByteArray validFrame = makeFrame(
+        2, UniRcProtocol::CommandLinkInfo, makeLinkPayload());
+    UniRcProtocol::LinkInfo actual;
+    QVERIFY(!UniRcProtocol::parseLinkInfo(
+        UniRcProtocol::decodePacket(validFrame), nullptr));
+    QVERIFY(!UniRcProtocol::parseLinkInfo(UniRcProtocol::DecodedPacket{}, &actual));
+
+    QByteArray badCrc = validFrame;
+    badCrc[badCrc.size() - 1] = static_cast<char>(badCrc.back() ^ 1);
+    const auto corruptPacket = UniRcProtocol::decodePacket(badCrc);
+    QVERIFY(!corruptPacket.valid);
+    QVERIFY(!UniRcProtocol::parseLinkInfo(corruptPacket, &actual));
+
+    for (const quint8 control : {0, 1, 3, 4}) {
+        QVERIFY(!UniRcProtocol::parseLinkInfo(UniRcProtocol::decodePacket(
+            makeFrame(control, UniRcProtocol::CommandLinkInfo, makeLinkPayload())),
+            &actual));
+    }
+    for (const int length : {0, 7, 9}) {
+        QVERIFY(!UniRcProtocol::parseLinkInfo(UniRcProtocol::decodePacket(
+            makeFrame(2, UniRcProtocol::CommandLinkInfo, QByteArray(length, '\0'))),
+            &actual));
+    }
+    QVERIFY(!UniRcProtocol::parseLinkInfo(UniRcProtocol::decodePacket(
+        makeFrame(2, UniRcProtocol::CommandChannelData, makeLinkPayload())), &actual));
+}
+
+void UniRcProtocolTest::streamParserHandlesMixedChannelAndLinkFrames()
+{
+    UniRcProtocol::Channels channels{};
+    channels.fill(1500);
+    const QByteArray channelFrame = makeChannelFrame(channels);
+    const QByteArray linkFrame = makeFrame(
+        2, UniRcProtocol::CommandLinkInfo, makeLinkPayload(1, 100, -10));
+    UniRcProtocol::StreamParser parser;
+    const auto firstPackets = parser.append(channelFrame + linkFrame.left(9));
+    QCOMPARE(firstPackets.size(), 1);
+    UniRcProtocol::Channels actualChannels{};
+    QVERIFY(UniRcProtocol::parseChannelData(firstPackets.first(), &actualChannels));
+
+    const auto nextPackets = parser.append(linkFrame.mid(9) + channelFrame + linkFrame);
+    QCOMPARE(nextPackets.size(), 3);
+    UniRcProtocol::LinkInfo actualLink;
+    QVERIFY(UniRcProtocol::parseLinkInfo(nextPackets.at(0), &actualLink));
+    QCOMPARE(actualLink.signalStrength, qint16(100));
+    QCOMPARE(actualLink.signalQuality, qint8(-10));
+    QVERIFY(UniRcProtocol::parseChannelData(nextPackets.at(1), &actualChannels));
+    QVERIFY(UniRcProtocol::parseLinkInfo(nextPackets.at(2), &actualLink));
+    QCOMPARE(actualChannels[8], qint16(1500));
+    QCOMPARE(actualChannels[9], qint16(1500));
+    QVERIFY(!UniRcProtocol::parseChannelData(nextPackets.at(0), &actualChannels));
+    QVERIFY(!UniRcProtocol::parseLinkInfo(nextPackets.at(1), &actualLink));
 }
 
 void UniRcProtocolTest::zoomPolicyRequiresNeutralAfterStartupAndLoss()

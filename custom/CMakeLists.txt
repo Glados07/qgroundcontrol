@@ -285,6 +285,14 @@ set_source_files_properties(
     PROPERTIES QT_RESOURCE_ALIAS ProximityRadarIndicatorPage.qml
 )
 set_source_files_properties(
+    src/QmlControls/UniRcLinkIndicatorPage.qml
+    PROPERTIES QT_RESOURCE_ALIAS UniRcLinkIndicatorPage.qml
+)
+set_source_files_properties(
+    src/QmlControls/UniRcSignalIcon.qml
+    PROPERTIES QT_RESOURCE_ALIAS UniRcSignalIcon.qml
+)
+set_source_files_properties(
     src/FlightDisplay/GeneratorBusVoltageAlert.qml
     PROPERTIES QT_RESOURCE_ALIAS GeneratorBusVoltageAlert.qml
 )
@@ -300,6 +308,8 @@ qt_add_qml_module(CustomModule
         src/QmlControls/FuelStatusIndicatorPage.qml
         src/QmlControls/PowerSystemIndicatorPage.qml
         src/QmlControls/ProximityRadarIndicatorPage.qml
+        src/QmlControls/UniRcLinkIndicatorPage.qml
+        src/QmlControls/UniRcSignalIcon.qml
         src/FlightDisplay/GeneratorBusVoltageAlert.qml
     NO_PLUGIN
 )
@@ -712,6 +722,23 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     add_custom_target(check_unirc_protocol
         COMMAND $<TARGET_FILE:UniRcProtocolTest>
         DEPENDS UniRcProtocolTest
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        USES_TERMINAL
+    )
+
+    qt_add_executable(UniRcLinkStatusTest
+        test/Android/UniRcLinkStatusTest.cc
+        src/Android/UniRcLinkStatus.cc
+        src/Android/UniRcLinkStatus.h
+    )
+    target_include_directories(UniRcLinkStatusTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Android
+    )
+    target_link_libraries(UniRcLinkStatusTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME UniRcLinkStatusTest COMMAND $<TARGET_FILE:UniRcLinkStatusTest>)
+    add_custom_target(check_unirc_link_status
+        COMMAND $<TARGET_FILE:UniRcLinkStatusTest>
+        DEPENDS UniRcLinkStatusTest
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         USES_TERMINAL
     )

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "UniRcChannelPolicy.h"
+#include "UniRcLinkStatus.h"
 #include "UniRcProtocol.h"
 
 #include <QtBluetooth/QBluetoothSocket>
@@ -33,6 +34,7 @@ class UniRcChannelController : public QObject
     Q_PROPERTY(bool bluetoothConnected READ bluetoothConnected NOTIFY bluetoothConnectedChanged)
     Q_PROPERTY(bool uartConnected READ uartConnected NOTIFY uartConnectedChanged)
     Q_PROPERTY(bool transportConnected READ transportConnected NOTIFY transportConnectedChanged)
+    Q_PROPERTY(QObject *linkStatus READ linkStatus CONSTANT)
     Q_PROPERTY(bool sdkRouteActive READ sdkRouteActive NOTIFY sdkRouteActiveChanged)
     Q_PROPERTY(bool channelInputActive READ channelInputActive NOTIFY channelInputActiveChanged)
     Q_PROPERTY(QVariantList channelValues READ channelValues NOTIFY channelsChanged)
@@ -53,6 +55,7 @@ public:
     bool bluetoothConnected() const { return _bluetoothConnected; }
     bool uartConnected() const { return _uartConnected; }
     bool transportConnected() const { return _bluetoothConnected || _uartConnected; }
+    QObject *linkStatus() { return &_linkStatus; }
     bool sdkRouteActive() const { return _sdkRouteActive; }
     bool channelInputActive() const { return _channelInputActive; }
     QVariantList channelValues() const { return _channelValues; }
@@ -81,6 +84,7 @@ private slots:
     void _reconcile();
     void _connectionTimeoutExpired();
     void _inputWatchdogExpired();
+    void _requestLinkInfo();
     void _socketConnected();
     void _socketDisconnected();
     void _socketReadyRead();
@@ -97,9 +101,11 @@ private:
     void _startChannelStream();
     void _closeTransport(bool sendDisableRequest, const char *reason);
     bool _sendChannelRequest(quint8 frequencyCode);
+    bool _writePacket(const QByteArray &packet);
     void _readAvailableTransportData();
     void _markChannelRequestTransmitted(const char *evidence);
     void _handleChannelPacket(const UniRcProtocol::DecodedPacket &packet);
+    void _handleLinkInfoPacket(const UniRcProtocol::DecodedPacket &packet);
     void _scheduleTransportFailure(const QString &message,
                                    const char *reason);
     void _resetReceiveDiagnostics();
@@ -129,6 +135,7 @@ private:
     static constexpr int kZoomStartRetryMs = 250;
     static constexpr int kDiagnosticRefreshMs = 500;
     static constexpr int kReceiveSampleMaxBytes = 64;
+    static constexpr int kLinkInfoPollIntervalMs = 1000;
     static constexpr quint32 kBluetoothSdkInterface = 0;
     static constexpr quint32 kUart2SdkInterface = 1;
 
@@ -140,9 +147,11 @@ private:
     UniRcSerialPort *_uart = nullptr;
     UniRcProtocol::StreamParser _parser;
     UniRcChannelPolicy _channelPolicy;
+    UniRcLinkStatus _linkStatus;
     QTimer _reconnectTimer;
     QTimer _connectionTimeout;
     QTimer _inputWatchdog;
+    QTimer _linkInfoPollTimer;
     QElapsedTimer _zoomStartRetryElapsed;
     QElapsedTimer _connectionElapsed;
     QElapsedTimer _requestElapsed;

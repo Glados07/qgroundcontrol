@@ -36,6 +36,7 @@ UniRcChannelController::UniRcChannelController(
     , _gimbalControlManager(gimbalControlManager)
     , _gimbalCenterCoordinator(gimbalCenterCoordinator)
     , _mt11ControlManager(mt11ControlManager)
+    , _linkStatus(this)
 {
     Q_ASSERT(_settings);
     Q_ASSERT(_gimbalControlManager);
@@ -47,6 +48,9 @@ UniRcChannelController::UniRcChannelController(
     _connectionTimeout.setSingleShot(true);
     _connectionTimeout.setInterval(kConnectionTimeoutMs);
     _inputWatchdog.setSingleShot(true);
+    _linkInfoPollTimer.setInterval(kLinkInfoPollIntervalMs);
+    connect(&_linkInfoPollTimer, &QTimer::timeout,
+            this, &UniRcChannelController::_requestLinkInfo);
     _channelValues.reserve(UniRcProtocol::ChannelCount);
     for (int channelIndex = 0;
          channelIndex < UniRcProtocol::ChannelCount;
@@ -495,6 +499,24 @@ void UniRcChannelController::_startChannelStream()
         _markChannelRequestTransmitted("queue-empty-after-write");
     }
     _inputWatchdog.start(kInitialFrameTimeoutMs);
+    _linkInfoPollTimer.start();
+    _requestLinkInfo();
+}
+
+void UniRcChannelController::_requestLinkInfo()
+{
+    // 0x42 retains priority on the shared SDK transport. Never accumulate
+    // periodic queries behind a blocked write or alter channel TX accounting.
+    if (!_shouldRun() || !transportConnected()
+        || _requestAwaitingTransmission || _transportBytesToWrite() > 0) {
+        return;
+    }
+    if (!_writePacket(UniRcProtocol::linkInfoRequestPacket())) {
+        _scheduleTransportFailure(
+            tr("Failed to query the UniRC video link on %1: %2")
+                .arg(_transportDescription(), _transportErrorString()),
+            "link-info-write-failed");
+    }
 }
 
 void UniRcChannelController::_socketDisconnected()
@@ -539,29 +561,11 @@ void UniRcChannelController::_connectionTimeoutExpired()
 
 bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
 {
-    if (!(_uart && _uart->isOpen())
-        && !(_socket && _socket->state()
-            == QBluetoothSocket::SocketState::ConnectedState
-            && _socket->isWritable())) {
-        return false;
-    }
-
     const QByteArray packet =
         UniRcProtocol::channelDataRequestPacket(frequencyCode);
-    if (packet.isEmpty()) {
-        return false;
-    }
-
     for (int copy = 0; copy < 3; ++copy) {
-        qint64 offset = 0;
-        while (offset < packet.size()) {
-            const qint64 written = _uart
-                ? _uart->write(packet.mid(offset))
-                : _socket->write(packet.constData() + offset, packet.size() - offset);
-            if (written <= 0) {
-                return false;
-            }
-            offset += written;
+        if (!_writePacket(packet)) {
+            return false;
         }
         ++_requestFrameCount;
         _requestByteCount += static_cast<quint64>(packet.size());
@@ -582,6 +586,32 @@ bool UniRcChannelController::_sendChannelRequest(quint8 frequencyCode)
         << "bytes" << packet.size() * 3
         << "transportBytesToWrite" << _transportBytesToWrite()
         << "packet" << packet.toHex(' ');
+    return true;
+}
+
+bool UniRcChannelController::_writePacket(const QByteArray &packet)
+{
+    if (!(_uart && _uart->isOpen())
+        && !(_socket && _socket->state()
+            == QBluetoothSocket::SocketState::ConnectedState
+            && _socket->isWritable())) {
+        return false;
+    }
+
+    if (packet.isEmpty()) {
+        return false;
+    }
+
+    qint64 offset = 0;
+    while (offset < packet.size()) {
+        const qint64 written = _uart
+            ? _uart->write(packet.mid(offset))
+            : _socket->write(packet.constData() + offset, packet.size() - offset);
+        if (written <= 0) {
+            return false;
+        }
+        offset += written;
+    }
     return true;
 }
 
@@ -713,7 +743,11 @@ void UniRcChannelController::_readAvailableTransportData()
         _lastFrameControl = packet.control;
         _lastFrameCommand = packet.command;
         _lastFramePayloadSize = packet.payload.size();
-        _handleChannelPacket(packet);
+        if (packet.command == UniRcProtocol::CommandLinkInfo) {
+            _handleLinkInfoPacket(packet);
+        } else if (packet.command == UniRcProtocol::CommandChannelData) {
+            _handleChannelPacket(packet);
+        }
     }
     if (firstValidSdkFrame
         && !_sdkRouteActive
@@ -724,6 +758,20 @@ void UniRcChannelController::_readAvailableTransportData()
         || _diagnosticRefreshElapsed.elapsed() >= kDiagnosticRefreshMs) {
         _diagnosticRefreshElapsed.restart();
         emit diagnosticsChanged();
+    }
+}
+
+void UniRcChannelController::_handleLinkInfoPacket(
+    const UniRcProtocol::DecodedPacket &packet)
+{
+    if (_failureScheduled || _shuttingDown) {
+        return;
+    }
+    UniRcProtocol::LinkInfo info{};
+    if (UniRcProtocol::parseLinkInfo(packet, &info)) {
+        // Link telemetry has its own freshness timer. A 0x44 response must
+        // never re-arm channel actions or refresh the 0x42 input watchdog.
+        _linkStatus.update(info);
     }
 }
 
@@ -928,7 +976,10 @@ void UniRcChannelController::_inputWatchdogExpired()
         return;
     }
 
-    if (_channelFrameCount == 0 && transportConnected()) {
+    // Once 0x42 is transmitted, a queued 0x44 query must not extend the
+    // first-channel deadline or be reported as a stalled channel request.
+    if (_channelFrameCount == 0 && transportConnected()
+        && _requestAwaitingTransmission) {
         const qint64 queuedBytes = _transportBytesToWrite();
         if (queuedBytes > 0
             && _requestElapsed.isValid()
@@ -944,7 +995,7 @@ void UniRcChannelController::_inputWatchdogExpired()
                 qMin(kInitialFrameTimeoutMs, remainingMs));
             return;
         }
-        if (queuedBytes == 0 && _requestAwaitingTransmission) {
+        if (queuedBytes == 0) {
             _markChannelRequestTransmitted("watchdog-queue-empty");
             return;
         }
@@ -953,6 +1004,7 @@ void UniRcChannelController::_inputWatchdogExpired()
     _resetInput(false);
     const bool requestStillQueued =
         _channelFrameCount == 0
+        && _requestAwaitingTransmission
         && _transportBytesToWrite() > 0;
     _scheduleTransportFailure(
         _receiveTimeoutMessage(),
@@ -972,6 +1024,8 @@ void UniRcChannelController::_scheduleTransportFailure(
     }
 
     _failureScheduled = true;
+    _linkInfoPollTimer.stop();
+    _linkStatus.invalidate();
     _setSdkRouteActive(false);
     QString diagnosticReason = QString::fromLatin1(reason).toUpper();
     diagnosticReason.replace(QLatin1Char('-'), QLatin1Char('_'));
@@ -1020,6 +1074,8 @@ void UniRcChannelController::_scheduleTransportFailure(
 void UniRcChannelController::_closeTransport(bool sendDisableRequest,
                                               const char *reason)
 {
+    _linkInfoPollTimer.stop();
+    _linkStatus.invalidate();
     _connectionTimeout.stop();
     _inputWatchdog.stop();
     _resetInput(false);
@@ -1115,7 +1171,7 @@ QString UniRcChannelController::_receiveTimeoutMessage() const
             .arg(_transportDescription())
             .arg(_channelFrameCount);
     }
-    if (_transportBytesToWrite() > 0) {
+    if (_requestAwaitingTransmission && _transportBytesToWrite() > 0) {
         return tr("The UniRC request on %1 still had %2 byte(s) queued after %3 ms.")
             .arg(_transportDescription())
             .arg(_transportBytesToWrite())
