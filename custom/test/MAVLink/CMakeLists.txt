@@ -6,7 +6,9 @@ set(ROUKE_UPSTREAM_MAVLINK "" CACHE PATH "Team c_library_v2 checkout containing 
 if(NOT EXISTS "${ROUKE_UPSTREAM_MAVLINK}/all/all.h")
     message(FATAL_ERROR "Set ROUKE_UPSTREAM_MAVLINK to the team c_library_v2 checkout used by QGC")
 endif()
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../src/MAVLink" mavlink-compat)
 add_executable(RoukeMavlinkTest RoukeMavlinkTest.cc)
+target_link_libraries(RoukeMavlinkTest PRIVATE CustomMAVLink)
 target_include_directories(RoukeMavlinkTest BEFORE PRIVATE
     "${ROUKE_UPSTREAM_MAVLINK}"
     "${ROUKE_UPSTREAM_MAVLINK}/all"

@@ -409,9 +409,12 @@ set(CUSTOM_SOURCES
     CACHE INTERNAL "" FORCE
 )
 
+add_subdirectory(src/MAVLink)
+
 set(CUSTOM_LIBRARIES
     CustomModule
     CustomFlightDisplayModule
+    CustomMAVLink
     Qt6::Bluetooth
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
@@ -466,6 +469,7 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         ${_mavlink_test_include_dirs}
         ${CMAKE_SOURCE_DIR}/src/MAVLink
     )
+    target_link_libraries(RoukeMavlinkTest PRIVATE CustomMAVLink)
     add_test(NAME RoukeMavlinkTest COMMAND $<TARGET_FILE:RoukeMavlinkTest>)
 
     qt_add_executable(RoukePayloadControllerTest

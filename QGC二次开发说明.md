@@ -10,7 +10,7 @@
 | 分支 | `SecDev/rouke` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `935578146` + 当前工作区；A8/Rouke 相机栏统一图标化，柔克参数及测距拍照设置继续通过团队 MAVLink 53022 接入 |
+| 本次代码核对基线 | `de36e7b74` + 当前工作区；保留 A8/Rouke 相机栏与参数设置，补齐团队 MAVLink 新版夹爪枚举对原生 QGC 的编译兼容 |
 | 文档更新 | 2026-11-05 |
 
 ## 阅读导航
@@ -398,6 +398,11 @@ custom/
 │   │   └── ZoomStepPolicy.h
                                                             # ① 共用倍率档位接口：声明 isAlignedZoom、alignmentTarget 和 stepTarget，统一 A8/MT11 的档位合法性、实测对齐与单步前进规则。
                                                             # ② 输入输出：使用当前倍率、步长、最小/最大倍率及方向计算目标；档位以最小倍率为基准，精确最大值始终可作为终点，设备能力和通信状态不属于本接口。
+│   ├── MAVLink/
+                                                            # 团队头文件与原生 QGC 的编译兼容
+│   │   └── CMakeLists.txt
+                                                            # ① 定义 CustomMAVLink INTERFACE 目标，将原生 RELEASE/GRAB 名称映射到团队头文件的 OPEN/CLOSE，保持释放 0、抓取 1 的动作值和枚举类型。
+                                                            # ② 由 CUSTOM_LIBRARIES 接入主程序及其 moc/PCH，独立 MAVLink 回归也链接同一目标；不修改原生 src 或生成头文件，升级团队提交时须复核映射。
 │   ├── QmlControls/
                                                             # 通用遥测控件、详情页和三维模块声明
 │   │   ├── BatteryIndicator.qml
@@ -937,13 +942,13 @@ custom/
                                                             # ① A8 协议/能力测试：检查连续与绝对变倍帧、相机编码参数、严格帧/CRC、多帧报文、ACK 和倍率载荷，覆盖非法字段及不同卡录/拉流分辨率能力。
                                                             # ② 档位联测：验证 A8MiniZoomPolicy/ZoomStepPolicy 的上限、短按序列、长按推进、方向到位、精确端点和 TargetTracker 反馈确认；为 Manager 上层状态提供底层规则保证，不直接驱动设备。
 │   ├── MAVLink/
-                                                            # 团队 all 方言中 53022 的独立编译回归
+                                                            # 团队 all 方言中 53022 与原生夹爪枚举的独立编译回归
 │   │   ├── CMakeLists.txt
-                                                            # ① 独立构建入口：ROUKE_UPSTREAM_MAVLINK 指向产品固定版本的团队头文件库 checkout，编译器直接从该目录及其 all 子目录取头文件。
+                                                            # ① 独立构建入口：ROUKE_UPSTREAM_MAVLINK 指向产品固定版本的团队头文件库 checkout，编译器直接从该目录及其 all 子目录取头文件，并链接生产 CustomMAVLink 兼容目标。
                                                             # ② 可不依赖完整 Qt 6 QGC 应用运行消息测试；不替代产品构建。
 │   │   └── RoukeMavlinkTest.cc
                                                             # ① 消息回归：通过真实 MAVLinkLib 包装检查 53022 CRC、Inspector、短帧零尾截断和满容量。
-                                                            # ② 坏 CRC 必须拒绝，同时保留原生 HEARTBEAT 和 QGC 通道状态；无需设备网络。
+                                                            # ② 坏 CRC 必须拒绝，同时保留原生 HEARTBEAT 和 QGC 通道状态；使用原生旧枚举名检查释放/抓取动作，以 COMMAND_LONG 完整编码解析验证参数 2 为 0/1、STOP 为 2；无需设备网络。
 │   ├── UI/
                                                             # 实际 QML 的布局与交互验证
 │   │   ├── UniRcLinkIndicatorTest.py
@@ -1732,12 +1737,15 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 | 控制传输与帧 | `Gimbal/RoukePayloadController.h/.cc`、`RoukeProtocol.h/.cc` | Controller 管网络、分段发送、接收流生命周期、请求和 ACK；Protocol 管内层编解码、切分、字节流重组和严格校验 |
 | MAVLink 消息定义 | 团队 `Glados07/mavlink` 的 `message_definitions/v1.0/{rouke,all}.xml` | `rouke.xml` 定义 53022，`all.xml` 包含 `rouke.xml`，生成的 `all` 方言同时覆盖飞行消息与负载消息 |
 | 头文件与版本选择 | 团队 `Glados07/c_library_v2` 的 `all/all.h`、`rouke/mavlink_msg_vk_payload_data_relay.h`；`custom/cmake/CustomOverrides.cmake` | CPM 按产品指定的仓库和提交获取生成头文件，原生 `MAVLinkLib.h` 通过 `<mavlink.h>` 选中 `all` 入口 |
+| 原生枚举兼容 | `custom/src/MAVLink/CMakeLists.txt`；`custom/CMakeLists.txt` | `CustomMAVLink` 为主程序和协议回归提供 RELEASE→OPEN、GRAB→CLOSE 编译别名；保留枚举类型及线上动作值，不复制生成消息表 |
 | 资源与历史实现 | `custom/CMakeLists.txt`、`custom/custom.qrc` | 产品构建和 QML 改用 Rouke；旧 MT11 源文件/设置/测试保留供后续分支合并比对 |
 | 验证 | `custom/test/Gimbal/RoukeProtocolTest.cc`、`RoukePayloadControllerTest.cc`、`RoukeGimbalControllerTest.cc`；`custom/test/MAVLink/` | 分别覆盖内层帧、UDP 分段与 ACK 状态、通道速度/回中保护及完整 MAVLink；实机转发、运动、视频及媒体按 4.2 验收 |
 
 消息定义和生成的头文件分别在团队两个仓库的 `SecDev/ft/rouke` 分支维护。QGC 应用分支为 `SecDev/rouke`。本版 53022 的 [XML 定义](https://github.com/Glados07/mavlink/blob/6f9464e4881b3f407be2f67c2b5059310ece8f90/message_definitions/v1.0/rouke.xml) 对应源码提交 `6f9464e4881b3f407be2f67c2b5059310ece8f90`。该版本的 pymavlink 子模块提交为 `fcaa2c7d25e3169dc66155929c338487941555e9`。[团队 all 消息表](https://github.com/Glados07/c_library_v2/blob/b498a888ffc58a4dbe9c0f651207b70c978c7b0b/all/all.h) 所在的头文件提交为 `b498a888ffc58a4dbe9c0f651207b70c978c7b0b`，对应 QGC 的 `QGC_MAVLINK_GIT_TAG`。
 
 修改消息定义时，在团队协议仓库更新 XML，通过该仓库固定的 `pymavlink` 重新生成 MAVLink 2 C 头文件。将生成结果发布到团队头文件仓库后，在 `custom/cmake/CustomOverrides.cmake` 更新头文件提交号，重新运行目标 Kit 的 CMake 并构建。柔克 JSON 命令、连续流分段和 UDP 传输由 `custom/src/Gimbal` 维护，只改这些业务行为时可以继续使用同一 53022 定义。
+
+当前团队头文件的夹爪动作已由原生基线的 `GRIPPER_ACTION_RELEASE=0`、`GRIPPER_ACTION_GRAB=1` 改名为 `GRIPPER_ACTION_OPEN=0`、`GRIPPER_ACTION_CLOSE=1`，另增加 `GRIPPER_ACTION_STOP=2`。原生 `QGCMAVLink.h`、`Vehicle.cc`、`Joystick.cc` 仍用旧名，因此在 custom 构建层提供上述两个兼容别名。此兼容与固定的团队版本配套；以后升级 QGC 或协议提交时应复核是否仍需要，不能根据编译器的拼写建议映射到 CLOSE/STOP，也不能用 `#ifdef` 判断枚举项是否存在。`Invalid_option` 继续采用头文件的 `GRIPPER_ACTIONS_ENUM_END`（当前为 3），不占用 STOP 的动作值。
 
 ---
 
@@ -2685,6 +2693,15 @@ cmake --build <mavlink-test-build> --config Release
 ctest --test-dir <mavlink-test-build> -C Release --output-on-failure
 ~~~
 
+Ubuntu 若出现 `QGCMAVLink.h` 中 `GRIPPER_ACTION_RELEASE/GRAB was not declared`，原因是上述团队头文件枚举改名与原生 QGC 的接口差异。更新包含 `custom/src/MAVLink/CMakeLists.txt` 的修复后，在原 Qt Kit 的构建目录重新运行 CMake，再继续构建；Qt Creator 中对应“运行 CMake”后构建。以本次报错目录为例，在工程根目录执行：
+
+~~~sh
+cmake -S . -B build/Desktop_Qt_6_8_3-Debug
+cmake --build build/Desktop_Qt_6_8_3-Debug --parallel 4
+~~~
+
+这两步复用原构建目录的 Qt Kit 和依赖缓存；无需手工修改 CPM 中的 `common.h` 或重新生成 53022 头文件。独立测试在 Ubuntu 上运行时，将 `ROUKE_UPSTREAM_MAVLINK` 改为本机同一提交的头文件目录。
+
 2026-10-28 连续流主机验证使用 Windows / Qt 5.14.2 / MSVC 独立重编：`RoukeProtocolTest` 14 项通过、0 失败、0 跳过（含初始化和收尾），覆盖内层帧、128/129/152 字节分段、真实长命令、中文跨段、逐字节和多帧重组、LE16 容量上限、半帧与中断帧头恢复、缓存边界和非法输入。日志为 `tmp/rouke-protocol-test/result-stream.txt`。
 
 2026-10-29 `RoukePayloadControllerTest` 使用 Qt 5.14.2/MSVC 的真实本机 UDP，32 项通过、0 失败、0 跳过（含初始化和收尾，约 16.45 s）：保留分段精确字节及顺序、长 ACK 重组、错误端点/地址过滤、发送者流隔离、半帧过期、配置切换、排队停止和同名迟到 ACK 保持未知检查，并新增相机 pending 下速度/零速发送、独立回中 ACK 与超时、速度原始字段校验及双类请求的长 ACK 互不干扰。当前按内层帧开始接收时的本地请求序号拒绝旧回应，不再通过新命令清空全部接收残片；重复 START ACK 仍不能确认随后排队的 STOP。日志为 `tmp/rouke-controller-test/realtime-test-results.txt`。地面发送标识为 system 255/component 190，接收按端点、载荷地址及 psdk→msdk JSON 校验，不猜测设备的 system/component 值。
@@ -2727,6 +2744,8 @@ SD 状态接入后，Qt 5 / MSVC 生产 Controller 的定向 UDP 测试 20 项�
 
 最新中文实际控件截图位于 `debug/camera-single-record-20261105/preview/`，此前版本保留于 `debug/camera-sd-status-20261105/preview/`、`debug/camera-resting-icons-20261105/preview/`、`debug/camera-refined-20261105/preview/` 和 `debug/camera-icons-20261105/preview/`：`01-a8-controls.png`、`02-rouke-controls.png` 展示一级栏默认状态，`01a-a8-photo-pressed.png`、`02a-rouke-photo-pressed.png` 为拍照按住状态，对应 `photo-released` 图片为松开状态；`01b-a8-long-recording.png`、`02b-rouke-recording.png` 展示录像状态。`01c/02c-…-sd-inserted/absent.png` 展示共享 SD 红绿灯的模拟状态（不表示柔克协议已提供无卡码），`01d/02d-…-recording-pending.png` 展示待确认状态，`02e-rouke-recording-retry.png` 展示停止失败后的重试按钮。`03-rouke-lens-menu.png` 为镜头选择菜单，`04-camera-upper.png`、`05-camera-middle.png`、`06-camera-lower.png` 为相机参数滚动位置，`07-range-default.png` 为默认关闭的测距拍照页。所有截图使用生产 QML、测试设备状态及简单展示背景，已目视检查，不是完整运行的地面站或真实设备采集图。
 
+2026-11-05 针对 Ubuntu 日志中的夹爪枚举编译失败，使用固定团队提交 `b498a888` 扩展 `RoukeMavlinkTest`：接入兼容目标前，MSVC 编译明确复现 RELEASE/GRAB 未定义；接入后重新构建及 CTest 1/1 通过，覆盖旧名对应的释放 0、抓取 1、停止 2 的完整 COMMAND_LONG 编解码，以及既有 53022、CRC、Inspector、HEARTBEAT 和独立通道状态检查。日志为 `tmp/gripper-mavlink-msvc/{before-fix.log,after-fix-build.log,after-fix-test.log}`。另在 Qt 5.14.2/MSVC 临时工程中引用真实 `QGCMAVLink.h` 和生产兼容目标，AUTOMOC、PCH、消费者编译及 CTest 1/1 通过；Qt 枚举反射确认 release=0、grab=1、invalid=3，日志为 `tmp/gripper-mavlink-qt-integration/{build.log,test.log}`。该临时工程仅为空缺的 QtQmlIntegration 注解 include 提供 Qt5 适配，并补构造/析构链接体，没有替换原生头文件或 MAVLink 枚举。本机未配置 Ubuntu/Qt 6.8.3 完整构建环境，这些结果不等于目标 Ubuntu 全应用构建通过。
+
 以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用测试，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
@@ -2743,7 +2762,7 @@ cmake --build <desktop-build> --target check_rouke_payload
 | `custom/test/Gimbal/RoukeProtocolTest.cc` | 柔克 JSON 帧、UTF-8 字节长度、128/129/152 字节分段、LE16 容量、半帧/连帧重组、坏帧恢复及字段校验 |
 | `custom/test/Gimbal/RoukePayloadControllerTest.cc` | 独立 UDP 的 53022 连续分段、长 ACK 重组、错误端点/地址拒绝、半帧过期、超时与状态隔离 |
 | `custom/test/Gimbal/RoukeGimbalControllerTest.cc` | CH11/12 双轴速度映射、死区/中位解锁、刷新与零速停止、CH14 回中边沿、超时及相机 pending 隔离 |
-| `custom/test/MAVLink/` | 在产品固定的团队头文件上验证 53022 CRC/Inspector、完整编码解析、原生消息与通道状态保留 |
+| `custom/test/MAVLink/` | 在产品固定的团队头文件上验证原生夹爪旧名及 0/1/2 动作值、53022 CRC/Inspector、完整编码解析、原生消息与通道状态保留 |
 | `custom/test/Gimbal/Mt11ProtocolTest.cc` | 历史 MT11 协议保留测试，不代表本分支柔克能力 |
 | `custom/test/Gimbal/Mt11GimbalControllerTest.cc` | 历史 MT11 保留测试：CH11/CH12 映射、死区、恢复保护、UDP 双轴刷新/停止、无效值、超时、端点隔离和 ACK 校验 |
 | `custom/test/Gimbal/GimbalMediaSessionPolicyTest.cc`、`GimbalPhotoCapturePolicyTest.cc` | 媒体会话、尺寸和 DPR |

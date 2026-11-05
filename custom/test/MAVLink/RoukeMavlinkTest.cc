@@ -59,10 +59,42 @@ void roundTrip(uint8_t count)
     bytes[10] ^= 0x01;
     require(!parse(bytes.data(), size, received), "corrupt wire payload is rejected");
 }
+
+void gripperRoundTrip(GRIPPER_ACTIONS action, float expectedWireAction)
+{
+    mavlink_message_t sent{};
+    mavlink_msg_command_long_pack_chan(255, 190, MAVLINK_COMM_0, &sent,
+                                      1, 1, MAV_CMD_DO_GRIPPER, 0,
+                                      1, static_cast<float>(action), 0, 0, 0, 0, 0);
+    std::array<uint8_t, MAVLINK_MAX_PACKET_LEN> bytes{};
+    const auto size = mavlink_msg_to_send_buffer(bytes.data(), &sent);
+    mavlink_message_t received{};
+    require(parse(bytes.data(), size, received)
+                && received.msgid == MAVLINK_MSG_ID_COMMAND_LONG,
+            "native parser recognizes gripper command");
+    mavlink_command_long_t decoded{};
+    mavlink_msg_command_long_decode(&received, &decoded);
+    require(decoded.command == MAV_CMD_DO_GRIPPER
+                && decoded.target_system == 1 && decoded.target_component == 1
+                && decoded.param1 == 1 && decoded.param2 == expectedWireAction,
+            "legacy gripper action retains its wire value");
+}
 } // namespace
 
 int main()
 {
+    // Use the same legacy names as QGCMAVLink, Vehicle and Joystick. The team
+    // dialect renamed them; a wrong alias would compile but change the action.
+    static_assert(GRIPPER_ACTION_RELEASE == 0);
+    static_assert(GRIPPER_ACTION_RELEASE == GRIPPER_ACTION_OPEN);
+    static_assert(GRIPPER_ACTION_GRAB == 1);
+    static_assert(GRIPPER_ACTION_GRAB == GRIPPER_ACTION_CLOSE);
+    static_assert(GRIPPER_ACTION_STOP == 2);
+    static_assert(GRIPPER_ACTIONS_ENUM_END > GRIPPER_ACTION_STOP);
+    gripperRoundTrip(GRIPPER_ACTION_RELEASE, 0);
+    gripperRoundTrip(GRIPPER_ACTION_GRAB, 1);
+    gripperRoundTrip(GRIPPER_ACTION_STOP, 2);
+
     static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY == 53022);
     static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN == 132);
     static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_MIN_LEN == 132);
@@ -108,5 +140,5 @@ int main()
             "private receive parser recognizes relay");
     require(mavlink_get_channel_status(MAVLINK_COMM_0)->flags & MAVLINK_STATUS_FLAG_OUT_MAVLINK1,
             "private relay status leaves QGC channel flags unchanged");
-    std::puts("Rouke MAVLink: CRC table, inspector, short/full frames, bad CRC, heartbeat and private MAVLink 2 status checks passed.");
+    std::puts("Rouke MAVLink: legacy gripper actions, CRC table, inspector, short/full frames, bad CRC, heartbeat and private MAVLink 2 status checks passed.");
 }
