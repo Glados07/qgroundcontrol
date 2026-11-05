@@ -236,65 +236,81 @@
 <context>
     <name>GimbalZoomControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="295"/>
+        <source>Zoom out</source>
+        <translation>缩小</translation>
+    </message>
+    <message>
+        <source>Zoom out · hold for continuous zoom</source>
+        <translation>缩小 · 长按连续变倍</translation>
+    </message>
+    <message>
         <source>Target</source>
         <translation>目标</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="308"/>
         <source>Actual</source>
         <translation>实际</translation>
+    </message>
+    <message>
+        <source>Zoom in</source>
+        <translation>放大</translation>
+    </message>
+    <message>
+        <source>Zoom in · hold for continuous zoom</source>
+        <translation>放大 · 长按连续变倍</translation>
     </message>
 </context>
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="77"/>
         <source>ZOOM</source>
         <translation>变焦</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="80"/>
         <source>IR</source>
         <translation>热像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="83"/>
         <source>MIX</source>
         <translation>拼接</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="90"/>
         <source>Zoom</source>
         <translation>变焦</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="93"/>
         <source>Thermal</source>
         <translation>热成像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="96"/>
         <source>Zoom + Thermal</source>
         <translation>变焦 + 热成像</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
         <source>Unknown mode</source>
         <translation>未知模式</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="633"/>
+        <source>Take photo</source>
+        <translation>拍照</translation>
+    </message>
+    <message>
         <source>FAILED</source>
         <translation>失败</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="777"/>
+        <source>Stop recording</source>
+        <translation>停止录像</translation>
+    </message>
+    <message>
+        <source>Start recording</source>
+        <translation>开始录像</translation>
+    </message>
+    <message>
         <source>SD</source>
         <translation>SD</translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="834"/>
         <source>LOCAL</source>
         <translation>本地</translation>
     </message>
@@ -1224,6 +1240,18 @@
 <context>
     <name>RoukeCameraControl</name>
     <message>
+        <source>Start recording</source>
+        <translation>开始录像</translation>
+    </message>
+    <message>
+        <source>Stop recording</source>
+        <translation>停止录像</translation>
+    </message>
+    <message>
+        <source>FAILED</source>
+        <translation>失败</translation>
+    </message>
+    <message>
         <source>Waiting for payload</source>
         <translation>等待负载回执</translation>
     </message>
@@ -1233,11 +1261,7 @@
     </message>
     <message>
         <source>Awaiting payload response</source>
-        <translation>等待负载响应</translation>
-    </message>
-    <message>
-        <source>Payload control unavailable</source>
-        <translation>负载控制不可用</translation>
+        <translation>等待负载回应</translation>
     </message>
     <message>
         <source>Focus</source>
@@ -1283,9 +1307,25 @@
         <source>Photos: SD %1 / LOCAL %2</source>
         <translation>照片：SD %1 / 本地 %2</translation>
     </message>
+    <message>
+        <source>Switch camera</source>
+        <translation>切换相机</translation>
+    </message>
+    <message>
+        <source>Camera settings</source>
+        <translation>相机设置</translation>
+    </message>
 </context>
 <context>
     <name>RoukePayloadController</name>
+    <message>
+        <source>Rouke recording requires a start or stop action.</source>
+        <translation>柔克录像命令必须指定开始或停止。</translation>
+    </message>
+    <message>
+        <source>Stop the previous Rouke recording session before starting another.</source>
+        <translation>请先停止上一次柔克录像，再开始新的录像。</translation>
+    </message>
     <message>
         <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
         <translation>Rouke 速度控制要求偏转和俯仰为整数协议值，滚转为 0。</translation>
@@ -1317,6 +1357,18 @@
     <message>
         <source>Rouke view must be LR1 (4) or OV2735 (5).</source>
         <translation>Rouke 视角必须为 LR1（4）或 OV2735（5）。</translation>
+    </message>
+    <message>
+        <source>Invalid Rouke camera parameter or integer value: %1.</source>
+        <translation>Rouke 相机参数或整数值无效：%1。</translation>
+    </message>
+    <message>
+        <source>Reading this Rouke camera parameter is not supported: %1.</source>
+        <translation>此 Rouke 相机参数不支持读取：%1。</translation>
+    </message>
+    <message>
+        <source>Rouke returned a missing or invalid value for %1; device state is unknown.</source>
+        <translation>Rouke 返回的 %1 值缺失或无效，设备状态未知。</translation>
     </message>
     <message>
         <source>Rouke rejected command %1.</source>
@@ -1380,6 +1432,238 @@
     <message>
         <source>Timed out stopping Rouke local video recording.</source>
         <translation>Rouke 本地录像停止超时。</translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraParameter</name>
+    <message>
+        <source>Waiting for payload…</source>
+        <translation>等待负载确认…</translation>
+    </message>
+    <message>
+        <source>Confirmed: %1</source>
+        <translation>已确认：%1</translation>
+    </message>
+    <message>
+        <source>Not confirmed</source>
+        <translation>尚未确认</translation>
+    </message>
+    <message>
+        <source>Enter value</source>
+        <translation>输入数值</translation>
+    </message>
+    <message>
+        <source>Select…</source>
+        <translation>请选择…</translation>
+    </message>
+    <message>
+        <source>Read</source>
+        <translation>读取</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraSettings</name>
+    <message>
+        <source>Payload settings</source>
+        <translation>负载设置</translation>
+    </message>
+    <message>
+        <source>Close settings</source>
+        <translation>关闭设置</translation>
+    </message>
+    <message>
+        <source>Camera parameters</source>
+        <translation>相机参数</translation>
+    </message>
+    <message>
+        <source>Range capture</source>
+        <translation>测距拍照</translation>
+    </message>
+    <message>
+        <source>Adjust the camera, then apply each parameter.</source>
+        <translation>编辑参数后，逐项应用至相机。</translation>
+    </message>
+    <message>
+        <source>Set capture distance and trigger conditions.</source>
+        <translation>设置拍摄距离与自动触发条件。</translation>
+    </message>
+    <message>
+        <source>EXPOSURE &amp; COLOR</source>
+        <translation>曝光与色彩</translation>
+    </message>
+    <message>
+        <source>ISO</source>
+        <translation>ISO 感光度</translation>
+    </message>
+    <message>
+        <source>Index 0–34</source>
+        <translation>索引 0–34</translation>
+    </message>
+    <message>
+        <source>White balance</source>
+        <translation>白平衡</translation>
+    </message>
+    <message>
+        <source>Index 0–14</source>
+        <translation>索引 0–14</translation>
+    </message>
+    <message>
+        <source>Shutter speed</source>
+        <translation>快门速度</translation>
+    </message>
+    <message>
+        <source>Camera index</source>
+        <translation>相机索引值</translation>
+    </message>
+    <message>
+        <source>Aperture</source>
+        <translation>光圈</translation>
+    </message>
+    <message>
+        <source>FOCUS &amp; LENS</source>
+        <translation>对焦与镜头</translation>
+    </message>
+    <message>
+        <source>Focus mode</source>
+        <translation>对焦模式</translation>
+    </message>
+    <message>
+        <source>Focus value</source>
+        <translation>焦距值</translation>
+    </message>
+    <message>
+        <source>Raw value · decimal</source>
+        <translation>原始值 · 十进制</translation>
+    </message>
+    <message>
+        <source>IMAGE OUTPUT</source>
+        <translation>图像输出</translation>
+    </message>
+    <message>
+        <source>Image quality</source>
+        <translation>成像质量</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>轻量</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>标准</translation>
+    </message>
+    <message>
+        <source>Fine</source>
+        <translation>精细</translation>
+    </message>
+    <message>
+        <source>Extra fine</source>
+        <translation>超精细</translation>
+    </message>
+    <message>
+        <source>Image size</source>
+        <translation>图片大小</translation>
+    </message>
+    <message>
+        <source>L · Large</source>
+        <translation>L · 大</translation>
+    </message>
+    <message>
+        <source>M · Medium</source>
+        <translation>M · 中</translation>
+    </message>
+    <message>
+        <source>S · Small</source>
+        <translation>S · 小</translation>
+    </message>
+    <message>
+        <source>TRIGGER CONTROL</source>
+        <translation>拍照触发</translation>
+    </message>
+    <message>
+        <source>Trigger capture</source>
+        <translation>触发拍照</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation>开启</translation>
+    </message>
+    <message>
+        <source>Off by default. Apply to confirm the device setting.</source>
+        <translation>默认关闭，点击应用后等待设备确认。</translation>
+    </message>
+    <message>
+        <source>DISTANCE PARAMETERS</source>
+        <translation>距离参数</translation>
+    </message>
+    <message>
+        <source>Shooting distance</source>
+        <translation>拍摄距离</translation>
+    </message>
+    <message>
+        <source>20–40 m</source>
+        <translation>20–40 m</translation>
+    </message>
+    <message>
+        <source>Trigger distance threshold</source>
+        <translation>触发距离阈值</translation>
+    </message>
+    <message>
+        <source>30–15000 cm</source>
+        <translation>30–15000 cm</translation>
+    </message>
+    <message>
+        <source>Waiting for payload…</source>
+        <translation>等待负载确认…</translation>
+    </message>
+    <message>
+        <source>Payload connected</source>
+        <translation>负载已连接</translation>
+    </message>
+    <message>
+        <source>Awaiting payload response</source>
+        <translation>等待负载回应</translation>
+    </message>
+    <message>
+        <source>Camera</source>
+        <translation>相机</translation>
+    </message>
+    <message>
+        <source>Range</source>
+        <translation>测距</translation>
+    </message>
+</context>
+<context>
+    <name>CameraPayloadSelector</name>
+    <message>
+        <source>A8 Mini</source>
+        <translation>A8 Mini</translation>
+    </message>
+    <message>
+        <source>Rouke</source>
+        <translation>Rouke</translation>
+    </message>
+</context>
+<context>
+    <name>CameraStorageStatus</name>
+    <message>
+        <source>SD card status unknown</source>
+        <translation>SD 卡状态未知</translation>
+    </message>
+    <message>
+        <source>SD card inserted</source>
+        <translation>SD 卡已插入</translation>
+    </message>
+    <message>
+        <source>SD card not inserted</source>
+        <translation>SD 卡未插入</translation>
     </message>
 </context>
 </TS>

@@ -12,6 +12,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QSet>
 #include <QtCore/QTimer>
+#include <QtCore/QVariantMap>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
 
@@ -29,6 +30,8 @@ public:
     bool recordingStopQueued() const { return _recordingStopQueued; }
     bool recording() const { return _recording; }
     bool recordingKnown() const { return _recordingKnown; }
+    // Button direction survives an unconfirmed START/STOP and link loss.
+    bool recordingStopRequired() const;
     int viewType() const { return _viewType; }
     bool viewKnown() const { return _viewKnown; }
     int photoCount() const { return _photoCount; }
@@ -36,11 +39,23 @@ public:
     QString lastError() const { return _lastError.isEmpty() ? _gimbalError : _lastError; }
     quint16 boundPort() const { return _socket.localPort(); }
     bool gimbalCenterPending() const { return _gimbalCenterPending; }
+    // Only values confirmed in this endpoint session are present. Missing keys
+    // must be displayed as unknown, including the default-off trigger draft.
+    QVariantMap cameraParameters() const { return _cameraParameters; }
+    QString pendingParameter() const;
+    bool sdCardStatusKnown() const { return _sdCardStatusKnown; }
+    bool sdCardInserted() const { return _sdCardInserted; }
+    bool sdCardQueryPending() const { return _sdCardQueryPending; }
+    QString sdCardError() const { return _sdCardError; }
+    // Read-only telemetry lane; never occupies or clears camera pending/error.
+    bool requestSdCardStatus();
 
     bool takePhoto();
     bool setRecording(bool recording);
     bool setView(int viewType);
     bool autoFocus();
+    bool setCameraParameter(const QString &key, const QVariant &value);
+    bool requestCameraParameter(const QString &key);
     bool centerGimbal();
     // Latest velocity setpoint; never waits behind camera or gimbal ACKs.
     // Values are protocol integers, not assumed degrees per second.
@@ -57,15 +72,22 @@ signals:
 
 private:
     void _readDatagrams();
-    void _handleMessage(const mavlink_message_t &message, quint64 requestSerial, quint64 centerSerial);
+    void _handleMessage(const mavlink_message_t &message, quint64 requestSerial, quint64 centerSerial,
+                        quint64 sdCardSerial);
     void _handleFrame(const QJsonObject &object, uint16_t payloadAddress,
-                      quint64 requestSerial, quint64 centerSerial);
+                      quint64 requestSerial, quint64 centerSerial, quint64 sdCardSerial);
     bool _writeCommand(const QString &command, const QJsonObject &data, QString *error);
     void _reset();
     void _timeout();
     void _gimbalCenterTimeout();
     void _sendQueuedStop();
     void _setError(const QString &error);
+    bool _applyParameterAck(const QString &command, const QJsonObject &request,
+                            const QJsonObject &response);
+    void _invalidateParameter(const QString &command);
+    void _setSdCardState(bool known, bool inserted);
+    void _handleSdCardAck(const QJsonObject &object, quint64 sdCardSerial);
+    QString _recordingEndpointKey() const;
 
     QUdpSocket _socket;
     QHostAddress _host;
@@ -87,7 +109,17 @@ private:
     bool _speedErrorNotified = false;
     QString _pendingCommand;
     QJsonObject _pendingData;
+    QVariantMap _cameraParameters;
     bool _recordingStopQueued = false;
+    struct RecordingIntent {
+        bool stopRequired = false;
+        bool stopRequested = false;
+    };
+    // In-memory obligations belong to the physical camera, not the local UDP
+    // socket. Switching away must not send a stop to an unrelated payload.
+    QHash<QString, RecordingIntent> _recordingIntents;
+    bool _pendingStartCreatedIntent = false;
+    bool _recordingStartOutcomeUncertain = false;
     // A timed-out or partially sent request can still have an ambiguous outcome.
     // Without a transaction ID, subsequent same-command ACKs cannot establish
     // physical device state.
@@ -95,6 +127,12 @@ private:
     QTimer _commandTimer;
     QTimer _responseTimer;
     QTimer _gimbalCenterTimer;
+    QTimer _sdCardQueryTimer;
+    QTimer _sdCardFreshnessTimer;
+    bool _sdCardQueryPending = false;
+    bool _sdCardStatusKnown = false;
+    bool _sdCardInserted = false;
+    QString _sdCardError;
     // This transport owns its MAVLink sequence/parser state. It must never
     // consume a QGC vehicle channel or alter the flight link's protocol flags.
     mavlink_status_t _txStatus{};
@@ -105,11 +143,13 @@ private:
         QElapsedTimer lastFragment;
         quint64 requestSerial = 0;
         quint64 centerSerial = 0;
+        quint64 sdCardSerial = 0;
     };
     // The peer IP/port is checked before parsing. Keep different MAVLink senders
     // and payload addresses separate even when the AI box relays them together.
     QHash<quint64, ResponseStream> _responseStreams;
     quint64 _requestSerial = 0;
     quint64 _centerSerial = 0;
+    quint64 _sdCardRequestSerial = 0;
     quint64 _configurationSerial = 0;
 };

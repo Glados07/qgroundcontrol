@@ -1,0 +1,106 @@
+/****************************************************************************
+ * Shared visual treatment for the Rouke payload settings controls.
+ ****************************************************************************/
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls as QtControls
+import QGroundControl.ScreenTools
+
+QtControls.Button {
+    id: root
+    property bool primary: false
+    property bool destructive: false
+    property bool compact: false
+    property bool subtle: false
+    property bool tabStyle: false
+    property bool iconOnly: false
+    property bool iconAbove: false
+    property string iconName: ""
+    property string symbol: ""
+    readonly property color accent: "#72d9ef"
+    readonly property color foreground: down || primary ? "#102934"
+                                                       : destructive ? "#ffb5b8" : checked ? "#c0f1fb"
+                                                       : iconOnly && hovered ? "#a8eaf7" : "#dce8ef"
+    readonly property real iconSize: ScreenTools.defaultFontPixelHeight * (iconOnly ? 1.05 : 0.9)
+    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * (compact ? 2.1 : 2.45),
+                             contentItem.implicitHeight + topPadding + bottomPadding,
+                             ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    implicitWidth: iconOnly ? implicitHeight : contentItem.implicitWidth + leftPadding + rightPadding
+    leftPadding: ScreenTools.defaultFontPixelWidth * 1.25
+    rightPadding: leftPadding
+    topPadding: ScreenTools.defaultFontPixelHeight * 0.3
+    bottomPadding: topPadding
+    hoverEnabled: true
+    opacity: enabled ? 1 : 0.36
+    font.pointSize: ScreenTools.defaultFontPointSize
+    font.family: ScreenTools.normalFontFamily
+    Accessible.name: text
+    QtControls.ToolTip {
+        id: helpTip
+        visible: root.hovered && root.iconOnly && root.visible && root.enabled
+        text: root.text
+        delay: 550
+        font.family: ScreenTools.normalFontFamily
+        font.pointSize: ScreenTools.smallFontPointSize
+        horizontalPadding: ScreenTools.defaultFontPixelWidth
+        verticalPadding: ScreenTools.defaultFontPixelHeight * 0.4
+        contentItem: Text {
+            text: helpTip.text
+            font: helpTip.font
+            color: "#e4f0f5"
+            wrapMode: Text.Wrap
+        }
+        background: Rectangle {
+            radius: ScreenTools.defaultFontPixelHeight * 0.3
+            color: "#1c2d39"
+            border.color: "#425e6d"
+        }
+    }
+    background: Rectangle {
+        radius: ScreenTools.defaultFontPixelHeight * (root.iconOnly ? 0.5 : 0.4)
+        color: root.down ? "#b8e7f2" : root.iconOnly ? "transparent" : root.primary ? "#8de0ef"
+               : root.checked ? "#203947" : root.hovered ? "#2b414f"
+               : root.subtle || root.tabStyle ? "transparent" : "#243744"
+        border.width: root.visualFocus ? 1 : 0
+        border.color: "#a2ecfb"
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Rectangle {
+            visible: root.tabStyle && root.checked
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.5
+            anchors.rightMargin: anchors.leftMargin
+            height: 2
+            radius: 1
+            color: root.accent
+        }
+    }
+    contentItem: GridLayout {
+        scale: root.iconOnly && root.down ? 0.94 : 1
+        Behavior on scale { NumberAnimation { duration: 90 } }
+        columns: root.iconAbove ? 1 : 2
+        rowSpacing: ScreenTools.defaultFontPixelHeight * 0.2
+        columnSpacing: ScreenTools.defaultFontPixelWidth * 0.75
+        CameraControlIcon {
+            visible: root.iconName.length > 0
+            Layout.preferredWidth: root.iconSize
+            Layout.preferredHeight: root.iconSize
+            Layout.alignment: Qt.AlignCenter
+            kind: root.iconName
+            color: root.foreground
+        }
+        Text {
+            visible: !root.iconOnly
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.alignment: Qt.AlignCenter
+            text: root.symbol.length ? root.symbol + "  " + root.text : root.text
+            color: root.foreground
+            font: root.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.Wrap
+        }
+    }
+}

@@ -31,6 +31,7 @@
 namespace {
 QGC_LOGGING_CATEGORY(RoukeControlLog, "gcs.custom.gimbal.rouke.control")
 constexpr int kLocalPhotoTimeoutMs = 5000;
+constexpr int kSdCardPollIntervalMs = 10000;
 constexpr int kLocalPhotoJpegQuality = 100;
 constexpr int kMaximumLocalPhotoLongEdge = 4096;
 constexpr int kMaximumLocalPhotoShortEdge = 2160;
@@ -155,6 +156,10 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
     _localRecordingStopTimer.setSingleShot(true);
     _localRecordingStopTimer.setInterval(kLocalRecordingStopTimeoutMs);
     _localPhotoSaveThreadPool.setMaxThreadCount(1);
+    _sdCardPollTimer.setInterval(kSdCardPollIntervalMs);
+    connect(&_sdCardPollTimer, &QTimer::timeout, this, [this]() {
+        if (_controller.available()) (void) _controller.requestSdCardStatus();
+    });
     connect(&_localPhotoTimer, &QTimer::timeout, this, &RoukeControlManager::_handleLocalPhotoTimeout);
     connect(&_localRecordingStartTimer, &QTimer::timeout, this, &RoukeControlManager::_handleLocalRecordingStartTimeout);
     connect(&_localRecordingStopTimer, &QTimer::timeout, this, &RoukeControlManager::_handleLocalRecordingStopTimeout);
@@ -162,14 +167,6 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
         emit stateChanged();
         _notifyRecordingSessionStateChanged();
     });
-    connect(&_controller, &RoukePayloadController::commandFinished, this,
-            [this](const QString &command, bool success) {
-                if (command == QStringLiteral("lr1_record") && !success
-                    && !_localRecordingIntent && !_localRecordingActive) {
-                    _recordingSessionRequested = false;
-                }
-                _notifyRecordingSessionStateChanged();
-            });
     for (Fact *fact : {_settings->roukeEnabled(), _settings->roukeUdpHost(),
                        _settings->roukeUdpPort(), _settings->roukeLocalPort(),
                        _settings->roukePayloadAddress()}) {
@@ -193,6 +190,7 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
 
 RoukeControlManager::~RoukeControlManager()
 {
+    _sdCardPollTimer.stop();
     _gimbalController.cancel();
     // Retire incoming camera ACKs before the bounded media-finalization loop.
     _controller.setConfiguration(false, {}, 0, 0, -1);
@@ -218,7 +216,6 @@ void RoukeControlManager::_settingsChanged()
 {
     _gimbalController.cancel();
     const bool active = enabled();
-    _recordingSessionRequested = false;
     const int port = _settings->roukeUdpPort()->rawValue().toInt();
     const int localPort = _settings->roukeLocalPort()->rawValue().toInt();
     _controller.setConfiguration(active,
@@ -226,10 +223,15 @@ void RoukeControlManager::_settingsChanged()
         port > 0 && port <= 65535 ? static_cast<quint16>(port) : 0,
         localPort >= 0 && localPort <= 65535 ? static_cast<quint16>(localPort) : 0,
         _settings->roukePayloadAddress()->rawValue().toInt());
+    if (_controller.available()) {
+        (void) _controller.requestSdCardStatus();
+        _sdCardPollTimer.start();
+    } else {
+        _sdCardPollTimer.stop();
+    }
     if (_lastEnabled != active) {
         _lastEnabled = active;
         if (!active) {
-            _recordingSessionRequested = false;
             _localRecordingIntent = false;
             _stopLocalRecording();
         }
@@ -248,8 +250,14 @@ void RoukeControlManager::_gimbalSettingsChanged()
 
 bool RoukeControlManager::recordingSessionActive() const
 {
-    return _recordingSessionRequested || cameraRecordingPending() || (recordingKnown() && recording())
-        || _localRecordingActive || localRecordingPending();
+    return recordingStopRequired() || cameraRecordingPending() || (recordingKnown() && recording());
+}
+
+bool RoukeControlManager::recordingStopRequired() const
+{
+    return _controller.recordingStopRequired() || _localRecordingIntent
+        || _localRecordingActive || _localRecordingOwned || localRecordingPending()
+        || !_issuedLocalRecordingFileBases.isEmpty();
 }
 
 bool RoukeControlManager::recordingSessionCapturing() const
@@ -274,6 +282,9 @@ bool RoukeControlManager::takePhoto()
 bool RoukeControlManager::startRecording()
 {
     if (!enabled()) return false;
+    // A repeated call may not turn an uncertain prior session into another
+    // START. The single button and explicit API share the same intent latch.
+    if (recordingStopRequired()) return false;
     if (localMediaStorageEnabled() && _receiverStreaming()) {
         _localRecordingIntent = true;
         _startLocalRecording();
@@ -281,7 +292,6 @@ bool RoukeControlManager::startRecording()
     const bool camera = recordingKnown() && recording()
         ? true : _controller.setRecording(true);
     const bool local = _localRecordingActive || _localRecordingStartPending;
-    _recordingSessionRequested = camera || local;
     _notifyRecordingSessionStateChanged();
     return camera || local;
 }
@@ -291,7 +301,6 @@ bool RoukeControlManager::stopRecording()
     // An explicit stop is valid when camera state is unknown (e.g. lost ACK).
     // Local cleanup never depends on UDP reachability or the SD command result.
     const bool local = _localRecordingActive || localRecordingPending() || _localRecordingOwned;
-    _recordingSessionRequested = false;
     _localRecordingIntent = false;
     _stopLocalRecording();
     const bool camera = enabled() && _controller.setRecording(false);
@@ -301,7 +310,7 @@ bool RoukeControlManager::stopRecording()
 
 bool RoukeControlManager::toggleRecording()
 {
-    return recordingSessionActive() ? stopRecording() : startRecording();
+    return recordingStopRequired() ? stopRecording() : startRecording();
 }
 
 void RoukeControlManager::setVideoItem(QQuickItem* videoItem)

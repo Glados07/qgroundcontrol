@@ -31,10 +31,15 @@ class RoukeControlManager : public QObject
     Q_PROPERTY(int photoCount READ photoCount NOTIFY stateChanged)
     Q_PROPERTY(int discoveredPayloadAddress READ discoveredPayloadAddress NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap cameraParameters READ cameraParameters NOTIFY stateChanged)
+    Q_PROPERTY(QString pendingParameter READ pendingParameter NOTIFY stateChanged)
+    Q_PROPERTY(bool sdCardStatusKnown READ sdCardStatusKnown NOTIFY stateChanged)
+    Q_PROPERTY(bool sdCardInserted READ sdCardInserted NOTIFY stateChanged)
     Q_PROPERTY(bool localMediaStorageEnabled READ localMediaStorageEnabled NOTIFY localMediaStorageEnabledChanged)
     Q_PROPERTY(bool localRecording READ localRecording NOTIFY localRecordingStateChanged)
     Q_PROPERTY(bool localRecordingPending READ localRecordingPending NOTIFY localRecordingStateChanged)
     Q_PROPERTY(bool recordingSessionActive READ recordingSessionActive NOTIFY recordingSessionStateChanged)
+    Q_PROPERTY(bool recordingStopRequired READ recordingStopRequired NOTIFY recordingSessionStateChanged)
     Q_PROPERTY(bool recordingSessionCapturing READ recordingSessionCapturing NOTIFY recordingSessionStateChanged)
     Q_PROPERTY(bool videoRecordingAvailable READ videoRecordingAvailable NOTIFY recordingSessionStateChanged)
     Q_PROPERTY(int localPhotoCount READ localPhotoCount NOTIFY localPhotoCountChanged)
@@ -57,10 +62,15 @@ public:
     int photoCount() const { return _controller.photoCount(); }
     int discoveredPayloadAddress() const { return _controller.discoveredPayloadAddress(); }
     QString lastError() const { return _controller.lastError(); }
+    QVariantMap cameraParameters() const { return _controller.cameraParameters(); }
+    QString pendingParameter() const { return _controller.pendingParameter(); }
+    bool sdCardStatusKnown() const { return _controller.sdCardStatusKnown(); }
+    bool sdCardInserted() const { return _controller.sdCardInserted(); }
     bool localMediaStorageEnabled() const;
     bool localRecording() const { return _localRecordingActive; }
     bool localRecordingPending() const { return _localRecordingStartPending || _localRecordingStopPending; }
     bool recordingSessionActive() const;
+    bool recordingStopRequired() const;
     bool recordingSessionCapturing() const;
     bool videoRecordingAvailable() const;
     int localPhotoCount() const { return _localPhotoCount; }
@@ -73,6 +83,10 @@ public:
     Q_INVOKABLE bool toggleVideoRecording() { return toggleRecording(); }
     Q_INVOKABLE bool setView(int viewType) { return _controller.setView(viewType); }
     Q_INVOKABLE bool autoFocus() { return _controller.autoFocus(); }
+    Q_INVOKABLE bool setCameraParameter(const QString &key, const QVariant &value)
+        { return _controller.setCameraParameter(key, value); }
+    Q_INVOKABLE bool requestCameraParameter(const QString &key)
+        { return _controller.requestCameraParameter(key); }
     Q_INVOKABLE bool centerGimbal() { return _gimbalController.centerGimbal(); }
 
     void updateUniRcGimbalChannels(qint16 channel11, qint16 channel12, qint16 channel14)
@@ -120,11 +134,11 @@ private:
     RoukePayloadController _controller;
     RoukeGimbalController _gimbalController;
     QTimer _localPhotoTimer;
+    QTimer _sdCardPollTimer;
     QTimer _localRecordingStartTimer;
     QTimer _localRecordingStopTimer;
     QThreadPool _localPhotoSaveThreadPool;
     bool _lastEnabled = false;
-    bool _recordingSessionRequested = false;
     int _localPhotoCount = 0;
     QSize _negotiatedPulledVideoSize;
     QPointer<QQuickItem> _videoItem;

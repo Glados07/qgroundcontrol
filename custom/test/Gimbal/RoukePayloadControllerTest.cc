@@ -6,6 +6,7 @@
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
 #include <cstring>
+#include <limits>
 
 namespace {
 // Deliberately independent of the production frame encoder and splitter.
@@ -55,6 +56,23 @@ void sendFragment(QUdpSocket &box, const RoukePayloadController &controller, con
 {
     const auto bytes = fragmentBytes(fragment, address, system, component, sequence);
     QCOMPARE(box.writeDatagram(bytes, QHostAddress::LocalHost, controller.boundPort()), qint64(bytes.size()));
+}
+
+void sendStream(QUdpSocket &box, const RoukePayloadController &controller,
+                const QJsonObject &object, int address = 7)
+{
+    const auto frame = rawFrame(object);
+    for (int offset = 0; offset < frame.size(); offset += 128) {
+        sendFragment(box, controller, frame.mid(offset, 128), address);
+    }
+}
+
+QJsonObject sdCardAck(const QJsonObject &capacity = {{"total_capacity", 32000}, {"free_capacity", 17000}},
+                      int code = 0)
+{
+    auto response = ack("get_sdcard_capacity", code);
+    response["data"] = capacity;
+    return response;
 }
 
 bool receiveRelay(QUdpSocket &box, mavlink_message_t *message, mavlink_vk_payload_data_relay_t *relay)
@@ -125,6 +143,649 @@ class RoukePayloadControllerTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void singleRecordingButtonStopsWhileStartIsPending()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(!controller.recordingStopRequired());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 0);
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(!controller.recordingKnown());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QVERIFY(controller.recordingStopQueued());
+        QVERIFY(!box.hasPendingDatagrams());
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.recordingStopQueued());
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(controller.recording());
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 1);
+        // Repeated clicks during STOP cannot enqueue another STOP or a START.
+        for (int i = 0; i < 3; ++i) QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QVERIFY(!controller.recordingStopQueued());
+        QVERIFY(!box.hasPendingDatagrams());
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.recordingStopRequired());
+        QVERIFY(controller.recordingKnown());
+        QVERIFY(!controller.recording());
+        QVERIFY(!box.hasPendingDatagrams());
+    }
+
+    void singleRecordingButtonStartTimeoutNeverRestarts()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setRecording(true));
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(!controller.recordingKnown());
+        QVERIFY(!controller.setRecording(true)); // Explicit API also respects the latch.
+        QVERIFY(!box.hasPendingDatagrams());
+        for (int i = 0; i < 2; ++i) {
+            QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+            QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 1);
+            send(box, controller, ack("lr1_record")); // Could still be a delayed START ACK.
+            QTRY_VERIFY(!controller.pending());
+            QVERIFY(controller.recordingStopRequired());
+            QVERIFY(!controller.recordingKnown());
+        }
+    }
+
+    void singleRecordingButtonRejectedStartAndStop()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setRecording(true));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_record", 1));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.recordingStopRequired());
+        QVERIFY(!controller.recording());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 0);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(controller.recording());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_record", 1));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(controller.recording()); // Refused STOP did not report a stopped camera.
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 1);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.recordingStopRequired());
+        QVERIFY(!controller.recording());
+    }
+
+    void rejectedStartCannotCancelQueuedStopIntent()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setRecording(true));
+        receiveStreamRequest(box);
+        QVERIFY(controller.setRecording(false));
+        send(box, controller, ack("lr1_record", 1));
+        QTRY_VERIFY(!controller.recordingStopQueued());
+        QVERIFY(controller.pending());
+        QVERIFY(controller.recordingStopRequired());
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 1);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.recordingStopRequired());
+    }
+
+    void singleRecordingButtonRetriesStopAfterStopTimeout()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setRecording(true));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(controller.recording());
+        QVERIFY(controller.setRecording(false));
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(!controller.recordingKnown());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 1);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.recordingStopRequired());
+        QVERIFY(controller.recordingKnown());
+        QVERIFY(!controller.recording());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("action").toInt(), 0);
+    }
+
+    void recordingStopIntentFollowsThePhysicalEndpoint()
+    {
+        QUdpSocket first, second, localReservation;
+        QVERIFY(first.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        QVERIFY(second.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        QVERIFY(localReservation.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        const auto changedLocalPort = localReservation.localPort();
+        localReservation.close();
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", first.localPort(), 0, 7);
+        QVERIFY(controller.setRecording(true));
+        receiveStreamRequest(first);
+        send(first, controller, ack("lr1_record"));
+        QTRY_VERIFY(controller.recording());
+        controller.setConfiguration(false, "127.0.0.1", first.localPort(), 0, 7);
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(!controller.recordingKnown());
+        controller.setConfiguration(true, "127.0.0.1", first.localPort(), changedLocalPort, 7);
+        QVERIFY(controller.recordingStopRequired()); // Changing only the local socket preserves ownership.
+        controller.setConfiguration(true, "127.0.0.1", first.localPort(), 0, 8);
+        QVERIFY(!controller.recordingStopRequired()); // A different payload address is independent.
+        controller.setConfiguration(true, "127.0.0.1", second.localPort(), 0, 7);
+        QVERIFY(!controller.recordingStopRequired());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(second).value("data").toObject().value("action").toInt(), 0);
+        controller.setConfiguration(true, "127.0.0.1", first.localPort(), 0, 7);
+        QVERIFY(controller.recordingStopRequired());
+        QVERIFY(controller.setRecording(!controller.recordingStopRequired()));
+        QCOMPARE(receiveStreamRequest(first).value("data").toObject().value("action").toInt(), 1);
+        send(first, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.recordingStopRequired());
+        controller.setConfiguration(true, "127.0.0.1", second.localPort(), 0, 7);
+        QVERIFY(controller.recordingStopRequired()); // The interrupted second endpoint also keeps STOP.
+    }
+
+    void failedRecordingSubmissionDoesNotInventASession()
+    {
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", 0, 0, 7);
+        QVERIFY(!controller.setRecording(true));
+        QVERIFY(!controller.recordingStopRequired());
+        QVERIFY(!controller.recordingKnown());
+        QVERIFY(!controller.setRecording(false));
+        QVERIFY(!controller.recordingStopRequired());
+    }
+
+    void sdCardCapacity_data()
+    {
+        QTest::addColumn<QJsonObject>("data");
+        QTest::addColumn<int>("code");
+        QTest::addColumn<bool>("known");
+        QTest::newRow("present") << QJsonObject({{"total_capacity", 32000}, {"free_capacity", 17000}}) << 0 << true;
+        QTest::newRow("full-is-present") << QJsonObject({{"total_capacity", 32000}, {"free_capacity", 0}}) << 0 << true;
+        QTest::newRow("long-not-int32") << QJsonObject({{"total_capacity", 4294967296.0}, {"free_capacity", 1}}) << 0 << true;
+        QTest::newRow("zero-is-unknown") << QJsonObject({{"total_capacity", 0}, {"free_capacity", 0}}) << 0 << false;
+        QTest::newRow("missing") << QJsonObject{} << 0 << false;
+        QTest::newRow("missing-free") << QJsonObject({{"total_capacity", 32000}}) << 0 << false;
+        QTest::newRow("negative") << QJsonObject({{"total_capacity", 32000}, {"free_capacity", -1}}) << 0 << false;
+        QTest::newRow("free-exceeds-total") << QJsonObject({{"total_capacity", 32000}, {"free_capacity", 32001}}) << 0 << false;
+        QTest::newRow("fractional") << QJsonObject({{"total_capacity", 32000.5}, {"free_capacity", 1}}) << 0 << false;
+        QTest::newRow("string") << QJsonObject({{"total_capacity", "32000"}, {"free_capacity", 1}}) << 0 << false;
+        QTest::newRow("bool") << QJsonObject({{"total_capacity", true}, {"free_capacity", 0}}) << 0 << false;
+        QTest::newRow("not-exact-json-integer") << QJsonObject({{"total_capacity", 9007199254740992.0}, {"free_capacity", 1}}) << 0 << false;
+        QTest::newRow("rejected") << QJsonObject({{"total_capacity", 32000}, {"free_capacity", 17000}}) << 1 << false;
+    }
+
+    void sdCardCapacity()
+    {
+        QFETCH(QJsonObject, data);
+        QFETCH(int, code);
+        QFETCH(bool, known);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(!controller.sdCardStatusKnown());
+        QVERIFY(!controller.sdCardInserted());
+        QVERIFY(controller.requestSdCardStatus());
+        QVERIFY(!controller.requestSdCardStatus());
+        QVERIFY(!controller.pending());
+        const auto request = receiveStreamRequest(box);
+        QCOMPARE(request.value("cmd").toString(), QString("get_sdcard_capacity"));
+        QCOMPARE(request.value("data").toObject(), QJsonObject{});
+        sendStream(box, controller, sdCardAck(data, code));
+        QTRY_VERIFY(!controller.sdCardQueryPending());
+        QCOMPARE(controller.sdCardStatusKnown(), known);
+        QCOMPARE(controller.sdCardInserted(), known);
+        QCOMPARE(controller.lastError(), QString());
+        QVERIFY(finished.isEmpty());
+    }
+
+    void sdCardQueryDoesNotOwnCameraLane()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setCameraParameter("iso", 4));
+        receiveStreamRequest(box);
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        QCOMPARE(controller.pendingParameter(), QString("iso"));
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(controller.sdCardInserted());
+        QVERIFY(controller.pending());
+        QVERIFY(controller.setRecording(false));
+        send(box, controller, ack("lr1_iso"));
+        QTRY_COMPARE(controller.pendingCommand(), QString("lr1_record"));
+        const auto stop = receiveStreamRequest(box);
+        QCOMPARE(stop.value("data").toObject().value("action").toInt(), 1);
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 4);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        QVERIFY(controller.setRecording(false)); // SD query itself never queues STOP.
+        QCOMPARE(receiveStreamRequest(box).value("cmd").toString(), QString("lr1_record"));
+        QVERIFY(controller.sdCardQueryPending());
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.sdCardQueryPending());
+    }
+
+    void sdCardFailureIsIndependentAndCanRecover()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(!controller.setCameraParameter("iso", -1));
+        const auto cameraError = controller.lastError();
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.sdCardQueryPending(), 4500);
+        QVERIFY(!controller.sdCardStatusKnown());
+        QVERIFY(!controller.sdCardInserted());
+        QVERIFY(!controller.sdCardError().isEmpty());
+        QCOMPARE(controller.lastError(), cameraError);
+        sendStream(box, controller, sdCardAck()); // No outstanding query: ignore late ACK.
+        QTest::qWait(30);
+        QVERIFY(!controller.sdCardStatusKnown());
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(controller.sdCardInserted());
+        QVERIFY(controller.sdCardError().isEmpty());
+        QCOMPARE(controller.lastError(), cameraError);
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck({}, 1));
+        QTRY_VERIFY(!controller.sdCardQueryPending());
+        QVERIFY(!controller.sdCardStatusKnown());
+        QVERIFY(!controller.sdCardInserted());
+        QCOMPARE(controller.lastError(), cameraError);
+    }
+
+    void sdCardRouteAndSplitSerialAreChecked()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck(), 8);
+        auto wrongTarget = sdCardAck();
+        wrongTarget["target"] = "osdk";
+        sendStream(box, controller, wrongTarget);
+        auto wrongSource = sdCardAck();
+        wrongSource["source"] = "osdk";
+        sendStream(box, controller, wrongSource);
+        QTest::qWait(30);
+        QVERIFY(controller.sdCardQueryPending());
+        QVERIFY(!controller.sdCardStatusKnown());
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(!controller.sdCardQueryPending());
+        const auto duplicate = rawFrame(sdCardAck());
+        sendFragment(box, controller, duplicate.left(80));
+        QTest::qWait(30);
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendFragment(box, controller, duplicate.mid(80));
+        QTest::qWait(30);
+        QVERIFY(controller.sdCardQueryPending());
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(!controller.sdCardQueryPending());
+        QVERIFY(controller.sdCardInserted());
+    }
+
+    void sdCardFreshnessAndEndpointReset()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(controller.sdCardInserted());
+        QTimer heartbeat;
+        heartbeat.setInterval(1000);
+        connect(&heartbeat, &QTimer::timeout, this, [&]() { send(box, controller, ack("lr1_focus")); });
+        heartbeat.start();
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.sdCardStatusKnown(), 27000);
+        QVERIFY(controller.responding()); // Camera traffic cannot refresh SD telemetry.
+        QVERIFY(!controller.sdCardInserted());
+        heartbeat.stop();
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(controller.sdCardInserted());
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 8);
+        QVERIFY(!controller.sdCardStatusKnown());
+        QVERIFY(!controller.sdCardInserted());
+        controller.setConfiguration(false, "127.0.0.1", box.localPort(), 0, 8);
+        QVERIFY(!controller.sdCardQueryPending());
+    }
+
+    void cameraParameters_data()
+    {
+        QTest::addColumn<QString>("key");
+        QTest::addColumn<int>("value");
+        QTest::addColumn<QString>("command");
+        QTest::addColumn<QJsonObject>("data");
+        QTest::newRow("iso") << QString("iso") << 34 << QString("lr1_iso")
+            << QJsonObject({{"action", 1}, {"value", 34}});
+        QTest::newRow("white-balance") << QString("whiteBalance") << 14 << QString("lr1_white_balance")
+            << QJsonObject({{"action", 1}, {"value", 14}});
+        QTest::newRow("focus-mode") << QString("focusMode") << 4 << QString("lr1_focus_mode")
+            << QJsonObject({{"mode", 4}});
+        QTest::newRow("shutter-index") << QString("shutterSpeed") << 5 << QString("lr1_shutter_speed")
+            << QJsonObject({{"shutter_speed", 5}});
+        QTest::newRow("focus-raw") << QString("focusValue") << 1200 << QString("lr1_focus_value_set")
+            << QJsonObject({{"value", 1200}});
+        QTest::newRow("aperture-index") << QString("aperture") << 3 << QString("lr1_aperture")
+            << QJsonObject({{"aperture_index", 3}});
+        QTest::newRow("quality") << QString("imageQuality") << 4 << QString("lr1_image_quality")
+            << QJsonObject({{"quality", 4}});
+        QTest::newRow("size-zero-is-large") << QString("imageSize") << 0 << QString("lr1_image_size")
+            << QJsonObject({{"operate", 1}, {"size", 0}});
+        QTest::newRow("trigger-off") << QString("triggerPhoto") << 0 << QString("lr1_trigger_photo")
+            << QJsonObject({{"enable", 0}});
+        QTest::newRow("trigger-on") << QString("triggerPhoto") << 1 << QString("lr1_trigger_photo")
+            << QJsonObject({{"enable", 1}});
+        QTest::newRow("distance-metres") << QString("shootingDistance") << 20 << QString("lr1_shooting_distance")
+            << QJsonObject({{"distance_m", 20}});
+        QTest::newRow("threshold-centimetres") << QString("distanceThreshold") << 15000 << QString("lr1_distance_threshold")
+            << QJsonObject({{"distance_cm", 15000}});
+    }
+
+    void cameraParameters()
+    {
+        QFETCH(QString, key);
+        QFETCH(int, value);
+        QFETCH(QString, command);
+        QFETCH(QJsonObject, data);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.cameraParameters().isEmpty());
+        QVERIFY(!box.hasPendingDatagrams()); // In particular, no automatic trigger enable.
+        QVERIFY(controller.setCameraParameter(key, value));
+        QCOMPARE(controller.pendingParameter(), key);
+        QVERIFY(!controller.cameraParameters().contains(key));
+        const auto request = receiveStreamRequest(box);
+        QCOMPARE(request.value("source").toString(), QString("msdk"));
+        QCOMPARE(request.value("target").toString(), QString("psdk"));
+        QCOMPARE(request.value("cmd").toString(), command);
+        QCOMPARE(request.value("data").toObject(), data);
+        send(box, controller, ack(command));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.pendingParameter(), QString());
+        QCOMPARE(controller.cameraParameters().value(key).toInt(), value);
+        QVERIFY(finished.last().at(1).toBool());
+        controller.setConfiguration(false, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.cameraParameters().isEmpty());
+    }
+
+    void cameraParameterReads_data()
+    {
+        QTest::addColumn<QString>("key");
+        QTest::addColumn<QString>("command");
+        QTest::addColumn<QJsonObject>("requestData");
+        QTest::addColumn<QJsonObject>("responseData");
+        QTest::newRow("iso") << QString("iso") << QString("lr1_iso")
+            << QJsonObject({{"action", 0}, {"value", 0}}) << QJsonObject({{"value", 12}});
+        QTest::newRow("white-balance") << QString("whiteBalance") << QString("lr1_white_balance")
+            << QJsonObject({{"action", 0}, {"value", 0}}) << QJsonObject({{"value", 3}});
+        QTest::newRow("focus-value") << QString("focusValue") << QString("lr1_focus_value_get")
+            << QJsonObject{} << QJsonObject({{"value", 1200}});
+        QTest::newRow("image-size") << QString("imageSize") << QString("lr1_image_size")
+            << QJsonObject({{"operate", 0}, {"size", 0}}) << QJsonObject({{"size", 2}});
+    }
+
+    void cameraParameterReads()
+    {
+        QFETCH(QString, key);
+        QFETCH(QString, command);
+        QFETCH(QJsonObject, requestData);
+        QFETCH(QJsonObject, responseData);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestCameraParameter(key));
+        QCOMPARE(controller.pendingParameter(), key);
+        const auto request = receiveStreamRequest(box);
+        QCOMPARE(request.value("cmd").toString(), command);
+        QCOMPARE(request.value("data").toObject(), requestData);
+        auto response = ack(command);
+        response["data"] = responseData;
+        const auto frame = rawFrame(response);
+        for (int offset = 0; offset < frame.size(); offset += 128) sendFragment(box, controller, frame.mid(offset, 128));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value(key).toInt(), responseData.begin().value().toInt());
+        QVERIFY(finished.last().at(1).toBool());
+        // A second read with a missing value must clear the prior confirmation.
+        QVERIFY(controller.requestCameraParameter(key));
+        receiveStreamRequest(box);
+        send(box, controller, ack(command));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.cameraParameters().contains(key));
+        QVERIFY(!finished.last().at(1).toBool());
+        QVERIFY(!controller.lastError().isEmpty());
+    }
+
+    void invalidCameraParametersSendNothing()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        const QList<QPair<QString, QVariant>> invalid = {
+            {"iso", -1}, {"iso", 35}, {"whiteBalance", 15}, {"focusMode", 5},
+            {"imageQuality", 0}, {"imageQuality", 5}, {"imageSize", 4}, {"triggerPhoto", 2},
+            {"shootingDistance", 19}, {"shootingDistance", 41},
+            {"distanceThreshold", 29}, {"distanceThreshold", 15001},
+            {"shutterSpeed", -1}, {"aperture", -1}, {"focusValue", -1},
+            {"iso", 2.5}, {"iso", QString("2")}, {"iso", true}, {"missing", 0},
+            {"aperture", 2147483648.0}, {"focusValue", std::numeric_limits<double>::infinity()},
+        };
+        for (const auto &item : invalid) {
+            QVERIFY2(!controller.setCameraParameter(item.first, item.second), qPrintable(item.first));
+            QVERIFY(!controller.pending());
+        }
+        QVERIFY(!controller.requestCameraParameter("triggerPhoto"));
+        QVERIFY(!controller.requestCameraParameter("aperture"));
+        QVERIFY(!controller.requestCameraParameter("missing"));
+        QTest::qWait(30);
+        QVERIFY(!box.hasPendingDatagrams());
+    }
+
+    void cameraParameterFailuresKeepStateHonest()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setCameraParameter("iso", 7));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_iso"));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 7);
+
+        QVERIFY(controller.setCameraParameter("iso", 8));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_iso", 1));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 7);
+        QVERIFY(!finished.last().at(1).toBool());
+
+        QVERIFY(controller.setCameraParameter("iso", 9));
+        receiveStreamRequest(box);
+        QVERIFY(controller.setRecording(false)); // Stop waits for camera ACK.
+        QTRY_VERIFY_WITH_TIMEOUT(controller.pendingCommand() == QString("lr1_record"), 4500);
+        QVERIFY(!controller.cameraParameters().contains("iso"));
+        QCOMPARE(controller.pendingParameter(), QString());
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_record"));
+        QTRY_VERIFY(!controller.pending());
+
+        QVERIFY(controller.setCameraParameter("iso", 10));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_iso")); // Could be the previous delayed setter.
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.cameraParameters().contains("iso"));
+        QVERIFY(!finished.last().at(1).toBool());
+    }
+
+    void malformedParameterReadValuesAreNotConfirmed_data()
+    {
+        QTest::addColumn<QJsonValue>("value");
+        QTest::newRow("null") << QJsonValue();
+        QTest::newRow("string") << QJsonValue(QString("2"));
+        QTest::newRow("bool") << QJsonValue(true);
+        QTest::newRow("fractional") << QJsonValue(2.5);
+        QTest::newRow("out-of-range") << QJsonValue(35);
+    }
+
+    void ambiguousFocusWriteInvalidatesLaterRead()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setCameraParameter("focusValue", 1200));
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QVERIFY(controller.requestCameraParameter("focusValue"));
+        receiveStreamRequest(box);
+        auto response = ack("lr1_focus_value_get");
+        response["data"] = QJsonObject{{"value", 1300}};
+        const auto frame = rawFrame(response);
+        for (int offset = 0; offset < frame.size(); offset += 128) sendFragment(box, controller, frame.mid(offset, 128));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value("focusValue").toInt(), 1300);
+        QVERIFY(controller.setCameraParameter("focusValue", 1400));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_focus_value_set"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.cameraParameters().contains("focusValue"));
+        QVERIFY(!controller.lastError().isEmpty());
+    }
+
+    void focusModeAndAutofocusInvalidateRawPosition()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        for (bool changeMode : {true, false}) {
+            QVERIFY(controller.setCameraParameter("focusValue", 1200));
+            receiveStreamRequest(box);
+            send(box, controller, ack("lr1_focus_value_set"));
+            QTRY_VERIFY(!controller.pending());
+            QVERIFY(controller.cameraParameters().contains("focusValue"));
+            QVERIFY(changeMode ? controller.setCameraParameter("focusMode", 0) : controller.autoFocus());
+            receiveStreamRequest(box);
+            send(box, controller, ack(changeMode ? "lr1_focus_mode" : "lr1_focus"));
+            QTRY_VERIFY(!controller.pending());
+            QVERIFY(!controller.cameraParameters().contains("focusValue"));
+        }
+    }
+
+    void uncertainFocusModeInvalidatesRawPosition()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setCameraParameter("focusValue", 1200));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_focus_value_set"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.cameraParameters().contains("focusValue"));
+
+        QVERIFY(controller.setCameraParameter("focusMode", 0));
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QVERIFY(!controller.cameraParameters().contains("focusMode"));
+        QVERIFY(!controller.cameraParameters().contains("focusValue"));
+
+        // Even a later raw-position confirmation must be retired when another
+        // mode request has an ambiguous ACK in the same endpoint session.
+        QVERIFY(controller.setCameraParameter("focusValue", 1300));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_focus_value_set"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.cameraParameters().contains("focusValue"));
+        QVERIFY(controller.setCameraParameter("focusMode", 1));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_focus_mode"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.cameraParameters().contains("focusMode"));
+        QVERIFY(!controller.cameraParameters().contains("focusValue"));
+    }
+
+    void malformedParameterReadValuesAreNotConfirmed()
+    {
+        QFETCH(QJsonValue, value);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        auto response = ack("lr1_iso");
+        response["data"] = QJsonObject{{"value", value}};
+        const auto frame = rawFrame(response);
+        for (int offset = 0; offset < frame.size(); offset += 128) sendFragment(box, controller, frame.mid(offset, 128));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(!controller.cameraParameters().contains("iso"));
+        QVERIFY(!finished.last().at(1).toBool());
+    }
+
+    void responseExpiryInvalidatesCameraParameters()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.setCameraParameter("triggerPhoto", 0));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_trigger_photo"));
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.cameraParameters().contains("triggerPhoto"));
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.responding(), 16000);
+        QVERIFY(controller.cameraParameters().isEmpty());
+    }
+
     void commandFragments_data()
     {
         QTest::addColumn<int>("frameLength");

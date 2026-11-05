@@ -236,65 +236,81 @@
 <context>
     <name>GimbalZoomControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="295"/>
+        <source>Zoom out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom out · hold for continuous zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalZoomControl.qml" line="308"/>
         <source>Actual</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom in · hold for continuous zoom</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>GimbalCameraControl</name>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="77"/>
         <source>ZOOM</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="80"/>
         <source>IR</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="83"/>
         <source>MIX</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="90"/>
         <source>Zoom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="93"/>
         <source>Thermal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="96"/>
         <source>Zoom + Thermal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="98"/>
         <source>Unknown mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="633"/>
+        <source>Take photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>FAILED</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="777"/>
+        <source>Stop recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>SD</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/FlightDisplay/GimbalCameraControl.qml" line="834"/>
         <source>LOCAL</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1200,6 +1216,18 @@
 <context>
     <name>RoukeCameraControl</name>
     <message>
+        <source>Start recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop recording</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FAILED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Waiting for payload</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1209,10 +1237,6 @@
     </message>
     <message>
         <source>Awaiting payload response</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Payload control unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1259,9 +1283,25 @@
         <source>Photos: SD %1 / LOCAL %2</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Switch camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camera settings</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RoukePayloadController</name>
+    <message>
+        <source>Rouke recording requires a start or stop action.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop the previous Rouke recording session before starting another.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
         <translation type="unfinished"></translation>
@@ -1292,6 +1332,18 @@
     </message>
     <message>
         <source>Rouke view must be LR1 (4) or OV2735 (5).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid Rouke camera parameter or integer value: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reading this Rouke camera parameter is not supported: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke returned a missing or invalid value for %1; device state is unknown.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1355,6 +1407,238 @@
     </message>
     <message>
         <source>Timed out stopping Rouke local video recording.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraParameter</name>
+    <message>
+        <source>Waiting for payload…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirmed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not confirmed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RoukeCameraSettings</name>
+    <message>
+        <source>Payload settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camera parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Range capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adjust the camera, then apply each parameter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set capture distance and trigger conditions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EXPOSURE &amp; COLOR</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Index 0–34</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>White balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Index 0–14</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shutter speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camera index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Aperture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FOCUS &amp; LENS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Raw value · decimal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IMAGE OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Image quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fine</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extra fine</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Image size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>L · Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>M · Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S · Small</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TRIGGER CONTROL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trigger capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off by default. Apply to confirm the device setting.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DISTANCE PARAMETERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shooting distance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>20–40 m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trigger distance threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>30–15000 cm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for payload…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Awaiting payload response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camera</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Range</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CameraPayloadSelector</name>
+    <message>
+        <source>A8 Mini</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CameraStorageStatus</name>
+    <message>
+        <source>SD card status unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SD card inserted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SD card not inserted</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

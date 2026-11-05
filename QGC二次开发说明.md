@@ -10,8 +10,8 @@
 | 分支 | `SecDev/rouke` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `ccfa10aba` + 当前工作区；将柔克 MAVLink 53022 迁入团队协议库，QGC 从固定的团队头文件提交编译 `all` 方言 |
-| 文档更新 | 2026-11-03 |
+| 本次代码核对基线 | `935578146` + 当前工作区；A8/Rouke 相机栏统一图标化，柔克参数及测距拍照设置继续通过团队 MAVLink 53022 接入 |
+| 文档更新 | 2026-11-05 |
 
 ## 阅读导航
 
@@ -42,7 +42,7 @@
 
 ## 1. 当前开发进度
 
-本表区分源码已实现的能力与设备验证状态。本次按当前工作区核对文件、设置和调用流程，并检查文档结构；未重新编译产品或执行真机验收。表中已有实测反馈保留原有证据范围，不能据此推定本版全部场景已通过。
+本表区分源码已实现的能力与设备验证状态。本次按当前工作区核对文件、设置和调用流程，完成柔克参数主机专项及生产 QML 离屏检查；未完成完整产品编译或真机验收。表中已有实测反馈保留原有证据范围，不能据此推定本版全部场景已通过。
 
 > **状态口径**：“已集成”表示源码已有构建接入和运行调用链；“主机通过”仅覆盖注明的测试范围；“真机通过”需要对应版本、设备和场景的证据。未完成的项目保留在“验证状态与下一步”列。
 
@@ -51,7 +51,7 @@
 | Viewer3D | OSM、外部模型、可选 Google 3D；本地场景显示飞行器与任务 | 已集成；按目标平台验证导入、坐标配准和可选 WebEngine 能力 |
 | 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；历史 MT11 播放记录不代表柔克验证；柔克视频、双路持续播放及 Android 硬解需验收 |
 | A8 Mini 相机 | 缩放、拍照、录像、能力查询与播放后停滞恢复 | 已有真机使用及新版目视播放正常反馈；当前缩放与长期稳定性需按矩阵回归 |
-| 柔克负载 | 独立 UDP 承载 MAVLink 2/53022，切视角、对焦、回中、拍照及显式录像启停；CH11/CH12 速度转向、CH14 回中；完整控制帧按每段最多 128 字节连续发送，接收端重组长回应；绑定 Video 2 本地媒体 | 厂家确认 payload_addr 默认为 0、支持连续字节流重组；速度采用协议原始值，单位与设备上限待厂商确认；主机验证范围见 4.1，完整 Qt 6/Android 与硬件待验收 |
+| 柔克负载 | 独立 UDP 承载 MAVLink 2/53022，切视角、对焦、回中、拍照及显式录像启停；相机/测距双页设置接入 11 项参数；CH11/CH12 速度转向、CH14 回中；完整控制帧按每段最多 128 字节连续发送，接收端重组长回应；绑定 Video 2 本地媒体 | 厂家确认 payload_addr 默认为 0、支持连续字节流重组；速度采用协议原始值，单位与设备上限待厂商确认；主机验证范围见 4.1，完整 Qt 6/Android 与硬件待验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，柔克断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
 | 云台姿态与模式 | 自动申请控制权、共享回中、实际模式回读及切换闭环 | 重连模式显示已有确认；最新模式切换和会话隔离待 Android 回归 |
 | UniRC 10 Pro | 默认启用 UART2 SDK，保留 Bluetooth 可选；16 通道显示、A8 CH9 变倍、CH10 回中/俯视交替；Rouke CH11 偏转、CH12 俯仰、CH14 回中；`0x44` 图传强度、质量分档及原始值显示 | 主机验证范围见 4.1；完整 Qt 6/Android 构建及两种接口真机路由待验证，既有蓝牙通道、CH9 和基础回中实测不替代新增 Rouke 操控与图传验收 |
@@ -207,20 +207,41 @@ custom/
                                                             # ① 飞行页工具条动作定义：组合原生 GuidedActions 和定制三维切换按钮，设置按钮名称、图标、可见/可用条件及当前页面状态。
                                                             # ② 三维入口：根据 Viewer3D 开关和当前显示状态，在 3D View/Fly 间切换并调用三维容器；入口图形来自 city_3d_map_icon.svg，场景加载与模型交互在 Viewer3D 目录。
 │   │   ├── FlyViewTopRightColumnLayout.qml
-                                                            # ① 右上列外观与相机选择：组合地形下载进度、cameraSelector 胶囊、cameraTab 标签、A8 Mini/Rouke 在线状态点和相机面板；标签颜色、尺寸、间距及选中状态在此设置。
+                                                            # ① 右上列外观与相机选择：组合地形下载进度、CameraPayloadSelector 图标选择器及相机面板；选择器使用不同负载轮廓、A8/RK 短标识及在线状态点。
                                                             # ② 面板切换：selectCamera/normalizeSelectedCamera 维护 _selectedCamera，cameraControlLoader 加载相应控制栏；两种私有相机均关闭时回退到原生拍照录像控件，整列页面锚点仍在原生 FlyViewWidgetLayer.qml。
 │   │   ├── GeneratorBusVoltageAlert.qml
                                                             # ① 母线告警条：required vehicle 指定所属车辆，读取 COM_GEN_V_LOW、COM_GEN_V_LOW_T 与母线电压，绘制告警文本/底色；车辆、参数、遥测或通信不可用时隐藏提示。
                                                             # ② 延时确认：_updateWarningState/_completePendingTransition 记录连续低于/高于阈值的时间，到期才进入/解除；等于阈值取消当前计时，无效数据保留已确认状态，切车重新建立状态，由覆盖层负责位置。
 │   │   ├── GimbalCameraControl.qml
-                                                            # ① 相机控制栏主要 UI 文件：controlColumn 纵向排列变倍、模式、拍照、录像、计时及 SD/LOCAL 标记；panelColor/panelBorderColor/panelPadding/actionSize/itemSpacing 定义底色、边框、留白、按钮尺寸与间距，zoomControl 嵌入变倍子组件。
+                                                            # ① 相机控制栏主要 UI 文件：controlColumn 纵向排列变倍、模式、拍照、录像、计时及居中 SD 卡状态；panelColor/panelBorderColor/panelPadding/actionSize/itemSpacing 定义底色、边框、留白、按钮尺寸与间距，zoomControl 嵌入变倍子组件。
                                                             # ② 交互与状态：photoButton 调 takePhoto、videoButton 调 toggleVideoRecording，按 Manager 的可用/pending/会话属性更新按钮、闪光和 recordingTimeText；保留历史模式入口的兼容属性；当前 A8 使用本组件，柔克使用独立 RoukeCameraControl。
 │   │   ├── GimbalZoomControl.qml
-                                                            # ① 变倍子组件 UI：zoomColumn 排列 zoomInButton、targetZoomLabel、actualZoomLabel 和 zoomOutButton，定义 +/− 按钮、倍率文字、颜色及尺寸属性；外层 GimbalCameraControl 会传入尺寸/配色覆盖默认值。
+                                                            # ① 变倍子组件 UI：zoomColumn 排列 zoomInButton、targetZoomLabel、actualZoomLabel 和 zoomOutButton，使用带加/减的放大镜图标及清晰倍率文字；外层 GimbalCameraControl 传入尺寸与配色。
                                                             # ② 手势实现：MouseArea 保存按下时的 Manager，holdThresholdMs=420 识别长按、holdStartRetryMs=100 重试启动；短按调用步进，长按调用连续变倍，释放/隐藏/切相机/应用失活时结束或取消，倍率边界由 Manager/Policy 决定。
 │   │   ├── RoukeCameraControl.qml
-                                                            # ① 柔克相机面板：绑定 roukeControlManager，提供 LR1/OV2735、对焦、回中、拍照和显式录像/停止。
-                                                            # ② 分别显示 SD、LOCAL、pending 与错误；不显示未提供协议的变倍、红外及云台速度操作。
+                                                            # ① 柔克相机面板：绑定 roukeControlManager，采用紧凑图标竖栏；相机切换图标展开 LR1/OV2735，准星回中、取景框对焦、相机轮廓拍照及单一录像按钮，底部滑杆图标进入设置。
+                                                            # ② 录像按钮与 A8 同样显示状态和计时，再次点击停止；短窗口主体滚动、设置入口固定，底部仅保留居中 SD 红绿灯，错误通过琥珀图标提示；closeTransientUi 同时收起镜头菜单和设置。
+│   │   ├── CameraControlIcon.qml
+                                                            # ① 共用矢量图标：在 24 单位坐标系绘制拍照、对焦、回中、录像、切换、设置、变倍、读取/应用、参数分组及负载轮廓；统一圆润转角、线宽与视觉比例，不依赖字符字体或位图。
+                                                            # ② kind/color 接口由主栏、选择器和设置页共用；尺寸和颜色变化重新绘制，不包含设备动作。
+│   │   ├── CameraControlButton.qml
+                                                            # ① 一级图标按钮：默认透明底和同尺寸线条图标，悬停仅提亮，按下显示小圆角冰蓝底及轻微缩放；保留录像状态色、镜头短标识及菜单提示点。
+                                                            # ② text 保留辅助功能名称及悬停/按压说明，命令和可用条件由外层绑定；不将文字作为常驻主按钮内容。
+│   │   ├── CameraPayloadSelector.qml
+                                                            # ① 相机选择器：A8 云台轮廓与 Rouke 相机轮廓配合 A8/RK 短标识和在线点，替代宽文字标签。
+                                                            # ② cameraSelected 信号交由 FlyViewTopRightColumnLayout.selectCamera 处理，继续沿用切换前关闭临时 UI 的生命周期。
+│   │   ├── CameraStorageStatus.qml
+                                                            # ① 两路共用居中 SD 提示：小圆点加 SD 短标识，确认卡可用为绿点，未插入或尚未确认为红点；不显示问号、勾叉、卡片图标或本地录像标记。
+                                                            # ② known/inserted 只绑定独立存储状态；悬停/按压及无障碍名称仍区分未插入与尚未确认，不触发设备命令。
+│   │   ├── RoukeCameraButton.qml
+                                                            # ① 柔克设置按钮外观：图标页签、纯图标读取/关闭、小号强调色应用按钮，统一字号、触控高度与交互状态。
+                                                            # ② 仅供设置页签和参数动作复用，一级操作由 CameraControlButton 承担；命令由外层事件处理，不在样式组件内访问设备。
+│   │   ├── RoukeCameraParameter.qml
+                                                            # ① 参数编辑行：使用轻分隔线替代重复卡片边框，标题与当前确认值徽标分层；数值框约 15 字符宽并按实际字体预留完整整数及单位，枚举框约 20 字符宽，读取/应用紧邻编辑框；窄屏向下展开，保留正常字号。
+                                                            # ② 草稿与 cameraParameters 分离，按范围校验输入，通过 pendingParameter 显示等待，只有显式操作才发命令。
+│   │   ├── RoukeCameraSettings.qml
+                                                            # ① 二级设置浮层：固定标题及相机参数/测距拍照两个三级页签，默认相机参数，页内纵向滚动。
+                                                            # ② 限制面板在窗口内，关闭和切换相机时收起；参数通过 Manager 发送，不另开通信、不持久化设备参数。
 │   │   └── MT11CameraControl.qml
                                                             # ① 历史 MT11 保留面板（本分支不加载）：MT11 相机面板包装：通过 controlLoader 加载共享 GimbalCameraControl，加载后绑定 mt11ControlManager，开启 thermalControlsVisible 并关闭额外实测倍率显示。
                                                             # ② 接口转接：向父层提供加载项的隐式尺寸和 closeTransientUi，用于相机切换时关闭菜单；面板布局、拍照/录像按钮在 GimbalCameraControl，变倍按钮外观和手势在 GimbalZoomControl。
@@ -337,9 +358,9 @@ custom/
                                                             # ② 输入职责：measuredZoom 决定是否越过绝对命令边界，displayZoom 用于合法档位规划；输出目标供 Manager 发送，设备最大混合倍率和长按通信仍由 Manager 维护。
 │   │   ├── RoukeControlManager.cc
                                                             # ① 柔克业务与第二路媒体：把相机动作交给 RoukePayloadController，复用成熟的截图、录像所有权、异步收尾及 Android 发布逻辑。
-                                                            # ② 绑定 Video 2；照片尺寸来自视频协商结果，断流结束本地录制；SD 状态由 ACK 确认，视频与控制独立。
+                                                            # ② 绑定 Video 2；照片尺寸来自视频协商结果，断流结束本地录制；独立轮询 SD 容量并暴露卡状态，视频与控制独立。
 │   │   ├── RoukeControlManager.h
-                                                            # ① 柔克 Manager 契约：向 QML 暴露启用、控制可用、反馈状态、视角、设备/本地录像、照片计数及错误。
+                                                            # ① 柔克 Manager 契约：向 QML 暴露启用、控制可用、反馈状态、视角、设备/本地录像、照片计数、独立 sdCardStatusKnown/sdCardInserted 及错误；recordingStopRequired 统一单按钮显示与下一次启停方向；cameraParameters 只含已确认参数，pendingParameter 标识正在等待的参数。
                                                             # ② 保存控制器与第二路 item/receiver、抓图 worker、录制生命周期成员；由 CustomPlugin 创建和退出收尾。
 │   │   ├── RoukeGimbalController.cc
                                                             # ① 柔克遥控姿态：CH11/CH12 映射为 yaw_speed/pitch_speed 协议值，roll_speed 固定 0；双轴归中后解锁，50 ms 刷新最新速度，350 ms 输入失效时停止。
@@ -349,10 +370,10 @@ custom/
                                                             # ② 保存中位/按键解锁状态、最新双轴速度、输入时效、发送节拍及零速补发计数，不保存非零运动命令队列。
 │   │   ├── RoukePayloadController.cc
                                                             # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流，再校验 JSON ACK。
-                                                            # ② 相机命令与回中分别等待 ACK；速度刷新不占 pending，同一命令分片连续写出；接收帧起始时标记两类本地请求版本，配置变化取消旧请求及半帧；payload_addr 默认 0，-1 禁控。
+                                                            # ② 相机命令、回中及 SD 查询分别等待 ACK；速度刷新不占 pending，同一命令分片连续写出；接收帧起始时标记三类本地请求版本，配置变化取消旧请求及半帧；payload_addr 默认 0，-1 禁控。
 │   │   ├── RoukePayloadController.h
-                                                            # ① 载荷命令接口：提供 C++ sendCommand(command, data)、sendGimbalSpeed 与拍照、显式录像状态写入、切视角、对焦、回中及独立 gimbalCenterPending 反馈属性。
-                                                            # ② 保存独立收发状态、有限数量的字节流重组缓存、命令和响应超时、视角/录像 known 状态及观察到的地址，不占用飞控 MAVLink 通道。
+                                                            # ① 载荷命令接口：提供 C++ sendCommand(command, data)、sendGimbalSpeed 与拍照、显式录像状态写入、切视角、对焦、回中及独立 gimbalCenterPending；requestSdCardStatus 使用独立只读状态通道。
+                                                            # ② 保存独立收发状态、有限数量的字节流重组缓存、命令和响应超时、视角/录像 known 状态及观察到的地址，不占用飞控 MAVLink 通道；setCameraParameter/requestCameraParameter 共用命令通道并校验参数范围。
 │   │   ├── RoukeProtocol.cc
                                                             # ① 柔克纯编解码：紧凑 UTF-8 JSON 组成 F0 E0、LE16 长度、JSON、00、F1 E1 帧。
                                                             # ② splitFrame 按 128 字节连续切分；StreamDecoder 缓存半帧并按内层长度重组，严格检查长度、头尾、零校验、UTF-8 和 JSON 信封，坏帧重新寻找帧头。
@@ -774,8 +795,11 @@ custom/
                                                             # ① PIP 缩放回归：PySide6 离屏加载实际 DualPipView 和原生 PipState，用 Qt 鼠标事件验证上下手柄连续/反向拖动、越界限幅、单辅窗、取消后重拖及切换主辅后重新进入辅窗缩放。
                                                             # ② 验证边界：设置、字体及地图/视频内容使用替身，同时检查实际内容项宽高、16:9 比例和父容器尺寸变化时的限制；单独运行，不属于 CTest，也不测量双路解码时的渲染帧率。
 │   │   ├── RoukeCameraControlTest.py
-                                                            # ① 柔克面板回归：加载生产 QML，检查选择视角、对焦、回中、拍照、显式录像启停和状态绑定。
+                                                            # ① 柔克面板回归：加载生产 QML，检查视角、对焦、回中、拍照及显式录像启停；双页设置验证参数派发、ACK/草稿隔离、默认关闭触发、滚动及小屏布局。
                                                             # ② 使用测试服务替身与离屏场景，覆盖窄屏、字号及控制/本地媒体不同可用状态；不代表实际网络和设备响应。
+│   │   ├── CameraControlPreviewTest.py
+                                                            # ① 一级栏集成与预览：加载真实 FlyViewTopRightColumnLayout、A8/Rouke 面板和图标资源，点击真实选择器与镜头菜单，检查变倍/拍照/录像及切换收尾。
+                                                            # ② 生成两种一级栏、镜头选择、相机参数滚动分段和测距页面的中文截图；应用服务及设备状态由替身提供，不代表完整地面站和硬件运行画面。
 │   │   └── GimbalCompassTest.py
                                                             # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、左右转方位标签接近中心、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
                                                             # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
@@ -897,7 +921,7 @@ custom/
                                                             # ② 检查逐字节/跨中文边界重组、连帧、残帧恢复、头尾/校验/长度错误、非法 JSON/字段类型及失败输出不变；无需真实设备。
 │   │   ├── RoukePayloadControllerTest.cc
                                                             # ① 独立本机 UDP 回归：验证 53022 连续分段封装、长 ACK 重组、来源/地址过滤和状态确认。
-                                                            # ② 测试半帧失效、命令失败、超时、端点切换及私有收发状态；具体通过范围以 4.1 的结果为准。
+                                                            # ② 测试半帧失效、命令失败、超时、端点切换及私有收发状态；新增 11 项参数字段与范围、4 项读取、空 ACK/非法返回、歧义失效和排队停止，具体通过范围以 4.1 为准。
 │   │   ├── RoukeGimbalControllerTest.cc
                                                             # ① 遥控运动回归：真实本机 UDP 接收端独立拼接 53022 数据，检查双轴协议值、中位解锁、量程/死区、刷新、停轴、断流和零速补发。
                                                             # ② 回中与隔离：检查 CH14 边沿、先停再回中、回中后重新归中、相机 pending 下停止，以及配置变化和方向反转；不控制实际设备。
@@ -1518,7 +1542,7 @@ GimbalCameraControl / GimbalZoomControl
 |:---|:---|:---|
 | 启用、端点和倍率步长 | `UI/AppSettings/GimbalControlSettingsGroup.qml`；`Gimbal/GimbalControlSettings.h/.cc`、`GimbalControl.SettingsGroup.json` | 设置页写入 Fact；Manager 读取开关、SDK 地址/端口和步长，配置 SDK 并更新按钮能力。 |
 | 相机选择与面板创建 | `FlightDisplay/FlyViewTopRightColumnLayout.qml`；原生 `src/FlightDisplay/FlyViewWidgetLayer.qml` | custom 右侧列负责 A8 Mini/Rouke 标签和 Loader，给 A8 面板绑定 gimbalControlManager；原生父布局决定整列锚点和外边距。 |
-| 面板外观与操作反馈 | `FlightDisplay/GimbalCameraControl.qml`；原生 `qmlimages/camera_photo.svg`、`camera_video.svg` 图标资源 | 共享面板组织变倍、拍照、录像、计时及 SD/LOCAL 标识；按钮调用 Manager，反馈属性驱动禁用、颜色、闪烁和录制状态。 |
+| 面板外观与操作反馈 | `FlightDisplay/GimbalCameraControl.qml`、`CameraControlIcon.qml`、`CameraStorageStatus.qml` | 共享面板组织变倍、拍照、录像、计时及居中 SD 状态；按钮调用 Manager，反馈属性驱动禁用、颜色、闪烁和录制状态。 |
 | 变倍输入与目标显示 | `FlightDisplay/GimbalZoomControl.qml`；`Gimbal/GimbalControlManager.h/.cc` | QML 区分短按/长按并在释放、隐藏、切换时取消；Manager 根据能力和当前动作所有者生成目标、发命令并处理回读。 |
 | 倍率合法性与能力范围 | `Gimbal/A8MiniZoomPolicy.h/.cc`、`ZoomStepPolicy.h/.cc`；分辨率探针 | A8 策略结合拉流/卡录分辨率确定能力，StepPolicy 计算合法档位和精确上限；能力结果回到 Manager 和 UI。 |
 | UDP 协议收发 | `Gimbal/SiyiSdk.h/.cc`、`SiyiProtocol.h/.cc` | SDK 负责端点、socket、查询与信号；Protocol 负责命令编码、CRC 和 payload 解析；Manager 消费反馈更新状态。 |
@@ -1529,19 +1553,35 @@ GimbalCameraControl / GimbalZoomControl
 
 ~~~text
 原生 FlyViewWidgetLayer.qml
-└── FlyViewTopRightColumnLayout.qml       右侧列与 A8 Mini/Rouke 选择标签
+└── FlyViewTopRightColumnLayout.qml       右侧列与 CameraPayloadSelector 图标选择器
     ├── A8 → GimbalCameraControl.qml     绑定 GimbalControlManager
     │          ├── GimbalZoomControl.qml  变倍与手势
-    │          └── photo/video/status     拍照、录像与 SD/LOCAL
+    │          └── photo/video/status     拍照、录像与居中 SD 卡状态
     └── Rouke → RoukeCameraControl.qml  绑定 RoukeControlManager
-               ├── LR1/OV2735           视角切换
+               ├── Switch → LR1/OV2735  图标菜单选择视角
                ├── Focus/Center         对焦与回中
                └── Photo/Record/Stop    拍照、明确录像启停与状态
 ~~~
 
-`GimbalCameraControl.qml` 的 `controlColumn` 决定内部顺序，`panelColor/panelBorderColor/panelPadding` 定义面板，`actionSize/itemSpacing` 定义尺寸和间距。`photoSuccessFlash`、`recordingTimeText()`、`sdRecordingBadge/localRecordingBadge` 分别处理成功闪烁、计时和支路状态。
+`GimbalCameraControl.qml` 的 `controlColumn` 决定内部顺序，`panelColor/panelBorderColor/panelPadding` 定义面板，`actionSize/itemSpacing` 定义尺寸和间距。`photoSuccessFlash`、`recordingTimeText()`、`CameraStorageStatus` 分别处理成功闪烁、计时和 SD 卡状态。
 
 该面板把尺寸/颜色传给 `GimbalZoomControl.qml` 的 `controlSize/controlSpacing` 等属性，因此统一调整整栏样式时应同时看父组件传值。倍率区的 `zoomInButton/zoomOutButton/targetZoomLabel` 定义具体外观；`holdThresholdMs/holdStartRetryMs` 决定手势识别时机。柔克使用独立面板，修改其控件布局需查看 `RoukeCameraControl.qml`。
+
+2026-11-05 一级栏与顶部负载选择器统一为深石墨小圆角矩形、冰蓝反馈和共用矢量图标，外框圆角为 `0.55 × defaultFontPixelHeight`（基准字号下 11 px），按钮按压底圆角为 `0.4 × defaultFontPixelHeight`。各操作默认只显示约 24 px 的浅色线条图标，拍照使用相机轮廓，移除常亮白底、外圈与加大尺寸；录像在未开始时也使用中性色，停止使用圆形轮廓内的实心小方块（`recordStop`）。悬停只提亮图标，按下时显示冰蓝底 `#b8e7f2` 和深色图标 `#163744`，图标内容缩放到 0.94；松开恢复，实际点击区域不缩小。负载/镜头选中及设置展开只用图标颜色提示；录像红色依赖 `recordingSessionCapturing` 的实际采集状态，等待启动回执不显示为已录制。本地录制仍按既有设置独立运行，移除主栏本地提示不等于关闭本地保存。
+
+图标采用统一圆润线条，重绘相机肩部与镜头、A8 云台支架、对焦取景框、镜头切换箭头及设置滑杆。A8 用放大镜加/减号、中心倍率、拍照和单一录像按钮；录像时长置于图标下方，固定栏宽。两个面板底部均仅居中显示 SD 红绿小圆点，不再显示 LOCAL/PC 标记。Rouke 使用切换、回中准星、对焦取景框、拍照、单一录像按钮和底部设置图标，说明文字移入悬停提示与无障碍名称；对焦仍紧邻拍照上方。Rouke 的录像外观与 A8 一致：默认录制圆点，实际录制后红色停止图形与计时，再次点击停止，取消独立停止按钮。`CameraControlIcon.qml` 负责统一线条，`CameraControlButton.qml` 负责普通一级按钮，设置参数按钮由 `RoukeCameraButton.qml` 负责；设置页读取与关闭这类纯图标按钮也采用透明默认底和按压反馈。
+
+**柔克单按钮启停**：`recordButton` 调用 `RoukeControlManager.toggleVideoRecording()`，Manager 与 QML 都以 `recordingStopRequired` 判断下一步动作，true 为停止、false 为开始；不使用“当前已确认录像”一个布尔值猜测点击方向。开始命令已发出或本地启动后即保留停止意图，开始 pending 或 ACK 丢失后再次点击仍是停止；停止正在等待时连点不重复排队，停止拒绝或超时保留停止方向供重试。实际采集仍由 `recordingSessionCapturing` 决定红色与计时，停止意图本身不会误显示为已录制。本地录制沿既有独立清理路径收尾。
+
+远端停止意图保存在 Controller 内存中，按相机 IP、远端端口和负载地址归属；更换本地端口、禁用或同端点重连不会丢失未完成的停止。切到另一相机不继承旧相机意图，切回原端点可继续停止；程序重新启动不从磁盘自动恢复设备命令。初始无会话时按钮用于开始，明确开始拒绝且没有本地/历史停止意图时恢复开始方向，停止成功确认后恢复默认图标。
+
+**SD 卡提示的依据与限制**：两路 Manager 统一暴露 `sdCardStatusKnown/sdCardInserted`。只有两者都为 true 才显示绿色小圆点，明确无卡或尚未确认均显示红色小圆点；主栏只保留圆点加 SD 字样，详细原因放在悬停提示中，存储状态不从本地录像或 SDK 在线推断。A8 使用 `0x0A` 原始 `record_sta`：`1` 录像中可确认有卡，`2` 明确卡槽为空，`0` 停止和 `3` 数据丢失保守显示未确认（红点）；独立 5 s 时效、断连、禁用及换端点会清除旧状态。枚举依据 [SIYI A8 mini 官方手册 v1.5，第 31 页](https://siyi.biz/siyi_file/A8%20mini/A8%20mini%20User%20Manual%20v1.5.pdf)，文档未给出停止状态下独立的插卡布尔值。
+
+柔克通过 M400 协议 3.6.9 `get_sdcard_capacity` 查询：成功回执中 `total_capacity > 0` 且 `0 <= free_capacity <= total_capacity`，两者均为合法整数时确认卡可读取（绿点）；零容量、拒绝、超时或坏字段均为未确认（红点），不能宣称已证明未插卡。Manager 在有效配置后首次查询，并每 10 s 轮询；Controller 使用独立的查询 pending、3.5 s 超时、25 s 状态时效及分片代次，不占相机命令 pending、不覆盖相机错误，也不阻塞录像启停。
+
+设置参数的编辑区左对齐，不再随整行拉长。数值框以约 15 字符宽为基础，同时使用实际字体度量预留完整整数和单位；枚举选择框约 20 字符宽。读取与应用紧邻输入区，同类参数的操作列对齐；空间不足时自动将操作按钮移至下一行，字号与纵向滚动保持不变。
+
+`cameraControlLoader.onLoaded` 在创建绑定时捕获 `loadedCameraIndex`，让每个面板的 Manager 类型在自身生命周期内保持对应关系。切换选择器时先关闭临时菜单；正在销毁的 A8 面板仍使用 A8 Manager 取消长按变倍，不能因 `_selectedCamera` 已变成 Rouke 而向其调用 A8 专属方法。Rouke 镜头/设置按钮保留关闭消抖，避免 Popup 的“点击外部关闭”与同一次按钮点击相叠加而重新打开。
 
 ---
 
@@ -1553,7 +1593,7 @@ GimbalCameraControl / GimbalZoomControl
 
 本分支的 Video 2 和右侧第二个相机面板改为柔克。A8 Mini 保持 Video 1；旧 MT11 源码、设置键和回归测试留在仓库，产品构建排除旧 MT11 业务源码，不再实例化 Mt11Sdk 或接通其 UniRC 路由。
 
-当前接入 LR1/OV2735 视角切换、一次对焦、云台回中、拍照及显式开始/停止录像，并通过 UniRC CH11/CH12 控制偏转/俯仰速度，CH14 触发回中。SD 支路经柔克回执确认，本地媒体沿独立 Video 2 处理，详见 3.5。Rouke 独立相机栏没有放大/缩小按钮，也不复用 A8 的变倍控件；现用 SEL85F18 是定焦镜头，厂商协议未提供变倍命令。LR1/OV2735 是两路图像源选择，不能据此推断广角、红外或朝向。
+当前接入 LR1/OV2735 视角切换、一次对焦、云台回中、拍照及显式开始/停止录像，并通过 UniRC CH11/CH12 控制偏转/俯仰速度，CH14 触发回中。相机栏底部设置入口提供相机参数与测距拍照两个子页面，覆盖 ISO、白平衡、MF/AF、快门速度、焦距原始值、光圈、成像质量、图片大小、测距触发开关、拍摄距离和距离阈值。SD 支路经柔克回执确认，本地媒体沿独立 Video 2 处理，详见 3.5。Rouke 独立相机栏没有放大/缩小按钮，也不复用 A8 的变倍控件；现用 SEL85F18 是定焦镜头，厂商协议未提供变倍命令。设置焦距原始值不等于光学变倍。LR1/OV2735 是两路图像源选择，不能据此推断广角、红外或朝向。
 
 #### 3.4.2 配置与使用
 
@@ -1569,9 +1609,35 @@ GimbalCameraControl / GimbalZoomControl
 
 1. 在“应用设置 → 飞行视图 → Rouke”核对 AI 盒子端点 `192.168.144.110:8888` 与厂家确认的默认地址码 0。页面提供启用、远端 IP/端口、本地端口、负载地址、双轴速度协议值及方向反转。默认值不覆盖已有保存值；若旧安装保存为 -1，手动改为 0。IP/端口不是 payload_addr，不能从 IP 推算地址码。
 2. 在“应用设置 → 视频 → RTSP 地址2（Rouke）”（英文 `RTSP URL 2 (Rouke)`）核对 `rtsp://192.168.144.100:8554/live`。升级仅将精确匹配旧出厂 `.25/.24:8554/video1` 的地址一次性迁到新默认值，已保存的其他地址或空值保持原意。
-3. 在飞行页右侧选择“Rouke”，中英文界面均保留此名称，按需要执行单条命令并等待回执。控制栏经 QRC 加载 `RoukeCameraControl.qml` 并绑定 `roukeControlManager`；旧 MT11 面板不在产品资源中。录像使用明确的“录像”与“停止”，连接恢复后未知 SD 状态不能当作停止状态。
+3. 在飞行页右侧选择“Rouke”，中英文界面均保留此名称，按需要执行命令并观察回执。控制栏经 QRC 加载 `RoukeCameraControl.qml` 并绑定 `roukeControlManager`；旧 MT11 面板不在产品资源中。录像使用一个按钮开始/停止，开始请求后再次点击即请求停止，等待回执时仍可停止；SD 红绿灯与录像方向独立。
 4. 开启本地保存后，设备控制不可用仍可尝试保存本地解码画面；分别观察 SD 和 LOCAL 的结果。
 5. 使用遥控器前先让 CH11、CH12 双轴归中，CH14 先释放再按下。CH14 只执行 Rouke 回中，不与 A8 CH10 的回中/俯视交替共用状态；操作与保护规则见 3.7.2。拍照/录像等待回执期间仍可操控云台和请求回中。
+6. 对焦位于拍照上方。点击控制栏底部“设置”，进入二级设置面板；默认打开“相机参数”，另一个页签为“测距拍照”。两个三级页面均可纵向滚动，标题和页签固定，窄窗口保持正常字号并将内容向下排列。主控制栏在窗口高度不足时允许滚动，底部设置入口固定可达；切换负载、关闭模块或离开当前控制栏时收起设置面板。
+   一级设置入口现为滑杆图标；二级标题与三级页签带相机/测距图标，曝光、镜头、图像及距离分组使用对应矢量符号。参数行以轻分隔线和确认值徽标区分层级，读取使用循环箭头图标，应用保留明确动作文字；小屏页签简写“相机 / 测距”，完整名称仍提供给辅助功能。
+7. 每项编辑后单独点击“应用”，等待设备确认；支持读取的 ISO、白平衡、焦距值和图片大小可单独读取。编辑中的值不是设备当前值。测距触发编辑选项默认关闭，打开面板或切换页签不自动发送启用命令；尚无回执时设备状态显示未确认。
+
+**设置参数与协议约定**（来源：《控制命令M400.md》）
+
+| 页面 / 参数 | 章节与命令 | 请求字段与有效值 |
+|---|---|---|
+| 相机 / ISO | 3.1.6 `lr1_iso` | `action=0` 获取，`1` 设置；`value=0…34`（0x00…0x22），获取时传 0 |
+| 相机 / 白平衡 | 3.1.7 `lr1_white_balance` | `action=0` 获取，`1` 设置；`value=0…14`（0x00…0x0E），获取时传 0 |
+| 相机 / 对焦模式 | 3.1.9 `lr1_focus_mode` | `mode=0…4`，依次 AF-S、AF-A、AF-C、DMF、MF |
+| 控制栏 / 一次对焦 | 3.1.10 `lr1_focus` | 空 `data`，独立于对焦模式设置 |
+| 相机 / 快门 | 3.1.18 `lr1_shutter_speed` | `shutter_speed` 整数索引，文档未提供秒数映射或设备范围 |
+| 相机 / 焦距值 | 3.1.20 `lr1_focus_value_get` / 3.1.21 `lr1_focus_value_set` | `value` 十进制原始整数，例如 0x04B0 输入 1200；不是 mm 或倍率 |
+| 相机 / 光圈 | 3.1.23 `lr1_aperture` | `aperture_index` 整数索引，文档未提供 F 值映射或设备范围 |
+| 相机 / 成像质量 | 3.1.24 `lr1_image_quality` | `quality=1…4`，依次 Light、Standard、Fine、Extra fine |
+| 相机 / 图片大小 | 3.1.25 `lr1_image_size` | `operate=0` 获取，`1` 设置；`size=0…3` 对应 L/M/S/VGA，获取时传 0；不发送右列 Sony 枚举 0x0001…0x0004 |
+| 测距 / 触发拍照 | 3.1.5 `lr1_trigger_photo` | `enable=0` 关闭、`1` 开启 |
+| 测距 / 拍摄距离 | 3.1.17 `lr1_shooting_distance` | `distance_m=20…40`，整数，单位 m |
+| 测距 / 距离阈值 | 3.1.8 `lr1_distance_threshold` | `distance_cm=30…15000`，整数，单位 cm |
+
+ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。未给出设备范围的快门、光圈、焦距字段按非负整数输入，软件整型上限不表示设备支持上限，最终由负载接受或拒绝。这些是负载运行参数，不加入 `GimbalControl.SettingsGroup.json`，也不在重连时自动重放；连接设置仍由应用设置 Fact 持久化。
+
+**设置执行与状态流转**：`RoukeCameraParameter` 保存输入草稿 → 点击应用/读取 → `RoukeControlManager.setCameraParameter/requestCameraParameter` → Controller 根据参数表生成字段并校验整数及范围 → 复用 53022 请求通道 → 合法、同会话 ACK 更新 `cameraParameters` → 卡片显示确认值。`pendingParameter` 标识正在等待的卡片，等待期间禁止叠加参数请求；显式录像停止和独立云台回中仍沿既有路径工作。
+
+设置命令的成功空 `data` 按文档表示确认所提交值；读取命令必须返回合法字段，缺失/越界不能当作 0。设备明确拒绝时保留此前确认值并显示错误；超时或歧义回执撤销该参数确认，15 s 未收到有效回应及端点配置改变会清空参数确认。一次对焦及切换对焦模式成功后清除旧焦距值，需要重新读取；这两种动作超时、部分发送或回执歧义时，同样不能保留旧焦距确认。确认值表示本次会话最后已确认的值，不是持续参数遥测；界面打开、关闭和排版变化均不发送设备命令。
 
 显式设置地址码为 -1 时 socket 可接收并观察合法回包地址，但观察值仅供诊断，不自动覆盖设置或启用命令。UDP 本地写出成功不代表负载执行成功，视频出画面也不代表控制链路在线。
 
@@ -1638,7 +1704,9 @@ GimbalCameraControl / GimbalZoomControl
 | 完成 | 同 cmd 的 `ack`、`code=0/1` | 成功才更新视角、录像已知状态或照片计数；拒绝显示设备 msg，不把本地发送当成功 |
 | 超时与失效 | 命令 3.5 s；回应新鲜度 15 s | 命令不自动重发；15 s 无合法负载回应时视角/录像置未知；配置变化取消 pending 和排队停止并清除旧会话 |
 
-厂商 JSON 没有事务序号。相机和回中各自只能按 cmd 与等待窗口关联，不能证明超时后再次发送同名命令时的迟到 ACK 属于哪次请求。因此某命令发生超时或部分发送失败后，本次端点会话中该命令的后续 ACK 只视为可能回应，保持设备状态未知、不增加照片成功计数，直至重新建立端点会话。同一 UDP 数据报及跨包内层帧都保留起始时的本地请求序号，避免前一条 ACK 触发排队停止后，剩余重复 ACK 或旧半帧又确认新停止请求；这个本地序号不写入 MAVLink 或 JSON，不能解决全部网络迟到情况。显式停止仍可发送，但不能据此承诺设备已停止或动作恰好执行一次；需要实际设备反馈和厂家事务关联约定。
+厂商 JSON 没有事务序号。相机和回中各自只能按 cmd 与等待窗口关联，不能证明超时后再次发送同名命令时的迟到 ACK 属于哪次请求。因此一般命令发生超时或部分发送失败后，本次端点会话中该命令的后续 ACK 只视为可能回应，保持设备状态未知、不增加照片成功计数，直至重新建立端点会话。录像停止重试有一个同方向例外：如果未确认请求全部为停止，没有开始结果不确定，则合法停止 ACK 可确认已停止；如果开始曾超时或部分发送，后续空 ACK 仍不能排除迟到开始回执，继续保留停止方向与未知状态。
+
+同一 UDP 数据报及跨包内层帧都保留起始时的本地请求序号，避免前一条 ACK 触发排队停止后，剩余重复 ACK 或旧半帧又确认新停止请求；这个本地序号不写入 MAVLink 或 JSON，不能解决全部网络迟到情况。单按钮仍能请求停止，但发送成功不等于已确认停止；需按协议回执、设备行为及厂家事务关联约定验收。
 
 长 ACK 通过同一连续流重组路径处理，较长中文错误说明或较大 `data` 无需塞入单条 53022。只有完成内层帧校验后才更新回应新鲜度、结束 pending 或显示设备结果，单独收到一个合法 MAVLink 分段不等于收到完整 ACK。
 
@@ -1658,7 +1726,7 @@ GimbalCameraControl / GimbalZoomControl
 
 | 功能环节 | 文件 / 资源组 | 协作关系 |
 |:---|:---|:---|
-| 设置与面板 | `Gimbal/GimbalControlSettings.h/.cc`、JSON；`UI/AppSettings/GimbalControlSettingsGroup.qml`；`FlightDisplay/RoukeCameraControl.qml` | 独立 rouke 设置键驱动控制器，面板绑定反馈和明确动作 |
+| 设置与面板 | `Gimbal/GimbalControlSettings.h/.cc`、JSON；`UI/AppSettings/GimbalControlSettingsGroup.qml`；`FlightDisplay/RoukeCameraControl.qml`、`RoukeCameraSettings.qml`、`RoukeCameraParameter.qml`、`RoukeCameraButton.qml` | 连接设置键驱动控制器；主栏和双页设置共用 Manager，参数草稿和设备确认分离 |
 | 第二路媒体业务 | `Gimbal/RoukeControlManager.h/.cc`；`CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 插件绑定 Video 2，Manager 分开管理设备控制与本地媒体 |
 | 遥控云台 | `Android/UniRcChannelController.h/.cc`；`Gimbal/RoukeGimbalController.h/.cc` | 接收 CH11/12/14，映射双轴速度、处理 CH14 回中边沿与中位解锁，管理刷新和停转 |
 | 控制传输与帧 | `Gimbal/RoukePayloadController.h/.cc`、`RoukeProtocol.h/.cc` | Controller 管网络、分段发送、接收流生命周期、请求和 ACK；Protocol 管内层编解码、切分、字节流重组和严格校验 |
@@ -2637,6 +2705,28 @@ ctest --test-dir <mavlink-test-build> -C Release --output-on-failure
 
 2026-10-29 Rouke 相机栏复验通过，并新增“相机 pending 时回中可用、回中 pending 时相机对焦仍可用”的独立门禁检查。设置页 8 组尺寸/字号/主题检查与新增双轴速度字段、CH11/CH12 反向开关 Fact 写回均通过；真实 QRC 中文预览确认 10/5 默认协议值、通道提示及新控件完整显示，无 QML 绑定错误，截图位于 `debug/rouke-rc-ui-20261029/`。中文 QM 共 270 条完成译文；实际遥控器、AI 盒子和负载动作仍按 4.2 验收。
 
+2026-11-04 柔克参数集成使用 Windows / Qt 5.14.2 / MSVC 独立重编生产 Controller，`RoukePayloadControllerTest` 58 项通过、0 失败、0 跳过（含初始化/收尾，约 40 s），日志 `tmp/team-rouke-controller/result.txt`。新增覆盖 11 项参数的完整请求字段、4 类读取、非法输入不发送、默认不触发、空 ACK 确认设置、GET 必须带合法值、明确拒绝保留旧值、超时与歧义回执失效、排队停止、自动对焦/对焦模式变更及 15 s 响应过期。随后补充对焦模式超时/歧义时同时清除焦距确认的回归，与 3 项相关既有用例定向执行共 6 项通过（含初始化/收尾），日志 `tmp/team-rouke-controller/focus-result.txt`。共享 Controller 变更后重编 `RoukeGimbalControllerTest` 22 项通过、0 失败；新 Manager 头文件的 moc 生成及编译通过。上述为主机协议及接口验证，不是 Qt 6 全应用或硬件验收。
+
+同日增强 `RoukeCameraControlTest.py`，在 Qt/PySide6 6.10.2 中编译真实 `custom.qrc` 并运行生产 QML，中英文检查均通过：默认相机页、11 项参数界面、实际键鼠编辑/读取/应用、确认值与草稿隔离、图片大小 L 使用 0、测距输入范围、触发默认关闭且编辑不发命令、父子弹窗关闭、重开回到相机页、滚轮滚动、主栏底部设置入口可达。布局覆盖 360×640、731×411、800×600、800×700/150% 及 320×640/150%；窄屏输入和动作分行，页签文字和正常字号保留。中文翻译编译为 322 条完成、0 条未完成，截图位于 `debug/rouke-ui-20261104/{english,chinese}/`，其中 `rouke-range-default.png` 展示关闭草稿和未确认设备状态。主栏、相机页、测距页和窄屏预览已目视复核；这是生产控件加服务替身的离屏场景，不是完整地面站或硬件画面。
+
+2026-11-04 再次执行完整应用 CMake 配置，在 `find_package(Qt6)` 处因缺少目标 Qt 6.8.3 的 `Qt6Config.cmake` 停止，日志 `tmp/rouke-app-configure-63bf2032/configure-20261104.log`。完整 Qt 6.8.3/Android 构建及实际柔克参数效果仍按 4.2 验收。
+
+2026-11-05 图标化界面验证在 Qt/PySide6 6.10.2 离屏环境完成。`RoukeCameraControlTest.py` 中英文通过，保留参数草稿/ACK、默认关闭、同值读取与设置回执、失败保留输入、滚动及 5 组尺寸/字号检查，并覆盖镜头图标菜单、重复点击入口关闭和小屏短页签。新增 `CameraControlPreviewTest.py` 加载真实右侧列、选择器、A8/Rouke 控件和 QRC，验证 A8 短按/长按变倍、拍照/录像、长按中使用真实选择器切换到 Rouke 后取消仍归属 A8、镜头菜单字段及设置打开不发命令；长录像 `1:23:45` 前后 A8 栏宽与按钮宽保持不变、计时文字不溢出。未发现 QML 绑定错误。中文翻译为 333 条完成、0 条未完成，`git diff --check` 通过；本轮未修改后端协议，不扩大此前 Qt 5 主机及未完成的完整 Qt 6/Android 构建结论。
+
+同日继续细化外框、矢量图标和参数编辑宽度，重复执行中英文参数交互及 5 组尺寸/字号检查，均通过。增加数值框紧凑宽度、读取按钮邻接、完整整数 `2147483647` 输入、10 位数字与 `cm` 单位留白，以及合法上限 `15000 cm` 的检查；一级栏与选择器外框圆角、长录像栏宽和长按切换归属也通过。未发现 QML 绑定错误。此次仅调整 QML 外观、布局与相应验证，设备协议行为保持原有验证范围。
+
+随后将一级栏调整为默认纯图标、按下再显示反馈，`CameraControlPreviewTest.py` 验证 A8/Rouke 拍照默认透明、图标与相邻操作尺寸一致、真实按住 160 ms 出现底色、松开恢复且只派发一次拍照命令，并检查录像状态仍有颜色区别。长录像固定栏宽、变倍长按与切换取消归属继续通过，未发现 QML 错误；既有中文参数交互及 5 组窗口/字号检查通过，`git diff --check` 通过。
+
+SD 状态接入后，Qt 5 / MSVC 生产 Controller 的定向 UDP 测试 20 项通过，覆盖合法/非法容量、SD 与相机并发及停止、独立错误/超时恢复、地址和旧分片隔离、新鲜度及端点复位；最后补充在线状态通知后相关 17 项通过，均含初始化/收尾。日志为 `tmp/team-rouke-controller/sd-result.txt`、`sd-liveness-result.txt`。两个 Manager 新 moc 生成并编译通过，日志 `tmp/rouke-manager-syntax/sd-meta-syntax.log`；A8 映射与失效路径完成代码审阅，尚非完整 Qt 6 Manager 构建或实机插拔卡验证。
+
+对应 QML 验证通过两路 SD 三态独立显示、整行居中（允许 Qt 布局取整的 1 px 误差）、无本地标记、待回执不误红、确认采集后变红及停止恢复，并确认 SD 插卡状态不随录像状态推断。未知录像及等待回执时独立停止仍可派发；既有拍照、长按切换、参数交互及 5 组窗口/字号回归通过，QML 错误为 0。中文翻译为 336 条完成、0 条未完成，`git diff --check` 通过。
+
+随后按单录像按钮和 SD 红绿灯要求同步调整 UI 与录制程序。定向生产 UDP 测试 15 项通过（含初始化/收尾），覆盖开始等待时再次停止、停止等待时连点、开始超时不重启、开始/停止拒绝、停止超时重试、开始拒绝与已排队停止竞争、端点切换/重连意图、旧完整/分片 ACK 以及 SD 查询通道隔离。日志为 `tmp/team-rouke-controller/single-recording-result.txt`。新 Manager moc 编译通过；Manager 新逻辑在临时 Qt5 适配副本中完成语法编译（仅未改动的截图区域做 Qt5 API 适配），日志 `tmp/rouke-manager-syntax/recording-meta-syntax.log`、`recording-manager-syntax.log`，仍不代表完整 Qt 6 构建或媒体运行验证。
+
+该版本 QML 验证通过：同一按钮开始、开始待回执时停止、停止失败重试、停止确认恢复中性色；录制后红色与 `1:23:45` 计时保持固定栏宽。SD 只显示居中的红/绿小圆点和 SD 字样，无问号、本地标识或额外状态字；悬停说明仍能区分未插入与未确认。既有参数交互和 5 组窗口/字号回归通过，QML 错误为 0。中文翻译 341 条完成、0 条未完成，`git diff --check` 通过。
+
+最新中文实际控件截图位于 `debug/camera-single-record-20261105/preview/`，此前版本保留于 `debug/camera-sd-status-20261105/preview/`、`debug/camera-resting-icons-20261105/preview/`、`debug/camera-refined-20261105/preview/` 和 `debug/camera-icons-20261105/preview/`：`01-a8-controls.png`、`02-rouke-controls.png` 展示一级栏默认状态，`01a-a8-photo-pressed.png`、`02a-rouke-photo-pressed.png` 为拍照按住状态，对应 `photo-released` 图片为松开状态；`01b-a8-long-recording.png`、`02b-rouke-recording.png` 展示录像状态。`01c/02c-…-sd-inserted/absent.png` 展示共享 SD 红绿灯的模拟状态（不表示柔克协议已提供无卡码），`01d/02d-…-recording-pending.png` 展示待确认状态，`02e-rouke-recording-retry.png` 展示停止失败后的重试按钮。`03-rouke-lens-menu.png` 为镜头选择菜单，`04-camera-upper.png`、`05-camera-middle.png`、`06-camera-lower.png` 为相机参数滚动位置，`07-range-default.png` 为默认关闭的测距拍照页。所有截图使用生产 QML、测试设备状态及简单展示背景，已目视检查，不是完整运行的地面站或真实设备采集图。
+
 以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用测试，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
@@ -2660,7 +2750,8 @@ cmake --build <desktop-build> --target check_rouke_payload
 | `custom/test/Gimbal/GimbalAzimuthPolicyTest.cc`、`GimbalHeadingTelemetryTest.cc`、`GimbalAzimuthProviderTest.cc` | 方位角换算、倒装 A8 左右转反馈方向与跟随/锁定配对输入、显式参考系、航向时效、活动云台匹配 |
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
-| `custom/test/FlightDisplay/RoukeCameraControlTest.py` | 柔克生产相机面板的动作、状态绑定、未知状态停止和布局；独立离屏服务替身 |
+| `custom/test/FlightDisplay/RoukeCameraControlTest.py` | 柔克生产相机面板及双页设置；实际键鼠、参数确认/草稿、默认关闭、范围校验、滚动与大小窗口布局；独立离屏服务替身 |
+| `custom/test/FlightDisplay/CameraControlPreviewTest.py` | 真实相机选择器及 A8/Rouke 一级栏、长按切换收尾与 Manager 归属、长时间录像栏宽、镜头图标菜单和所有设置页预览 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC `0x42`/`0x44` 请求与回包、signed8 质量及字段边界、混合帧、通道保护和 CH10 状态 |
@@ -2676,6 +2767,7 @@ cmake --build <desktop-build> --target check_rouke_payload
 ~~~sh
 python custom/test/Gimbal/GimbalModeUiTest.py
 python custom/test/FlightDisplay/RoukeCameraControlTest.py
+python custom/test/FlightDisplay/CameraControlPreviewTest.py --output debug/camera-icons-preview --translation <custom_zh_CN.qm>
 python custom/test/FlightDisplay/DualPipResizeTest.py
 python custom/test/FlightDisplay/GimbalCompassTest.py
 python custom/test/UI/UniRcLinkIndicatorTest.py
@@ -2722,6 +2814,7 @@ ctest --test-dir <desktop-build>/custom -R '^(RoukeMavlinkTest|RoukeProtocolTest
 
 | 范围 | 必测行为 |
 |---|---|
+| 柔克参数设置 | 相机/测距页签默认与滚动、中文/大字号、对焦在拍照上方；11 项设置逐项核对设备实值，4 项读取验证返回；索引映射以厂商实机表为准；测距触发默认关闭草稿且未确认、仅显式应用才切换，端点断开/重连不得显示过期确认或自动开启；参数 pending 下录像停止和云台回中仍可用 |
 | 视频 | A8、柔克各自位于 URL 1/2；同时播放与交换；持续至少 10 min；断流重连；PIP 切换、前后台、surface 重建 |
 | PIP 缩放 | 双路播放及地图作为辅窗时，分别拖动上下手柄；连续放大/缩小、快速反向、拖出辅窗、触及上下限并返回、释放/取消后重拖、主辅切换及父窗口改变大小；确认跟手、无跳变和视频持续显示 |
 | Android 解码 | 按 receiver/generation 确认 CAPS、source、实际 decoder、decoder 输出和 sink 首帧；保持硬解，健康另一条流不被重建 |

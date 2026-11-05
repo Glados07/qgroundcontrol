@@ -1,0 +1,317 @@
+/****************************************************************************
+ * One editable parameter. Draft values never stand in for device state.
+ ****************************************************************************/
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls as QtControls
+import QGroundControl.ScreenTools
+
+Rectangle {
+    id: root
+    required property var manager
+    required property string parameterKey
+    required property string title
+    property string hint: ""
+    property string unit: ""
+    property int minimum: 0
+    property int maximum: 2147483647
+    property var options: []
+    property bool readable: false
+    property int defaultDraft: -1
+    property int resetSerial: 0
+    property bool dirty: false
+    property bool showSeparator: true
+    readonly property bool known: Boolean(manager && manager.cameraParameters
+                                          && manager.cameraParameters[parameterKey] !== undefined)
+    readonly property var confirmedValue: known ? manager.cameraParameters[parameterKey] : undefined
+    readonly property bool busy: Boolean(manager && manager.pending)
+    readonly property bool pending: Boolean(busy && manager.pendingParameter === parameterKey)
+    readonly property bool canControl: Boolean(manager && manager.enabled && manager.controlAvailable && !busy)
+    readonly property bool hasOptions: options.length > 0
+    readonly property var draftValue: hasOptions
+                                     ? (choices.currentIndex >= 0 ? options[choices.currentIndex].value : undefined)
+                                     : (numeric.text.length && numeric.acceptableInput ? Number(numeric.text) : undefined)
+    readonly property bool valid: draftValue !== undefined && isFinite(draftValue)
+                                 && Math.floor(draftValue) === draftValue
+                                 && draftValue >= minimum && draftValue <= maximum
+    readonly property bool wideLayout: width >= ScreenTools.defaultFontPixelWidth * 39
+    // Keep the edit group compact while reserving enough room for the full
+    // protocol integer and unit at the current application font size.
+    readonly property real numericEditorWidth: Math.max(ScreenTools.defaultFontPixelWidth * 15,
+                                                        numericMetrics.advanceWidth("2147483647")
+                                                        + numeric.leftPadding
+                                                        + Math.max(numeric.rightPadding,
+                                                                   unitMetrics.advanceWidth("cm") + ScreenTools.defaultFontPixelWidth * 2.0)
+                                                        + 4)
+    readonly property real preferredEditorWidth: hasOptions ? ScreenTools.defaultFontPixelWidth * 20
+                                                            : numericEditorWidth
+    readonly property bool inlineEditorLayout: wideLayout
+            && layout.width >= preferredEditorWidth + actionRow.implicitWidth + ScreenTools.defaultFontPixelWidth * 0.8
+    readonly property real inset: ScreenTools.defaultFontPixelHeight * 0.65
+    readonly property real horizontalInset: ScreenTools.defaultFontPixelWidth * 0.65
+    objectName: "parameter_" + parameterKey
+    implicitHeight: layout.implicitHeight + inset * 2
+    radius: ScreenTools.defaultFontPixelHeight * 0.4
+    color: pending ? "#142d3a" : "transparent"
+
+    FontMetrics { id: numericMetrics; font: numeric.font }
+    FontMetrics { id: unitMetrics; font: unitLabel.font }
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: root.horizontalInset
+        anchors.rightMargin: root.horizontalInset
+        height: 1
+        visible: root.showSeparator
+        color: "#2a3b46"
+    }
+
+    function valueText(value) {
+        for (let i = 0; i < options.length; ++i) {
+            if (options[i].value === Number(value)) return options[i].text
+        }
+        return String(value) + (unit.length ? " " + unit : "")
+    }
+    function syncDraft() {
+        if (dirty) return
+        const value = known ? confirmedValue : defaultDraft >= 0 ? defaultDraft : undefined
+        numeric.text = value === undefined ? "" : String(value)
+        choices.currentIndex = -1
+        for (let i = 0; i < options.length; ++i) {
+            if (options[i].value === Number(value)) choices.currentIndex = i
+        }
+    }
+    function resetDraft() { choices.popup.close(); dirty = false; syncDraft() }
+    onConfirmedValueChanged: syncDraft()
+    onPendingChanged: {
+        // A successful reply may report the same device value as before,
+        // including when the requested value was adjusted by the camera.
+        // Failed writes retain the draft so the operator can retry it.
+        if (!pending && manager && !manager.lastError) syncDraft()
+    }
+    onVisibleChanged: if (!visible) choices.popup.close()
+    onResetSerialChanged: resetDraft()
+    Component.onCompleted: syncDraft()
+
+    ColumnLayout {
+        id: layout
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: root.horizontalInset
+        anchors.rightMargin: root.horizontalInset
+        anchors.topMargin: root.inset
+        spacing: ScreenTools.defaultFontPixelHeight * 0.45
+        GridLayout {
+            Layout.fillWidth: true
+            columns: root.wideLayout ? 2 : 1
+            columnSpacing: ScreenTools.defaultFontPixelWidth
+            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.4
+            Text {
+                Layout.fillWidth: true
+                text: root.title
+                color: "#e6eff4"
+                font.family: ScreenTools.normalFontFamily
+                font.pointSize: ScreenTools.defaultFontPointSize
+                font.weight: Font.Medium
+                wrapMode: Text.Wrap
+            }
+            Rectangle {
+                Layout.maximumWidth: root.wideLayout ? root.width * 0.58 : layout.width
+                Layout.preferredWidth: Math.min(implicitWidth, root.wideLayout ? root.width * 0.58 : layout.width)
+                implicitWidth: badgeText.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
+                implicitHeight: badgeText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.45
+                radius: implicitHeight * 0.5
+                color: root.pending ? "#244451" : root.known ? "#1b3640" : "#24313a"
+                Rectangle {
+                    x: ScreenTools.defaultFontPixelWidth * 0.8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(4, ScreenTools.defaultFontPixelHeight * 0.22)
+                    height: width
+                    radius: width * 0.5
+                    color: root.pending ? "#72d9ef" : root.known ? "#72bdbd" : "#78909e"
+                }
+                Text {
+                    id: badgeText
+                    objectName: "confirmed_" + root.parameterKey
+                    x: ScreenTools.defaultFontPixelWidth * 1.9
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - x - ScreenTools.defaultFontPixelWidth * 0.8
+                    text: root.pending ? qsTr("Waiting for payload…")
+                          : root.known ? qsTr("Confirmed: %1").arg(root.valueText(root.confirmedValue)) : qsTr("Not confirmed")
+                    color: root.pending ? "#a3e5f3" : root.known ? "#a9d5d7" : "#9db0bb"
+                    font.family: ScreenTools.normalFontFamily
+                    font.pointSize: ScreenTools.smallFontPointSize
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+        GridLayout {
+            Layout.alignment: Qt.AlignLeft
+            Layout.fillWidth: false
+            Layout.maximumWidth: layout.width
+            columns: root.inlineEditorLayout ? 2 : 1
+            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.8
+            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.45
+            Item {
+                Layout.alignment: Qt.AlignLeft
+                Layout.preferredWidth: Math.min(root.preferredEditorWidth, layout.width)
+                Layout.minimumWidth: Layout.preferredWidth
+                Layout.maximumWidth: Layout.preferredWidth
+                Layout.preferredHeight: applyButton.implicitHeight
+                QtControls.TextField {
+                    id: numeric
+                    objectName: "editor_" + root.parameterKey
+                    Accessible.name: root.title
+                    anchors.fill: parent
+                    visible: !root.hasOptions
+                    enabled: !root.busy
+                    placeholderText: qsTr("Enter value")
+                    color: "#edf5f8"
+                    placeholderTextColor: "#8fa9b8"
+                    selectionColor: "#376c80"
+                    font.family: ScreenTools.normalFontFamily
+                    font.pointSize: ScreenTools.defaultFontPointSize
+                    leftPadding: ScreenTools.defaultFontPixelWidth * 1.2
+                    rightPadding: root.unit.length ? unitLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.0
+                                                  : ScreenTools.defaultFontPixelWidth
+                    Text {
+                        id: unitLabel
+                        anchors.right: parent.right
+                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 1.2
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.unit.length > 0
+                        text: root.unit
+                        color: "#9db3c0"
+                        font.family: ScreenTools.normalFontFamily
+                        font.pointSize: ScreenTools.smallFontPointSize
+                    }
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: root.minimum; top: root.maximum }
+                    onTextEdited: root.dirty = true
+                    background: Rectangle {
+                        radius: ScreenTools.defaultFontPixelHeight * 0.35
+                        color: "#0f1d27"
+                        border.color: numeric.activeFocus ? "#72d9ef" : "#334b5a"
+                    }
+                }
+                QtControls.ComboBox {
+                    id: choices
+                    objectName: "choice_" + root.parameterKey
+                    Accessible.name: root.title
+                    anchors.fill: parent
+                    visible: root.hasOptions
+                    enabled: !root.busy
+                    model: root.options
+                    textRole: "text"
+                    currentIndex: -1
+                    onActivated: root.dirty = true
+                    font.family: ScreenTools.normalFontFamily
+                    font.pointSize: ScreenTools.defaultFontPointSize
+                    contentItem: Text {
+                        leftPadding: ScreenTools.defaultFontPixelWidth
+                        rightPadding: ScreenTools.defaultFontPixelHeight * 1.4
+                        text: choices.currentIndex < 0 ? qsTr("Select…") : choices.displayText
+                        color: choices.currentIndex < 0 ? "#8fa9b8" : "#edf5f8"
+                        font: choices.font
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+                    indicator: CameraControlIcon {
+                        width: ScreenTools.defaultFontPixelHeight * 0.8
+                        height: width
+                        x: choices.width - width - ScreenTools.defaultFontPixelWidth
+                        anchors.verticalCenter: parent.verticalCenter
+                        kind: "chevronDown"
+                        color: "#9ac3d1"
+                    }
+                    background: Rectangle {
+                        radius: ScreenTools.defaultFontPixelHeight * 0.35
+                        color: "#0f1d27"
+                        border.color: choices.activeFocus ? "#72d9ef" : "#334b5a"
+                    }
+                    delegate: QtControls.ItemDelegate {
+                        required property var modelData
+                        required property int index
+                        width: choices.width
+                        height: applyButton.implicitHeight
+                        highlighted: choices.highlightedIndex === index
+                        contentItem: Text {
+                            text: modelData.text
+                            color: "#edf5f8"
+                            font: choices.font
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        background: Rectangle { color: parent.highlighted ? "#315a6b" : "#213440" }
+                    }
+                    popup: QtControls.Popup {
+                        y: choices.height + 4
+                        width: choices.width
+                        padding: 4
+                        implicitHeight: Math.min(contentItem.implicitHeight + 8, ScreenTools.defaultFontPixelHeight * 13)
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: contentHeight
+                            model: choices.popup.visible ? choices.delegateModel : null
+                            currentIndex: choices.highlightedIndex
+                            QtControls.ScrollIndicator.vertical: QtControls.ScrollIndicator {}
+                        }
+                        background: Rectangle { color: "#213440"; radius: 6; border.color: "#65d9f4" }
+                    }
+                }
+            }
+            RowLayout {
+                id: actionRow
+                Layout.alignment: Qt.AlignLeft
+                spacing: ScreenTools.defaultFontPixelWidth * 0.8
+                // The fixed read slot keeps Apply aligned for write-only
+                // parameters without stretching either the field or buttons.
+                Item {
+                    Layout.preferredWidth: applyButton.implicitHeight
+                    Layout.preferredHeight: applyButton.implicitHeight
+                    RoukeCameraButton {
+                        objectName: "read_" + root.parameterKey
+                        anchors.fill: parent
+                        visible: root.readable
+                        compact: true
+                        text: qsTr("Read")
+                        iconName: "read"
+                        iconOnly: true
+                        subtle: true
+                        enabled: root.canControl
+                        onClicked: {
+                            // A read is explicit and also replaces any unsent draft.
+                            root.resetDraft()
+                            root.manager.requestCameraParameter(root.parameterKey)
+                        }
+                    }
+                }
+                RoukeCameraButton {
+                    id: applyButton
+                    objectName: "apply_" + root.parameterKey
+                    compact: true
+                    text: qsTr("Apply")
+                    iconName: "apply"
+                    primary: root.dirty || !root.known
+                    enabled: root.canControl && root.valid
+                    onClicked: {
+                        if (root.manager.setCameraParameter(root.parameterKey, root.draftValue) !== false) {
+                            root.dirty = false
+                        }
+                    }
+                }
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: root.hint.length > 0
+            text: root.hint
+            color: "#8da6b4"
+            font.family: ScreenTools.normalFontFamily
+            font.pointSize: ScreenTools.smallFontPointSize
+            wrapMode: Text.WordWrap
+        }
+    }
+}
