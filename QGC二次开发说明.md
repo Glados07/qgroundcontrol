@@ -10,7 +10,7 @@
 | 分支 | `SecDev/rouke` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `de36e7b74` + 当前工作区；保留 A8/Rouke 相机栏与参数设置，补齐团队 MAVLink 新版夹爪枚举对原生 QGC 的编译兼容 |
+| 本次代码核对基线 | `892683125` + 当前工作区；修复相机选择器启动加载，产品默认关闭测试构建，保留 MAVLink 兼容及 A8/Rouke 相机功能 |
 | 文档更新 | 2026-11-05 |
 
 ## 阅读导航
@@ -92,7 +92,7 @@ custom/
 ├── cmake/
                                                             # 构建选项覆盖
 │   └── CustomOverrides.cmake
-                                                            # ① 产品构建配置：固定应用名、产品编译开关，以及团队 MAVLink 头文件库的 URL 和提交号；根 CMake 在原生默认选项后加载此文件。
+                                                            # ① 产品构建配置：固定应用名、产品编译开关，以及团队 MAVLink 头文件库的 URL 和提交号；QGC_CUSTOM_BUILD_TESTING 默认 OFF，显式开启且为 Debug 时才构建测试；根 CMake 在原生默认选项后加载此文件。
                                                             # ② 替换边界：关闭原生 Viewer3D、APM 相关目标/方言和原生 PX4 Factory，由 custom/CMakeLists.txt 接入定制实现；新增替换项时需同步核对源码列表及工厂注册，避免两套实现同时构建。
 ├── android/
                                                             # Android Java 覆盖文件，经 CMake 合并到构建模板
@@ -207,7 +207,7 @@ custom/
                                                             # ① 飞行页工具条动作定义：组合原生 GuidedActions 和定制三维切换按钮，设置按钮名称、图标、可见/可用条件及当前页面状态。
                                                             # ② 三维入口：根据 Viewer3D 开关和当前显示状态，在 3D View/Fly 间切换并调用三维容器；入口图形来自 city_3d_map_icon.svg，场景加载与模型交互在 Viewer3D 目录。
 │   │   ├── FlyViewTopRightColumnLayout.qml
-                                                            # ① 右上列外观与相机选择：组合地形下载进度、CameraPayloadSelector 图标选择器及相机面板；选择器使用不同负载轮廓、A8/RK 短标识及在线状态点。
+                                                            # ① 右上列外观与相机选择：显式导入 Custom.FlightDisplay，以模块限定名引用 CameraPayloadSelector，组合地形下载进度及相机面板；选择器使用不同负载轮廓、A8/RK 短标识及在线状态点。
                                                             # ② 面板切换：selectCamera/normalizeSelectedCamera 维护 _selectedCamera，cameraControlLoader 加载相应控制栏；两种私有相机均关闭时回退到原生拍照录像控件，整列页面锚点仍在原生 FlyViewWidgetLayer.qml。
 │   │   ├── GeneratorBusVoltageAlert.qml
                                                             # ① 母线告警条：required vehicle 指定所属车辆，读取 COM_GEN_V_LOW、COM_GEN_V_LOW_T 与母线电压，绘制告警文本/底色；车辆、参数、遥测或通信不可用时隐藏提示。
@@ -229,7 +229,7 @@ custom/
                                                             # ② text 保留辅助功能名称及悬停/按压说明，命令和可用条件由外层绑定；不将文字作为常驻主按钮内容。
 │   │   ├── CameraPayloadSelector.qml
                                                             # ① 相机选择器：A8 云台轮廓与 Rouke 相机轮廓配合 A8/RK 短标识和在线点，替代宽文字标签。
-                                                            # ② cameraSelected 信号交由 FlyViewTopRightColumnLayout.selectCamera 处理，继续沿用切换前关闭临时 UI 的生命周期。
+                                                            # ② cameraSelected 信号交由 FlyViewTopRightColumnLayout.selectCamera 处理；与依赖 CameraControlButton/CameraControlIcon 一起注册到 Custom.FlightDisplay，供被拦截的原生模块页面使用，保留切换前关闭临时 UI 的生命周期。
 │   │   ├── CameraStorageStatus.qml
                                                             # ① 两路共用居中 SD 提示：小圆点加 SD 短标识，确认卡可用为绿点，未插入或尚未确认为红点；不显示问号、勾叉、卡片图标或本地录像标记。
                                                             # ② known/inserted 只绑定独立存储状态；悬停/按压及无障碍名称仍区分未插入与尚未确认，不触发设备命令。
@@ -803,8 +803,8 @@ custom/
                                                             # ① 柔克面板回归：加载生产 QML，检查视角、对焦、回中、拍照及显式录像启停；双页设置验证参数派发、ACK/草稿隔离、默认关闭触发、滚动及小屏布局。
                                                             # ② 使用测试服务替身与离屏场景，覆盖窄屏、字号及控制/本地媒体不同可用状态；不代表实际网络和设备响应。
 │   │   ├── CameraControlPreviewTest.py
-                                                            # ① 一级栏集成与预览：加载真实 FlyViewTopRightColumnLayout、A8/Rouke 面板和图标资源，点击真实选择器与镜头菜单，检查变倍/拍照/录像及切换收尾。
-                                                            # ② 生成两种一级栏、镜头选择、相机参数滚动分段和测距页面的中文截图；应用服务及设备状态由替身提供，不代表完整地面站和硬件运行画面。
+                                                            # ① 一级栏集成与预览：将真实覆盖页面以原生 QRC 基址加载，按生产 CMake 的 QML_FILES/alias 生成 Custom.FlightDisplay 测试资源与类型清单；检查选择器可解析、A8/Rouke 切换、变倍/拍照/录像及收尾。
+                                                            # ② 生成两种一级栏、镜头选择、相机参数滚动分段和测距页面截图；应用服务及设备状态由替身提供，模拟 URL 覆盖后的内容和基址，不执行 C++ 拦截器或编译 QML 缓存，不代表完整地面站和硬件运行画面。
 │   │   └── GimbalCompassTest.py
                                                             # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、左右转方位标签接近中心、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
                                                             # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
@@ -1024,7 +1024,7 @@ custom/
 
 | 文件 | 主要职责 |
 |---|---|
-| `custom/cmake/CustomOverrides.cmake` | 固定应用名、MAVLink 头文件仓库及提交。关闭原生 Viewer3D、APM 和原生 PX4 Factory，由 custom 接管相关功能 |
+| `custom/cmake/CustomOverrides.cmake` | 固定应用名、MAVLink 头文件仓库及提交；通过 QGC_CUSTOM_BUILD_TESTING 默认关闭测试构建。关闭原生 Viewer3D、APM 和原生 PX4 Factory，由 custom 接管相关功能 |
 | `custom/CMakeLists.txt` | 收集 custom C++；复用原生 Viewer3D 公共实现；接入 Bluetooth、Quick3D、AssetUtils 和可选 WebEngineQuick；生成 Android 模板副本 |
 | `custom/custom.qrc` | 定义资源路径与 alias；打包同路径 QML 覆盖、Fact JSON、图标和模型 |
 | `CustomPlugin.h/.cc` | 创建并向 QML 暴露管理器；安装默认值与翻译；连接视频接收器、MAVLink 消息及退出清理 |
@@ -1092,7 +1092,7 @@ QML 的统一访问前缀为 `QGroundControl.corePlugin`：
 ### 2.3 QML 与 Android 的接入方式
 
 - **原生页面覆盖**：资源拦截器检查原生 `qrc:/qml/...` 是否存在对应的 `qrc:/Custom/qml/...`。存在时加载 custom 版本，否则继续用原生文件。General、Fly View、Video、顶部云台栏、电池栏和飞行页均通过该机制接入。
-- **独立 QML 模块**：`Custom.Widgets` 提供 Fuel/雷达详情及母线告警；`Custom.FlightDisplay` 提供 DualPipView 和第二路视频组件。
+- **独立 QML 模块**：`Custom.Widgets` 提供 Fuel/雷达详情及母线告警；`Custom.FlightDisplay` 提供 DualPipView、第二路视频组件以及 CameraPayloadSelector、CameraControlButton、CameraControlIcon。被原生模块引用的新增类型须在 `qt_add_qml_module` 中登记并显式 import；仅加入 `custom.qrc` 不等于注册为模块类型。
 - **Viewer3D 复用**：custom 保留有差异的实现；`OsmParserThread`、地形纹理/瓦片查询、`Viewer3DUtils`、公共几何头文件、航点/航段组件、灯光相机、shader 和 F450 部件 QML 直接引用 `src/Viewer3D`。
 - **Android overlay**：CMake 将根 `android/` 模板复制到构建目录，再叠加 `custom/android/`，Gradle 只编译合并后的唯一 Java 类。合并时排除缓存/本地配置，补齐蓝牙权限，并在生成副本中关闭 configuration cache。
 
@@ -2682,7 +2682,8 @@ JSON 资源名与实际 QSettings 分组不要求同名：`FlyViewCustomSettings
 
 - 从工程根目录进行源码外构建；保留 `custom/` 即会自动接入。
 - 使用已配置的 Desktop/Android Qt Kit，Android 同时需要对应 SDK/NDK、Java 和 GStreamer。
-- 当前 `cmake/CustomOptions.cmake` 将 `QGC_BUILD_TESTING` 依赖于 `CMAKE_BUILD_TYPE=Debug`；Release 下会关闭测试。`custom/CMakeLists.txt` 仅在测试开启且非 Android/iOS 时注册桌面用例。
+- 产品测试开关为 `QGC_CUSTOM_BUILD_TESTING`，默认 `OFF`，在 `custom/cmake/CustomOverrides.cmake` 中定义。它统一设置原生 `QGC_BUILD_TESTING` 与 CTest 的 `BUILD_TESTING`，PC/Android 日常构建默认关闭测试；只有显式设为 `ON` 且 `CMAKE_BUILD_TYPE=Debug` 时开启。Release 保持关闭，`custom/CMakeLists.txt` 中的 20 个独立测试程序仍仅对非 Android/iOS 桌面构建开放。
+- 此产品开关接管原生测试选项，已有构建目录里残留的 `QGC_BUILD_TESTING=ON` 不会使测试自动开启；请重新运行 CMake 使新策略生效。需要测试时使用 `-DQGC_CUSTOM_BUILD_TESTING=ON`，单独设置旧的 `-DQGC_BUILD_TESTING=ON` 不再生效。开关值按构建目录保存，测试后可设回 `OFF`；同目录 OFF→ON 时也同步恢复 CTest，测试源码无需删除。
 - 新增 C++、QML、资源或 Java overlay 后，重新运行 CMake，检查目标源码、QRC alias 与合并后的 Android 文件。
 
 本产品通过 `QGC_MAVLINK_GIT_REPO`、`QGC_MAVLINK_GIT_TAG` 固定团队 `c_library_v2`，由 CPM 在配置阶段获取或复用该提交。独立的 53022 编解码测试也可以直接使用相同提交的本地头文件库；运行前用 `git -C F:/MavLink/c_library_v2 rev-parse HEAD` 核对其 SHA 与产品配置一致。
@@ -2701,6 +2702,8 @@ cmake --build build/Desktop_Qt_6_8_3-Debug --parallel 4
 ~~~
 
 这两步复用原构建目录的 Qt Kit 和依赖缓存；无需手工修改 CPM 中的 `common.h` 或重新生成 53022 头文件。独立测试在 Ubuntu 上运行时，将 `ROUKE_UPSTREAM_MAVLINK` 改为本机同一提交的头文件目录。
+
+**构建成功但启动退出的 QML 检查**：本次启动日志首先报告 `FlyViewTopRightColumnLayout.qml: CameraPayloadSelector is not a type`，随后 FlyViewWidgetLayer、FlyView、MainWindow 均无法创建。原生应用将 `objectCreationFailed` 连接到退出；后续 `Video Manager - window is NULL` 是主窗口为空的结果。选择器及其按钮、图标此前仅存在于 `/Custom/qml` 资源中，URL 拦截后的页面仍按原生模块路径解析类型，无法依赖 custom 同目录发现这些新类型。修复将这三项注册到既有 `Custom.FlightDisplay`，右侧列显式导入并使用 `CustomFlightDisplay.CameraPayloadSelector`。两路相机面板仍沿用原有显式 QRC Loader。更新后须对桌面与 Android 各自的 Kit 重新运行 CMake、构建并部署，以更新模块资源和类型清单。
 
 2026-10-28 连续流主机验证使用 Windows / Qt 5.14.2 / MSVC 独立重编：`RoukeProtocolTest` 14 项通过、0 失败、0 跳过（含初始化和收尾），覆盖内层帧、128/129/152 字节分段、真实长命令、中文跨段、逐字节和多帧重组、LE16 容量上限、半帧与中断帧头恢复、缓存边界和非法输入。日志为 `tmp/rouke-protocol-test/result-stream.txt`。
 
@@ -2746,10 +2749,14 @@ SD 状态接入后，Qt 5 / MSVC 生产 Controller 的定向 UDP 测试 20 项�
 
 2026-11-05 针对 Ubuntu 日志中的夹爪枚举编译失败，使用固定团队提交 `b498a888` 扩展 `RoukeMavlinkTest`：接入兼容目标前，MSVC 编译明确复现 RELEASE/GRAB 未定义；接入后重新构建及 CTest 1/1 通过，覆盖旧名对应的释放 0、抓取 1、停止 2 的完整 COMMAND_LONG 编解码，以及既有 53022、CRC、Inspector、HEARTBEAT 和独立通道状态检查。日志为 `tmp/gripper-mavlink-msvc/{before-fix.log,after-fix-build.log,after-fix-test.log}`。另在 Qt 5.14.2/MSVC 临时工程中引用真实 `QGCMAVLink.h` 和生产兼容目标，AUTOMOC、PCH、消费者编译及 CTest 1/1 通过；Qt 枚举反射确认 release=0、grab=1、invalid=3，日志为 `tmp/gripper-mavlink-qt-integration/{build.log,test.log}`。该临时工程仅为空缺的 QtQmlIntegration 注解 include 提供 Qt5 适配，并补构造/析构链接体，没有替换原生头文件或 MAVLink 枚举。本机未配置 Ubuntu/Qt 6.8.3 完整构建环境，这些结果不等于目标 Ubuntu 全应用构建通过。
 
-以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用测试，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
+同日修复启动退出：增强 `CameraControlPreviewTest.py`，在 Windows / Qt-PySide6 6.10.2 中以 `qrc:/qml/QGroundControl/FlightDisplay/FlyViewTopRightColumnLayout.qml` 作为入口，将生产覆盖文件置于该原生基址，并从生产 CMake 声明生成 Custom.FlightDisplay 的测试模块清单。修复前精确复现 `CameraPayloadSelector is not a type`，日志 `tmp/camera-module-before.log`；注册三件套并显式导入后，中英文完整回归均通过，QML 错误为 0，日志为 `tmp/camera-module-after-en.log`、`tmp/camera-module-after-zh.log`。覆盖 A8/Rouke 切换与长按取消、拍照、单按钮录像、SD 提示及相机/测距设置页；截图位于 `debug/camera-module-startup-20261105/{after-en,after-zh}/`。此前直接加载 `/Custom/qml` 的预览可通过同目录查找控件，未覆盖正式启动时的模块解析，现已补上此缺口。本验证模拟拦截后的实际文件内容和原生基址，未执行 C++ URL 拦截器或编译 QML 缓存；目标 Qt 6.8.3 桌面和 Android 的完整构建、部署启动仍需各 Kit 验证。
+
+默认关闭测试的配置验证使用 CMake 3.31.6 临时工程，按主工程顺序包含真实 `CustomOptions.cmake` 和 `CustomOverrides.cmake`，并复用关闭 BUILD_TESTING/启用 CTest 的分支。新建 Debug 默认关闭、旧原生 ON 缓存迁移、显式开启及保留选择、再次关闭、Release 下请求开启仍关闭、切回 Debug 恢复选择、Android 标记下默认关闭均符合预期；OFF→ON 后临时 CTest 用例 1/1 通过。配置记录位于 `tmp/custom-test-default-probe/*.log`。这是构建选项与缓存迁移验证，不是 Qt 全应用或 Android 编译验收。
+
+以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用产品测试开关，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
-cmake -S . -B <desktop-build> -DCMAKE_BUILD_TYPE=Debug -DQGC_BUILD_TESTING=ON
+cmake -S . -B <desktop-build> -DCMAKE_BUILD_TYPE=Debug -DQGC_CUSTOM_BUILD_TESTING=ON
 cmake --build <desktop-build> --parallel
 ctest --test-dir <desktop-build>/custom --output-on-failure
 # 仅执行柔克方言、内层协议和 UDP 控制回归
@@ -2770,7 +2777,7 @@ cmake --build <desktop-build> --target check_rouke_payload
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/RoukeCameraControlTest.py` | 柔克生产相机面板及双页设置；实际键鼠、参数确认/草稿、默认关闭、范围校验、滚动与大小窗口布局；独立离屏服务替身 |
-| `custom/test/FlightDisplay/CameraControlPreviewTest.py` | 真实相机选择器及 A8/Rouke 一级栏、长按切换收尾与 Manager 归属、长时间录像栏宽、镜头图标菜单和所有设置页预览 |
+| `custom/test/FlightDisplay/CameraControlPreviewTest.py` | 原生 QRC 基址及生产模块清单下的类型解析、真实相机选择器及 A8/Rouke 一级栏、长按切换收尾与 Manager 归属、长时间录像栏宽、镜头图标菜单和所有设置页预览 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC `0x42`/`0x44` 请求与回包、signed8 质量及字段边界、混合帧、通道保护和 CH10 状态 |

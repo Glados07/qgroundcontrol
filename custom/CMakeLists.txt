@@ -324,6 +324,21 @@ set_source_files_properties(
     src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
     PROPERTIES QT_RESOURCE_ALIAS FlightDisplayViewSecondaryVideo.qml
 )
+# Native FlightDisplay overrides retain their original module base URL. Export
+# the selector and its dependencies explicitly; custom.qrc alone only packages
+# files and does not make new types visible from the native module.
+set_source_files_properties(
+    src/FlightDisplay/CameraPayloadSelector.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraPayloadSelector.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/CameraControlButton.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlButton.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/CameraControlIcon.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlIcon.qml
+)
 qt_add_qml_module(CustomFlightDisplayModule
     URI Custom.FlightDisplay
     VERSION 1.0
@@ -332,6 +347,9 @@ qt_add_qml_module(CustomFlightDisplayModule
         src/FlightDisplay/DualPipView.qml
         src/FlightDisplay/FlyViewSecondaryVideo.qml
         src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
+        src/FlightDisplay/CameraPayloadSelector.qml
+        src/FlightDisplay/CameraControlButton.qml
+        src/FlightDisplay/CameraControlIcon.qml
     NO_PLUGIN
 )
 

@@ -14,6 +14,7 @@ import QGroundControl.Controls
 import QGroundControl.FlightDisplay
 import QGroundControl.FlightMap
 import QGroundControl.ScreenTools
+import Custom.FlightDisplay as CustomFlightDisplay
 
 ColumnLayout {
     id: root
@@ -63,7 +64,7 @@ ColumnLayout {
         Layout.preferredWidth:  _rightPanelWidth
     }
 
-    // 新增 QML 未注册到原生 FlightDisplay 模块，必须通过 custom QRC 地址显式加载。
+    // 选择器通过 Custom.FlightDisplay 导出；相机面板继续用显式 custom QRC 加载。
     // 启用私有相机模块后始终显示控制栏；SDK在线状态只控制按钮可用性，不再控制可见性。
     // preferredWidth/Height 跟随纵向控件的完整隐式尺寸，避免 Loader 在布局中
     // 形成零尺寸透明占位或把整栏压缩成单个按钮高度。
@@ -78,7 +79,7 @@ ColumnLayout {
 
         property real rightEdgeCenterInset: visible ? parent.width - x : 0
 
-        CameraPayloadSelector {
+        CustomFlightDisplay.CameraPayloadSelector {
             id: cameraSelector
             visible: root._a8Enabled && root._roukeEnabled
             Layout.alignment: Qt.AlignHCenter

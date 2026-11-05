@@ -1,10 +1,14 @@
 """Render and exercise production A8/Rouke selectors, rails and settings.
 
-Only application services, telemetry and unrelated terrain/photo fallback are
-test doubles. Screenshots are real Qt Quick component previews, not QGC runs.
+Application services, telemetry and unrelated terrain/photo fallback use test
+doubles. The overridden column loads at its native QRC base URL; custom module
+exports come from the production CMake declaration. This models the effective
+URL override without executing the C++ interceptor or compiled QML cache.
+Screenshots are real Qt Quick component previews, not full QGC runs.
 """
 import argparse
 from pathlib import Path
+import re
 import subprocess
 import sys
 from xml.etree import ElementTree
@@ -75,6 +79,57 @@ class Core(QObject):
     corePlugin = Property("QVariantMap", lambda self: self.managers, constant=True)
 
 
+def production_module_resources(output, rcc):
+    """Build real QML exports from CMake, not a hand-maintained type list.
+
+    This fixture omits Qt's compiled QML cache/plugin but uses the actual
+    Custom.FlightDisplay source files, aliases, URI and resource prefix.
+    """
+    cmake = (ROOT / "custom/CMakeLists.txt").read_text(encoding="utf-8")
+    cmake = re.sub(r"#[^\n]*", "", cmake)
+    block = re.search(r"qt_add_qml_module\(CustomFlightDisplayModule\b(.*?)\)", cmake, re.S)
+    assert block, "The production CustomFlightDisplayModule declaration is required"
+    declaration = block.group(1)
+    uri = re.search(r"\bURI\s+(\S+)", declaration).group(1)
+    version = re.search(r"\bVERSION\s+(\S+)", declaration).group(1)
+    prefix = re.search(r"\bRESOURCE_PREFIX\s+(\S+)", declaration).group(1)
+    files = re.search(r"\bQML_FILES\s+(.*?)(?:\bNO_PLUGIN\b|$)", declaration, re.S).group(1).split()
+    assert files and all(filename.endswith(".qml") and "${" not in filename for filename in files), files
+    aliases = {}
+    for properties in re.findall(r"set_source_files_properties\((.*?)\)", cmake, re.S):
+        if "PROPERTIES" not in properties:
+            continue
+        sources, values = properties.split("PROPERTIES", 1)
+        alias = re.search(r"\bQT_RESOURCE_ALIAS\s+(\S+)", values)
+        if alias:
+            for source in sources.split():
+                aliases[source] = alias.group(1).strip('"')
+    tree = ElementTree.Element("RCC")
+    module_prefix = prefix.rstrip("/") + "/" + uri.replace(".", "/")
+    module = ElementTree.SubElement(tree, "qresource", prefix=module_prefix)
+    qmldir_lines = ["module " + uri]
+    for filename in files:
+        alias = aliases.get(filename, filename)
+        ElementTree.SubElement(module, "file", alias=alias).text = str(ROOT / "custom" / filename)
+        qmldir_lines.append(f"{Path(filename).stem} {version} {alias}")
+    qmldir = output / "production-custom-flightdisplay.qmldir"
+    qmldir.write_text("\n".join(qmldir_lines) + "\n", encoding="utf-8")
+    ElementTree.SubElement(module, "file", alias="qmldir").text = str(qmldir)
+    # Match the interceptor's effective content + native base URL. A Python
+    # QQmlAbstractUrlInterceptor deadlocks between the GIL and Qt's loader
+    # thread, so this does not execute the production C++ interceptor itself.
+    # Crucially, do not put the new camera siblings at this native location:
+    # they must be exported through the real production module declaration.
+    native = ElementTree.SubElement(tree, "qresource", prefix="/qml/QGroundControl/FlightDisplay")
+    ElementTree.SubElement(native, "file", alias="FlyViewTopRightColumnLayout.qml").text = str(
+        ROOT / "custom/src/FlightDisplay/FlyViewTopRightColumnLayout.qml")
+    source = output / "production-modules.qrc"
+    ElementTree.ElementTree(tree).write(source, encoding="utf-8")
+    resource = output / "production-modules.rcc"
+    subprocess.run([str(rcc), "--binary", str(source), "-o", str(resource)], check=True)
+    return resource
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default=str(ROOT / "debug/camera-icons-preview"))
@@ -86,6 +141,7 @@ def main():
     rcc = next(path for path in (qt_root / "rcc.exe", qt_root / "Qt/libexec/rcc") if path.is_file())
     resource = output / "custom.rcc"
     subprocess.run([str(rcc), "--binary", str(ROOT / "custom/custom.qrc"), "-o", str(resource)], check=True)
+    modules_resource = production_module_resources(output, rcc)
     # Production A8 retains the optional MT11 menu. Register its real image
     # assets as well, even though that menu is not shown in this product.
     tree = ElementTree.Element("RCC")
@@ -99,6 +155,7 @@ def main():
     for filename in ("C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/consola.ttf"):
         if Path(filename).exists(): QFontDatabase.addApplicationFont(filename)
     assert QResource.registerResource(str(resource))
+    assert QResource.registerResource(str(modules_resource))
     assert QResource.registerResource(str(output / "native-icons.rcc"))
     a8, payload = A8Manager(), rouke.Manager()
     for manager in (a8, payload):
@@ -123,7 +180,7 @@ def main():
         assert translator.load(args.translation)
         app.installTranslator(translator)
     view = QQuickView()
-    view.engine().setImportPathList([str(qt_root / "qml"), "qrc:/qt/qml"])
+    view.engine().setImportPathList([str(qt_root / "qml"), "qrc:/qml", "qrc:/qt/qml"])
     view.rootContext().setContextProperty("layoutTestStyle", style)
     view.rootContext().setContextProperty("globals", {"activeVehicle": None})
     view.rootContext().setContextProperty("_rightPanelWidth", 0)
@@ -146,7 +203,7 @@ Rectangle {
         objectName: "productionColumn"
         x: parent.settingsStage ? parent.width - width - 20 : (parent.width - width) / 2
         y: 66
-        source: "qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewTopRightColumnLayout.qml"
+        source: "qrc:/qml/QGroundControl/FlightDisplay/FlyViewTopRightColumnLayout.qml"
     }
 }
 ''', encoding="utf-8")
@@ -391,7 +448,7 @@ Rectangle {
     errors = [message for message in warnings if any(token in message for token in
               ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign", "is not a type", "Cannot open"))]
     assert not errors, "\n".join(errors)
-    print("PASS: production selector, A8 actions, Rouke single recording toggle/pending stop/retry/timer, red-green SD states, settings previews and switch lifecycle; no QML errors")
+    print("PASS: native QRC entry with production module exports, selector, A8 actions, Rouke single recording toggle/pending stop/retry/timer, red-green SD states, settings previews and switch lifecycle; no QML errors")
     view.close()
 
 

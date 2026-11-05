@@ -1,6 +1,20 @@
 # 保持二次开发版本的应用名和既有 QSettings 路径稳定。
 set(QGC_APP_NAME "Custom-QGroundControl" CACHE STRING "App Name" FORCE)
 
+# CustomOptions has already applied the native Debug default (ON). Use a
+# product opt-in so existing caches also default to an application-only build.
+# Enable regression builds with -DQGC_CUSTOM_BUILD_TESTING=ON in a Debug Kit.
+option(QGC_CUSTOM_BUILD_TESTING "Enable tests in custom Debug builds" OFF)
+set(_qgc_custom_tests_enabled OFF)
+if(QGC_CUSTOM_BUILD_TESTING AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_qgc_custom_tests_enabled ON)
+endif()
+set(QGC_BUILD_TESTING ${_qgc_custom_tests_enabled} CACHE BOOL "Enable testing" FORCE)
+# The root build caches BUILD_TESTING=OFF when tests are disabled. Restore it
+# as well on opt-in so CTest works after switching the same build directory.
+set(BUILD_TESTING ${_qgc_custom_tests_enabled} CACHE BOOL "Build the testing tree." FORCE)
+unset(_qgc_custom_tests_enabled)
+
 # 团队 all 方言包含 Rouke 的 53022 转发消息。
 set(QGC_MAVLINK_GIT_REPO "https://github.com/Glados07/c_library_v2.git" CACHE STRING "URL to MAVLink Git Repo" FORCE)
 set(QGC_MAVLINK_GIT_TAG "b498a888ffc58a4dbe9c0f651207b70c978c7b0b" CACHE STRING "Tag of MAVLink Git Repo" FORCE)
