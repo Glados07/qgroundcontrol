@@ -1,6 +1,6 @@
 # PowerSystemIndicator 测试计划与记录
 
-更新时间：2026-11-04。适用仓库：`/home/glados/app/qgroundcontrol`。
+更新时间：2026-11-06。适用仓库：`/home/glados/app/qgroundcontrol`。
 
 本文面向测试人员，集中保存 PowerSystemIndicator 的测试准备、测试用例、执行结果和证据边界。用户操作说明见 [README.md](README.md)，开发设计与变更记录见 [DEVELOP.md](DEVELOP.md)，FuelCellController 后端接口见 [后端 README](../../src/FuelCellController/README.md)。
 
@@ -120,8 +120,8 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | F01 | 首次收到有效 CAN2 状态帧，对比抓包、驱动和 QGC | 驱动由 never connected 转 connected，Device link 为 OK；MAVLink connection_state 为 1，QGC 显示 Connected，SOC/实际状态/DCDC 电流正确；确认实际状态周期满足 500 ms 有效期 | 待测 |
 | F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.00 A/655.35 A 和中间百分位值 | 字节序、0.01% 与 0.01 A 比例正确，界面显示两位小数；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控内部 CAN 控制电流 | 待测 |
 | F03 | 正常状态、9/10、11/12、13、14/15 分别观察顶部和详情 | 故障关机/急停显示红角标；13 显示“输出电流受限”、橙色角标和橙色文字；14/15 显示带原始码的未知状态且无角标。三者均不降低控制权限，主图标仍由电池状态决定 | 待测 |
-| F04 | 在允许控制时点击开机/关机/急停，然后取消确认 | 对话框标明指令和当前车辆；取消不发送新的控制请求、不改 PX4 保存值 | 待测 |
-| F05 | 确认 FCS On，记录整个链路 | 控制消息目标和编号正确；PX4 保存 command=1，CAN2 周期发送 1，母线值仍由 PMU 决定；QGC 区分“飞控已接受”与设备实际启动/运行进度 | 待测 |
+| F04 | 在允许控制时点击关机/急停，然后取消确认 | 对话框标明指令和当前车辆；取消不发送新的控制请求、不改 PX4 保存值；确认框打开时不发起开机请求 | 待测 |
+| F05 | 点击 FCS On，记录整个链路 | 无确认框，点击后立即发出控制请求；目标和编号正确；PX4 保存 command=1，CAN2 周期发送 1，母线值仍由 PMU 决定；QGC 区分“飞控已接受”与设备实际启动/运行进度 | 待测 |
 | F06 | 确认 FCS Off，记录整个链路 | PX4 保存 command=0，CAN2 持续发送 0；设备按协议返回停机状态，QGC 显示实际进度，不以确认消息直接认定停机完成 | 待测 |
 | F07 | 在允许的台架状态确认 FCS Emergency Stop | command=2 正确下发，实际反馈可见急停进度/完成；不调用飞控锁定、飞行终止或电机急停命令 | 待测 |
 | F08 | 在可控延迟确认条件下发普通请求，再确认急停 | 普通请求等待时急停仍可用；急停使用新编号，旧请求停止重试，迟到旧确认不结束急停请求，不重复抢占同一待确认急停 | 待测 |
@@ -140,7 +140,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | R04 | 恢复 CAN2，先重复最后 Life，再发送已变化的有效 Life | 重复 Life 不恢复连接；已变化的有效状态恢复 OK/Connected 和有效设备值；不自动产生新的 QGC 控制请求。PX4 原保存指令仍按 CAN 周期发送，不把“无新请求”理解成停止 CAN 发送 | 待测 |
 | R05 | 仅屏蔽下行 FUEL_CELL_STATUS，保持心跳及电池消息 | 满 1 秒后 QGC FCS 状态为 Unknown/telemetry expired，控制禁用，角标不显示；电池状态仍有效。此时不能显示为已确认 CAN2 断连；恢复状态消息后重新有效 | 待测 |
 | R06 | 中断整条 QGC—飞控通信，并恢复 | 若活动车辆保留，电池旧值变占位、图标中性、配置禁用，FCS 无效；若车辆被移除，入口消失。待确认请求结果未知；恢复后不重放请求，仅恢复心跳不能使缓存 FCS 状态重新新鲜 | 待测 |
-| R07 | 分别在“控制请求待确认”和“确认框打开未提交”时断链/切车 | 请求重试停止，旧确认框失效，不向恢复后或新车辆发送旧操作；仅已提交的请求可以显示结果未知，未提交确认不得变成已发送 | 待测 |
+| R07 | 分别在“开机请求待确认”和“关机或急停确认框打开未提交”时断链/切车 | 请求重试停止，旧确认框失效，不向恢复后或新车辆发送旧操作；仅已提交的请求可以显示结果未知，未提交确认不得变成已发送 | 待测 |
 | R08 | 完整记录 QGC 退出/重新连接、飞控重启的区别 | QGC 退出或重连不自动关机、不清零飞控指令；飞控模块重新启动时指令初始化为 0，首次连接标志重新建立。记录设备真实状态，不将驱动重启等同于设备动作已完成 | 待测 |
 
 回退示例：最后有效编码电压为 48.0 V 时，下发 62.5 A、3000 W。CAN2 设备断连、PMU 回退、QGC 遥测过期分别判定，不互相代替。
@@ -580,3 +580,22 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 地面站移除连接态 SOC 超过 100% 时的整包拒收规则。更新后的自动化测试通过实际 MAVLink 编解码确认：SOC 原始值 10001 和 65535 均按 0.01%/位接收，超限消息刷新遥测时效、更新 DCDC 电流和设备状态，保持连接及控制权限，并能处理控制请求确认。其他畸形字段仍被拒收。
 
 `FuelCellControllerManagerTest` 运行结果为 **34 passed、0 failed、0 skipped**；`Custom-QGroundControl` Linux Debug Desktop 完整构建通过。飞控 `cuav_x25-evo_default` 固件亦构建通过。此次未执行 CAN2 注入、真机联调、Android 构建或窗口视觉检查，E03 的端到端注入部分仍待测。
+
+### 19. 2026-11-06：FCS 开机点击后立即请求
+
+1. Linux Debug Desktop 的 `Custom-QGroundControl` 增量构建通过，包含 `PowerSystemIndicatorPage.qml` 缓存生成、编译和主程序链接。使用 `/tmp` 中的 ccache 目录避开默认缓存目录只读的问题：
+
+   ```sh
+   CCACHE_DIR=/tmp/qgc-power-on-ccache \
+     CCACHE_TEMPDIR=/tmp/qgc-power-on-ccache-tmp \
+     QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/Qt/Tools/CMake/bin/cmake --build \
+     build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl --parallel 4
+   ```
+
+2. `FuelCellControllerManagerTest -silent`：**34 passed、0 failed、0 skipped**。后端源码未改，现有控制门限、确认、重试和会话测试继续通过。
+3. Qt 6.8.3 离屏 `qmltestrunner` 加载生产 `PowerSystemIndicatorPage.qml`，使用临时 QML 替身验证开机按钮立即调用 `requestStartFcs` 且不创建确认框；`canControl=false` 或已有确认框时不发送；关机取消不发送，急停确认后发送。结果 **4 passed、0 failed、0 skipped**。临时测试文件位于 `/tmp/fcs-power-on-qmltest/`，未纳入仓库。
+4. `xmllint --noout` 检查中英文翻译文件、`git diff --check` 均通过；本次没有新增需翻译的界面文本。
+
+离屏测试使用替身车辆和控制器，不验证真实 MAVLink/CAN 链路或设备动作。按本轮范围未执行 Android 构建及真实 FCS 台架联调；F04、F05、F06、F07、F08 和 R07 的端到端结果仍为待测。

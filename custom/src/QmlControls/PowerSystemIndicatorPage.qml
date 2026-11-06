@@ -93,7 +93,13 @@ ToolIndicatorPage {
         if (_confirmationDialog) _confirmationDialog.close()
     }
 
+    function startFcsNow() {
+        if (_confirmationDialog || !vehicle || !canSendCommand(_commandOn)) return
+        sendCommand(_commandOn, manager.sessionRevision)
+    }
+
     function confirmCommand(command) {
+        if (command !== _commandOff && command !== _commandEmergencyStop) return
         if (_confirmationDialog || !vehicle || !canSendCommand(command)) return
 
         // 在打开确认框时捕获会话，确认时交回后端校验，禁止向切换后的飞控发送旧操作。
@@ -321,7 +327,7 @@ ToolIndicatorPage {
                     Layout.fillWidth: true
                     text: qsTr("FCS On")
                     enabled: fuelCellPane.manager.canControl
-                    onClicked: fuelCellPane.controller.confirmCommand(fuelCellPane.controller._commandOn)
+                    onClicked: fuelCellPane.controller.startFcsNow()
                 }
                 QGCButton {
                     Layout.fillWidth: true
