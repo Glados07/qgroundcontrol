@@ -154,9 +154,6 @@ private slots:
         receive(vehicle, status(), 23, 8);
         QVERIFY(!manager.telemetryAvailable());
         auto sample = status();
-        sample.soc = 10001;
-        receive(vehicle, sample);
-        sample = status();
         sample.device_state = 16;
         receive(vehicle, sample);
         sample = status();
@@ -195,7 +192,7 @@ private slots:
         }
     }
 
-    void socSupportsProtocolRangeAndRejectsConnectedOverflow()
+    void socAbove100KeepsTelemetryFreshAndControlsAvailable()
     {
         Vehicle vehicle;
         bind(vehicle);
@@ -212,8 +209,33 @@ private slots:
         QCOMPARE(manager.socPercent(), 100.0);
 
         sample.soc = 10001;
+        sample.dcdc_output_current = 4321;
+        sample.device_state = FUEL_CELL_DEVICE_STATE_OUTPUT_CURRENT_LIMITED;
+        manager._lastStatusAt = manager._clock.elapsed() - 1000;
+        QVERIFY(!manager.telemetryFresh());
         receive(vehicle, sample);
-        QCOMPARE(manager.socPercent(), 100.0); // Rejected samples do not replace the last valid status.
+        QVERIFY(manager.telemetryFresh());
+        QCOMPARE(manager.connectionState(), Manager::Connected);
+        QVERIFY(qFuzzyCompare(manager.socPercent(), 100.01));
+        QVERIFY(qFuzzyCompare(manager.dcdcOutputCurrent(), 43.21));
+        QCOMPARE(manager.fcsState(), int(FUEL_CELL_DEVICE_STATE_OUTPUT_CURRENT_LIMITED));
+        QVERIFY(manager.canControl());
+        QVERIFY(manager.canEmergencyStop());
+
+        sample.soc = std::numeric_limits<uint16_t>::max();
+        receive(vehicle, sample);
+        QVERIFY(qFuzzyCompare(manager.socPercent(), 655.35));
+
+        QVERIFY(manager.requestStartFcs(manager.sessionRevision()));
+        sample.response_request_id = control(vehicle.sent.last()).request_id;
+        receive(vehicle, sample);
+        QCOMPARE(manager.requestState(), Manager::Accepted);
+
+        manager._lastStatusAt = manager._clock.elapsed() - 1000;
+        manager._poll();
+        QCOMPARE(manager.connectionState(), Manager::Unknown);
+        QVERIFY(std::isnan(manager.socPercent()));
+        QVERIFY(!manager.canControl());
     }
 
     void dcdcOutputCurrentSupportsFullWireRangeAndDeviceValidity()

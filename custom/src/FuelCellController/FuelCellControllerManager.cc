@@ -19,7 +19,6 @@ constexpr qint64 kRetryIntervalMs = 500;
 constexpr qint64 kRequestTimeoutMs = 2000;
 constexpr unsigned kMaximumSends = 3;
 constexpr uint8_t kMaximumRawDeviceState = 15;
-constexpr uint16_t kMaximumSocRaw = 10000;
 constexpr double kCentiUnitScale = 0.01;
 constexpr double kUnavailable = std::numeric_limits<double>::quiet_NaN();
 }
@@ -164,8 +163,7 @@ void FuelCellControllerManager::_handleMessage(const mavlink_message_t &message)
     mavlink_msg_fuel_cell_status_decode(&message, &status);
     if (status.connection_state > FUEL_CELL_CONNECTION_STATE_ERROR_OCCURRED
         || status.control_command > FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP
-        || status.device_state > kMaximumRawDeviceState
-        || (status.connection_state == FUEL_CELL_CONNECTION_STATE_OK && status.soc > kMaximumSocRaw)) {
+        || status.device_state > kMaximumRawDeviceState) {
         qCWarning(FuelCellControllerLog) << "Invalid FUEL_CELL_STATUS from" << message.sysid << message.compid;
         return;
     }
