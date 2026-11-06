@@ -285,11 +285,11 @@ ToolIndicatorPage {
             }
             StatusField {
                 label: qsTr("Lithium battery SOC")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 1, "%")
+                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 2, "%")
             }
             StatusField {
                 label: qsTr("DCDC output current")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 1, "A")
+                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 2, "A")
             }
         }
 

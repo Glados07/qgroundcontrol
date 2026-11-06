@@ -31,13 +31,14 @@ FCS 区显示连接状态、实际状态、锂电池 SOC、设备 DCDC 输出电
 | `connectionState` | `Unknown=-1`、未连接 `0`、已连接 `1`、断连 `2` |
 | `deviceDataValid` | 新鲜遥测中的设备连接状态为已连接 |
 | `requestedPower` | 飞控当前用于 CAN 发送的请求功率 W，只读 |
-| `socPercent` / `dcdcOutputCurrent` | 设备返回的锂电池 SOC % 和 DCDC 输出电流 A，仅设备连接正常时有效 |
+| `socPercent` / `dcdcOutputCurrent` | 设备返回的 uint16 centi-unit 分别乘以 0.01 后得到 SOC % 和 DCDC 输出电流 A，仅设备连接正常时有效 |
 | `fcsState` | FCS 原始 4 bit 状态码；0～13 已定义，14～15 保留为未知状态 |
 | `acceptedCommand` | 飞控当前保存并持续发送的 FCS 指令（0 关机、1 开机、2 急停） |
 
 尚无新鲜遥测时，浮点数返回 `NaN`、枚举/指令返回 `-1`，不能作为有效零值展示。
 设备未连接或断连时，SOC、DCDC 输出电流和 FCS 状态无效；请求功率只要遥测新鲜就仍可读取。
 `Unknown` 表示地面站不知道设备状态，不等于 PX4 判断的 CAN 断连。
+本版只与 FCS-4500 V1.4 PX4 配套部署。V1.3 与 V1.4 的消息长度和 CRC 相同但测量比例相差 10 倍，QGC 无法从报文中可靠识别版本。
 
 请求功率和未上报给 QGC 的 CAN 母线值均由飞控维护，地面站没有修改接口。`acceptedCommand` 与 `fcsState` 分别表示
 飞控保存的指令和设备实际执行进度：飞控接受急停后，设备可能先返回状态 11，再返回完成状态 12。

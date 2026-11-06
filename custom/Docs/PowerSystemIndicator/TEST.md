@@ -64,14 +64,14 @@ uorb top
 
 `listener` 可按 Ctrl+C 退出；单次输出和 QGC 界面刷新率不能用来判定 PMU 真实发布周期。测周期时结合 CAN 抓包、`uorb top` 和采样时间戳，记录采样窗口及是否漏采。
 
-QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配合通信日志/中继记录 `FUEL_CELL_CONTROL` 的请求编号、目标、指令和发送次数。保留启动日志，确认没有 `PowerSystemBattery unavailable` 或 `FactPanelController is not a type`。
+QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配合通信日志/中继记录 `FUEL_CELL_CONTROL` 的请求编号、目标、指令和发送次数。Inspector 显示的是 `uint16_t` 原始值，不自动应用 centi-unit 比例；例如 SOC 原始值 9537、DCDC 原始值 12345 应在界面显示为 95.37% 和 123.45 A。保留启动日志，确认没有 `PowerSystemBattery unavailable` 或 `FactPanelController is not a type`。
 
 | 项目 | 当前实现基准 |
 | --- | --- |
 | CAN2 控制帧 | 扩展 ID `0x19AFC002`，约每 100 ms 一帧，Life 每次发送推进并按 0～255 回绕 |
 | CAN2 控制负载 | Byte 0～1 电压、2～3 电流、4～5 功率，大端序；Byte 6 低 4 位为指令，Byte 7 为 Life |
 | CAN2 状态帧 | 扩展 ID `0x19AFC001`；Byte 0 低 4 位为 FCS 状态，Byte 1～2 为大端 SOC，Byte 3～4 为大端 DCDC 输出电流，Byte 7 为 Life |
-| CAN 字段比例 | 电压 0.1 V/位，电流及 DCDC 输出电流 0.1 A/位，功率 1 W/位，SOC 0.1%/位 |
+| CAN 字段比例 | 电压 0.01 V/位，电流及 DCDC 输出电流 0.01 A/位，功率 1 W/位，SOC 0.01%/位 |
 | FCS CAN 状态有效期 | 自最后接受的新鲜状态起约 500 ms；持续重复 Life 不刷新有效期 |
 | PX4 状态发布 | 模块正常运行时约每 200 ms 发布，即使没有连接 FCS；连接变化和请求处理可额外触发发布 |
 | QGC FCS 遥测有效期 | `FUEL_CELL_STATUS` 无更新满 1 秒后无效；不等于 PX4 已判断 CAN2 断连 |
@@ -103,7 +103,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | P01 | 接通 PMU，核对 `battery_status` 实例 0、驱动 PMU 模式及 CAN2 抓包 | 实例 0 来源符合单 PMU 假设，connected 为真，时间戳持续前进，电压/电流有效，驱动由 waiting 转 normal；CAN1 继续 DroneCAN，CAN2 周期发送私有帧 | 待测 |
 | P02 | 在至少三个稳定工况记录同一时段电压、电流和功率，包含允许条件下的零电流 | QGC 左侧/顶部来自电池数据，功率为其电压 × 电流；右侧只显示驱动请求功率，CAN2 抓包核对电压、电流和功率。零电流/零功率有效，不能显示占位 | 待测 |
-| P03 | 比较原始采样、CAN2 负载、`battery_status`、`fuel_cell_status` 和界面单位 | 驱动按原始同一采样计算功率，再分别四舍五入为 0.1 V、0.1 A、1 W；QGC 从 BATTERY_STATUS 显示测量值，从 FUEL_CELL_STATUS 显示请求功率，不出现 10/100 倍错误；FUEL_CELL_STATUS 不再包含母线电压和电流 | 待测 |
+| P03 | 比较原始采样、CAN2 负载、`battery_status`、`fuel_cell_status` 和界面单位 | 驱动按原始同一采样计算功率，再分别四舍五入为 0.01 V、0.01 A、1 W；QGC 从 BATTERY_STATUS 显示测量值，从 FUEL_CELL_STATUS 显示请求功率，不出现 10/100 倍错误；FUEL_CELL_STATUS 不再包含母线电压和电流 | 待测 |
 | P04 | 同时观察两条总线，改变 PMU 工况 | PMU 更新引起 CAN2 母线三项变化；CAN2 指令及 TX Life 逻辑不受破坏；仅有 PMU 不使 FCS 连接状态变为 Connected | 待测 |
 | P05 | 空载及代表性负载下分别连续采集至少 3 分钟 | 记录 PMU CAN 发布和 uORB 更新的典型/最大间隔、采样数、时间戳及丢帧迹象，判断正常间隔是否远小于 10 秒；形成是否调整临时超时值的依据，不在测试中自动改值 | 待测 |
 
@@ -118,7 +118,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | 编号 | 操作 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
 | F01 | 首次收到有效 CAN2 状态帧，对比抓包、驱动和 QGC | 驱动由 never connected 转 connected，Device link 为 OK；MAVLink connection_state 为 1，QGC 显示 Connected，SOC/实际状态/DCDC 电流正确；确认实际状态周期满足 500 ms 有效期 | 待测 |
-| F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.0 A/6553.5 A 和中间值 | 字节序、0.1% 与 0.1 A 比例正确；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控内部 CAN 控制电流 | 待测 |
+| F02 | 连续观察状态、SOC 及 DCDC 电流；仿真器补测 SOC 0%/100%、DCDC 0.00 A/655.35 A 和中间百分位值 | 字节序、0.01% 与 0.01 A 比例正确，界面显示两位小数；零值是有效数值而非占位。DCDC 数值不替代 PMU 电流或飞控内部 CAN 控制电流 | 待测 |
 | F03 | 正常状态、9/10、11/12、13、14/15 分别观察顶部和详情 | 故障关机/急停显示红角标；13 显示“输出电流受限”、橙色角标和橙色文字；14/15 显示带原始码的未知状态且无角标。三者均不降低控制权限，主图标仍由电池状态决定 | 待测 |
 | F04 | 在允许控制时点击开机/关机/急停，然后取消确认 | 对话框标明指令和当前车辆；取消不发送新的控制请求、不改 PX4 保存值 | 待测 |
 | F05 | 确认 FCS On，记录整个链路 | 控制消息目标和编号正确；PX4 保存 command=1，CAN2 周期发送 1，母线值仍由 PMU 决定；QGC 区分“飞控已接受”与设备实际启动/运行进度 | 待测 |
@@ -164,7 +164,7 @@ QGC 使用 MAVLink Inspector 检查 `BATTERY_STATUS`、`FUEL_CELL_STATUS`，配�
 | --- | --- | --- | --- |
 | E01 | CAN Life 按 254、255、0、1 发送；重复 Life；在有效期内前跳/倒退 | 回绕正常；重复计入 duplicates，不更新状态或有效期；前跳 1～127 接受并按差值计 missed，差值 128～255 计 out of order 且拒绝；分别重建序列基线后测各分支 | 待测 |
 | E02 | 持续相同 Life 超过有效期，再改变 Life；另测设备重启后的 Life 重置 | 相同 Life 不能保持/恢复连接；超时后任意已变化 Life 可建立新基线，未超时的大倒退不应直接接受 | 待测 |
-| E03 | 注入错误 ID/标准帧、错误 DLC、状态 13～16、SOC 超过 1000 和 DCDC 原始值 0/65535 | 状态 13 和未知状态 14～15 均为有效遥测，16 被 QGC 拒绝；DCDC 全部 uint16 范围均有效；SOC 1000 合法而超范围值拒绝。无效消息不改变业务状态或刷新有效期 | 待测 |
+| E03 | 注入错误 ID/标准帧、错误 DLC、状态 13～16、SOC 超过 10000 和 DCDC 原始值 0/65535 | 状态 13 和未知状态 14～15 均为有效遥测，16 被 QGC 拒绝；DCDC 全部 uint16 范围均有效；SOC 10000 合法而超范围值拒绝。无效消息不改变业务状态或刷新有效期 | 待测 |
 | E04 | 在受控电池发布源中给出无效值、负电流、重复/倒退时间戳，再给新有效采样 | 无效采样不覆盖母线值或延长有效期；超时回退，重复/倒退采样不解除回退；新有效采样恢复。若不能隔离 PMU 发布源，不向真实总线混发来伪造该测试 | 待测 |
 | E05 | 保持新鲜 FUEL_CELL_STATUS，但使确认编号暂不匹配当前请求 | 约 500 ms 间隔、同编号最多 3 次，约 2 秒后结果未知；不清零 PX4 指令，不等同于未执行 | 待测 |
 | E06 | 同一来源最近请求同编号同指令重发，再同编号换指令；另测非法指令/错误目标 | 同指令返回原结果、不重新应用；冲突指令拒绝；非法指令不支持；目标不匹配被忽略，不能用未收到确认当作“已拒绝” | 待测 |
@@ -546,3 +546,31 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Basi
 4. 源码静态检查确认详情页的 Flight controller setpoints 分组仍存在且只显示 Requested power；FuelCellControllerManager 生产代码不再引用被协议删除的两个成员。`git diff --check` 无输出。
 
 本次按已确认范围未执行 Android 构建、APK 安装或真机验证，也未连接活动飞控并实际打开详情页。因此，现有证据可以确认新协议头可编译链接、后端属性和 QML 源码已适配、翻译可生成；不能替代真实窗口视觉、PX4/FCS/PMU/CAN 端到端联调或完整 QGC 测试集。新旧 `FUEL_CELL_STATUS` 布局不兼容，PX4 与 QGC 必须配套部署；删除字段后，QGC 只能从 BATTERY_STATUS 查看 PMU 测量值，不能再直接观察 PX4 实际下发到 CAN 的母线电压和电流。
+
+### 17. 2026-11-05：FCS-4500 V1.4 精度适配
+
+本次将 QGC 的 MAVLink C 库固定到 `91e4271c94625a5d0c2d950fbff05e616a30b493`，并按已确认范围只支持 PX4 V1.4 与新 QGC 同步部署。实际参与 Desktop 构建的 `FUEL_CELL_STATUS` 头文件来自该提交，SOC 和 DCDC 输出电流仍为 `uint16_t`，单位分别为 `c%` 和 `cA`；消息长度仍为 14，CRC_EXTRA 仍为 218。
+
+实际执行结果：
+
+1. `FuelCellControllerManagerTest` 重新编译并运行通过，结果为 **34 passed、0 failed、0 skipped**。测试覆盖 75.55%/12.34 A 换算、SOC 0.00% 和 100.00% 合法边界、100.01% 连接态异常样本保持上一有效值，以及 DCDC 655.35 A 的 `uint16_t` 上限：
+
+   ```sh
+   QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     build/Desktop_Qt_6_8_3-Debug/Debug/FuelCellControllerManagerTest -silent
+   ```
+
+2. Linux Debug Desktop 主程序完整构建通过，退出码 0；共完成 1836 个步骤，包括新 MAVLink 头文件下的 FuelCellControllerManager 编译、`PowerSystemIndicatorPage.qml` 缓存生成和应用最终链接：
+
+   ```sh
+   CCACHE_DIR=/tmp/qgc-fcs-v14/ccache \
+     CCACHE_TEMPDIR=/tmp/qgc-fcs-v14/ccache-tmp \
+     QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 \
+     /home/glados/Qt/Tools/CMake/bin/cmake --build \
+     build/Desktop_Qt_6_8_3-Debug \
+     --target Custom-QGroundControl --parallel 4
+   ```
+
+3. 静态检查确认生产后端不再保留 SOC 或 DCDC 输出电流的 0.1 换算，详情页两项均固定显示两位小数；`git diff --check` 无输出。
+
+本次按已确认范围未执行 Android 构建、APK 安装或真机验证，也未连接活动 PX4/FCS 进行 MAVLink/CAN 端到端联调，未在真实详情页中做窗口视觉检查。消息长度和 CRC 未变化，QGC 运行时无法判断对端采用旧精度还是 V1.4 精度，因此不得与旧 PX4 混合部署。

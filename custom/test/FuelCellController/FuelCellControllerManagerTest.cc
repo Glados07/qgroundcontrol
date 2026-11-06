@@ -22,8 +22,8 @@ mavlink_fuel_cell_status_t status(int connection = FUEL_CELL_CONNECTION_STATE_OK
 {
     mavlink_fuel_cell_status_t result{};
     result.requested_power = 500;
-    result.soc = 755;
-    result.dcdc_output_current = 123;
+    result.soc = 7555;
+    result.dcdc_output_current = 1234;
     result.device_state = FUEL_CELL_DEVICE_STATE_RUNNING;
     result.connection_state = connection;
     return result;
@@ -128,8 +128,8 @@ private slots:
         QVERIFY(std::isnan(manager.dcdcOutputCurrent()));
         receive(vehicle, status());
         QCOMPARE(manager.connectionState(), Manager::Connected);
-        QCOMPARE(manager.socPercent(), 75.5);
-        QCOMPARE(manager.dcdcOutputCurrent(), 12.3);
+        QVERIFY(qFuzzyCompare(manager.socPercent(), 75.55));
+        QVERIFY(qFuzzyCompare(manager.dcdcOutputCurrent(), 12.34));
         QCOMPARE(manager.fcsState(), int(FUEL_CELL_DEVICE_STATE_RUNNING));
         QVERIFY(manager.canControl());
         QVERIFY(manager.canEmergencyStop());
@@ -154,7 +154,7 @@ private slots:
         receive(vehicle, status(), 23, 8);
         QVERIFY(!manager.telemetryAvailable());
         auto sample = status();
-        sample.soc = 1001;
+        sample.soc = 10001;
         receive(vehicle, sample);
         sample = status();
         sample.device_state = 16;
@@ -189,10 +189,31 @@ private slots:
             sample.device_state = static_cast<uint8_t>(state);
             receive(vehicle, sample);
             QCOMPARE(manager.fcsState(), state);
-            QCOMPARE(manager.dcdcOutputCurrent(), 12.3);
+            QVERIFY(qFuzzyCompare(manager.dcdcOutputCurrent(), 12.34));
             QVERIFY(manager.canControl());
             QVERIFY(manager.canEmergencyStop());
         }
+    }
+
+    void socSupportsProtocolRangeAndRejectsConnectedOverflow()
+    {
+        Vehicle vehicle;
+        bind(vehicle);
+        Manager manager;
+        manager._timer.stop();
+
+        auto sample = status();
+        sample.soc = 0;
+        receive(vehicle, sample);
+        QCOMPARE(manager.socPercent(), 0.0);
+
+        sample.soc = 10000;
+        receive(vehicle, sample);
+        QCOMPARE(manager.socPercent(), 100.0);
+
+        sample.soc = 10001;
+        receive(vehicle, sample);
+        QCOMPARE(manager.socPercent(), 100.0); // Rejected samples do not replace the last valid status.
     }
 
     void dcdcOutputCurrentSupportsFullWireRangeAndDeviceValidity()
@@ -209,7 +230,7 @@ private slots:
 
         sample.dcdc_output_current = std::numeric_limits<uint16_t>::max();
         receive(vehicle, sample);
-        QCOMPARE(manager.dcdcOutputCurrent(), 6553.5);
+        QVERIFY(qFuzzyCompare(manager.dcdcOutputCurrent(), 655.35));
 
         sample.connection_state = FUEL_CELL_CONNECTION_STATE_ERROR_OCCURRED;
         receive(vehicle, sample);

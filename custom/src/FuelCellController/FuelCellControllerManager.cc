@@ -19,6 +19,8 @@ constexpr qint64 kRetryIntervalMs = 500;
 constexpr qint64 kRequestTimeoutMs = 2000;
 constexpr unsigned kMaximumSends = 3;
 constexpr uint8_t kMaximumRawDeviceState = 15;
+constexpr uint16_t kMaximumSocRaw = 10000;
+constexpr double kCentiUnitScale = 0.01;
 constexpr double kUnavailable = std::numeric_limits<double>::quiet_NaN();
 }
 
@@ -54,10 +56,10 @@ FuelCellControllerManager::ConnectionState FuelCellControllerManager::connection
 }
 
 double FuelCellControllerManager::requestedPower() const { return telemetryFresh() ? _status.requested_power : kUnavailable; }
-double FuelCellControllerManager::socPercent() const { return deviceDataValid() ? _status.soc * 0.1 : kUnavailable; }
+double FuelCellControllerManager::socPercent() const { return deviceDataValid() ? _status.soc * kCentiUnitScale : kUnavailable; }
 double FuelCellControllerManager::dcdcOutputCurrent() const
 {
-    return deviceDataValid() ? _status.dcdc_output_current * 0.1 : kUnavailable;
+    return deviceDataValid() ? _status.dcdc_output_current * kCentiUnitScale : kUnavailable;
 }
 int FuelCellControllerManager::fcsState() const { return deviceDataValid() ? _status.device_state : -1; }
 int FuelCellControllerManager::acceptedCommand() const { return telemetryFresh() ? _status.control_command : -1; }
@@ -163,7 +165,7 @@ void FuelCellControllerManager::_handleMessage(const mavlink_message_t &message)
     if (status.connection_state > FUEL_CELL_CONNECTION_STATE_ERROR_OCCURRED
         || status.control_command > FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP
         || status.device_state > kMaximumRawDeviceState
-        || (status.connection_state == FUEL_CELL_CONNECTION_STATE_OK && status.soc > 1000)) {
+        || (status.connection_state == FUEL_CELL_CONNECTION_STATE_OK && status.soc > kMaximumSocRaw)) {
         qCWarning(FuelCellControllerLog) << "Invalid FUEL_CELL_STATUS from" << message.sysid << message.compid;
         return;
     }
