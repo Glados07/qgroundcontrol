@@ -17,6 +17,7 @@ namespace {
 constexpr qint64 kStatusTimeoutMs = 1000;
 constexpr qint64 kRetryIntervalMs = 500;
 constexpr qint64 kRequestTimeoutMs = 2000;
+constexpr qint64 kResetCooldownMs = 400;
 constexpr unsigned kMaximumSends = 3;
 constexpr uint8_t kMaximumRawDeviceState = 15;
 constexpr double kCentiUnitScale = 0.01;
@@ -82,7 +83,17 @@ std::shared_ptr<LinkInterface> FuelCellControllerManager::_controlLink() const
 
 bool FuelCellControllerManager::canControl() const
 {
-    return deviceDataValid() && !commandPending() && bool(_controlLink());
+    return deviceDataValid() && !commandPending() && !resetCooldownActive() && bool(_controlLink());
+}
+
+bool FuelCellControllerManager::canResetFault() const
+{
+    return canControl();
+}
+
+bool FuelCellControllerManager::resetCooldownActive() const
+{
+    return _resetCooldownUntil >= 0 && _clock.elapsed() < _resetCooldownUntil;
 }
 
 bool FuelCellControllerManager::canEmergencyStop() const
@@ -95,7 +106,9 @@ void FuelCellControllerManager::_notifyStatus()
 {
     _notifiedFresh = telemetryFresh();
     _notifiedCanControl = canControl();
+    _notifiedCanResetFault = canResetFault();
     _notifiedCanEmergencyStop = canEmergencyStop();
+    _notifiedResetCooldownActive = resetCooldownActive();
     emit statusChanged();
 }
 
@@ -116,6 +129,7 @@ void FuelCellControllerManager::_bindVehicle(Vehicle *vehicle)
     _request = {};
     _sendCount = 0;
     _requestState = interrupted ? Unconfirmed : Idle;
+    _resetCooldownUntil = -1;
     _lastError = interrupted ? tr("Flight controller session changed. The previous FCS request result is unknown.") : QString();
     ++_sessionRevision;
     if (_vehicle) {
@@ -131,6 +145,7 @@ void FuelCellControllerManager::_bindVehicle(Vehicle *vehicle)
             if (lost) {
                 // A restored heartbeat alone must not make cached FCS telemetry fresh again.
                 _lastStatusAt = -1;
+                _resetCooldownUntil = -1;
                 ++_sessionRevision;
                 if (commandPending()) {
                     _finishRequest(Unconfirmed, tr("Flight controller communication was lost. The FCS request result is unknown."));
@@ -175,6 +190,9 @@ void FuelCellControllerManager::_handleMessage(const mavlink_message_t &message)
     // Console changes may already have replaced an accepted command; keep that telemetry.
     if (commandPending() && status.response_request_id == _request.request_id) {
         if (status.control_result == MAV_RESULT_ACCEPTED) {
+            if (_request.reset_fault == 1) {
+                _resetCooldownUntil = _clock.elapsed() + kResetCooldownMs;
+            }
             _finishRequest(Accepted);
         } else {
             _finishRequest(Failed, _resultError(status.control_result));
@@ -190,13 +208,13 @@ QString FuelCellControllerManager::_resultError(uint8_t result)
 {
     switch (result) {
     case MAV_RESULT_TEMPORARILY_REJECTED:
-        return tr("Flight controller temporarily rejected the FCS command: device is not connected or has disconnected.");
+        return tr("Flight controller temporarily rejected the FCS request: device is unavailable or a reset pulse is in progress.");
     case MAV_RESULT_DENIED:
-        return tr("Flight controller denied the FCS command: request ID conflicts with the command.");
+        return tr("Flight controller denied the FCS request: request ID conflicts with its control fields.");
     case MAV_RESULT_UNSUPPORTED:
-        return tr("Flight controller does not support this FCS command.");
+        return tr("Flight controller does not support this FCS request.");
     default:
-        return tr("Flight controller did not accept the FCS command (result %1).").arg(result);
+        return tr("Flight controller did not accept the FCS request (result %1).").arg(result);
     }
 }
 
@@ -218,20 +236,25 @@ bool FuelCellControllerManager::_rejectRequest(const QString &error)
 
 bool FuelCellControllerManager::requestStartFcs(quint32 revision)
 {
-    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_ON, revision);
+    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_ON, false, revision);
 }
 
 bool FuelCellControllerManager::requestStopFcs(quint32 revision)
 {
-    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_OFF, revision);
+    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_OFF, false, revision);
 }
 
 bool FuelCellControllerManager::requestEmergencyStopFcs(quint32 revision)
 {
-    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP, revision);
+    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP, false, revision);
 }
 
-bool FuelCellControllerManager::_requestCommand(uint8_t command, quint32 revision)
+bool FuelCellControllerManager::requestFaultReset(quint32 revision)
+{
+    return _requestCommand(FUEL_CELL_CONTROL_COMMAND_OFF, true, revision);
+}
+
+bool FuelCellControllerManager::_requestCommand(uint8_t command, bool resetFault, quint32 revision)
 {
     if (revision != _sessionRevision) {
         return _rejectRequest(tr("Flight controller session changed. Please confirm the operation again."));
@@ -244,7 +267,10 @@ bool FuelCellControllerManager::_requestCommand(uint8_t command, quint32 revisio
     }
     const bool emergency = command == FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP;
     if (commandPending() && (!emergency || _request.control_command == command)) {
-        return _rejectRequest(tr("Waiting for FCS command confirmation."));
+        return _rejectRequest(tr("Waiting for FCS request confirmation."));
+    }
+    if (!emergency && resetCooldownActive()) {
+        return _rejectRequest(tr("Wait for the FCS fault reset pulse to finish."));
     }
 
     // A fresh ID supersedes ordinary requests on FCS emergency stop; retries never change it.
@@ -256,6 +282,7 @@ bool FuelCellControllerManager::_requestCommand(uint8_t command, quint32 revisio
     _request.target_system = static_cast<uint8_t>(_vehicle->id());
     _request.target_component = static_cast<uint8_t>(_vehicle->compId());
     _request.control_command = command;
+    _request.reset_fault = resetFault ? 1 : 0;
     _sourceSystem = static_cast<uint8_t>(MAVLinkProtocol::instance()->getSystemId());
     _sourceComponent = static_cast<uint8_t>(MAVLinkProtocol::getComponentId());
     _firstSendAt = _clock.elapsed();
@@ -281,11 +308,12 @@ bool FuelCellControllerManager::_sendRequest()
     mavlink_msg_fuel_cell_control_encode_chan(_sourceSystem, _sourceComponent, link->mavlinkChannel(), &message, &request);
     _lastSendAt = _clock.elapsed();
     const bool retry = _sendCount++ > 0;
-    qCDebug(FuelCellControllerLog) << "FCS command" << request.control_command << "request" << request.request_id
+    qCDebug(FuelCellControllerLog) << "FCS command" << request.control_command << "reset" << request.reset_fault
+                                  << "request" << request.request_id
                                   << "vehicle" << request.target_system << "send" << _sendCount;
     if (!_vehicle->sendMessageOnLinkThreadSafe(link.get(), message)) {
         if (commandPending() && _request.request_id == request.request_id) {
-            _finishRequest(retry ? Unconfirmed : Failed, tr("Failed to send the FCS command."));
+            _finishRequest(retry ? Unconfirmed : Failed, tr("Failed to send the FCS request."));
         }
         return false;
     }
@@ -305,7 +333,8 @@ void FuelCellControllerManager::_poll()
         }
     }
     if (_notifiedFresh != telemetryFresh() || _notifiedCanControl != canControl()
-        || _notifiedCanEmergencyStop != canEmergencyStop()) {
+        || _notifiedCanResetFault != canResetFault() || _notifiedCanEmergencyStop != canEmergencyStop()
+        || _notifiedResetCooldownActive != resetCooldownActive()) {
         _notifyStatus();
     }
 }

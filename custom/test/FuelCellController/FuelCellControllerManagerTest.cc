@@ -17,6 +17,8 @@ namespace {
 using Manager = FuelCellControllerManager;
 static_assert(MAVLINK_MSG_ID_FUEL_CELL_STATUS_LEN == 14);
 static_assert(MAVLINK_MSG_ID_FUEL_CELL_STATUS_CRC == 218);
+static_assert(MAVLINK_MSG_ID_FUEL_CELL_CONTROL_LEN == 8);
+static_assert(MAVLINK_MSG_ID_FUEL_CELL_CONTROL_CRC == 37);
 
 mavlink_fuel_cell_status_t status(int connection = FUEL_CELL_CONNECTION_STATE_OK)
 {
@@ -303,10 +305,97 @@ private slots:
         QCOMPARE(request.target_system, uint8_t(23));
         QCOMPARE(request.target_component, uint8_t(7));
         QCOMPARE(request.control_command, uint8_t(command));
+        QCOMPARE(request.reset_fault, uint8_t(0));
         QCOMPARE(manager.requestState(), Manager::Pending);
         QCOMPARE(manager.requestedCommand(), command);
         QVERIFY(!manager.canControl());
         QCOMPARE(manager.acceptedCommand(), 0); // Requested command is not confirmed telemetry.
+    }
+
+    void faultResetWireAckAndCooldown()
+    {
+        Vehicle vehicle(23, 7);
+        bind(vehicle);
+        Manager manager;
+        ready(manager, vehicle);
+        const auto revision = manager.sessionRevision();
+        QVERIFY(manager.canResetFault());
+        QVERIFY(manager.requestFaultReset(revision));
+        const auto reset = control(vehicle.sent.last());
+        QCOMPARE(reset.control_command, uint8_t(FUEL_CELL_CONTROL_COMMAND_OFF));
+        QCOMPARE(reset.reset_fault, uint8_t(1));
+        QVERIFY(reset.request_id != 0);
+        QCOMPARE(reset.target_system, uint8_t(23));
+        QCOMPARE(reset.target_component, uint8_t(7));
+        QCOMPARE(manager.requestedFaultReset(), true);
+        QVERIFY(!manager.canResetFault());
+        QVERIFY(!manager.requestStartFcs(revision));
+        QVERIFY(!manager.requestFaultReset(revision));
+        QCOMPARE(vehicle.sent.size(), 1);
+
+        retry(manager);
+        QCOMPARE(vehicle.sent.size(), 2);
+        QCOMPARE(control(vehicle.sent.last()).request_id, reset.request_id);
+        QCOMPARE(control(vehicle.sent.last()).reset_fault, uint8_t(1));
+
+        auto sample = status();
+        sample.response_request_id = reset.request_id;
+        sample.control_command = FUEL_CELL_CONTROL_COMMAND_OFF;
+        sample.device_state = FUEL_CELL_DEVICE_STATE_FAULT_STOP_COMPLETE;
+        receive(vehicle, sample);
+        QCOMPARE(manager.requestState(), Manager::Accepted);
+        QCOMPARE(manager.acceptedCommand(), int(FUEL_CELL_CONTROL_COMMAND_OFF));
+        QCOMPARE(manager.fcsState(), int(FUEL_CELL_DEVICE_STATE_FAULT_STOP_COMPLETE));
+        QVERIFY(manager.resetCooldownActive());
+        QVERIFY(!manager.canControl());
+        QVERIFY(!manager.canResetFault());
+        QVERIFY(manager.canEmergencyStop());
+        QVERIFY(!manager.requestStopFcs(revision));
+        QVERIFY(!manager.requestFaultReset(revision));
+        QCOMPARE(vehicle.sent.size(), 2);
+
+        manager._resetCooldownUntil = manager._clock.elapsed() - 1;
+        manager._poll();
+        QVERIFY(!manager.resetCooldownActive());
+        QVERIFY(manager.canControl());
+        QVERIFY(manager.canResetFault());
+        QVERIFY(manager.requestFaultReset(revision));
+        const auto secondReset = control(vehicle.sent.last());
+        QVERIFY(secondReset.request_id != reset.request_id);
+        QCOMPARE(secondReset.reset_fault, uint8_t(1));
+    }
+
+    void faultResetWaitsForOrdinaryRequestAndEmergencyPreemptsReset()
+    {
+        Vehicle vehicle;
+        bind(vehicle);
+        Manager manager;
+        ready(manager, vehicle);
+        const auto revision = manager.sessionRevision();
+        QVERIFY(manager.requestStartFcs(revision));
+        QVERIFY(!manager.canResetFault());
+        QVERIFY(!manager.requestFaultReset(revision));
+        auto sample = status();
+        sample.response_request_id = control(vehicle.sent.last()).request_id;
+        receive(vehicle, sample);
+        QVERIFY(manager.canResetFault());
+        QVERIFY(manager.requestFaultReset(revision));
+        const auto reset = control(vehicle.sent.last());
+        QVERIFY(manager.requestedFaultReset());
+        QVERIFY(manager.requestEmergencyStopFcs(revision));
+        const auto emergency = control(vehicle.sent.last());
+        QVERIFY(emergency.request_id != reset.request_id);
+        QCOMPARE(emergency.control_command, uint8_t(FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP));
+        QCOMPARE(emergency.reset_fault, uint8_t(0));
+        QVERIFY(!manager.requestedFaultReset());
+        sample.response_request_id = reset.request_id;
+        receive(vehicle, sample);
+        QCOMPARE(manager.requestState(), Manager::Pending);
+        QVERIFY(!manager.resetCooldownActive());
+        sample.response_request_id = emergency.request_id;
+        sample.control_command = FUEL_CELL_CONTROL_COMMAND_EMERGENCY_STOP;
+        receive(vehicle, sample);
+        QCOMPARE(manager.requestState(), Manager::Accepted);
     }
 
     void acknowledgementAndActualFcsStateAreIndependent()

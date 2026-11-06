@@ -29,10 +29,13 @@ class FuelCellControllerManager final : public QObject
     Q_PROPERTY(int fcsState READ fcsState NOTIFY statusChanged)
     Q_PROPERTY(int acceptedCommand READ acceptedCommand NOTIFY statusChanged)
     Q_PROPERTY(bool canControl READ canControl NOTIFY statusChanged)
+    Q_PROPERTY(bool canResetFault READ canResetFault NOTIFY statusChanged)
     Q_PROPERTY(bool canEmergencyStop READ canEmergencyStop NOTIFY statusChanged)
+    Q_PROPERTY(bool resetCooldownActive READ resetCooldownActive NOTIFY statusChanged)
     Q_PROPERTY(RequestState requestState READ requestState NOTIFY requestChanged)
     Q_PROPERTY(bool commandPending READ commandPending NOTIFY requestChanged)
     Q_PROPERTY(int requestedCommand READ requestedCommand NOTIFY requestChanged)
+    Q_PROPERTY(bool requestedFaultReset READ requestedFaultReset NOTIFY requestChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY requestChanged)
     Q_PROPERTY(quint32 sessionRevision READ sessionRevision NOTIFY sessionChanged)
 
@@ -60,10 +63,13 @@ public:
     int fcsState() const;
     int acceptedCommand() const;
     bool canControl() const;
+    bool canResetFault() const;
     bool canEmergencyStop() const;
+    bool resetCooldownActive() const;
     RequestState requestState() const { return _requestState; }
     bool commandPending() const { return _requestState == Pending; }
     int requestedCommand() const { return _request.request_id ? _request.control_command : -1; }
+    bool requestedFaultReset() const { return _request.request_id && _request.reset_fault == 1; }
     QString lastError() const { return _lastError; }
     quint32 sessionRevision() const { return _sessionRevision; }
 
@@ -71,6 +77,7 @@ public:
     Q_INVOKABLE bool requestStartFcs(quint32 sessionRevision);
     Q_INVOKABLE bool requestStopFcs(quint32 sessionRevision);
     Q_INVOKABLE bool requestEmergencyStopFcs(quint32 sessionRevision);
+    Q_INVOKABLE bool requestFaultReset(quint32 sessionRevision);
     void shutdown();
 
 signals:
@@ -86,7 +93,7 @@ private:
     void _notifyStatus();
     void _finishRequest(RequestState state, const QString &error = {});
     bool _rejectRequest(const QString &error);
-    bool _requestCommand(uint8_t command, quint32 sessionRevision);
+    bool _requestCommand(uint8_t command, bool resetFault, quint32 sessionRevision);
     bool _sendRequest();
     std::shared_ptr<LinkInterface> _controlLink() const;
     static QString _resultError(uint8_t result);
@@ -101,7 +108,9 @@ private:
     qint64 _lastStatusAt = -1;
     bool _notifiedFresh = false;
     bool _notifiedCanControl = false;
+    bool _notifiedCanResetFault = false;
     bool _notifiedCanEmergencyStop = false;
+    bool _notifiedResetCooldownActive = false;
     quint32 _sessionRevision = 0;
 
     mavlink_fuel_cell_control_t _request{};
@@ -113,4 +122,5 @@ private:
     unsigned _sendCount = 0;
     RequestState _requestState = Idle;
     QString _lastError;
+    qint64 _resetCooldownUntil = -1;
 };

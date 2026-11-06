@@ -40,13 +40,16 @@ ToolIndicatorPage {
         }
     }
     readonly property string requestText: {
-        const command = commandText(manager.requestedCommand)
+        const operation = manager.requestedFaultReset ? qsTr("FCS Fault Reset")
+                                                       : commandText(manager.requestedCommand)
         switch (manager.requestState) {
         case FuelCellControllerManager.Pending:
-            return qsTr("%1: Waiting for flight controller confirmation...").arg(command)
+            return qsTr("%1: Waiting for flight controller confirmation...").arg(operation)
                     + (manager.lastError ? "\n" + manager.lastError : "")
         case FuelCellControllerManager.Accepted:
-            return manager.lastError || qsTr("Flight controller accepted %1. Check FCS system status for progress.").arg(command)
+            if (manager.requestedFaultReset)
+                return qsTr("Flight controller started the fault reset pulse. Check FCS system status to see whether the fault clears.")
+            return manager.lastError || qsTr("Flight controller accepted %1. Check FCS system status for progress.").arg(operation)
         case FuelCellControllerManager.Failed:
             return qsTr("Operation failed: %1").arg(manager.lastError)
         case FuelCellControllerManager.Unconfirmed:
@@ -58,7 +61,9 @@ ToolIndicatorPage {
     readonly property string controlHint: {
         if (!manager.telemetryFresh) return qsTr("Waiting for valid telemetry. Controls are unavailable.")
         if (!manager.deviceDataValid) return qsTr("Device is not connected or has disconnected. Controls are unavailable.")
-        if (!manager.commandPending && !manager.canControl) return qsTr("Control link is unavailable.")
+        if (!manager.commandPending && !manager.canEmergencyStop && !manager.canControl)
+            return qsTr("Control link is unavailable.")
+        if (manager.resetCooldownActive) return qsTr("Fault reset pulse started. Start, stop and reset are temporarily unavailable.")
         return ""
     }
 
@@ -109,6 +114,19 @@ ToolIndicatorPage {
             text: qsTr("Send %2 to the Fuel Cell Controller on vehicle #%1?")
                       .arg(vehicle.id).arg(commandText(command)),
             acceptFunction: function() { root.sendCommand(command, revision) }
+        })
+        _confirmationDialog.open()
+    }
+
+    function confirmFaultReset() {
+        if (_confirmationDialog || !vehicle || !manager.canResetFault) return
+
+        const revision = manager.sessionRevision
+        _confirmationDialog = confirmationComponent.createObject(mainWindow, {
+            title: qsTr("Confirm FCS Fault Reset"),
+            text: qsTr("Reset the Fuel Cell Controller fault on vehicle #%1? This switches the current FCS command to Off.")
+                      .arg(vehicle.id),
+            acceptFunction: function() { root.manager.requestFaultReset(revision) }
         })
         _confirmationDialog.open()
     }
@@ -335,6 +353,12 @@ ToolIndicatorPage {
                     enabled: fuelCellPane.manager.canControl
                     onClicked: fuelCellPane.controller.confirmCommand(fuelCellPane.controller._commandOff)
                 }
+            }
+            QGCButton {
+                Layout.fillWidth: true
+                text: qsTr("FCS Fault Reset")
+                enabled: fuelCellPane.manager.canResetFault
+                onClicked: fuelCellPane.controller.confirmFaultReset()
             }
             // 急停有独立门限，普通请求等待确认时仍可抢占。
             QGCButton {

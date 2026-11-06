@@ -1071,23 +1071,23 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="190"/>
-        <source>Flight controller temporarily rejected the FCS command: device is not connected or has disconnected.</source>
-        <translation>飞控暂时拒绝 FCS 指令：设备未连接或已断连。</translation>
+        <source>Flight controller temporarily rejected the FCS request: device is unavailable or a reset pulse is in progress.</source>
+        <translation>飞控暂时拒绝 FCS 请求：设备不可用或复位脉冲正在发送。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="192"/>
-        <source>Flight controller denied the FCS command: request ID conflicts with the command.</source>
-        <translation>飞控拒绝 FCS 指令：请求编号与指令冲突。</translation>
+        <source>Flight controller denied the FCS request: request ID conflicts with its control fields.</source>
+        <translation>飞控拒绝 FCS 请求：请求编号与控制字段冲突。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="194"/>
-        <source>Flight controller does not support this FCS command.</source>
-        <translation>飞控不支持该 FCS 指令。</translation>
+        <source>Flight controller does not support this FCS request.</source>
+        <translation>飞控不支持该 FCS 请求。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="196"/>
-        <source>Flight controller did not accept the FCS command (result %1).</source>
-        <translation>飞控未接受 FCS 指令（结果 %1）。</translation>
+        <source>Flight controller did not accept the FCS request (result %1).</source>
+        <translation>飞控未接受 FCS 请求（结果 %1）。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="234"/>
@@ -1106,8 +1106,12 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="244"/>
-        <source>Waiting for FCS command confirmation.</source>
-        <translation>正在等待 FCS 指令确认。</translation>
+        <source>Waiting for FCS request confirmation.</source>
+        <translation>正在等待 FCS 请求确认。</translation>
+    </message>
+    <message>
+        <source>Wait for the FCS fault reset pulse to finish.</source>
+        <translation>请等待 FCS 故障复位脉冲结束。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="273"/>
@@ -1116,8 +1120,8 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="285"/>
-        <source>Failed to send the FCS command.</source>
-        <translation>FCS 指令发送失败。</translation>
+        <source>Failed to send the FCS request.</source>
+        <translation>FCS 请求发送失败。</translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="297"/>
@@ -1226,6 +1230,10 @@
         <translation>FCS 急停</translation>
     </message>
     <message>
+        <source>FCS Fault Reset</source>
+        <translation>FCS 清除故障</translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="28"/>
         <source>Waiting for status</source>
         <translation>等待状态</translation>
@@ -1261,6 +1269,10 @@
         <translation>飞控已接受%1指令；动作进度请查看 FCS 系统状态。</translation>
     </message>
     <message>
+        <source>Flight controller started the fault reset pulse. Check FCS system status to see whether the fault clears.</source>
+        <translation>飞控已启动故障复位脉冲；请查看 FCS 系统状态，确认故障是否清除。</translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="45"/>
         <source>Operation failed: %1</source>
         <translation>操作失败：%1</translation>
@@ -1286,6 +1298,10 @@
         <translation>控制链路不可用。</translation>
     </message>
     <message>
+        <source>Fault reset pulse started. Start, stop and reset are temporarily unavailable.</source>
+        <translation>故障复位脉冲已启动，开机、关机和再次复位暂不可用。</translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="78"/>
         <source>Confirm %1</source>
         <translation>确认%1</translation>
@@ -1294,6 +1310,14 @@
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="79"/>
         <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
         <translation>确认向飞控 #%1 的燃料电池控制器发送%2指令？</translation>
+    </message>
+    <message>
+        <source>Confirm FCS Fault Reset</source>
+        <translation>确认清除 FCS 故障</translation>
+    </message>
+    <message>
+        <source>Reset the Fuel Cell Controller fault on vehicle #%1? This switches the current FCS command to Off.</source>
+        <translation>确认清除飞控 #%1 的燃料电池控制器故障？此操作会将当前 FCS 指令切换为关机。</translation>
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="139"/>

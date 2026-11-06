@@ -1047,22 +1047,22 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="190"/>
-        <source>Flight controller temporarily rejected the FCS command: device is not connected or has disconnected.</source>
+        <source>Flight controller temporarily rejected the FCS request: device is unavailable or a reset pulse is in progress.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="192"/>
-        <source>Flight controller denied the FCS command: request ID conflicts with the command.</source>
+        <source>Flight controller denied the FCS request: request ID conflicts with its control fields.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="194"/>
-        <source>Flight controller does not support this FCS command.</source>
+        <source>Flight controller does not support this FCS request.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="196"/>
-        <source>Flight controller did not accept the FCS command (result %1).</source>
+        <source>Flight controller did not accept the FCS request (result %1).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1082,7 +1082,11 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="244"/>
-        <source>Waiting for FCS command confirmation.</source>
+        <source>Waiting for FCS request confirmation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wait for the FCS fault reset pulse to finish.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1092,7 +1096,7 @@
     </message>
     <message>
         <location filename="../src/FuelCellController/FuelCellControllerManager.cc" line="285"/>
-        <source>Failed to send the FCS command.</source>
+        <source>Failed to send the FCS request.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1213,6 +1217,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>FCS Fault Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="28"/>
         <source>Waiting for status</source>
         <translation type="unfinished"></translation>
@@ -1248,6 +1256,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Flight controller started the fault reset pulse. Check FCS system status to see whether the fault clears.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="45"/>
         <source>Operation failed: %1</source>
         <translation type="unfinished"></translation>
@@ -1273,6 +1285,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Fault reset pulse started. Start, stop and reset are temporarily unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="78"/>
         <source>Confirm %1</source>
         <translation type="unfinished"></translation>
@@ -1280,6 +1296,14 @@
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="79"/>
         <source>Send %2 to the Fuel Cell Controller on vehicle #%1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm FCS Fault Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset the Fuel Cell Controller fault on vehicle #%1? This switches the current FCS command to Off.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
