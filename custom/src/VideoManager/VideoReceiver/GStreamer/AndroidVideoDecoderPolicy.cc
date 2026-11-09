@@ -18,6 +18,11 @@
 #include <algorithm>
 
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+// Native registration is conditional on this feature. Do not produce an
+// Android static build that silently omits the MediaCodec plugin.
+#if defined(QGC_GST_STATIC_BUILD) && !defined(GST_PLUGIN_androidmedia_FOUND)
+#error "Android video requires the GStreamer androidmedia plugin. Check the Android GStreamer SDK and reconfigure."
+#endif
 #include <gst/gst.h>
 #endif
 

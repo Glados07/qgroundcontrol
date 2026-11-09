@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  * Fly View思翼相机合并控制栏。
- * 缩放、拍照和录像纵向排列并使用可缩放矢量图标；全部命令均不依赖activeVehicle。
+ * 缩放、拍照和录像使用双列触控布局；在线门禁独立于activeVehicle。
  *
  ****************************************************************************/
 
@@ -29,8 +29,10 @@ Rectangle {
     readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property real actionSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
-    readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.5
-    readonly property real itemSpacing: ScreenTools.defaultFontPixelWidth * 0.5
+    readonly property real cellWidth: Math.max(ScreenTools.defaultFontPixelHeight * 2.25,
+                                                ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.22
+    readonly property real itemSpacing: panelPadding
     readonly property color accentColor: "#65d9f4"
     readonly property color panelColor: "#172833"
     readonly property color panelBorderColor: "#355262"
@@ -65,7 +67,7 @@ Rectangle {
     property int recordingSeconds: 0
     readonly property bool videoModeMenuOpen: videoModeMenu.visible
 
-    implicitWidth: controlColumn.implicitWidth + panelPadding * 2
+    implicitWidth: cellWidth * 2 + itemSpacing + panelPadding * 2
     implicitHeight: controlColumn.implicitHeight + panelPadding * 2
     width: implicitWidth
     height: implicitHeight
@@ -161,7 +163,13 @@ Rectangle {
 
     Component.onDestruction: closeTransientUi()
 
-    DeadMouseArea { anchors.fill: parent }
+    // Block map clicks, but allow the host Flickable to take scrolling gestures.
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        preventStealing: false
+        onWheel: function(wheel) { wheel.accepted = false }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -413,19 +421,25 @@ Rectangle {
         function onHeightChanged() { videoModeMenu.reposition() }
     }
 
-    ColumnLayout {
+    GridLayout {
         id: controlColumn
+        objectName: "cameraActionsGrid"
 
         anchors.fill: parent
         anchors.margins: root.panelPadding
-        spacing: root.itemSpacing
+        columns: 2
+        columnSpacing: root.itemSpacing
+        rowSpacing: root.itemSpacing
 
         GimbalZoomControl {
             id: zoomControl
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
 
             manager: root.manager
             showActualZoom: root.showActualZoom
             controlSize: root.actionSize
+            cellWidth: root.cellWidth
             iconSize: root.actionIconSize
             controlSpacing: root.itemSpacing
             accentColor: root.accentColor
@@ -438,6 +452,7 @@ Rectangle {
         }
 
         Rectangle {
+            Layout.columnSpan: 2
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             Layout.leftMargin: root.itemSpacing
@@ -448,6 +463,7 @@ Rectangle {
 
         Rectangle {
             id: modeButton
+            Layout.columnSpan: 2
 
             readonly property string statusText: root.videoModePending
                                                      ? "..."
@@ -461,7 +477,7 @@ Rectangle {
             color: modeMouseArea.pressed ? root.buttonPressedColor : "transparent"
             border.width: 0
             enabled: root.online && !root.videoModePending
-            opacity: enabled ? 1.0 : 0.5
+            opacity: enabled ? 1.0 : 0.32
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -472,7 +488,7 @@ Rectangle {
                 width: root.modeIconSize
                 height: width
                 kind: "switch"
-                color: modeMouseArea.pressed ? root.pressedIconColor
+                color: !modeButton.enabled ? "#7d8e99" : modeMouseArea.pressed ? root.pressedIconColor
                        : modeMouseArea.containsMouse ? root.hoveredIconColor
                        : root.videoModeMenuOpen ? root.accentColor : root.iconColor
                 scale: modeMouseArea.pressed ? 0.94 : 1.0
@@ -484,7 +500,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: parent.height * 0.08
                 text: modeButton.statusText
-                color: modeMouseArea.pressed ? root.pressedIconColor : root.accentColor
+                color: !modeButton.enabled ? "#7d8e99" : modeMouseArea.pressed ? root.pressedIconColor : root.accentColor
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize * 0.58
             }
@@ -495,7 +511,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 kind: "chevronDown"
                 rotation: 90
-                color: root.videoModeMenuOpen ? root.accentColor : "#b4c9d4"
+                color: !root.online ? "#7d8e99" : root.videoModeMenuOpen ? root.accentColor : "#b4c9d4"
                 width: root.actionSize * 0.2
                 height: width
             }
@@ -507,7 +523,7 @@ Rectangle {
                 width: Math.max(5, parent.width * 0.12)
                 height: width
                 radius: width / 2
-                color: root.videoModePending
+                color: !root.online ? "#7d8e99" : root.videoModePending
                        ? "#ffc857"
                        : (root.videoModeKnown ? root.accentColor : "#8e9aa3")
                 border.color: "#b8ffffff"
@@ -520,7 +536,7 @@ Rectangle {
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
-                preventStealing: true
+                preventStealing: false
                 cursorShape: Qt.PointingHandCursor
                 property bool menuWasOpenOnPress: false
 
@@ -540,15 +556,15 @@ Rectangle {
             id: photoButton
             objectName: "photoButton"
 
-            Layout.preferredWidth: root.actionSize
+            Layout.preferredWidth: root.cellWidth
             Layout.preferredHeight: root.actionSize
-            Layout.alignment: Qt.AlignHCenter
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
             radius: ScreenTools.defaultFontPixelHeight * 0.4
             color: photoMouseArea.pressed ? root.buttonPressedColor : "transparent"
             border.width: 0
-            // UDP 命令发送能力不依赖最近一次状态探测，避免偶发回包超时锁死拍照。
-            enabled: root.available
-            opacity: enabled ? 1.0 : 0.45
+            // Starting camera work requires a responding payload.
+            enabled: root.online
+            opacity: enabled ? 1.0 : 0.32
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -557,7 +573,7 @@ Rectangle {
                 width: root.actionIconSize
                 height: width
                 kind: "camera"
-                color: photoMouseArea.pressed ? root.pressedIconColor
+                color: !photoButton.enabled ? "#7d8e99" : photoMouseArea.pressed ? root.pressedIconColor
                        : photoMouseArea.containsMouse ? root.hoveredIconColor
                        : photoSuccessFlash.running ? root.accentColor : root.iconColor
                 scale: photoMouseArea.pressed ? 0.94 : 1.0
@@ -585,7 +601,7 @@ Rectangle {
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
-                preventStealing: true
+                preventStealing: false
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.manager.takePhoto()
             }
@@ -605,15 +621,16 @@ Rectangle {
 
             // Keep the rail narrow when recording. The elapsed time sits under
             // the icon, so a media state change does not move the whole rail.
-            Layout.preferredWidth: root.actionSize * 1.16
+            Layout.preferredWidth: root.cellWidth
             Layout.preferredHeight: root.actionSize + ScreenTools.defaultFontPixelHeight * 0.85
-            Layout.alignment: Qt.AlignHCenter
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
             radius: ScreenTools.defaultFontPixelHeight * 0.4
             color: "transparent"
             border.width: 0
             // The manager coordinates the independent SD and local recording branches.
-            enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)
-            opacity: enabled ? 1.0 : 0.45
+            enabled: Boolean(root.manager && root.manager.videoRecordingAvailable
+                             && (root.online || root.recordingSessionVisualActive))
+            opacity: enabled ? 1.0 : 0.32
 
             Column {
                 id: videoContent
@@ -624,8 +641,8 @@ Rectangle {
 
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: root.actionSize
-                    height: width
+                    width: videoButton.width
+                    height: root.actionSize
                     radius: ScreenTools.defaultFontPixelHeight * 0.4
                     color: videoMouseArea.pressed ? root.buttonPressedColor : "transparent"
                     border.width: 0
@@ -635,7 +652,7 @@ Rectangle {
                         width: root.actionIconSize
                         height: width
                         kind: root.recordingSessionVisualActive ? "recordStop" : "record"
-                        color: videoMouseArea.pressed ? root.pressedIconColor
+                        color: !videoButton.enabled ? "#7d8e99" : videoMouseArea.pressed ? root.pressedIconColor
                                : root.recordingSessionCapturing ? "#ff6c80"
                                : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857"
                                : videoMouseArea.containsMouse ? root.hoveredIconColor : root.iconColor
@@ -673,7 +690,7 @@ Rectangle {
                 anchors.fill: parent
                 enabled: parent.enabled
                 hoverEnabled: true
-                preventStealing: true
+                preventStealing: false
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.manager.toggleVideoRecording()
             }
@@ -681,8 +698,8 @@ Rectangle {
 
         CameraStorageStatus {
             objectName: "sdStatusRow"
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: root.actionSize * 1.16
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
             known: Boolean(root.manager && root.manager.sdCardStatusKnown)
             inserted: Boolean(root.manager && root.manager.sdCardInserted)
         }

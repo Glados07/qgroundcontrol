@@ -26,12 +26,14 @@ Rectangle {
             model: [0, 1]
             CameraControlButton {
                 required property int modelData
+                readonly property bool payloadOnline: modelData === 0 ? root.a8Online : root.roukeOnline
                 objectName: modelData === 0 ? "selectA8" : "selectRouke"
-                implicitHeight: implicitWidth * 1.24
+                implicitHeight: implicitWidth * 1.1
                 text: modelData === 0 ? qsTr("A8 Mini") : qsTr("Rouke")
                 caption: modelData === 0 ? "A8" : "RK"
                 iconName: modelData === 0 ? "payloadA8" : "payloadRouke"
                 checked: root.selectedCamera === modelData
+                muted: !payloadOnline
                 iconColor: checked ? "#9ce9fa" : "#9db2bf"
                 onClicked: root.cameraSelected(modelData)
                 Rectangle {

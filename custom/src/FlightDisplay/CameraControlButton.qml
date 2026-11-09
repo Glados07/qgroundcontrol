@@ -11,17 +11,20 @@ QtControls.Button {
     id: root
     property string iconName: "camera"
     property bool recording: false
+    property bool muted: false
     property bool menuIndicator: false
     property string caption: ""
     property color iconColor: recording ? "#ff6c80" : "#dcecf4"
-    readonly property color foreground: down ? "#163744" : recording ? iconColor
-                                                            : checked || hovered ? "#a8eaf7" : iconColor
+    readonly property bool mutedAppearance: !enabled || (muted && !recording)
+    readonly property color foreground: mutedAppearance ? "#7d8e99"
+                                       : down ? "#163744" : recording ? iconColor
+                                       : checked || hovered ? "#a8eaf7" : iconColor
     implicitWidth: Math.max(ScreenTools.defaultFontPixelHeight * 2.25,
                              ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     implicitHeight: implicitWidth
     padding: 0
     hoverEnabled: true
-    opacity: enabled ? 1 : 0.32
+    opacity: enabled ? (mutedAppearance ? 0.55 : 1) : 0.32
     Accessible.name: text
     QtControls.ToolTip {
         visible: root.hovered && !root.down
@@ -41,7 +44,7 @@ QtControls.Button {
     }
     background: Rectangle {
         radius: ScreenTools.defaultFontPixelHeight * 0.4
-        color: root.down ? "#b8e7f2" : "transparent"
+        color: root.down ? (root.mutedAppearance ? "#263b47" : "#b8e7f2") : "transparent"
         border.color: root.visualFocus ? "#c0f5ff" : "transparent"
         border.width: 1
         Behavior on color { ColorAnimation { duration: 100 } }
@@ -51,7 +54,8 @@ QtControls.Button {
         Behavior on scale { NumberAnimation { duration: 90 } }
         CameraControlIcon {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: root.caption.length ? parent.height * 0.1 : (parent.height - height) / 2
+            y: root.caption.length ? (Math.min(parent.height, root.implicitWidth) - height) / 2
+                                   : (parent.height - height) / 2
             width: ScreenTools.defaultFontPixelHeight * 1.2
             height: width
             kind: root.iconName
@@ -65,7 +69,7 @@ QtControls.Button {
             text: root.caption
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize * 0.8
-            color: root.down ? "#163744" : root.checked ? "#83e1f6" : "#b4c9d4"
+            color: root.mutedAppearance ? "#7d8e99" : root.down ? "#163744" : root.checked ? "#83e1f6" : "#b4c9d4"
         }
         Rectangle {
             visible: root.menuIndicator
@@ -73,7 +77,7 @@ QtControls.Button {
             anchors.top: parent.top
             anchors.margins: 4
             width: 3; height: 3; radius: 1.5
-            color: "#65d9f4"
+            color: root.mutedAppearance ? "#7d8e99" : "#65d9f4"
         }
     }
 }

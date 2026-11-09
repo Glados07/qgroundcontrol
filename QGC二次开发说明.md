@@ -10,8 +10,8 @@
 | 分支 | `SecDev/rouke` |
 | 应用名 | `Custom-QGroundControl` |
 | 业务代码入口 | `custom/` |
-| 本次代码核对基线 | `892683125` + 当前工作区；修复相机选择器启动加载，产品默认关闭测试构建，保留 MAVLink 兼容及 A8/Rouke 相机功能 |
-| 文档更新 | 2026-11-05 |
+| 本次代码核对基线 | `0d228c26d` + 当前工作区；一级相机栏上下同宽、双列并避让底部罗盘，离线灰显且可浏览 Rouke 设置；补齐视频恢复，审计 53022 真实报文与参数读取/遥控通道链路，保留启动修复、默认关闭测试及 MAVLink 兼容 |
+| 文档更新 | 2026-11-09 |
 
 ## 阅读导航
 
@@ -42,14 +42,14 @@
 
 ## 1. 当前开发进度
 
-本表区分源码已实现的能力与设备验证状态。本次按当前工作区核对文件、设置和调用流程，完成柔克参数主机专项及生产 QML 离屏检查；未完成完整产品编译或真机验收。表中已有实测反馈保留原有证据范围，不能据此推定本版全部场景已通过。
+本表区分源码已实现的能力与设备验证状态。本次按当前工作区核对文件、设置和调用流程，完成柔克参数、视频恢复策略主机专项及生产 QML 离屏检查；未完成完整产品编译或真机验收。表中已有实测反馈保留原有证据范围，不能据此推定本版全部场景已通过。
 
 > **状态口径**：“已集成”表示源码已有构建接入和运行调用链；“主机通过”仅覆盖注明的测试范围；“真机通过”需要对应版本、设备和场景的证据。未完成的项目保留在“验证状态与下一步”列。
 
 | 模块 | 当前已实现 | 验证状态与下一步 |
 |---|---|---|
 | Viewer3D | OSM、外部模型、可选 Google 3D；本地场景显示飞行器与任务 | 已集成；按目标平台验证导入、坐标配准和可选 WebEngine 能力 |
-| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复 | PIP 缩放 Qt 6 主机事件回归通过；历史 MT11 播放记录不代表柔克验证；柔克视频、双路持续播放及 Android 硬解需验收 |
+| 双视频与 Android 解码 | 独立 Video 1/2、三视图切换、双辅窗连续缩放、厂商硬解、逐路恢复；H.265 CAPS 超时一次格式兼容重试，Video 2 同步低延迟设置并在场景图失效后重建显示项 | 策略、路由状态、第二路生命周期及生产 QML 主机验证范围见 4.1；历史 MT11 播放记录不代表柔克验证；完整 Qt 6/Android 构建、柔克视频及双路硬解持续播放需验收 |
 | A8 Mini 相机 | 缩放、拍照、录像、能力查询与播放后停滞恢复 | 已有真机使用及新版目视播放正常反馈；当前缩放与长期稳定性需按矩阵回归 |
 | 柔克负载 | 独立 UDP 承载 MAVLink 2/53022，切视角、对焦、回中、拍照及显式录像启停；相机/测距双页设置接入 11 项参数；CH11/CH12 速度转向、CH14 回中；完整控制帧按每段最多 128 字节连续发送，接收端重组长回应；绑定 Video 2 本地媒体 | 厂家确认 payload_addr 默认为 0、支持连续字节流重组；速度采用协议原始值，单位与设备上限待厂商确认；主机验证范围见 4.1，完整 Qt 6/Android 与硬件待验收 |
 | 本地照片与录像 | 两路独立保存及 Android 图库发布；A8 支持断流分段续录，柔克断流停止本地录像 | 已集成；两路恢复差异、存储容量、退出收尾及卸载保留待完整验收 |
@@ -190,7 +190,7 @@ custom/
                                                             # ② 切换实现：_initializeLayout/_reconcileLayout/_applyLayout/_activateSlot 用 map/video1/video2 稳定键交换位置，并保存 MainFlyWindowView、IsPIPVisible 等布局设置；由 FlyView 传入实际显示项。
 │   │   ├── FlightDisplayViewSecondaryVideo.qml
                                                             # ① 第二路画面本体：secondaryVideoContent 中的 QGCVideoBackground 承载视频纹理；本文件定义等待/禁用时的 noVideo 图文、背景和九宫格参考线，负责画面内部显示。
-                                                            # ② 渲染接线：通过 initVideoItem 将窗口与显示项交给 DualVideoManager，getWidth/getHeight 按宽高比和适配模式计算画面尺寸；PIP 归属、全屏和外层提示由 FlyViewSecondaryVideo 处理。
+                                                            # ② 渲染接线：通过 init/initVideoItem 将窗口与显示项交给 DualVideoManager，Loader 跟随 renderItemEnabled 在图形资源失效后重建；卸载期间仍通知新窗口。getWidth/getHeight 按宽高比和适配模式计算尺寸，PIP/全屏由 FlyViewSecondaryVideo 处理。
 │   │   ├── FlyView.qml
                                                             # ① 飞行页总装与布局：创建地图、主视频、第二路视频、DualPipView、原生 widgetLayer、自定义覆盖层和三维窗口；设置区域尺寸、PIP 左下锚点、层叠关系及相互依赖。
                                                             # ② 模块连接：将三个内容项送入 DualPipView，向 FlyViewCustomLayer 提供页面可用空间/右上保留区，以及由 Video 1 的 hasVideo、PipState.fullState 和三维窗口状态决定的 a8VideoIsMain；整页布局与工具条/Viewer3D 显隐在此接线，相机栏内部按钮在 GimbalCameraControl。
@@ -208,19 +208,19 @@ custom/
                                                             # ② 三维入口：根据 Viewer3D 开关和当前显示状态，在 3D View/Fly 间切换并调用三维容器；入口图形来自 city_3d_map_icon.svg，场景加载与模型交互在 Viewer3D 目录。
 │   │   ├── FlyViewTopRightColumnLayout.qml
                                                             # ① 右上列外观与相机选择：显式导入 Custom.FlightDisplay，以模块限定名引用 CameraPayloadSelector，组合地形下载进度及相机面板；选择器使用不同负载轮廓、A8/RK 短标识及在线状态点。
-                                                            # ② 面板切换：selectCamera/normalizeSelectedCamera 维护 _selectedCamera，cameraControlLoader 加载相应控制栏；两种私有相机均关闭时回退到原生拍照录像控件，整列页面锚点仍在原生 FlyViewWidgetLayer.qml。
+                                                            # ② 面板切换：selectCamera/normalizeSelectedCamera 维护 _selectedCamera；cameraColumnScroll 使用原生 FlyViewWidgetLayer 留出的罗盘上方高度，内容超高时整体滚动且裁切，cameraControlLoader 加载双列控制栏；两路禁用时回退原生拍照录像控件。
 │   │   ├── GeneratorBusVoltageAlert.qml
                                                             # ① 母线告警条：required vehicle 指定所属车辆，读取 COM_GEN_V_LOW、COM_GEN_V_LOW_T 与母线电压，绘制告警文本/底色；车辆、参数、遥测或通信不可用时隐藏提示。
                                                             # ② 延时确认：_updateWarningState/_completePendingTransition 记录连续低于/高于阈值的时间，到期才进入/解除；等于阈值取消当前计时，无效数据保留已确认状态，切车重新建立状态，由覆盖层负责位置。
 │   │   ├── GimbalCameraControl.qml
-                                                            # ① 相机控制栏主要 UI 文件：controlColumn 纵向排列变倍、模式、拍照、录像、计时及居中 SD 卡状态；panelColor/panelBorderColor/panelPadding/actionSize/itemSpacing 定义底色、边框、留白、按钮尺寸与间距，zoomControl 嵌入变倍子组件。
+                                                            # ① 相机控制栏主要 UI 文件：双列组织变倍与拍照/录像，倍率及 SD 状态跨行居中；panelColor/panelBorderColor/panelPadding/actionSize/itemSpacing 定义底色、边框、留白、按钮尺寸与间距，zoomControl 嵌入变倍子组件。
                                                             # ② 交互与状态：photoButton 调 takePhoto、videoButton 调 toggleVideoRecording，按 Manager 的可用/pending/会话属性更新按钮、闪光和 recordingTimeText；保留历史模式入口的兼容属性；当前 A8 使用本组件，柔克使用独立 RoukeCameraControl。
 │   │   ├── GimbalZoomControl.qml
                                                             # ① 变倍子组件 UI：zoomColumn 排列 zoomInButton、targetZoomLabel、actualZoomLabel 和 zoomOutButton，使用带加/减的放大镜图标及清晰倍率文字；外层 GimbalCameraControl 传入尺寸与配色。
                                                             # ② 手势实现：MouseArea 保存按下时的 Manager，holdThresholdMs=420 识别长按、holdStartRetryMs=100 重试启动；短按调用步进，长按调用连续变倍，释放/隐藏/切相机/应用失活时结束或取消，倍率边界由 Manager/Policy 决定。
 │   │   ├── RoukeCameraControl.qml
-                                                            # ① 柔克相机面板：绑定 roukeControlManager，采用紧凑图标竖栏；相机切换图标展开 LR1/OV2735，准星回中、取景框对焦、相机轮廓拍照及单一录像按钮，底部滑杆图标进入设置。
-                                                            # ② 录像按钮与 A8 同样显示状态和计时，再次点击停止；短窗口主体滚动、设置入口固定，底部仅保留居中 SD 红绿灯，错误通过琥珀图标提示；closeTransientUi 同时收起镜头菜单和设置。
+                                                            # ① 柔克相机面板：绑定 roukeControlManager，双列依次为镜头切换/回中、对焦/设置、拍照/录像；相机切换图标展开 LR1/OV2735，对焦位于拍照正上方。
+                                                            # ② 录像按钮与 A8 同样显示状态和计时，再次点击停止；下栏收窄至与上方选择器同宽，外层在罗盘上方滚动，底部居中 SD 红绿灯，不显示三角错误图标。普通设备操作离线灰显禁用；设置入口离线灰显但可打开，失联只收起镜头菜单，保留设置页及未提交草稿。
 │   │   ├── CameraControlIcon.qml
                                                             # ① 共用矢量图标：在 24 单位坐标系绘制拍照、对焦、回中、录像、切换、设置、变倍、读取/应用、参数分组及负载轮廓；统一圆润转角、线宽与视觉比例，不依赖字符字体或位图。
                                                             # ② kind/color 接口由主栏、选择器和设置页共用；尺寸和颜色变化重新绘制，不包含设备动作。
@@ -238,10 +238,10 @@ custom/
                                                             # ② 仅供设置页签和参数动作复用，一级操作由 CameraControlButton 承担；命令由外层事件处理，不在样式组件内访问设备。
 │   │   ├── RoukeCameraParameter.qml
                                                             # ① 参数编辑行：使用轻分隔线替代重复卡片边框，标题与当前确认值徽标分层；数值框约 15 字符宽并按实际字体预留完整整数及单位，枚举框约 20 字符宽，读取/应用紧邻编辑框；窄屏向下展开，保留正常字号。
-                                                            # ② 草稿与 cameraParameters 分离，按范围校验输入，通过 pendingParameter 显示等待，只有显式操作才发命令。
+                                                            # ② 草稿与 cameraParameters 分离，按范围校验输入，通过 pendingParameter 显示等待；离线允许编辑，UDP 有效即可只读探测，应用仍要求 SDK 在线，恢复连接不自动下发草稿。
 │   │   ├── RoukeCameraSettings.qml
                                                             # ① 二级设置浮层：固定标题及相机参数/测距拍照两个三级页签，默认相机参数，页内纵向滚动。
-                                                            # ② 限制面板在窗口内，关闭和切换相机时收起；参数通过 Manager 发送，不另开通信、不持久化设备参数。
+                                                            # ② 限制面板在窗口内，打开时请求一次四项 GET、收起时取消未发队列；参数通过 Manager 发送，不另开通信、不持久化设备参数，七项仅 SET 参数明确提示无读取命令。
 │   │   └── MT11CameraControl.qml
                                                             # ① 历史 MT11 保留面板（本分支不加载）：MT11 相机面板包装：通过 controlLoader 加载共享 GimbalCameraControl，加载后绑定 mt11ControlManager，开启 thermalControlsVisible 并关闭额外实测倍率显示。
                                                             # ② 接口转接：向父层提供加载项的隐式尺寸和 closeTransientUi，用于相机切换时关闭菜单；面板布局、拍照/录像按钮在 GimbalCameraControl，变倍按钮外观和手势在 GimbalZoomControl。
@@ -357,19 +357,19 @@ custom/
                                                             # ① 历史 MT11 保留实现（本分支产品不编入）：MT11 档位契约：定义 MinimumZoom=1 与 AbsoluteCommandMaximumZoom=30，声明 isDisplayTarget、tapTarget、alignedDisplayTarget 纯函数。
                                                             # ② 输入职责：measuredZoom 决定是否越过绝对命令边界，displayZoom 用于合法档位规划；输出目标供 Manager 发送，设备最大混合倍率和长按通信仍由 Manager 维护。
 │   │   ├── RoukeControlManager.cc
-                                                            # ① 柔克业务与第二路媒体：把相机动作交给 RoukePayloadController，复用成熟的截图、录像所有权、异步收尾及 Android 发布逻辑。
+                                                            # ① 柔克业务与第二路媒体：把相机动作交给 RoukePayloadController，设置页打开时串行读取四项可读参数，关闭/换端点撤销未发队列；复用截图、录像所有权、异步收尾及 Android 发布逻辑。
                                                             # ② 绑定 Video 2；照片尺寸来自视频协商结果，断流结束本地录制；独立轮询 SD 容量并暴露卡状态，视频与控制独立。
 │   │   ├── RoukeControlManager.h
-                                                            # ① 柔克 Manager 契约：向 QML 暴露启用、控制可用、反馈状态、视角、设备/本地录像、照片计数、独立 sdCardStatusKnown/sdCardInserted 及错误；recordingStopRequired 统一单按钮显示与下一次启停方向；cameraParameters 只含已确认参数，pendingParameter 标识正在等待的参数。
+                                                            # ① 柔克 Manager 契约：暴露启用、控制可用、反馈、视角、设备/本地录像、照片计数、SD 及错误；recordingStopRequired 统一单按钮方向，cameraParameters 保存已确认或读回值；refreshCameraParameters/cancelCameraParameterRefresh 控制一次只读队列。
                                                             # ② 保存控制器与第二路 item/receiver、抓图 worker、录制生命周期成员；由 CustomPlugin 创建和退出收尾。
 │   │   ├── RoukeGimbalController.cc
                                                             # ① 柔克遥控姿态：CH11/CH12 映射为 yaw_speed/pitch_speed 协议值，roll_speed 固定 0；双轴归中后解锁，50 ms 刷新最新速度，350 ms 输入失效时停止。
-                                                            # ② 回中优先：CH14 释放/按下沿或面板回中先停速度，再发独立回中请求；结束后重新归中解锁，失联、后台、配置改变时撤销输入。
+                                                            # ② 回中优先：CH14 释放/按下沿或面板回中先停速度，再发独立请求；无效 CH14 只解除按钮武装，不阻断有效双轴。回中结束后重新归中解锁，失联、后台、配置改变时撤销输入。
 │   │   ├── RoukeGimbalController.h
                                                             # ① 遥控姿态接口：setConfiguration 设置双轴速度限值与反向，updateChannels 接收 CH11/12/14，cancel 停止，centerGimbal 供按键和面板共用。
                                                             # ② 保存中位/按键解锁状态、最新双轴速度、输入时效、发送节拍及零速补发计数，不保存非零运动命令队列。
 │   │   ├── RoukePayloadController.cc
-                                                            # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流，再校验 JSON ACK。
+                                                            # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流；编译期校验消息契约，配置/超时日志汇总接收阶段计数。
                                                             # ② 相机命令、回中及 SD 查询分别等待 ACK；速度刷新不占 pending，同一命令分片连续写出；接收帧起始时标记三类本地请求版本，配置变化取消旧请求及半帧；payload_addr 默认 0，-1 禁控。
 │   │   ├── RoukePayloadController.h
                                                             # ① 载荷命令接口：提供 C++ sendCommand(command, data)、sendGimbalSpeed 与拍照、显式录像状态写入、切视角、对焦、回中及独立 gimbalCenterPending；requestSdCardStatus 使用独立只读状态通道。
@@ -516,10 +516,10 @@ custom/
                                                             # 第二路视频管理与运行期解码/恢复策略
 │   │   ├── DualVideoManager.cc
                                                             # ① 接收与渲染：订阅 secondaryRtspUrl，创建独立接收器，将 initVideoItem 提交的窗口/视频项在渲染初始化完成后接线；_applyDesiredState 串行推进停止、启动与重建，并处理主路在用/释放中 URI 的重复源保护。
-                                                            # ② 恢复与退出：用 URI+generation 排除旧回调，首帧失败结合硬件解码候选重试，重连采用 1/2/4/8/15 s 退避；cleanup 先通知媒体使用者再释放对象，QML 用其状态显示 Video 2 和画面尺寸。
+                                                            # ② 恢复与退出：用 URI+generation 排除旧视频回调，首帧失败结合硬解候选重试，重连采用 1/2/4/8/15 s 退避；同步低延迟设置，场景图失效后先释放 receiver/sink 再重建 Loader，窗口/初始化代次排除旧渲染任务；cleanup 先通知媒体使用者再释放对象。
 │   │   ├── DualVideoManager.h
-                                                            # ① 独立第二路视频接口：暴露 enabled/hasVideo/duplicateSource/streaming/decoding、videoSize/aspectRatio、fullScreen 及 videoReceiver/videoItem，声明 initVideoItem、startVideo、stopVideo、cleanup。
-                                                            # ② 生命周期成员：保存第二路 receiver/sink 对应显示项、窗口、当前 URI/管线 generation、主路占用 URI 和重连/首帧定时器；释放前后信号供柔克媒体逻辑收尾，不复用主路接收器。
+                                                            # ① 独立第二路视频接口：暴露 enabled/hasVideo/duplicateSource/streaming/decoding、videoSize/aspectRatio、fullScreen、renderItemEnabled 及 videoReceiver/videoItem，声明 init/initVideoItem、startVideo、stopVideo、cleanup。
+                                                            # ② 生命周期成员：保存第二路 receiver/sink 对应显示项、窗口/初始化代次、图形恢复状态、URI/管线 generation、主路占用 URI 和重连/首帧定时器；释放前后信号供柔克媒体逻辑收尾，不复用主路接收器。
 │   │   └── VideoReceiver/
                                                             # 接收器扩展
 │   │       └── GStreamer/
@@ -544,15 +544,15 @@ custom/
                                                             # ② 接口边界：本类统一格式字符串而不校验任意输入 caps；适配器负责把返回内容应用到管线，具体编码格式、parsed 标志及帧率范围在 .cc。
 │   │           ├── AndroidH265DecoderFallback.cc
                                                             # ① 候选状态管理：按 receiver、URI、generation 和当前 H.265 输入格式保存重试进度，仅在符合解码失败条件时选择下一条兼容 MediaCodec 路由，避免网络断流误触发换解码器。
-                                                            # ② 切换规则：利用 RoutePolicy 去重排序并记录已尝试候选，格式变化时重置对应尝试空间；候选耗尽返回首选适配器稳定路由，不启用软件解码，结果交由调用者停止/重启管线。
+                                                            # ② 切换规则：利用 RoutePolicy 去重排序；确认 H.265 的 CAPS 超时允许一次格式兼容重试，不直接轮换工厂；新 URI 清除旧格式与工厂，同 URI 重连保留选择。候选耗尽返回首选适配器，不启用软件解码，由调用者停止/重启管线。
 │   │           ├── AndroidH265DecoderFallback.h
-                                                            # ① 接收器级硬解重试接口：install 跟踪 URI，resetForCurrentInputFormat 同步分包格式变化，activeAdapterFactoryName 查询当前路由，prepareHardwareRetry 依据失败证据推进候选。
+                                                            # ① 接收器级硬解重试接口：install 跟踪 URI，resetForCurrentInputFormat 同步分包格式，activeAdapterFactoryName 查询当前路由，prepareHardwareRetry 依据失败证据推进候选，prepareCapsOnlyTimeoutRetry 处理已确认 H.265 且尚无首帧的原生超时。
                                                             # ② 输入边界：接收 URI/generation、编码、源帧/解码帧/显示帧证据和解码分支错误标志；每条接收器独立保存选择，供主路 Recovery 与第二路 DualVideoManager 共用。
 │   │           ├── AndroidH265DecoderRoutePolicy.cc
                                                             # ① 确定性排序：先放备用 Annex-B 归一化适配器，再放与输入分包兼容的直接厂商解码器，剔除空名称和重复项但保持原相对顺序。
-                                                            # ② 推进与耗尽：根据上次工厂及位置，每个候选最多尝试一次，全部失败时返回 exhausted；Fallback 据此恢复首选路线，避免在有限几个解码器之间无限循环。
+                                                            # ② 推进与耗尽：每个候选最多尝试一次，全部失败返回 exhausted；canRetryCapsOnlyTimeout 限定同 URI、有效代次、RTSP/H.265、非 byte-stream 且三个阶段均未出帧，避免普通网络超时或旧流事件误触发格式切换。
 │   │           ├── AndroidH265DecoderRoutePolicy.h
-                                                            # ① 硬解候选纯接口：RouteSelection 返回 factoryName、candidateIndex 与 exhausted；orderedRetryFactories 组合候选，nextRoute 计算下一次选择。
+                                                            # ① 硬解候选纯接口：RouteSelection 返回 factoryName、candidateIndex 与 exhausted；orderedRetryFactories 组合候选，nextRoute 计算下一次选择，canRetryCapsOnlyTimeout 判断一次格式兼容重试条件。
                                                             # ② 调用关系：输入候选适配器、兼容的直接 MediaCodec 工厂及已尝试位置，输出一次决策；不修改全局 rank 或接收器，由 AndroidH265DecoderFallback 应用选择，独立测试可直接构造候选列表。
 │   │           ├── AndroidH265HardwareDecoderAdapter.cc
                                                             # ① 管线实现：创建 hvc1→h265parse→Annex-B/AU caps→厂商 MediaCodec 的解码适配 bin，连接 pad 与协商条件，使主路既有输入封装能够进入可用的 Android 硬件解码器。
@@ -567,14 +567,14 @@ custom/
                                                             # ① 按流选择分包格式：声明 parserOutputFormatForUri(uri, mt11Host) 和 receiverPropertyName，为管线建立前设置接收器动态属性提供统一入口。
                                                             # ② 输入/输出：根据 RTSP 主机与配置 MT11 主机匹配返回 byte-stream，其余返回空值沿用原生 hvc1；主路/第二路均可使用，识别依据是流地址而非固定 Video 1/2 槽位。
 │   │           ├── AndroidVideoDecoderPolicy.cc
-                                                            # ① 工厂优先级配置：识别可用厂商 MediaCodec，按 forceHardwareDecoding 设置硬解相关 rank，注册 H.265 归一化适配器并避免将已知 Android 软件包装器当作厂商硬件。
+                                                            # ① 工厂优先级配置：识别可用厂商 MediaCodec，按 forceHardwareDecoding 设置硬解 rank，注册 H.265 归一化适配器并排除已知 Android 软件包装器；Android 静态构建缺少 androidmedia 注册宏时显式编译报错。
                                                             # ② 候选供应：按当前输入是否原生 byte-stream 组合可兼容的备用适配器和直接解码器，提供给接收器级 Fallback；主/次流的自动选择共享初始策略，具体重试选择互不串用。
 │   │           ├── AndroidVideoDecoderPolicy.h
                                                             # ① 全局 Android 解码策略接口：apply(forceHardwareDecoding) 安装产品 H.264/H.265 厂商硬解选择规则，hardwareRetryFactoryNames 按当前分包格式返回候选工厂。
                                                             # ② 时序要求：GStreamer 已初始化而两路 decodebin 尚未创建时调用；本接口决定可自动选择的 rank 和候选集合，单条流的失败证据、重试次数与代次由 Recovery/Fallback 管理。
 │   │           ├── AndroidVideoDecoderRecovery.cc
                                                             # ① 失败诊断：订阅主路启动和逐阶段出帧信号，用 _armFirstFrameWatchdog 检查首次显示，_handlePipelineError 区分源错误与解码分支错误，旧 URI/代次事件不影响当前管线。
-                                                            # ② 恢复执行：_restartAfterDecoderFailure 将有效证据交给 AndroidH265DecoderFallback，必要时切换兼容格式/硬解候选，等待停止完成后重启；正常 sink 出帧解除首帧等待。
+                                                            # ② 恢复执行：_restartAfterDecoderFailure 将有效证据交给 Fallback，必要时切换格式/硬解候选；原生 timeout 只准备满足证据条件的一次 H.265 格式重试，不重复 stop；等待停止完成后重启，正常 sink 出帧解除首帧等待。
 │   │           ├── AndroidVideoDecoderRecovery.h
                                                             # ① 主路首帧恢复观察器：install 将 QObject 观察器挂到主 VideoReceiver，声明管线代次、源帧、解码器选择/出帧、sink 出帧、错误及停止完成处理接口。
                                                             # ② 状态组成：保存当前 URI/generation、编码/工厂、已接收帧证据和首帧 watchdog；这是主路的恢复驱动，第二路等价时序由 DualVideoManager 自身实现。
@@ -804,7 +804,7 @@ custom/
                                                             # ② 使用测试服务替身与离屏场景，覆盖窄屏、字号及控制/本地媒体不同可用状态；不代表实际网络和设备响应。
 │   │   ├── CameraControlPreviewTest.py
                                                             # ① 一级栏集成与预览：将真实覆盖页面以原生 QRC 基址加载，按生产 CMake 的 QML_FILES/alias 生成 Custom.FlightDisplay 测试资源与类型清单；检查选择器可解析、A8/Rouke 切换、变倍/拍照/录像及收尾。
-                                                            # ② 生成两种一级栏、镜头选择、相机参数滚动分段和测距页面截图；应用服务及设备状态由替身提供，模拟 URL 覆盖后的内容和基址，不执行 C++ 拦截器或编译 QML 缓存，不代表完整地面站和硬件运行画面。
+                                                            # ② 检查双列上下同宽、移动端字号及触控尺寸、罗盘避让、实际触摸/滚轮滚动、离线操作无派发及录像停止；离线设置可打开/切页/编辑草稿，断线保留页面，重连不自动下发。生成一级栏和参数页截图；服务及设备状态由替身提供，不执行 C++ 拦截器或编译 QML 缓存，不代表完整地面站和硬件画面。
 │   │   └── GimbalCompassTest.py
                                                             # ① 罗盘显示回归：加载实际 FlyViewCompassBar、FlyViewCustomLayer、DualPipView 和原生 PipState，执行从 FlyView.qml 提取的主画面绑定，检查标准刻度、左右转方位标签接近中心、两条独立航向、角度环绕、A8/地图/MT11 切换及隐藏后的 inset。
                                                             # ② 运行与边界：使用 PySide6 离屏渲染和自带 rcc 生成临时资源包，注册 CompassStubs 及脚本内字体/调色板替身；视频移除、三维/独立窗口、无效数据和失联纳入回归，不代替完整 QGC、真实遥测换算或 Android 实机验收。
@@ -926,15 +926,18 @@ custom/
                                                             # ② 检查逐字节/跨中文边界重组、连帧、残帧恢复、头尾/校验/长度错误、非法 JSON/字段类型及失败输出不变；无需真实设备。
 │   │   ├── RoukePayloadControllerTest.cc
                                                             # ① 独立本机 UDP 回归：验证 53022 连续分段封装、长 ACK 重组、来源/地址过滤和状态确认。
-                                                            # ② 测试半帧失效、命令失败、超时、端点切换及私有收发状态；新增 11 项参数字段与范围、4 项读取、空 ACK/非法返回、歧义失效和排队停止，具体通过范围以 4.1 为准。
+                                                            # ② 测试半帧失效、超时、端点切换及私有收发状态；覆盖 11 项参数字段与范围、4 项读取、超时后合法 GET 恢复而保留写锁、迟到空 ACK、排队停止及诊断计数，具体通过范围以 4.1 为准。
 │   │   ├── RoukeGimbalControllerTest.cc
                                                             # ① 遥控运动回归：真实本机 UDP 接收端独立拼接 53022 数据，检查双轴协议值、中位解锁、量程/死区、刷新、停轴、断流和零速补发。
-                                                            # ② 回中与隔离：检查 CH14 边沿、先停再回中、回中后重新归中、相机 pending 下停止，以及配置变化和方向反转；不控制实际设备。
+                                                            # ② 回中与隔离：检查无效 CH14 不阻断双轴及按钮恢复后重新释放、CH14 边沿、先停再回中、回中后归中、相机 pending 下停止、配置变化和方向反转；不控制实际设备。
 │   │   ├── RoukeStubs/
                                                             # 柔克独立控制测试的最小依赖入口
-│   │   │   └── MAVLinkLib.h
+│   │   │   ├── MAVLinkLib.h
                                                             # ① 测试方言入口：通过团队 all 方言入口 mavlink.h 获取 53022 的类型和编解码函数。
                                                             # ② 只由独立测试 include 路径使用，不替换应用原生 MAVLinkLib；网络收发仍使用真实 QUdpSocket。
+│   │   │   └── QGCLoggingCategory.h
+                                                            # ① 测试日志适配：将 QGC_LOGGING_CATEGORY 映射为 Qt 日志类别，保留生产类别名、过滤和日志内容，免于链接完整应用日志注册器。
+                                                            # ② 仅用于独立控制器测试；诊断回归检查超时分类汇总、不打印连续速度包及原始 JSON，不替换产品日志实现。
 │   │   ├── SiyiModeQueryTest.cc
                                                             # ① A8 模式查询通信测试：使用本地 UDP 端点核对明确模式命令的线上字节、当前查询端口和配置来源匹配，并检查普通相机请求报文保持有效。
                                                             # ② 请求隔离：模拟取消、重连、查询过期与零序号回复，确认旧 socket/旧请求反馈不会被接受或干扰普通轮询；测试生产 SiyiSdk 和 Protocol 的模式通道，不要求连接实际相机。
@@ -1315,6 +1318,12 @@ Balsam 转换由独立 QProcess 执行，同一时刻只运行一个导入。工
 
 `setPrimaryVideoReceiver()` 还订阅主路的 `onStartAttempt`、`onStartComplete`、`onStopComplete` 和销毁通知。主路“配置中、启动中、活动中、释放中”的 URI 均参与第二路重复源判断；`_recordPrimaryActiveUri()` 与 `_schedulePrimaryActiveUriClear()` 负责交接期间的占用信息。
 
+2026-11-06 补齐第二路对原生 `lowLatencyMode` 的监听。改变设置后更新 receiver 的期望值，已有/启动中的管线等待原有停止完成路径再重建；空闲重试保持原退避期限，用户暂停时不自动恢复播放。该设置在 Gst 管线启动时冻结，不能仅改变界面 Fact 而继续沿用旧管线。
+
+第二路还跟踪实际显示窗口的 `sceneGraphInvalidated/sceneGraphInitialized`。真正失效时，渲染线程信号经排队连接交回 GUI 线程；先串行停止并释放旧 receiver/sink，再通过 `renderItemEnabled` 卸载旧 QML GL 视频项，待同一有效窗口的场景图就绪后重新创建。窗口及初始化代次防止旧窗口回调、旧渲染任务重新启动已失效对象；恢复期窗口变更不依赖 Loader 已有 item，用户暂停状态继续保留。Loader 的旧项先脱离窗口、随后延迟销毁，`_ensureReceiver()` 拒绝无窗口项，防止 `findChild()` 在此间隙重新绑定旧对象。同一窗口内正常 PIP 主辅切换不触发这项重建，也不把每次进入后台当作图形上下文丢失。
+
+此处理依据 [Qt 6.8 场景图失效信号](https://doc.qt.io/qt-6.8/qquickwindow.html#sceneGraphInvalidated) 与当前默认 [GStreamer 1.22.12 Qt GL 视频项实现](https://github.com/GStreamer/gstreamer/blob/1.22.12/subprojects/gst-plugins-good/ext/qt6/qt6glitem.cc)：旧视频项失效时未完整清除初始化标志和上下文，因此仅重启接收管线不足以重新绑定新上下文。修复放在 custom 的第二路生命周期及 QML Loader，不修改原生或下载的插件源码；首路原生图形资源重建不属于该 custom 修复的覆盖范围。
+
 **插件把视频对象交给相机模块**
 
 `CustomPlugin::createVideoSink()` 通过 receiver 的父对象判断是否属于 DualVideoManager，通过 thermal 身份排除热成像原生支路：
@@ -1375,9 +1384,11 @@ RTSP 使用 GStreamer 原生 Auto 传输协商，GIO 默认直连；确需代理
 1. `AndroidVideoDecoderPolicy::apply()` 在 GStreamer 初始化后、decodebin 创建前建立厂商候选，并注册 H.265 适配器。
 2. 历史 `AndroidH265StreamFormatPolicy` 保留为 MT11 纯策略及回归来源；当前插件不再按 MT11 主机强制初始格式。GstVideoReceiver 在启动新 generation 时冻结通用格式配置。
 3. `AndroidH265HardwareDecoderAdapter` 负责规范化码流并连接实际 MediaCodec；`AndroidH265DecoderCapsPolicy` 提供 decoder 输入的 byte-stream/AU CAPS；码流格式选择和厂商候选选择是两个独立步骤。
-4. 主路 `_handlePipelineError()` / `_restartAfterDecoderFailure()`，或第二路 `_handleDecodeStartupTimeout()`，将本代事实交给 `AndroidH265DecoderFallback::prepareHardwareRetry()`。
-5. Fallback 使用 `AndroidH265DecoderRoutePolicy::orderedRetryFactories()` 去重排序，再由 `nextRoute()` 推进；URI 改变由 `install()` 安装的观察逻辑清理，输入格式改变由 `resetForCurrentInputFormat()` 重建该格式下的尝试状态。
+4. 主路 `_handlePipelineError()` / `_restartAfterDecoderFailure()`，或第二路 `_handleDecodeStartupTimeout()`，将本代事实交给 `AndroidH265DecoderFallback::prepareHardwareRetry()`。两路原生 timeout 回调另接入 `prepareCapsOnlyTimeoutRetry()`：仅在同 URI 有效代、已确认 H.265、尚无 source/decoder/sink 帧且未切换 byte-stream 时，允许下一代进行一次格式切换；不额外发起停止，不依据未知编码或单纯断网轮换解码器。没有任何编码证据的 parser 停滞仍走普通重连。
+5. Fallback 使用 `AndroidH265DecoderRoutePolicy::orderedRetryFactories()` 去重排序，再由 `nextRoute()` 推进；URI 改变由 `install()` 安装的观察逻辑清除格式及候选，同 URI 重连保留已有兼容格式；旧 URI 回调和零代次不能改写当前路由。输入格式改变由 `resetForCurrentInputFormat()` 重建该格式下的尝试状态。
 6. 路由变化只作用于失败 receiver 的后续管线；候选用完回到首选适配器作为稳定路由，仍保持硬解约束。
+
+Android 静态 GStreamer 构建必须提供 `GST_PLUGIN_androidmedia_FOUND`，否则 custom 解码策略文件编译时给出明确错误，避免缺少 MediaCodec 插件的配置被忽略。该宏来自原生 `GStreamer::Plugins` 的传递依赖；检查插件打包不等于证明遥控器上的厂商解码器支持实际流的分辨率、profile 或双路并发。
 
 #### 3.2.4 A8 播放后停滞恢复
 
@@ -1565,16 +1576,22 @@ GimbalCameraControl / GimbalZoomControl
     └── Rouke → RoukeCameraControl.qml  绑定 RoukeControlManager
                ├── Switch → LR1/OV2735  图标菜单选择视角
                ├── Focus/Center         对焦与回中
-               └── Photo/Record/Stop    拍照、明确录像启停与状态
+               └── Photo/Record         拍照、单按钮录像启停与状态
 ~~~
 
-`GimbalCameraControl.qml` 的 `controlColumn` 决定内部顺序，`panelColor/panelBorderColor/panelPadding` 定义面板，`actionSize/itemSpacing` 定义尺寸和间距。`photoSuccessFlash`、`recordingTimeText()`、`CameraStorageStatus` 分别处理成功闪烁、计时和 SD 卡状态。
+`GimbalCameraControl.qml` 的 `controlColumn` 是双列 GridLayout，`panelColor/panelBorderColor/panelPadding` 定义面板，`actionSize/cellWidth/itemSpacing` 定义尺寸和间距。`photoSuccessFlash`、`recordingTimeText()`、`CameraStorageStatus` 分别处理成功闪烁、计时和 SD 卡状态。
 
 该面板把尺寸/颜色传给 `GimbalZoomControl.qml` 的 `controlSize/controlSpacing` 等属性，因此统一调整整栏样式时应同时看父组件传值。倍率区的 `zoomInButton/zoomOutButton/targetZoomLabel` 定义具体外观；`holdThresholdMs/holdStartRetryMs` 决定手势识别时机。柔克使用独立面板，修改其控件布局需查看 `RoukeCameraControl.qml`。
 
 2026-11-05 一级栏与顶部负载选择器统一为深石墨小圆角矩形、冰蓝反馈和共用矢量图标，外框圆角为 `0.55 × defaultFontPixelHeight`（基准字号下 11 px），按钮按压底圆角为 `0.4 × defaultFontPixelHeight`。各操作默认只显示约 24 px 的浅色线条图标，拍照使用相机轮廓，移除常亮白底、外圈与加大尺寸；录像在未开始时也使用中性色，停止使用圆形轮廓内的实心小方块（`recordStop`）。悬停只提亮图标，按下时显示冰蓝底 `#b8e7f2` 和深色图标 `#163744`，图标内容缩放到 0.94；松开恢复，实际点击区域不缩小。负载/镜头选中及设置展开只用图标颜色提示；录像红色依赖 `recordingSessionCapturing` 的实际采集状态，等待启动回执不显示为已录制。本地录制仍按既有设置独立运行，移除主栏本地提示不等于关闭本地保存。
 
-图标采用统一圆润线条，重绘相机肩部与镜头、A8 云台支架、对焦取景框、镜头切换箭头及设置滑杆。A8 用放大镜加/减号、中心倍率、拍照和单一录像按钮；录像时长置于图标下方，固定栏宽。两个面板底部均仅居中显示 SD 红绿小圆点，不再显示 LOCAL/PC 标记。Rouke 使用切换、回中准星、对焦取景框、拍照、单一录像按钮和底部设置图标，说明文字移入悬停提示与无障碍名称；对焦仍紧邻拍照上方。Rouke 的录像外观与 A8 一致：默认录制圆点，实际录制后红色停止图形与计时，再次点击停止，取消独立停止按钮。`CameraControlIcon.qml` 负责统一线条，`CameraControlButton.qml` 负责普通一级按钮，设置参数按钮由 `RoukeCameraButton.qml` 负责；设置页读取与关闭这类纯图标按钮也采用透明默认底和按压反馈。
+图标采用统一圆润线条，重绘相机肩部与镜头、A8 云台支架、对焦取景框、镜头切换箭头及设置滑杆。2026-11-06 起，两路一级栏统一双列：A8 的加/减变倍同排，倍率跨行，拍照/录像同排；Rouke 依次为镜头切换/回中、对焦/设置、拍照/录像，对焦仍在拍照正上方。录像时长置于图标下方，固定栏宽，两个面板底部均居中显示 SD 红绿小圆点。Rouke 的录像外观与 A8 一致：默认录制圆点，实际录制后红色停止图形与计时，再次点击停止，保留单按钮。`CameraControlIcon.qml` 负责统一线条，`CameraControlButton.qml` 负责普通一级按钮，设置参数按钮由 `RoukeCameraButton.qml` 负责；设置页读取与关闭这类纯图标按钮也采用透明默认底和按压反馈。
+
+上方选择器与下方两路控制栏统一宽度：每列为 `max(2.25 × defaultFontPixelHeight, 移动端 minTouchPixels)`，左右内边距与列间距均为 `0.22 × defaultFontPixelHeight`。下栏收窄，保持图标大小、按钮高度和最小触控宽度；不扩大上方选择器来配合下栏。录像按压背景同时限制在单元宽度内。
+
+一级栏由外层 `cameraColumnScroll` 统一处理高度。原生 FlyViewWidgetLayer 已将右侧列锚定在底部仪表/罗盘上方；滚动视口允许缩短并裁切内容，两路面板保留完整隐式尺寸，不缩小触控目标。小屏或大字号时可以滑动到剩余控件，切换负载后回到顶部。面板背景及普通按钮允许外层接管滑动，拖动后取消点击；A8 变倍按钮保留独立长按手势，栏上滚轮不传给地图。Rouke 不再按整个窗口高度单独估算可用区域，也不保留内部嵌套滚动。
+
+**未连接状态**：普通拍照、开始录像、变倍、对焦、回中和镜头切换要求 `sdkResponding`，离线时统一灰色并禁止点击，即使已配置 UDP 或开启本地媒体保存也不从一级栏发起新设备操作。负载选择器离线时同样灰显，但仍可切换查看 A8/Rouke 面板。Rouke 设置入口离线灰显但保持可点击，二级设置与相机参数/测距拍照两个三级页均可打开、切换、滚动和编辑草稿；2026-11-09 起，只读查询允许在 UDP 配置有效但尚未响应时发送，应用仍要求 SDK 在线，重连不自动提交草稿。断线会关闭镜头菜单并取消 A8 长按变倍，保持已打开的 Rouke 设置页及未提交草稿。已有录像会话或停止意图保留停止入口：A8 继续遵守 `videoRecordingAvailable` 与 `recordingSessionActive`，Rouke 使用 `recordingStopRequired`，确保本地收尾和远端停止重试不被普通离线门禁拦截。在线状态由合法负载回应刷新，SD 查询及设置页四项 GET 均可建立首次回应。移除 Rouke 一级栏的三角感叹号错误按钮，后台错误状态及设置页的具体错误反馈仍保留。
 
 **柔克单按钮启停**：`recordButton` 调用 `RoukeControlManager.toggleVideoRecording()`，Manager 与 QML 都以 `recordingStopRequired` 判断下一步动作，true 为停止、false 为开始；不使用“当前已确认录像”一个布尔值猜测点击方向。开始命令已发出或本地启动后即保留停止意图，开始 pending 或 ACK 丢失后再次点击仍是停止；停止正在等待时连点不重复排队，停止拒绝或超时保留停止方向供重试。实际采集仍由 `recordingSessionCapturing` 决定红色与计时，停止意图本身不会误显示为已录制。本地录制沿既有独立清理路径收尾。
 
@@ -1598,7 +1615,7 @@ GimbalCameraControl / GimbalZoomControl
 
 本分支的 Video 2 和右侧第二个相机面板改为柔克。A8 Mini 保持 Video 1；旧 MT11 源码、设置键和回归测试留在仓库，产品构建排除旧 MT11 业务源码，不再实例化 Mt11Sdk 或接通其 UniRC 路由。
 
-当前接入 LR1/OV2735 视角切换、一次对焦、云台回中、拍照及显式开始/停止录像，并通过 UniRC CH11/CH12 控制偏转/俯仰速度，CH14 触发回中。相机栏底部设置入口提供相机参数与测距拍照两个子页面，覆盖 ISO、白平衡、MF/AF、快门速度、焦距原始值、光圈、成像质量、图片大小、测距触发开关、拍摄距离和距离阈值。SD 支路经柔克回执确认，本地媒体沿独立 Video 2 处理，详见 3.5。Rouke 独立相机栏没有放大/缩小按钮，也不复用 A8 的变倍控件；现用 SEL85F18 是定焦镜头，厂商协议未提供变倍命令。设置焦距原始值不等于光学变倍。LR1/OV2735 是两路图像源选择，不能据此推断广角、红外或朝向。
+当前接入 LR1/OV2735 视角切换、一次对焦、云台回中、拍照及显式开始/停止录像，并通过 UniRC CH11/CH12 控制偏转/俯仰速度，CH14 触发回中。相机栏第二行右侧的设置入口提供相机参数与测距拍照两个子页面，覆盖 ISO、白平衡、MF/AF、快门速度、焦距原始值、光圈、成像质量、图片大小、测距触发开关、拍摄距离和距离阈值。SD 支路经柔克回执确认，本地媒体沿独立 Video 2 处理，详见 3.5。Rouke 独立相机栏没有放大/缩小按钮，也不复用 A8 的变倍控件；现用 SEL85F18 是定焦镜头，厂商协议未提供变倍命令。设置焦距原始值不等于光学变倍。LR1/OV2735 是两路图像源选择，不能据此推断广角、红外或朝向。
 
 #### 3.4.2 配置与使用
 
@@ -1617,9 +1634,9 @@ GimbalCameraControl / GimbalZoomControl
 3. 在飞行页右侧选择“Rouke”，中英文界面均保留此名称，按需要执行命令并观察回执。控制栏经 QRC 加载 `RoukeCameraControl.qml` 并绑定 `roukeControlManager`；旧 MT11 面板不在产品资源中。录像使用一个按钮开始/停止，开始请求后再次点击即请求停止，等待回执时仍可停止；SD 红绿灯与录像方向独立。
 4. 开启本地保存后，设备控制不可用仍可尝试保存本地解码画面；分别观察 SD 和 LOCAL 的结果。
 5. 使用遥控器前先让 CH11、CH12 双轴归中，CH14 先释放再按下。CH14 只执行 Rouke 回中，不与 A8 CH10 的回中/俯视交替共用状态；操作与保护规则见 3.7.2。拍照/录像等待回执期间仍可操控云台和请求回中。
-6. 对焦位于拍照上方。点击控制栏底部“设置”，进入二级设置面板；默认打开“相机参数”，另一个页签为“测距拍照”。两个三级页面均可纵向滚动，标题和页签固定，窄窗口保持正常字号并将内容向下排列。主控制栏在窗口高度不足时允许滚动，底部设置入口固定可达；切换负载、关闭模块或离开当前控制栏时收起设置面板。
+6. 对焦位于拍照上方。“设置”在双列控制栏的第二行右侧，设备在线或离线均可点击进入二级设置面板；默认打开“相机参数”，另一个页签为“测距拍照”。两个三级页面均可纵向滚动，标题和页签固定，窄窗口保持正常字号并将内容向下排列。离线可查看并编辑草稿；UDP 配置有效时允许只读探测，不要求 SD 查询先回应，写入仍需负载响应。主控制栏在罗盘上方可用高度不足时整体滚动；设备失联保持设置页和未提交草稿，切换负载、关闭模块或离开当前控制栏时收起设置面板。
    一级设置入口现为滑杆图标；二级标题与三级页签带相机/测距图标，曝光、镜头、图像及距离分组使用对应矢量符号。参数行以轻分隔线和确认值徽标区分层级，读取使用循环箭头图标，应用保留明确动作文字；小屏页签简写“相机 / 测距”，完整名称仍提供给辅助功能。
-7. 每项编辑后单独点击“应用”，等待设备确认；支持读取的 ISO、白平衡、焦距值和图片大小可单独读取。编辑中的值不是设备当前值。测距触发编辑选项默认关闭，打开面板或切换页签不自动发送启用命令；尚无回执时设备状态显示未确认。
+7. 每次打开设置页，串行读取协议支持的 ISO、白平衡、焦距值和图片大小；每项结束或超时后才读取下一项，不等待 SD 卡回包。可单独点击读取重试；关闭页面或更改端点取消尚未发送的队列，已发请求继续等待自身回执/超时。其余七项协议只提供设置，不能自动获取当前值。每项编辑后单独点击“应用”，等待设备确认；编辑中的值不是设备当前值。测距触发编辑选项默认关闭，打开页面、切换页签或重连均不自动写入设备。
 
 **设置参数与协议约定**（来源：《控制命令M400.md》）
 
@@ -1642,7 +1659,7 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 
 **设置执行与状态流转**：`RoukeCameraParameter` 保存输入草稿 → 点击应用/读取 → `RoukeControlManager.setCameraParameter/requestCameraParameter` → Controller 根据参数表生成字段并校验整数及范围 → 复用 53022 请求通道 → 合法、同会话 ACK 更新 `cameraParameters` → 卡片显示确认值。`pendingParameter` 标识正在等待的卡片，等待期间禁止叠加参数请求；显式录像停止和独立云台回中仍沿既有路径工作。
 
-设置命令的成功空 `data` 按文档表示确认所提交值；读取命令必须返回合法字段，缺失/越界不能当作 0。设备明确拒绝时保留此前确认值并显示错误；超时或歧义回执撤销该参数确认，15 s 未收到有效回应及端点配置改变会清空参数确认。一次对焦及切换对焦模式成功后清除旧焦距值，需要重新读取；这两种动作超时、部分发送或回执歧义时，同样不能保留旧焦距确认。确认值表示本次会话最后已确认的值，不是持续参数遥测；界面打开、关闭和排版变化均不发送设备命令。
+设置命令的成功空 `data` 按文档表示确认所提交值；读取命令必须返回合法字段，缺失/越界不能当作 0。设备明确拒绝时保留此前确认值并显示错误；超时或歧义回执撤销该参数确认，15 s 未收到有效回应及端点配置改变会清空参数确认。一次对焦及切换对焦模式成功后清除旧焦距值，需要重新读取；这两种动作超时、部分发送或回执歧义时，同样不能保留旧焦距确认。确认值表示本次会话最后已确认或读回的值，不是持续参数遥测；仅打开页面触发上述一次 GET 队列，切换页签、排版变化和状态通知不新增读取循环。
 
 显式设置地址码为 -1 时 socket 可接收并观察合法回包地址，但观察值仅供诊断，不自动覆盖设置或启用命令。UDP 本地写出成功不代表负载执行成功，视频出画面也不代表控制链路在线。
 
@@ -1709,11 +1726,17 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 | 完成 | 同 cmd 的 `ack`、`code=0/1` | 成功才更新视角、录像已知状态或照片计数；拒绝显示设备 msg，不把本地发送当成功 |
 | 超时与失效 | 命令 3.5 s；回应新鲜度 15 s | 命令不自动重发；15 s 无合法负载回应时视角/录像置未知；配置变化取消 pending 和排队停止并清除旧会话 |
 
-厂商 JSON 没有事务序号。相机和回中各自只能按 cmd 与等待窗口关联，不能证明超时后再次发送同名命令时的迟到 ACK 属于哪次请求。因此一般命令发生超时或部分发送失败后，本次端点会话中该命令的后续 ACK 只视为可能回应，保持设备状态未知、不增加照片成功计数，直至重新建立端点会话。录像停止重试有一个同方向例外：如果未确认请求全部为停止，没有开始结果不确定，则合法停止 ACK 可确认已停止；如果开始曾超时或部分发送，后续空 ACK 仍不能排除迟到开始回执，继续保留停止方向与未知状态。
+厂商 JSON 没有事务序号。相机和回中各自只能按 cmd 与等待窗口关联，不能证明超时后再次发送同名命令时的迟到 ACK 属于哪次请求。写入/动作发生超时或部分发送失败后，本次端点会话中该命令的后续 ACK 只视为可能回应，保持其执行结果未知、不增加照片成功计数，直至重新建立端点会话。录像停止重试有一个同方向例外：如果未确认请求全部为停止，没有开始结果不确定，则合法停止 ACK 可确认已停止；如果开始曾超时或部分发送，后续空 ACK 仍不能排除迟到开始回执，继续保留停止方向与未知状态。
+
+参数读取另作区分：当前 pending 是文档明确支持的 GET，且同命令成功回执带合法值时，允许接收设备报告值，避免一次超时使之后的读取永久失效。纯 GET 的超时/部分发送仅记录可能迟到的读取回包，不占用写入结果不确定锁；已有写入/动作歧义保护也不能由 GET 清除。ISO、白平衡、图片大小的 GET/SET 共用 cmd；存在未确定的旧请求时，空值或非法值的成功 ACK 不结束当前 GET，继续等到有效值或原定超时。焦距 GET 与 SET 命令名不同，仍各自关联。
+
+只有迟到 GET 风险而没有写入不确定锁时，后续 SET 可兼容空成功 ACK；非空成功 ACK 必须带合法值且严格等于本次提交目标，才能更新为目标值报告。不同值或非法值继续等待原截止时间，不覆盖本次目标、不延长超时；真正 SET 超时后仍进入写入不确定锁。M400 对 ISO/白平衡/图片大小给出的 GET/SET 回执均可带值，因此不能假定所有 SET 都只回空 data。相等值报告不能证明是哪次事务执行，界面确认值始终表示最后收到的设备状态证据，而不是带事务序号的写入保证。
 
 同一 UDP 数据报及跨包内层帧都保留起始时的本地请求序号，避免前一条 ACK 触发排队停止后，剩余重复 ACK 或旧半帧又确认新停止请求；这个本地序号不写入 MAVLink 或 JSON，不能解决全部网络迟到情况。单按钮仍能请求停止，但发送成功不等于已确认停止；需按协议回执、设备行为及厂家事务关联约定验收。
 
 长 ACK 通过同一连续流重组路径处理，较长中文错误说明或较大 `data` 无需塞入单条 53022。只有完成内层帧校验后才更新回应新鲜度、结束 pending 或显示设备结果，单独收到一个合法 MAVLink 分段不等于收到完整 ACK。
+
+诊断类别为 `gcs.custom.gimbal.rouke.payload`。配置生效时记录目标 IP/端口、请求及实际绑定的本地端口、payload_addr 和 available；相机、回中或 SD 查询超时才输出本端点会话的接收计数，区分无 UDP、来源 IP/端口拒绝、MAVLink CRC/签名失败、非 53022、relay 字段错误、内层重同步/未完成流、source/target 或地址码不匹配，以及命令关联失败。计数在端点重设时清零，是会话累计值而非单次命令的回包数；不逐条记录 20 Hz 速度包，也不输出原始 JSON。此诊断不改变回包接纳规则，不能将本机发送成功或历史累计匹配数当成当前设备已执行。
 
 **云台控制方式的选择**
 
@@ -1744,6 +1767,10 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 消息定义和生成的头文件分别在团队两个仓库的 `SecDev/ft/rouke` 分支维护。QGC 应用分支为 `SecDev/rouke`。本版 53022 的 [XML 定义](https://github.com/Glados07/mavlink/blob/6f9464e4881b3f407be2f67c2b5059310ece8f90/message_definitions/v1.0/rouke.xml) 对应源码提交 `6f9464e4881b3f407be2f67c2b5059310ece8f90`。该版本的 pymavlink 子模块提交为 `fcaa2c7d25e3169dc66155929c338487941555e9`。[团队 all 消息表](https://github.com/Glados07/c_library_v2/blob/b498a888ffc58a4dbe9c0f651207b70c978c7b0b/all/all.h) 所在的头文件提交为 `b498a888ffc58a4dbe9c0f651207b70c978c7b0b`，对应 QGC 的 `QGC_MAVLINK_GIT_TAG`。
 
 修改消息定义时，在团队协议仓库更新 XML，通过该仓库固定的 `pymavlink` 重新生成 MAVLink 2 C 头文件。将生成结果发布到团队头文件仓库后，在 `custom/cmake/CustomOverrides.cmake` 更新头文件提交号，重新运行目标 Kit 的 CMake 并构建。柔克 JSON 命令、连续流分段和 UDP 传输由 `custom/src/Gimbal` 维护，只改这些业务行为时可以继续使用同一 53022 定义。
+
+本产品固定提交号以保证可复现，并非每次构建自动追踪远端最新提交。2026-11-09 再次只读核对，远端 `SecDev/ft/rouke` 仍为上述 `b498a888…`，与配置及用于专项编译的本地干净头文件库一致；编译 include 记录确认真实 `src/MAVLink/MAVLinkLib.h` 引入团队 `all/mavlink.h`。Controller 同时以 `static_assert` 检查 53022、CRC 37、LEN/MIN_LEN 132、data 容量 128，防止未来用不兼容定义构建。这些检查不能追溯证明未知旧 APK 的头文件来源，旧包须以其构建缓存、编译记录或产物版本为准。
+
+**旧版三项现象的判断边界**：`rtsp://192.168.144.100:8554/live` 已由用户确认为其他播放器的可用地址，与本产品默认值一致；Video 2 直接拉取该 RTSP，不依赖 53022 ACK、SDK 在线状态或 CH11/CH12。参数与云台命令则经独立 UDP 发往 `.110:8888` 交给 AI 盒子。源码可复现的缺陷包括 CH14 无效连带禁用双轴、设置页无初次 GET 且读取依赖 SD 响应、一次超时后合法 GET 仍被拒绝，现已分别修复。无法仅凭截图认定旧设备一定触发了哪一条件；未取得旧版视频日志，视频失效的唯一现场原因仍未锁定，没有证据将其归因于 MAVLink 编解码错误。已有 -1 地址码、本地回传端口、AI 盒子转发及实际编码/硬解情况仍以设备配置和实测为准。
 
 当前团队头文件的夹爪动作已由原生基线的 `GRIPPER_ACTION_RELEASE=0`、`GRIPPER_ACTION_GRAB=1` 改名为 `GRIPPER_ACTION_OPEN=0`、`GRIPPER_ACTION_CLOSE=1`，另增加 `GRIPPER_ACTION_STOP=2`。原生 `QGCMAVLink.h`、`Vehicle.cc`、`Joystick.cc` 仍用旧名，因此在 custom 构建层提供上述两个兼容别名。此兼容与固定的团队版本配套；以后升级 QGC 或协议提交时应复核是否仍需要，不能根据编译器的拼写建议映射到 CLOSE/STOP，也不能用 `#ifdef` 判断枚举项是否存在。`Invalid_option` 继续采用头文件的 `GRIPPER_ACTIONS_ENUM_END`（当前为 3），不占用 STOP 的动作值。
 
@@ -2064,6 +2091,8 @@ ACK 表示飞控接受了命令；实际模式匹配才是本次模式切换的�
 通道合理范围为 900～2100。CH9/CH10 无效时停用 A8 动作并重新等待初始状态；合法 SDK 回包仍维持当前 SDK 通道路由状态。CH7/CH8 无效值不当作手动输入。顶部 Center、Tilt 90、Yaw 模式动作也会同步共享的下一动作状态。Bluetooth 与 UART2 使用相同映射和动作保护。
 
 Rouke 双轴沿用 SDK 默认 1050～1950 量程和 1500 中值，包含端点的 1400～1600 为死区。死区外按剩余 350 的行程线性映射到配置速度上限，并按整数取整；紧邻死区的非零输入至少输出 1，合理范围内超过标称端点的值按满量程饱和。CH11 对应 yaw，CH12 对应 pitch，默认通道较大输出正数，两个方向可分别反转。原始速度单位和正方向需按厂家说明与实际安装校准。
+
+CH14 独立校验：未映射的 0 或其他越界值只禁用回中按钮边沿，不再连带停止有效的 CH11/CH12。按钮恢复后仍需重新释放再按下；任一旋转轴越界、350 ms 输入超时、后台/配置变化等条件继续停止运动，首次或恢复后仍要求双轴归中。
 
 最新双轴目标以 50 ms（20 Hz）节拍刷新，不积压旧运动命令；输入超过 350 ms 未更新、任一 Rouke 通道越界或控制被取消时停止。停转先立即发送全零速度，再以 50 ms 间隔最多补发两次零速；这只是 UDP 上的尽力停转，不保证设备收到。回中请求前先停止速度并取消后续零速补发，避免补发打断回中。CH14 回中优先于同帧的转向输入，回中等待结束或失败后必须收到新的双轴中位输入才能重新转动。重新连接时还要求 CH14 释放，持续按住不会补触发回中。
 
@@ -2753,6 +2782,28 @@ SD 状态接入后，Qt 5 / MSVC 生产 Controller 的定向 UDP 测试 20 项�
 
 默认关闭测试的配置验证使用 CMake 3.31.6 临时工程，按主工程顺序包含真实 `CustomOptions.cmake` 和 `CustomOverrides.cmake`，并复用关闭 BUILD_TESTING/启用 CTest 的分支。新建 Debug 默认关闭、旧原生 ON 缓存迁移、显式开启及保留选择、再次关闭、Release 下请求开启仍关闭、切回 Debug 恢复选择、Android 标记下默认关闭均符合预期；OFF→ON 后临时 CTest 用例 1/1 通过。配置记录位于 `tmp/custom-test-default-probe/*.log`。这是构建选项与缓存迁移验证，不是 Qt 全应用或 Android 编译验收。
 
+2026-11-06 双列与离线状态验证在 Windows / Qt-PySide6 6.10.2 中完成。`CameraControlPreviewTest.py` 中英文通过，继续按原生 QRC 基址及生产模块清单加载；新增移动端 731×411、800×480，各覆盖 100%/150% 字号，按原生布局关系在底部预留罗盘区域。两路栏均验证双列、触控尺寸不压缩、视口不越过罗盘边界、真实滚轮及触摸拖动、每个动作和最底部 SD 提示可滚动到完整可见；从拍照按钮开始滑动不会误拍。离线点击不派发命令、普通控件灰显、一级栏无三角警告，活动录像失联后仍可停止。既有选择器切换、变倍长按收尾、单按钮录像和设置预览继续通过；`RoukeCameraControlTest.py` 的参数交互及 5 组布局检查通过，未发现 QML 错误。日志为 `tmp/camera-mobile-{preview-en,preview-zh,layout-en,final-sd}.log`，最终 SD 可达性检查单独使用 `--mobile-only` 运行。
+
+本轮最新截图位于 `debug/camera-mobile-grid-20261106/{preview-en,preview-zh}/`：`mobile-a8-800x480-1.0-online.png`、`mobile-rouke-800x480-1.0-online.png` 展示完整双列，配套 `offline` 图片展示离线灰显；`mobile-rouke-731x411-1.5-scrolled.png`（中文目录）展示大字号滚到 SD 后仍避开罗盘。截图已目视检查，使用真实生产 QML、模拟设备状态与明确标注的罗盘预留区；本轮未完成 Qt 6.8.3 全应用构建或 Android 真机安装验收。
+
+同日按反馈收窄下方控制栏，使其与选择器同宽，并恢复 Rouke 离线打开二、三级设置。英文完整预览、中文移动场景及参数回归通过，日志为 `tmp/camera-width-offline-{preview-en,preview-zh,layout-en}.log`。检查两栏宽度及左右边界一致、触控尺寸、SD 居中和滚动；在 `controlAvailable=true` 但 `sdkResponding=false` 时，设置入口、两个页签、数值输入与枚举草稿可操作，读取/应用禁用且无命令派发。断线保留页面和草稿，重连不自动写入，切换负载仍关闭浮层。跨列倍率区域和 SD 行使用填满整行的布局，避免小数列宽逐层取整使内容偏移。更新后的预览位于 `debug/camera-width-offline-settings-20261106/{preview-en,preview-zh}/`，`mobile-{a8,rouke}-800x480-1.0-{online,offline}.png` 展示上下同宽，`offline-camera-settings.png`、`offline-range-settings.png` 展示离线打开两个参数页；验证边界仍为生产 QML 加测试服务替身。
+
+2026-11-06 Android 柔克视频代码专项：Windows / Qt 5.14.2 / MSVC 直接编译生产策略源文件，`AndroidH265DecoderRoutePolicyTest` 21 项、`A8RtspRecoveryPolicyTest` 26 项通过，均无失败；前者新增 11 行 CAPS 超时条件矩阵。另以真实 `AndroidH265DecoderFallback.cc` 启用 Android 分支，仅替换 MediaCodec 工厂目录信息，8 项通过，覆盖一次格式重试、双 receiver 隔离、同 URI 保留/新 URI 清空、旧 URI/零代拒绝、候选耗尽及未知编码/已有帧不触发。上述计数包含初始化和收尾，日志分别为 `tmp/android-video-policy-20261106/{ctest.log,h265-results.txt,rtsp-results.txt}`、`tmp/android-fallback-lifecycle-20261106/result.txt`。
+
+同一 Qt 5.14.2/MSVC 环境直接编译生产 `DualVideoManager.cc/.h`，使用真实 `VideoReceiver` 抽象接口和 Qt Quick，仅替换设置/插件服务及接收器实际 I/O。临时生命周期回归为 12 项通过、0 失败、1 项跳过（含初始化/收尾，10 个功能用例通过）：覆盖运行中/启动中/空闲/暂停时切低延迟设置、场景图信号排队处理、接收器→sink→显示项释放顺序、初始化先于停止完成的时序、暂停保持、同窗 PIP、旧窗口事件、实际 Qt Quick render job 的旧任务保护及退出。真实 Loader 延迟删除语义使用仍保留 QObject 父级的离窗旧项复现，确认泛型 init 不重建到旧项、显式新项可恢复。Qt 5 离屏插件无法创建 OpenGL 上下文，软件 RenderControl 不发出场景图初始化/失效信号，因此实际图形资源失效这一项明确跳过，不能当作 Android GL 通过。日志为 `tmp/dual-video-lifecycle-20261106/{build.log,ctest.log,build/lifecycle-results.txt}`。
+
+生产 `FlightDisplayViewSecondaryVideo.qml` 在 Qt/PySide6 6.10.2 软件表面替身上通过 Loader 卸载/重建、卸载期间换窗、连续 false→true、同窗缩放与 PIP 重挂载检查，无 QML 错误。定向检查证实卸载后的旧项在延迟删除前仍可被窗口 `findChild()` 找到，但 `window()` 已为空，因此接收器创建入口增加无窗口项过滤。命令与结果为 `tmp/secondary-video-loader-check-result.txt`、`tmp/secondary-video-loader-delete-check-result.txt`。这不覆盖实际 GStreamer GL 显示或 MediaCodec 解码。
+
+本轮无连接中的 Android 设备，环境也未配置完整 Qt 6.8.3 桌面/Android Kit，未执行完整产品构建、安装或真实 RTSP 播放；不能据此宣称柔克视频与双路硬解已在遥控器上通过。后续以同一 Video 2 URI/generation 的实际厂商 decoder、decoder 输出和 sink 首帧，配合持续可见画面及第 4.2 节场景完成验收。
+
+2026-11-09 对旧版“无视频、参数未知、CH11/CH12 不转”的源码专项已完成。11 月 6 日独立黄金报文比较使用 XML 字段布局和逐位 X25 CRC 计算期望值，与真实 QGC `MAVLinkLib.h` + 团队 `all` 头生成的报文逐字节一致，覆盖 V2/24 位 ID、CRC 37、0/7/128 字节数据和尾零裁剪，两个 CTest 通过；11 月 9 日只读复核远端 Rouke 分支仍与 pin 相同，证据为 `tmp/mavlink-audit-20261106/{wire-test.log,remote-heads-20261109.txt}`。本轮不修改生成库或线上协议。
+
+最终通信回归：真实 UDP 的读写风险分离专项 17 项通过（`tmp/team-rouke-controller/read-write-recovery-final.txt`），涵盖读取超时后恢复、三个共用命令的离线 GET→上线 SET、迟到不同值不完成 SET/不续期、真正写入锁优先，以及日志分类和连续速度不刷屏。再以真实 QGC wrapper 重编最新生产 Controller，新增读写边界 9 项通过；生产 Gimbal 的 CH14 隔离与既有双轴保护专项 10 项通过。此两项目标预置全部 16 个原生通道为 MAVLink 1 和固定序号，确认独立 UDP 不访问或修改原生通道状态。日志为 `tmp/mavlink-audit-20261106/build/{payload-read-write-final-20261109.txt,gimbal-results-20261109.txt}`；计数均含初始化/收尾。
+
+Manager 与生产 UDP 控制器联合验证 8 项通过，覆盖无 SD 回应仍串行 GET 四项、无 SET/重复循环、关闭保留已发请求并丢弃队列、换端点拒绝旧回应、超时只前进一步及等待已有命令结束。临时 Qt 5.14.2 工程使用生产 Manager 副本，仅为未执行的本地照片路径增加 QtConcurrent include、替换线程池 lambda 启动接口和两个 SingleShotConnection；设置/媒体服务为替身，队列及 UDP/ACK 实现未替换，不能当作完整 Qt 6 产品构建。最终后端修改后已联合重编复测，证据为 `tmp/rouke-parameter-refresh-20261109/{result.txt,validation-notes.txt,compatibility-diff.txt}`。
+
+Qt/PySide6 6.10.2 的英文完整、中文原生 QRC 移动入口和最新中文五组窗口回归通过，无 QML 错误；覆盖打开一次刷新/关闭取消、切页签和重连不重复刷新、UDP 可用但无响应时读取允许而应用禁用、草稿保留，以及七条“仅支持设置”提示在 320×640、150% 字号下完整显示。中文翻译编译为 342 条完成、0 未完成。日志为 `tmp/rouke-audit-{layout,preview,layout-zh}-20261109.log`；Python 只验证界面调用，四项真实队列由上述 Manager 测试覆盖。本轮仍无 Android/AI 盒子/负载设备和旧版视频日志，不能据主机通过宣称现场所有问题已解决。
+
 以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用产品测试开关，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
@@ -2777,14 +2828,14 @@ cmake --build <desktop-build> --target check_rouke_payload
 | `custom/test/Gimbal/GimbalCenterCoordinatorTest.cc`、`GimbalModeControllerTest.cc` | 控制权/回中事务和模式会话 |
 | `custom/test/Gimbal/GimbalModeUiTest.py` | 顶部模式 UI 回归脚本 |
 | `custom/test/FlightDisplay/RoukeCameraControlTest.py` | 柔克生产相机面板及双页设置；实际键鼠、参数确认/草稿、默认关闭、范围校验、滚动与大小窗口布局；独立离屏服务替身 |
-| `custom/test/FlightDisplay/CameraControlPreviewTest.py` | 原生 QRC 基址及生产模块清单下的类型解析、真实相机选择器及 A8/Rouke 一级栏、长按切换收尾与 Manager 归属、长时间录像栏宽、镜头图标菜单和所有设置页预览 |
+| `custom/test/FlightDisplay/CameraControlPreviewTest.py` | 原生 QRC 基址及生产模块清单下的类型解析、双列上下同宽、移动触控/滚轮与罗盘避让、离线无派发及录像停止；离线设置浏览/编辑与断线草稿保留、长按切换收尾、录像栏宽及页面预览 |
 | `custom/test/FlightDisplay/DualPipResizeTest.py` | PIP 实际鼠标事件与内容几何回归；独立于地图/视频后端 |
 | `custom/test/FlightDisplay/GimbalCompassTest.py` | 标准刻度、左右转时东西标签向中心接近、原始数值/字母含义、两条独立航向、北向连续性、主画面筛选、视频移除/三维、独立窗口及失联/无效数据/开关；只在测试移除视图时容许原生 PipState 恢复锚点的已知瞬态警告 |
 | `custom/test/Android/UniRcProtocolTest.cc` | UniRC `0x42`/`0x44` 请求与回包、signed8 质量及字段边界、混合帧、通道保护和 CH10 状态 |
 | `custom/test/Android/UniRcLinkStatusTest.cc` | 图传 0～5 格及质量边界、有效 0% 与未知状态、3 s 过期、相同样本续期、主动失效和恢复 |
 | `custom/test/Android/UniRcSerialPortTest.cc` | Unix 伪终端串口参数、收发/背压、错误与会话隔离；非 Unix 主机检查关闭状态和平台错误，跳过 Unix 用例 |
 | `custom/test/UI/UniRcLinkIndicatorTest.py` | 生产图传 QML 的强度/质量/无数据状态、分档及括号原始值实时变化、飞控连接显隐与云台前位置；详情首开字号与框体占比、标题单行、两数值实际字号一致和可见字形居中，以及深浅主题/窄屏/大字号布局 |
-| `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略 |
+| `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderRoutePolicyTest.cc` | 硬解路由、格式及 CAPS 策略；已确认 H.265 且无首帧的超时重试边界 |
 | 同目录 `A8RtspRecoveryPolicyTest.cc` | A8 停滞、时钟与恢复预算 |
 | `custom/test/UI/FlyViewSettingsLayout/` | Qt 6/PySide6 加载实际资源，检查宽窄屏、字号、主题、通道网格与 Fact 写入 |
 
@@ -2841,7 +2892,7 @@ ctest --test-dir <desktop-build>/custom -R '^(RoukeMavlinkTest|RoukeProtocolTest
 | 范围 | 必测行为 |
 |---|---|
 | 柔克参数设置 | 相机/测距页签默认与滚动、中文/大字号、对焦在拍照上方；11 项设置逐项核对设备实值，4 项读取验证返回；索引映射以厂商实机表为准；测距触发默认关闭草稿且未确认、仅显式应用才切换，端点断开/重连不得显示过期确认或自动开启；参数 pending 下录像停止和云台回中仍可用 |
-| 视频 | A8、柔克各自位于 URL 1/2；同时播放与交换；持续至少 10 min；断流重连；PIP 切换、前后台、surface 重建 |
+| 视频 | A8、柔克各自位于 URL 1/2；同时播放与交换，持续至少 10 min；断流重连、PIP 切换、前后台和真实场景图失效后的恢复；切低延迟设置后两路应用新值；换流不沿用旧地址的格式/工厂，手动暂停后不能自行恢复播放 |
 | PIP 缩放 | 双路播放及地图作为辅窗时，分别拖动上下手柄；连续放大/缩小、快速反向、拖出辅窗、触及上下限并返回、释放/取消后重拖、主辅切换及父窗口改变大小；确认跟手、无跳变和视频持续显示 |
 | Android 解码 | 按 receiver/generation 确认 CAPS、source、实际 decoder、decoder 输出和 sink 首帧；保持硬解，健康另一条流不被重建 |
 | A8 停滞恢复 | 连续至少 5 次关闭/打开 QGC，每次双路播放至少 120 s；无停滞时不重建；恢复遵守次数限制 |

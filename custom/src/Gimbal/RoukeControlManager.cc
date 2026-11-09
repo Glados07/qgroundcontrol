@@ -157,6 +157,10 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
     _localRecordingStopTimer.setInterval(kLocalRecordingStopTimeoutMs);
     _localPhotoSaveThreadPool.setMaxThreadCount(1);
     _sdCardPollTimer.setInterval(kSdCardPollIntervalMs);
+    _parameterRefreshTimer.setSingleShot(true);
+    _parameterRefreshTimer.setInterval(0);
+    connect(&_parameterRefreshTimer, &QTimer::timeout,
+            this, &RoukeControlManager::_requestNextCameraParameter);
     connect(&_sdCardPollTimer, &QTimer::timeout, this, [this]() {
         if (_controller.available()) (void) _controller.requestSdCardStatus();
     });
@@ -166,6 +170,9 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
     connect(&_controller, &RoukePayloadController::stateChanged, this, [this]() {
         emit stateChanged();
         _notifyRecordingSessionStateChanged();
+        if (!_parameterRefreshQueue.isEmpty() && !_controller.pending()) {
+            _parameterRefreshTimer.start();
+        }
     });
     for (Fact *fact : {_settings->roukeEnabled(), _settings->roukeUdpHost(),
                        _settings->roukeUdpPort(), _settings->roukeLocalPort(),
@@ -190,6 +197,7 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
 
 RoukeControlManager::~RoukeControlManager()
 {
+    cancelCameraParameterRefresh();
     _sdCardPollTimer.stop();
     _gimbalController.cancel();
     // Retire incoming camera ACKs before the bounded media-finalization loop.
@@ -214,6 +222,7 @@ bool RoukeControlManager::localMediaStorageEnabled() const
 
 void RoukeControlManager::_settingsChanged()
 {
+    cancelCameraParameterRefresh();
     _gimbalController.cancel();
     const bool active = enabled();
     const int port = _settings->roukeUdpPort()->rawValue().toInt();
@@ -246,6 +255,44 @@ void RoukeControlManager::_gimbalSettingsChanged()
         _settings->roukePitchSpeedLimit()->rawValue().toInt(),
         _settings->roukeYawReversed()->rawValue().toBool(),
         _settings->roukePitchReversed()->rawValue().toBool());
+}
+
+void RoukeControlManager::refreshCameraParameters()
+{
+    cancelCameraParameterRefresh();
+    if (!_controller.available()) {
+        return;
+    }
+    // These are the only parameter GETs defined by the M400 protocol.
+    // A valid endpoint is sufficient for a read-only first-response probe;
+    // neither an SD-card response nor a previous parameter ACK is required.
+    _parameterRefreshQueue = QStringList{QStringLiteral("iso"), QStringLiteral("whiteBalance"),
+                                         QStringLiteral("focusValue"), QStringLiteral("imageSize")};
+    _parameterRefreshTimer.start();
+}
+
+void RoukeControlManager::cancelCameraParameterRefresh()
+{
+    _parameterRefreshTimer.stop();
+    _parameterRefreshQueue.clear();
+    // An already transmitted request still owns its ACK/timeout. Closing the
+    // page must not relabel or cancel that request in the payload controller.
+}
+
+void RoukeControlManager::_requestNextCameraParameter()
+{
+    if (!_controller.available()) {
+        cancelCameraParameterRefresh();
+        return;
+    }
+    if (_controller.pending() || _parameterRefreshQueue.isEmpty()) {
+        return;
+    }
+    const QString key = _parameterRefreshQueue.takeFirst();
+    (void) _controller.requestCameraParameter(key);
+    if (!_controller.pending() && !_parameterRefreshQueue.isEmpty()) {
+        _parameterRefreshTimer.start();
+    }
 }
 
 bool RoukeControlManager::recordingSessionActive() const

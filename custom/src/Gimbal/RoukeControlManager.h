@@ -87,6 +87,8 @@ public:
         { return _controller.setCameraParameter(key, value); }
     Q_INVOKABLE bool requestCameraParameter(const QString &key)
         { return _controller.requestCameraParameter(key); }
+    Q_INVOKABLE void refreshCameraParameters();
+    Q_INVOKABLE void cancelCameraParameterRefresh();
     Q_INVOKABLE bool centerGimbal() { return _gimbalController.centerGimbal(); }
 
     void updateUniRcGimbalChannels(qint16 channel11, qint16 channel12, qint16 channel14)
@@ -112,6 +114,7 @@ signals:
 private:
     void _settingsChanged();
     void _gimbalSettingsChanged();
+    void _requestNextCameraParameter();
     void _handleReceiverStreamingChanged(bool active);
     void _handleReceiverDecodingChanged(bool active);
     void _handleReceiverRecordingChanged(bool active);
@@ -135,6 +138,8 @@ private:
     RoukeGimbalController _gimbalController;
     QTimer _localPhotoTimer;
     QTimer _sdCardPollTimer;
+    QTimer _parameterRefreshTimer;
+    QStringList _parameterRefreshQueue;
     QTimer _localRecordingStartTimer;
     QTimer _localRecordingStopTimer;
     QThreadPool _localPhotoSaveThreadPool;

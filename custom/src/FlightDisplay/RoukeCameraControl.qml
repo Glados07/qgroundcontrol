@@ -13,8 +13,8 @@ Rectangle {
     id: root
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.roukeControlManager : null
     readonly property bool available: Boolean(manager && manager.enabled)
-    readonly property bool canControl: Boolean(available && manager.controlAvailable && !manager.pending)
-    readonly property bool canSaveLocally: Boolean(available && manager.localMediaStorageEnabled)
+    readonly property bool canControl: Boolean(online && manager.controlAvailable && !manager.pending)
+    readonly property bool canSaveLocally: Boolean(online && manager.localMediaStorageEnabled)
     readonly property bool online: Boolean(available && manager.sdkResponding)
     readonly property real recordingActionSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
@@ -49,26 +49,16 @@ Rectangle {
         running: root.recordingSessionCapturing
         onTriggered: ++root.recordingSeconds
     }
-    readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.45
-    readonly property real actionHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.25,
-                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.22
+    readonly property real actionHeight: recordingActionSize
+    readonly property real cellWidth: Math.max(ScreenTools.defaultFontPixelHeight * 2.25,
+                                                ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    readonly property real itemSpacing: panelPadding
     readonly property bool settingsOpen: settingsPopup.visible
     property double settingsClosedAt: 0
     property double viewClosedAt: 0
-    readonly property string errorText: manager ? [manager.lastError, manager.localMediaError]
-                                                    .filter(function(value) { return value.length > 0 }).join("\n") : ""
-    property real remainingHeight: 10000
-    function updateAvailableHeight() {
-        remainingHeight = root.Window.window
-                ? Math.max(actionHeight * 2.2, root.Window.window.height - root.mapToItem(null, 0, 0).y - panelPadding)
-                : 10000
-    }
-    onYChanged: Qt.callLater(updateAvailableHeight)
-    onActionHeightChanged: Qt.callLater(updateAvailableHeight)
-    Component.onCompleted: Qt.callLater(updateAvailableHeight)
-    Connections { target: root.parent; function onYChanged() { Qt.callLater(root.updateAvailableHeight) } }
-    implicitWidth: Math.max(actionHeight, ScreenTools.defaultFontPixelHeight * 2.9) + panelPadding * 2
-    implicitHeight: Math.min(controls.implicitHeight + settingsButton.implicitHeight + panelPadding * 3, remainingHeight)
+    implicitWidth: cellWidth * 2 + itemSpacing + panelPadding * 2
+    implicitHeight: controls.implicitHeight + panelPadding * 2
     width: implicitWidth
     height: implicitHeight
     radius: ScreenTools.defaultFontPixelHeight * 0.55
@@ -83,18 +73,25 @@ Rectangle {
     onEnabledChanged: if (!enabled) closeTransientUi()
     onManagerChanged: { closeTransientUi(); recordingSeconds = 0 }
     onAvailableChanged: if (!available) closeTransientUi()
+    // Settings remain available for inspection and draft editing while offline.
+    onOnlineChanged: if (!online && viewMenu) viewMenu.close()
     Component.onDestruction: closeTransientUi()
     Connections {
         target: root.Window.window
         ignoreUnknownSignals: true
-        function onHeightChanged() { Qt.callLater(root.updateAvailableHeight) }
         function onVisibleChanged() { if (!root.Window.window || !root.Window.window.visible) root.closeTransientUi() }
     }
     Connections {
         target: Qt.application
         function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) root.closeTransientUi() }
     }
-    DeadMouseArea { anchors.fill: parent }
+    // Block map clicks, but allow the host Flickable to take scrolling gestures.
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        preventStealing: false
+        onWheel: function(wheel) { wheel.accepted = false }
+    }
     RoukeCameraSettings { id: settingsPopup; manager: root.manager; anchorItem: root }
     Connections {
         target: settingsPopup
@@ -144,195 +141,198 @@ Rectangle {
             }
         }
     }
-    Flickable {
-        id: cameraControlScroll
-        objectName: "cameraControlScroll"
-        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-        anchors.bottom: settingsButton.top
+    // The flight-view host constrains and scrolls this complete two-column panel.
+    GridLayout {
+        id: controls
+        objectName: "cameraActionsGrid"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         anchors.margins: root.panelPadding
-        clip: true
-        contentWidth: width
-        contentHeight: controls.implicitHeight
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        QtControls.ScrollIndicator.vertical: QtControls.ScrollIndicator {}
-        WheelHandler {
-            target: null
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            onWheel: function(event) {
-                const delta = event.pixelDelta.y || event.angleDelta.y / 120 * ScreenTools.defaultFontPixelHeight * 3
-                cameraControlScroll.contentY = Math.max(0, Math.min(cameraControlScroll.contentHeight - cameraControlScroll.height,
-                                                                    cameraControlScroll.contentY - delta))
-                event.accepted = true
-            }
-        }
-        ColumnLayout {
-            id: controls
-            width: cameraControlScroll.width
-            spacing: ScreenTools.defaultFontPixelHeight * 0.24
-            Item {
-                Layout.fillWidth: true
-                implicitHeight: ScreenTools.defaultFontPixelHeight * 0.9
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 6; height: 6; radius: 3
-                    color: root.manager && root.manager.pending ? "#ffcc80" : root.online ? "#65d9f4" : "#6d8592"
-                }
-                QtControls.ToolTip.visible: stateMouse.containsMouse
-                QtControls.ToolTip.text: root.manager && root.manager.pending ? qsTr("Waiting for payload")
-                                         : root.online ? qsTr("Rouke connected") : qsTr("Awaiting payload response")
-                MouseArea { id: stateMouse; anchors.fill: parent; hoverEnabled: true }
-            }
-            CameraControlButton {
-                id: viewButton
-                objectName: "viewButton"
-                Layout.alignment: Qt.AlignHCenter
-                iconName: "switch"
-                text: qsTr("Switch camera")
-                caption: root.manager && root.manager.viewKnown ? (root.manager.viewType === 4 ? "LR1" : "OV2735") : "—"
-                menuIndicator: true
-                checked: viewMenu.visible
-                enabled: root.canControl
-                implicitHeight: root.actionHeight * 1.3
-                onClicked: {
-                    settingsPopup.close()
-                    if (viewMenu.visible || Date.now() - root.viewClosedAt < 160) viewMenu.close()
-                    else viewMenu.open()
-                }
-            }
-            Rectangle { Layout.fillWidth: true; Layout.leftMargin: 10; Layout.rightMargin: 10; implicitHeight: 1; color: "#304956" }
-            CameraControlButton {
-                objectName: "centerButton"
-                Layout.alignment: Qt.AlignHCenter
-                iconName: "center"
-                text: qsTr("Center")
-                enabled: Boolean(root.available && root.manager.controlAvailable && !root.manager.gimbalCenterPending)
-                onClicked: root.manager.centerGimbal()
-            }
-            CameraControlButton {
-                objectName: "focusButton"
-                Layout.alignment: Qt.AlignHCenter
-                iconName: "focus"
-                text: qsTr("Focus")
-                enabled: root.canControl
-                onClicked: root.manager.autoFocus()
-            }
-            CameraControlButton {
-                objectName: "photoButton"
-                Layout.alignment: Qt.AlignHCenter
-                iconName: "camera"
-                text: qsTr("Take Photo")
-                enabled: root.canControl || root.canSaveLocally
-                onClicked: root.manager.takePhoto()
-            }
+        columns: 2
+        columnSpacing: root.itemSpacing
+        rowSpacing: root.itemSpacing
+        Item {
+            Layout.row: 0
+            Layout.column: 0
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            implicitHeight: ScreenTools.defaultFontPixelHeight * 0.6
             Rectangle {
-                id: recordButton
-                objectName: "recordButton"
-                readonly property bool recording: root.recordingSessionCapturing
-                readonly property string iconName: root.recordingSessionVisualActive ? "recordStop" : "record"
-                readonly property color iconColor: videoMouseArea.pressed ? "#163744"
-                                                   : root.recordingSessionCapturing ? "#ff6c80"
-                                                   : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857"
-                                                   : videoMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
-                readonly property string text: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
-                readonly property string statusText: root.recordingSessionPending && !root.recordingSessionCapturing
-                                                     ? "..."
-                                                     : root.recordingSessionFailed ? qsTr("FAILED")
-                                                     : root.recordingSessionVisualActive ? root.recordingTimeText() : ""
-
-                // Match the A8 recording control, including its fixed footprint
-                // and elapsed-time label below the single start/stop pictogram.
-                Layout.preferredWidth: root.recordingActionSize * 1.16
-                Layout.preferredHeight: root.recordingActionSize + ScreenTools.defaultFontPixelHeight * 0.85
-                Layout.alignment: Qt.AlignHCenter
-                radius: ScreenTools.defaultFontPixelHeight * 0.4
-                color: "transparent"
-                border.width: 0
-                enabled: Boolean(root.manager && root.manager.videoRecordingAvailable)
-                opacity: enabled ? 1.0 : 0.45
-
-                Column {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top: parent.top
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.1
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: root.recordingActionSize
-                        height: width
-                        radius: ScreenTools.defaultFontPixelHeight * 0.4
-                        color: videoMouseArea.pressed ? "#b8e7f2" : "transparent"
-                        border.width: 0
-                        Behavior on color { ColorAnimation { duration: 100 } }
-                        CameraControlIcon {
-                            anchors.centerIn: parent
-                            width: ScreenTools.defaultFontPixelHeight * 1.2
-                            height: width
-                            kind: recordButton.iconName
-                            color: recordButton.iconColor
-                            scale: videoMouseArea.pressed ? 0.94 : 1.0
-                            Behavior on scale { NumberAnimation { duration: 90 } }
-                        }
-                    }
-                    QGCLabel {
-                        id: videoStatusLabel
-                        objectName: "videoStatusLabel"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: recordButton.width
-                        text: recordButton.statusText
-                        color: root.recordingSessionCapturing ? "#ff9cab"
-                               : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857" : "#b4c9d4"
-                        font.bold: true
-                        font.pointSize: ScreenTools.smallFontPointSize * 0.88
-                        fontSizeMode: Text.HorizontalFit
-                        minimumPixelSize: Math.max(8, ScreenTools.defaultFontPixelHeight * 0.55)
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-                }
-                Accessible.role: Accessible.Button
-                Accessible.name: text
-                QtControls.ToolTip.visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
-                QtControls.ToolTip.delay: 450
-                QtControls.ToolTip.text: text
-                MouseArea {
-                    id: videoMouseArea
-                    objectName: "videoMouseArea"
-                    anchors.fill: parent
-                    enabled: parent.enabled
-                    hoverEnabled: true
-                    preventStealing: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.manager.toggleVideoRecording()
-                }
+                anchors.centerIn: parent
+                width: 6; height: 6; radius: 3
+                color: !root.online ? "#7d8e99" : root.manager.pending ? "#ffcc80" : "#65d9f4"
             }
-            CameraStorageStatus {
-                objectName: "sdStatusRow"
-                Layout.alignment: Qt.AlignHCenter
-                known: Boolean(root.manager && root.manager.sdCardStatusKnown)
-                inserted: Boolean(root.manager && root.manager.sdCardInserted)
-            }
-            CameraControlButton {
-                objectName: "errorButton"
-                Layout.alignment: Qt.AlignHCenter
-                visible: root.errorText.length > 0
-                iconName: "warning"
-                iconColor: "#ffcc80"
-                text: root.errorText
+            QtControls.ToolTip.visible: stateMouse.containsMouse
+            QtControls.ToolTip.text: root.online && root.manager.pending ? qsTr("Waiting for payload")
+                                     : root.online ? qsTr("Rouke connected") : qsTr("Awaiting payload response")
+            MouseArea { id: stateMouse; anchors.fill: parent; hoverEnabled: true }
+        }
+        CameraControlButton {
+            id: viewButton
+            objectName: "viewButton"
+            Layout.row: 1
+            Layout.column: 0
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.actionHeight * 1.3
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            iconName: "switch"
+            text: qsTr("Switch camera")
+            caption: root.manager && root.manager.viewKnown ? (root.manager.viewType === 4 ? "LR1" : "OV2735") : "—"
+            menuIndicator: true
+            checked: viewMenu.visible
+            enabled: root.canControl
+            onClicked: {
+                settingsPopup.close()
+                if (viewMenu.visible || Date.now() - root.viewClosedAt < 160) viewMenu.close()
+                else viewMenu.open()
             }
         }
-    }
-    CameraControlButton {
-        id: settingsButton
-        objectName: "settingsButton"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: root.panelPadding
-        iconName: "settings"
-        text: qsTr("Camera settings")
-        checked: settingsPopup.visible
-        onClicked: {
-            viewMenu.close()
-            if (settingsPopup.visible || Date.now() - root.settingsClosedAt < 160) settingsPopup.close()
-            else settingsPopup.showSettings()
+        CameraControlButton {
+            objectName: "centerButton"
+            Layout.row: 1
+            Layout.column: 1
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.actionHeight
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            iconName: "center"
+            text: qsTr("Center")
+            enabled: Boolean(root.online && root.manager.controlAvailable && !root.manager.gimbalCenterPending)
+            onClicked: root.manager.centerGimbal()
+        }
+        CameraControlButton {
+            objectName: "focusButton"
+            Layout.row: 2
+            Layout.column: 0
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.actionHeight
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            iconName: "focus"
+            text: qsTr("Focus")
+            enabled: root.canControl
+            onClicked: root.manager.autoFocus()
+        }
+        CameraControlButton {
+            id: settingsButton
+            objectName: "settingsButton"
+            Layout.row: 2
+            Layout.column: 1
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.actionHeight
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            iconName: "settings"
+            text: qsTr("Camera settings")
+            checked: settingsPopup.visible
+            enabled: root.available
+            muted: !root.online
+            onClicked: {
+                viewMenu.close()
+                if (settingsPopup.visible || Date.now() - root.settingsClosedAt < 160) settingsPopup.close()
+                else settingsPopup.showSettings()
+            }
+        }
+        CameraControlButton {
+            objectName: "photoButton"
+            Layout.row: 3
+            Layout.column: 0
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.actionHeight
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            iconName: "camera"
+            text: qsTr("Take Photo")
+            enabled: root.canControl || root.canSaveLocally
+            onClicked: root.manager.takePhoto()
+        }
+        Rectangle {
+            id: recordButton
+            Layout.row: 3
+            Layout.column: 1
+            objectName: "recordButton"
+            readonly property bool recording: root.recordingSessionCapturing
+            readonly property string iconName: root.recordingSessionVisualActive ? "recordStop" : "record"
+            readonly property color iconColor: !enabled ? "#7d8e99" : videoMouseArea.pressed ? "#163744"
+                                               : root.recordingSessionCapturing ? "#ff6c80"
+                                               : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857"
+                                               : videoMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
+            readonly property string text: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
+            readonly property string statusText: root.recordingSessionPending && !root.recordingSessionCapturing
+                                                 ? "..."
+                                                 : root.recordingSessionFailed ? qsTr("FAILED")
+                                                 : root.recordingSessionVisualActive ? root.recordingTimeText() : ""
+
+            // Match the A8 recording control, including its fixed footprint
+            // and elapsed-time label below the single start/stop pictogram.
+            Layout.preferredWidth: root.cellWidth
+            Layout.preferredHeight: root.recordingActionSize + ScreenTools.defaultFontPixelHeight * 0.85
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+            radius: ScreenTools.defaultFontPixelHeight * 0.4
+            color: "transparent"
+            border.width: 0
+            enabled: Boolean(root.manager && root.manager.videoRecordingAvailable
+                             && (root.online || root.recordingSessionVisualActive))
+            opacity: enabled ? 1.0 : 0.32
+
+            Column {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                spacing: ScreenTools.defaultFontPixelHeight * 0.1
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: recordButton.width
+                    height: root.recordingActionSize
+                    radius: ScreenTools.defaultFontPixelHeight * 0.4
+                    color: videoMouseArea.pressed ? "#b8e7f2" : "transparent"
+                    border.width: 0
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    CameraControlIcon {
+                        anchors.centerIn: parent
+                        width: ScreenTools.defaultFontPixelHeight * 1.2
+                        height: width
+                        kind: recordButton.iconName
+                        color: recordButton.iconColor
+                        scale: videoMouseArea.pressed ? 0.94 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 90 } }
+                    }
+                }
+                QGCLabel {
+                    id: videoStatusLabel
+                    objectName: "videoStatusLabel"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: recordButton.width
+                    text: recordButton.statusText
+                    color: root.recordingSessionCapturing ? "#ff9cab"
+                           : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857" : "#b4c9d4"
+                    font.bold: true
+                    font.pointSize: ScreenTools.smallFontPointSize * 0.88
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: Math.max(8, ScreenTools.defaultFontPixelHeight * 0.55)
+                    horizontalAlignment: Text.AlignHCenter
+                }
+            }
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            QtControls.ToolTip.visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
+            QtControls.ToolTip.delay: 450
+            QtControls.ToolTip.text: text
+            MouseArea {
+                id: videoMouseArea
+                objectName: "videoMouseArea"
+                anchors.fill: parent
+                enabled: parent.enabled
+                hoverEnabled: true
+                preventStealing: false
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.manager.toggleVideoRecording()
+            }
+        }
+        CameraStorageStatus {
+            objectName: "sdStatusRow"
+            Layout.row: 4
+            Layout.column: 0
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            known: Boolean(root.manager && root.manager.sdCardStatusKnown)
+            inserted: Boolean(root.manager && root.manager.sdCardInserted)
         }
     }
 }

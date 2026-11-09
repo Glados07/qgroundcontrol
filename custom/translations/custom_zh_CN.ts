@@ -1437,6 +1437,10 @@
 <context>
     <name>RoukeCameraParameter</name>
     <message>
+        <source>Set only; no read command.</source>
+        <translation>仅支持设置，协议无读取命令。</translation>
+    </message>
+    <message>
         <source>Waiting for payload…</source>
         <translation>等待负载确认…</translation>
     </message>

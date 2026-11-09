@@ -65,11 +65,17 @@ bool canSwitchToNativeByteStream(VideoReceiver *receiver,
 
 void resetRouteForUri(VideoReceiver *receiver, const QString &uri)
 {
-    if (!receiver) {
+    if (!receiver || receiver->uri() != uri) {
         return;
     }
 
     const QVariant routeUri = receiver->property(kRouteUriProperty);
+    if (routeUri.isValid() && routeUri.toString() != uri) {
+        // Packetization fallback belongs to one stream, just like an explicit
+        // factory. Retain it for same-URI reconnects, but let a new input begin
+        // with the established hvc1 route rather than inheriting a failure.
+        receiver->setProperty(kParserOutputFormatProperty, QString());
+    }
     const QString inputFormat = usesNativeByteStream(receiver)
         ? QStringLiteral("byte-stream") : QStringLiteral("hvc1");
     if (routeUri.isValid() && routeUri.toString() == uri
@@ -162,6 +168,40 @@ QString AndroidH265DecoderFallback::activeAdapterFactoryName(
 #endif
 }
 
+bool AndroidH265DecoderFallback::prepareCapsOnlyTimeoutRetry(
+    VideoReceiver *receiver,
+    const QString &uri,
+    quint64 generation,
+    int videoCodec,
+    bool sourceFrameReceived,
+    bool decoderFrameReceived,
+    bool sinkFrameReceived)
+{
+#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    if (!receiver
+        || !AndroidH265DecoderRoutePolicy::canRetryCapsOnlyTimeout(
+            receiver->uri(), uri, generation,
+            videoCodec == VideoReceiver::VIDEO_CODEC_H265,
+            usesNativeByteStream(receiver), sourceFrameReceived,
+            decoderFrameReceived, sinkFrameReceived)) {
+        return false;
+    }
+
+    return prepareHardwareRetry(receiver, uri, generation, videoCodec,
+                                false, false, false, false, false,
+                                "H.265 CAPS without a first source frame before timeout");
+#else
+    Q_UNUSED(receiver)
+    Q_UNUSED(uri)
+    Q_UNUSED(generation)
+    Q_UNUSED(videoCodec)
+    Q_UNUSED(sourceFrameReceived)
+    Q_UNUSED(decoderFrameReceived)
+    Q_UNUSED(sinkFrameReceived)
+    return false;
+#endif
+}
+
 bool AndroidH265DecoderFallback::canAdvanceHardwareRoute(
     VideoReceiver *receiver,
     const QString &uri,
@@ -224,6 +264,9 @@ bool AndroidH265DecoderFallback::prepareHardwareRetry(
     const char *reason)
 {
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    if (!receiver || uri.isEmpty() || generation == 0 || receiver->uri() != uri) {
+        return false;
+    }
     resetRouteForUri(receiver, uri);
     // A decoder-branch bus failure is stronger evidence than the source
     // buffer milestone: MediaCodec can reject CSD/caps while processing the

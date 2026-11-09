@@ -1413,6 +1413,10 @@
 <context>
     <name>RoukeCameraParameter</name>
     <message>
+        <source>Set only; no read command.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Waiting for payload…</source>
         <translation type="unfinished"></translation>
     </message>

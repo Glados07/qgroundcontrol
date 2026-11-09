@@ -25,8 +25,10 @@ Item {
     property bool showActualZoom: false
     property real controlSize: Math.max(ScreenTools.defaultFontPixelHeight * 2.35,
                                         ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
+    property real cellWidth: Math.max(ScreenTools.defaultFontPixelHeight * 2.25,
+                                      ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real iconSize: ScreenTools.defaultFontPixelHeight * 1.2
-    property real controlSpacing: ScreenTools.defaultFontPixelWidth * 0.45
+    property real controlSpacing: ScreenTools.defaultFontPixelHeight * 0.22
     property color accentColor: "#65d9f4"
     property color buttonColor: "transparent"
     property color buttonHoverColor: "transparent"
@@ -41,12 +43,8 @@ Item {
     readonly property int gestureConsumed: 3
     readonly property int holdThresholdMs: 420
     readonly property int holdStartRetryMs: 100
-    readonly property bool online: Boolean(manager && manager.zoomControlsUnlocked)
-    readonly property bool endpointReachable: Boolean(manager
-                                                       && manager.enabled
-                                                       && (manager.sdkResponding
-                                                           || manager.zoomControlsUnlocked
-                                                           || manager.continuousZoomActive))
+    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding && manager.zoomControlsUnlocked)
+    readonly property bool endpointReachable: Boolean(manager && manager.enabled && manager.sdkResponding)
     readonly property bool zoomKnown: Boolean(manager && manager.zoomStatusKnown)
     readonly property bool canSend: online
     readonly property bool canTapZoomIn: Boolean(manager && manager.zoomInTapAvailable)
@@ -180,27 +178,28 @@ Item {
 
     GridLayout {
         id: zoomColumn
+        objectName: "zoomActionsGrid"
 
         anchors.fill: parent
-        columns: 1
-        columnSpacing: 0
+        columns: 2
+        columnSpacing: root.controlSpacing
         rowSpacing: root.controlSpacing
 
         Rectangle {
             id: zoomOutButton
             objectName: "zoomOutButton"
 
-            Layout.row: 2
-            Layout.column: 0
-            Layout.preferredWidth: root.controlSize
+            Layout.row: 0
+            Layout.column: 1
+            Layout.preferredWidth: root.cellWidth
             Layout.preferredHeight: root.controlSize
             Layout.alignment: Qt.AlignHCenter
             radius: root.buttonCornerRadius
             color: zoomOutMouseArea.pressed ? root.buttonPressedColor : "transparent"
             border.width: 0
-            enabled: zoomOutMouseArea.gestureState !== root.gestureIdle
-                     || (root.canSend && root.canZoomOut)
-            opacity: enabled ? 1.0 : 0.38
+            enabled: root.endpointReachable && (zoomOutMouseArea.gestureState !== root.gestureIdle
+                                                   || (root.canSend && root.canZoomOut))
+            opacity: enabled ? 1.0 : 0.32
             Behavior on color { ColorAnimation { duration: 100 } }
 
             CameraControlIcon {
@@ -208,7 +207,7 @@ Item {
                 width: root.iconSize
                 height: width
                 kind: "zoomOut"
-                color: zoomOutMouseArea.pressed ? "#163744"
+                color: !zoomOutButton.enabled ? "#7d8e99" : zoomOutMouseArea.pressed ? "#163744"
                        : zoomOutMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
                 scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
                 Behavior on scale { NumberAnimation { duration: 90 } }
@@ -378,16 +377,10 @@ Item {
             objectName: "zoomValue"
             Layout.row: 1
             Layout.column: 0
-            Layout.preferredWidth: Math.max(
-                                       root.controlSize,
-                                       root.showActualZoom
-                                           ? Math.max(targetZoomLabel.implicitWidth,
-                                                      actualZoomLabel.implicitWidth)
-                                             + root.controlSpacing * 2.0
-                                           : ScreenTools.defaultFontPixelWidth
-                                             * 5.2)
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
             Layout.preferredHeight: root.controlSize
-                                    * (root.showActualZoom ? 1.08 : 0.78)
+                                    * (root.showActualZoom ? 1.08 : 0.65)
             Layout.alignment: Qt.AlignHCenter
             radius: ScreenTools.defaultFontPixelHeight * 0.35
             color: "#12212b"
@@ -445,15 +438,15 @@ Item {
 
             Layout.row: 0
             Layout.column: 0
-            Layout.preferredWidth: root.controlSize
+            Layout.preferredWidth: root.cellWidth
             Layout.preferredHeight: root.controlSize
             Layout.alignment: Qt.AlignHCenter
             radius: root.buttonCornerRadius
             color: zoomInMouseArea.pressed ? root.buttonPressedColor : "transparent"
             border.width: 0
-            enabled: zoomInMouseArea.gestureState !== root.gestureIdle
-                     || (root.canSend && root.canZoomIn)
-            opacity: enabled ? 1.0 : 0.38
+            enabled: root.endpointReachable && (zoomInMouseArea.gestureState !== root.gestureIdle
+                                                   || (root.canSend && root.canZoomIn))
+            opacity: enabled ? 1.0 : 0.32
             Behavior on color { ColorAnimation { duration: 100 } }
 
             CameraControlIcon {
@@ -461,7 +454,7 @@ Item {
                 width: root.iconSize
                 height: width
                 kind: "zoomIn"
-                color: zoomInMouseArea.pressed ? "#163744"
+                color: !zoomInButton.enabled ? "#7d8e99" : zoomInMouseArea.pressed ? "#163744"
                        : zoomInMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
                 scale: zoomInMouseArea.pressed ? 0.94 : 1.0
                 Behavior on scale { NumberAnimation { duration: 90 } }

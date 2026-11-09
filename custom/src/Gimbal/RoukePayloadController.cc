@@ -3,6 +3,7 @@
  ****************************************************************************/
 #include "RoukePayloadController.h"
 #include "RoukeProtocol.h"
+#include "QGCLoggingCategory.h"
 
 #include <QtCore/QByteArray>
 #include <QtCore/QJsonValue>
@@ -11,7 +12,16 @@
 #include <cmath>
 #include <limits>
 
+QGC_LOGGING_CATEGORY(RoukePayloadLog, "gcs.custom.gimbal.rouke.payload")
+
 namespace {
+static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY == 53022, "Rouke relay message ID mismatch");
+static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_CRC == 37, "Rouke relay CRC mismatch");
+static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN == 132
+              && MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_MIN_LEN == 132,
+              "Rouke relay message layout mismatch");
+static_assert(sizeof(mavlink_vk_payload_data_relay_t::data) == 128,
+              "Rouke relay data capacity mismatch");
 constexpr int kCommandTimeoutMs = 3500;
 constexpr int kResponseTimeoutMs = 15000;
 constexpr int kSdCardFreshnessMs = 25000;
@@ -75,6 +85,15 @@ bool validParameterValue(const CameraParameter &parameter, const QJsonValue &val
     return std::isfinite(number) && std::floor(number) == number
         && number >= parameter.minimum && number <= parameter.maximum;
 }
+
+bool isParameterRead(const CameraParameter &parameter, const QString &command,
+                     const QJsonObject &request)
+{
+    return parameter.readCommand
+        && (command != QLatin1String(parameter.command)
+            || (parameter.operation
+                && request.value(QString::fromLatin1(parameter.operation)).toInt(-1) == 0));
+}
 }
 
 RoukePayloadController::RoukePayloadController(QObject *parent)
@@ -91,6 +110,7 @@ RoukePayloadController::RoukePayloadController(QObject *parent)
     _sdCardFreshnessTimer.setSingleShot(true);
     _sdCardFreshnessTimer.setInterval(kSdCardFreshnessMs);
     connect(&_sdCardQueryTimer, &QTimer::timeout, this, [this]() {
+        _logTimeoutDiagnostics(QStringLiteral("get_sdcard_capacity"));
         _sdCardQueryPending = false;
         _sdCardError = QStringLiteral("No response to the Rouke SD card query.");
         _sdCardFreshnessTimer.stop();
@@ -148,6 +168,11 @@ void RoukePayloadController::setConfiguration(bool enabled, const QString &host,
     } else {
         _lastError.clear();
     }
+    qCInfo(RoukePayloadLog) << "Rouke UDP configuration"
+        << "enabled" << _enabled << "host" << _host.toString()
+        << "remotePort" << _port << "requestedLocalPort" << _localPort
+        << "boundLocalPort" << _socket.localPort() << "payloadAddress" << _payloadAddress
+        << "available" << available();
     emit stateChanged();
 }
 
@@ -165,6 +190,7 @@ void RoukePayloadController::_reset()
     ++_centerSerial;
     ++_sdCardRequestSerial;
     _responseStreams.clear();
+    _receiveDiagnostics = {};
     const QString cancelled = _pendingCommand;
     const bool centerCancelled = _gimbalCenterPending;
     _commandTimer.stop();
@@ -187,6 +213,7 @@ void RoukePayloadController::_reset()
     _pendingStartCreatedIntent = false;
     _recordingStartOutcomeUncertain = false;
     _uncertainCommands.clear();
+    _possiblyDelayedReadCommands.clear();
     _responding = false;
     _recording = false;
     _recordingKnown = false;
@@ -205,6 +232,36 @@ void RoukePayloadController::_setError(const QString &error)
 {
     _lastError = error;
     emit stateChanged();
+}
+
+void RoukePayloadController::_logTimeoutDiagnostics(const QString &command) const
+{
+    const auto &rx = _receiveDiagnostics;
+    qCWarning(RoukePayloadLog) << "Rouke command acknowledgement timeout"
+        << "command" << command << "host" << _host.toString() << "remotePort" << _port
+        << "boundLocalPort" << _socket.localPort() << "payloadAddress" << _payloadAddress
+        << "sessionRxDatagrams" << rx.datagrams
+        << "rejectedPeerAddress" << rx.rejectedAddress << "rejectedPeerPort" << rx.rejectedPort
+        << "matchedPeerDatagrams" << rx.matchedDatagrams
+        << "badMavlinkCrcOrSignature" << rx.badMavlink
+        << "datagramsWithoutCompleteMavlink" << rx.noCompleteMavlink
+        << "otherMavlinkMessages" << rx.otherMavlink << "invalidRelayFields" << rx.invalidRelay
+        << "innerFrameResyncs" << rx.innerResyncs << "expiredInnerStreams" << rx.expiredStreams
+        << "innerStreamLimitRejects" << rx.streamLimit << "pendingInnerStreams" << _responseStreams.size()
+        << "validInnerFrames" << rx.innerFrames << "rejectedSourceTarget" << rx.rejectedRoute
+        << "rejectedPayloadAddress" << rx.rejectedPayload << "matchedPayloadFrames" << rx.matchedFrames
+        << "unmatchedCommandAcks" << rx.unmatchedCommandAcks
+        << "ignoredReadReports" << rx.ignoredReadReports;
+}
+
+void RoukePayloadController::_rememberUncertainRequest(const QString &command, const QJsonObject &data)
+{
+    const auto *parameter = parameterForCommand(command);
+    if (parameter && isParameterRead(*parameter, command, data)) {
+        _possiblyDelayedReadCommands.insert(command);
+    } else {
+        _uncertainCommands.insert(command);
+    }
 }
 
 bool RoukePayloadController::sendCommand(const QString &command, const QJsonObject &data)
@@ -301,7 +358,7 @@ bool RoukePayloadController::_writeCommand(const QString &command, const QJsonOb
         if (_socket.writeDatagram(reinterpret_cast<const char *>(bytes), count, _host, _port) != count) {
             // Never retry an ambiguous partially delivered command automatically.
             if (index > 0) {
-                _uncertainCommands.insert(command);
+                _rememberUncertainRequest(command, data);
                 if (command == QStringLiteral("lr1_record")) _recordingKnown = false;
                 if (command == QStringLiteral("lr1_switch_view")) _viewKnown = false;
                 _invalidateParameter(command);
@@ -473,9 +530,7 @@ bool RoukePayloadController::_applyParameterAck(const QString &command, const QJ
     if (!parameter) return true;
     const QString field = QString::fromLatin1(parameter->field);
     const QString key = QString::fromLatin1(parameter->key);
-    const bool reading = parameter->readCommand
-        && (command != QLatin1String(parameter->command)
-            || (parameter->operation && request.value(QString::fromLatin1(parameter->operation)).toInt(-1) == 0));
+    const bool reading = isParameterRead(*parameter, command, request);
     // A successful setter with the documented empty data acknowledges its
     // submitted value. A getter must contain the actual value. Never turn a
     // missing/malformed getter response into zero or the submitted placeholder.
@@ -537,9 +592,17 @@ void RoukePayloadController::_readDatagrams()
 {
     while (_socket.hasPendingDatagrams()) {
         const QNetworkDatagram datagram = _socket.receiveDatagram();
-        if (!_enabled || datagram.senderAddress() != _host || datagram.senderPort() != _port) {
+        if (!_enabled) continue;
+        ++_receiveDiagnostics.datagrams;
+        if (datagram.senderAddress() != _host) {
+            ++_receiveDiagnostics.rejectedAddress;
             continue;
         }
+        if (datagram.senderPort() != _port) {
+            ++_receiveDiagnostics.rejectedPort;
+            continue;
+        }
+        ++_receiveDiagnostics.matchedDatagrams;
         // UDP preserves boundaries. Reject partial MAVLink packets instead of
         // joining bytes from unrelated datagrams into a fabricated message.
         _rxStatus = {};
@@ -548,14 +611,22 @@ void RoukePayloadController::_readDatagrams()
         const quint64 requestSerial = _requestSerial;
         const quint64 centerSerial = _centerSerial;
         const quint64 sdCardSerial = _sdCardRequestSerial;
+        bool completeMavlink = false;
         for (const char byte : datagram.data()) {
             mavlink_message_t message{};
             mavlink_status_t status{};
-            if (mavlink_frame_char_buffer(&_rxMessage, &_rxStatus, static_cast<uint8_t>(byte),
-                                         &message, &status) == MAVLINK_FRAMING_OK) {
+            const auto framing = mavlink_frame_char_buffer(
+                &_rxMessage, &_rxStatus, static_cast<uint8_t>(byte), &message, &status);
+            if (framing == MAVLINK_FRAMING_BAD_CRC || framing == MAVLINK_FRAMING_BAD_SIGNATURE) {
+                ++_receiveDiagnostics.badMavlink;
+            } else if (framing == MAVLINK_FRAMING_OK) {
+                completeMavlink = true;
                 _handleMessage(message, requestSerial, centerSerial, sdCardSerial);
                 if (_configurationSerial != configurationSerial) break;
             }
+        }
+        if (_configurationSerial == configurationSerial && !completeMavlink) {
+            ++_receiveDiagnostics.noCompleteMavlink;
         }
     }
 }
@@ -563,21 +634,31 @@ void RoukePayloadController::_readDatagrams()
 void RoukePayloadController::_handleMessage(const mavlink_message_t &message, quint64 requestSerial,
                                            quint64 centerSerial, quint64 sdCardSerial)
 {
-    if (message.magic != MAVLINK_STX || message.msgid != MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY) return;
+    if (message.magic != MAVLINK_STX || message.msgid != MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY) {
+        ++_receiveDiagnostics.otherMavlink;
+        return;
+    }
     mavlink_vk_payload_data_relay_t relay{};
     mavlink_msg_vk_payload_data_relay_decode(&message, &relay);
     const quint64 key = (quint64(relay.payload_addr) << 16)
         | (quint64(message.sysid) << 8) | message.compid;
     if (relay.reserve != 0 || relay.data_len == 0
         || relay.data_len > RoukeProtocol::MaxRelayDataLength) {
+        ++_receiveDiagnostics.invalidRelay;
         _responseStreams.remove(key);
         return;
     }
     for (auto it = _responseStreams.begin(); it != _responseStreams.end();) {
-        if (it->lastFragment.hasExpired(kPartialFrameTimeoutMs)) it = _responseStreams.erase(it);
+        if (it->lastFragment.hasExpired(kPartialFrameTimeoutMs)) {
+            ++_receiveDiagnostics.expiredStreams;
+            it = _responseStreams.erase(it);
+        }
         else ++it;
     }
-    if (!_responseStreams.contains(key) && _responseStreams.size() >= kMaxResponseStreams) return;
+    if (!_responseStreams.contains(key) && _responseStreams.size() >= kMaxResponseStreams) {
+        ++_receiveDiagnostics.streamLimit;
+        return;
+    }
     auto &stream = _responseStreams[key];
     stream.lastFragment.start();
     struct Response {
@@ -599,6 +680,9 @@ void RoukePayloadController::_handleMessage(const mavlink_message_t &message, qu
         }
         const auto objects = stream.decoder.append(QByteArray(1, static_cast<char>(relay.data[index])));
         if (objects.isEmpty() && stream.decoder.bufferedSize() < buffered + 1) {
+            // Includes bad framing/JSON/envelopes and discarded noise; this
+            // counts parser resynchronizations, not complete invalid frames.
+            ++_receiveDiagnostics.innerResyncs;
             // Invalid bytes were discarded and a new header may have begun.
             stream.requestSerial = requestSerial;
             stream.centerSerial = centerSerial;
@@ -620,14 +704,20 @@ void RoukePayloadController::_handleMessage(const mavlink_message_t &message, qu
 void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t payloadAddress,
                                         quint64 requestSerial, quint64 centerSerial, quint64 sdCardSerial)
 {
+    ++_receiveDiagnostics.innerFrames;
     if (object.value(QStringLiteral("source")).toString() != QStringLiteral("psdk")
-        || object.value(QStringLiteral("target")).toString() != QStringLiteral("msdk")) return;
+        || object.value(QStringLiteral("target")).toString() != QStringLiteral("msdk")) {
+        ++_receiveDiagnostics.rejectedRoute;
+        return;
+    }
     _discoveredPayloadAddress = payloadAddress;
     // Discovery is informational only; never guess or auto-assign an address.
     if (_payloadAddress < 0 || payloadAddress != _payloadAddress) {
+        ++_receiveDiagnostics.rejectedPayload;
         emit stateChanged();
         return;
     }
+    ++_receiveDiagnostics.matchedFrames;
     _responding = true;
     _responseTimer.start();
     const QString command = object.value(QStringLiteral("cmd")).toString();
@@ -669,8 +759,41 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
     }
     if (!isAck
         || command != _pendingCommand || !pending() || requestSerial != _requestSerial) {
+        if (isAck) ++_receiveDiagnostics.unmatchedCommandAcks;
         emit stateChanged();
         return;
+    }
+    const auto *parameter = parameterForCommand(command);
+    const bool parameterRead = parameter && isParameterRead(*parameter, command, _pendingData);
+    const QJsonObject responseData = object.value(QStringLiteral("data")).toObject();
+    const bool validReadReport = parameterRead
+        && validParameterValue(*parameter, responseData.value(QString::fromLatin1(parameter->field)));
+    const bool delayedReadPossible = _possiblyDelayedReadCommands.contains(command);
+    if (accepted && parameterRead
+        && (_uncertainCommands.contains(command) || delayedReadPossible) && !validReadReport) {
+        ++_receiveDiagnostics.ignoredReadReports;
+        // GET and SET share command names for ISO, white balance and image
+        // size. An empty delayed SET ACK must not consume a later GET or turn
+        // its placeholder into zero. Keep waiting for a real reported value;
+        // the existing deadline still bounds this request.
+        emit stateChanged();
+        return;
+    }
+    if (accepted && parameter && !parameterRead && delayedReadPossible
+        && !_uncertainCommands.contains(command) && !responseData.isEmpty()) {
+        const QString field = QString::fromLatin1(parameter->field);
+        const QJsonValue reportedValue = responseData.value(field);
+        // ISO/WB/image-size GET and SET ACKs both carry a value. After an
+        // earlier GET timed out, a different value could be its late reply;
+        // it must not complete this SET or replace the submitted target.
+        // An equal value is only a matching target report, not transaction
+        // proof. Empty setter ACK compatibility remains unchanged.
+        if (!validParameterValue(*parameter, reportedValue)
+            || reportedValue != _pendingData.value(field)) {
+            ++_receiveDiagnostics.ignoredReadReports;
+            emit stateChanged();
+            return;
+        }
     }
     _commandTimer.stop();
     const QJsonObject data = _pendingData;
@@ -683,7 +806,12 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
     // ACK, so that case retains the existing endpoint-session protection.
     const bool sameDirectionStopRetry = recordingCommand && !recordingStart
         && !_recordingStartOutcomeUncertain;
-    bool success = accepted && (!_uncertainCommands.contains(command) || sameDirectionStopRetry);
+    // A valid read result reports a value even after an earlier request timed
+    // out. Without transaction IDs it cannot prove which request produced the
+    // report or the outcome of any write. Retain the command's uncertainty for
+    // future SET/action ACKs instead of permanently disabling all reads too.
+    bool success = accepted && (!_uncertainCommands.contains(command)
+                                || sameDirectionStopRetry || validReadReport);
     if (accepted && !success) {
         _invalidateParameter(command);
         _lastError = tr("Rouke acknowledged %1 after an earlier timeout or partial send. Without a transaction ID, device state remains unknown until a new endpoint session.").arg(command);
@@ -712,7 +840,7 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
         } else if (command == QStringLiteral("lr1_focus")) {
             _cameraParameters.remove(QStringLiteral("focusValue"));
         }
-        success = _applyParameterAck(command, data, object.value(QStringLiteral("data")).toObject());
+        success = _applyParameterAck(command, data, responseData);
     }
     _pendingStartCreatedIntent = false;
     _sendQueuedStop();
@@ -723,6 +851,7 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
 void RoukePayloadController::_gimbalCenterTimeout()
 {
     if (!_gimbalCenterPending) return;
+    _logTimeoutDiagnostics(QStringLiteral("gimbal_center"));
     _gimbalCenterPending = false;
     const QString command = QStringLiteral("gimbal_center");
     _uncertainCommands.insert(command);
@@ -735,14 +864,15 @@ void RoukePayloadController::_timeout()
 {
     const QString command = _pendingCommand;
     if (command.isEmpty()) return;
+    _logTimeoutDiagnostics(command);
     if (command == QStringLiteral("lr1_record")
         && _pendingData.value(QStringLiteral("action")).toInt(-1) == 0) {
         _recordingStartOutcomeUncertain = true;
     }
     _pendingStartCreatedIntent = false;
+    _rememberUncertainRequest(command, _pendingData);
     _pendingCommand.clear();
     _pendingData = {};
-    _uncertainCommands.insert(command);
     if (command == QStringLiteral("lr1_record")) _recordingKnown = false;
     if (command == QStringLiteral("lr1_switch_view")) _viewKnown = false;
     _invalidateParameter(command);

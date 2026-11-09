@@ -39,8 +39,9 @@ public:
     QString lastError() const { return _lastError.isEmpty() ? _gimbalError : _lastError; }
     quint16 boundPort() const { return _socket.localPort(); }
     bool gimbalCenterPending() const { return _gimbalCenterPending; }
-    // Only values confirmed in this endpoint session are present. Missing keys
-    // must be displayed as unknown, including the default-off trigger draft.
+    // Values acknowledged by writes or explicitly reported by reads in this
+    // endpoint session. Reads cannot prove which transaction produced a report.
+    // Missing keys must be unknown, including the default-off trigger draft.
     QVariantMap cameraParameters() const { return _cameraParameters; }
     QString pendingParameter() const;
     bool sdCardStatusKnown() const { return _sdCardStatusKnown; }
@@ -88,6 +89,30 @@ private:
     void _setSdCardState(bool known, bool inserted);
     void _handleSdCardAck(const QJsonObject &object, quint64 sdCardSerial);
     QString _recordingEndpointKey() const;
+    void _logTimeoutDiagnostics(const QString &command) const;
+    void _rememberUncertainRequest(const QString &command, const QJsonObject &data);
+
+    // Session totals, reported only on bounded command timeouts. Speed ACKs
+    // can arrive at 20 Hz; receive diagnostics must never log per packet.
+    struct ReceiveDiagnostics {
+        quint64 datagrams = 0;
+        quint64 rejectedAddress = 0;
+        quint64 rejectedPort = 0;
+        quint64 matchedDatagrams = 0;
+        quint64 badMavlink = 0;
+        quint64 noCompleteMavlink = 0;
+        quint64 otherMavlink = 0;
+        quint64 invalidRelay = 0;
+        quint64 innerResyncs = 0;
+        quint64 expiredStreams = 0;
+        quint64 streamLimit = 0;
+        quint64 innerFrames = 0;
+        quint64 rejectedRoute = 0;
+        quint64 rejectedPayload = 0;
+        quint64 matchedFrames = 0;
+        quint64 unmatchedCommandAcks = 0;
+        quint64 ignoredReadReports = 0;
+    } _receiveDiagnostics;
 
     QUdpSocket _socket;
     QHostAddress _host;
@@ -121,9 +146,13 @@ private:
     bool _pendingStartCreatedIntent = false;
     bool _recordingStartOutcomeUncertain = false;
     // A timed-out or partially sent request can still have an ambiguous outcome.
-    // Without a transaction ID, subsequent same-command ACKs cannot establish
-    // physical device state.
+    // Without a transaction ID, subsequent same-command ACKs cannot confirm a
+    // later write/action outcome. A valid GET may still report a value without
+    // clearing this protection.
     QSet<QString> _uncertainCommands;
+    // GET cannot change device state, but its delayed value ACK can share a
+    // command name with a later SET. Keep that risk separate from write locks.
+    QSet<QString> _possiblyDelayedReadCommands;
     QTimer _commandTimer;
     QTimer _responseTimer;
     QTimer _gimbalCenterTimer;

@@ -56,11 +56,16 @@ QtControls.Popup {
     }
     onWidthChanged: if (visible) reposition()
     onHeightChanged: if (visible) reposition()
-    onOpened: reposition()
+    onOpened: {
+        reposition()
+        if (manager) manager.refreshCameraParameters()
+    }
+    onAboutToHide: if (manager) manager.cancelCameraParameterRefresh()
     onClosed: {
         // Prevent a child combo popup outliving its parent page.
         root.resetSerial++
     }
+    Component.onDestruction: if (manager) manager.cancelCameraParameterRefresh()
     background: Rectangle {
         radius: ScreenTools.defaultFontPixelHeight * 0.85
         color: "#172630"

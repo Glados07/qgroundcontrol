@@ -8,6 +8,7 @@
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as QtControls
 
 import QGroundControl
 import QGroundControl.Controls
@@ -66,58 +67,91 @@ ColumnLayout {
 
     // 选择器通过 Custom.FlightDisplay 导出；相机面板继续用显式 custom QRC 加载。
     // 启用私有相机模块后始终显示控制栏；SDK在线状态只控制按钮可用性，不再控制可见性。
-    // preferredWidth/Height 跟随纵向控件的完整隐式尺寸，避免 Loader 在布局中
-    // 形成零尺寸透明占位或把整栏压缩成单个按钮高度。
-    ColumnLayout {
+    // The native widget layer anchors this column above the bottom instruments.
+    // Respect that available height instead of allowing minimum-size controls
+    // to overflow onto the compass. Small screens scroll without shrinking taps.
+    Flickable {
         id: privateCameraControlLayout
+        objectName: "cameraColumnScroll"
 
         visible: root._usePrivateCameraControl
         Layout.alignment: Qt.AlignTop | Qt.AlignRight
         Layout.preferredWidth: implicitWidth
         Layout.preferredHeight: implicitHeight
-        spacing: ScreenTools.defaultFontPixelHeight * 0.35
+        Layout.minimumHeight: 0
+        Layout.maximumHeight: implicitHeight
+        Layout.fillHeight: true
+        implicitWidth: privateCameraColumn.implicitWidth
+        implicitHeight: privateCameraColumn.implicitHeight
+        contentWidth: width
+        contentHeight: privateCameraColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        QtControls.ScrollIndicator.vertical: QtControls.ScrollIndicator {}
+        WheelHandler {
+            target: null
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: function(event) {
+                // Keep wheel input over the rail from zooming the map below.
+                event.accepted = true
+                if (!privateCameraControlLayout.interactive) return
+                const delta = event.pixelDelta.y || event.angleDelta.y / 120 * ScreenTools.defaultFontPixelHeight * 3
+                privateCameraControlLayout.contentY = Math.max(0,
+                    Math.min(privateCameraControlLayout.contentHeight - privateCameraControlLayout.height,
+                             privateCameraControlLayout.contentY - delta))
+            }
+        }
 
         property real rightEdgeCenterInset: visible ? parent.width - x : 0
 
-        CustomFlightDisplay.CameraPayloadSelector {
-            id: cameraSelector
-            visible: root._a8Enabled && root._roukeEnabled
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: implicitWidth
-            Layout.preferredHeight: implicitHeight
-            selectedCamera: root._selectedCamera
-            a8Online: Boolean(root._gimbalManager && root._gimbalManager.sdkResponding)
-            roukeOnline: Boolean(root._roukeManager && root._roukeManager.sdkResponding)
-            onCameraSelected: function(cameraIndex) { root.selectCamera(cameraIndex) }
-        }
+        ColumnLayout {
+            id: privateCameraColumn
+            width: privateCameraControlLayout.width
+            spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-        Loader {
-            id: cameraControlLoader
-
-            active: root._usePrivateCameraControl
-            visible: Boolean(active && item)
-            source: root._selectedCamera === 1
-                    ? "qrc:/Custom/qml/QGroundControl/FlightDisplay/RoukeCameraControl.qml"
-                    : "qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml"
-            Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
-            Layout.preferredWidth: item ? item.implicitWidth : 0
-            Layout.preferredHeight: item ? item.implicitHeight : 0
-            Layout.minimumWidth: Layout.preferredWidth
-            Layout.minimumHeight: Layout.preferredHeight
-
-            onLoaded: {
-                // Keep the old item's manager stable while Loader destroys it.
-                // Its teardown can still cancel A8 continuous zoom after the
-                // selected camera has already changed to Rouke.
-                const loadedCameraIndex = root._selectedCamera
-                item.manager = Qt.binding(function() {
-                    return loadedCameraIndex === 1 ? root._roukeManager : root._gimbalManager
-                })
+            CustomFlightDisplay.CameraPayloadSelector {
+                id: cameraSelector
+                visible: root._a8Enabled && root._roukeEnabled
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: implicitWidth
+                Layout.preferredHeight: implicitHeight
+                selectedCamera: root._selectedCamera
+                a8Online: Boolean(root._gimbalManager && root._gimbalManager.sdkResponding)
+                roukeOnline: Boolean(root._roukeManager && root._roukeManager.sdkResponding)
+                onCameraSelected: function(cameraIndex) { root.selectCamera(cameraIndex) }
             }
 
-            onStatusChanged: {
-                if (status === Loader.Error) {
-                    console.warn("Camera control failed to load:", source)
+            Loader {
+                id: cameraControlLoader
+
+                active: root._usePrivateCameraControl
+                visible: Boolean(active && item)
+                source: root._selectedCamera === 1
+                        ? "qrc:/Custom/qml/QGroundControl/FlightDisplay/RoukeCameraControl.qml"
+                        : "qrc:/Custom/qml/QGroundControl/FlightDisplay/GimbalCameraControl.qml"
+                Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
+                Layout.preferredWidth: item ? item.implicitWidth : 0
+                Layout.preferredHeight: item ? item.implicitHeight : 0
+                Layout.minimumWidth: Layout.preferredWidth
+                Layout.minimumHeight: Layout.preferredHeight
+
+                onLoaded: {
+                    privateCameraControlLayout.contentY = 0
+                    // Keep the old item's manager stable while Loader destroys it.
+                    // Its teardown can still cancel A8 continuous zoom after the
+                    // selected camera has already changed to Rouke.
+                    const loadedCameraIndex = root._selectedCamera
+                    item.manager = Qt.binding(function() {
+                        return loadedCameraIndex === 1 ? root._roukeManager : root._gimbalManager
+                    })
+                }
+
+                onStatusChanged: {
+                    if (status === Loader.Error) {
+                        console.warn("Camera control failed to load:", source)
+                    }
                 }
             }
         }

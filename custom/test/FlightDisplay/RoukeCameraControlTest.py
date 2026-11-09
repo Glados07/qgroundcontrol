@@ -43,6 +43,7 @@ class Manager(QObject):
     recordingStopRequired = Property(bool, lambda self: self.values["recordingStopRequired"], notify=changed)
     videoRecordingAvailable = Property(bool, lambda self: self.values["enabled"] and (
         self.values["controlAvailable"] or self.values["localMediaStorageEnabled"]
+        or self.values["recordingSessionActive"]
         or self.values["localRecording"] or self.values["localRecordingPending"]), notify=changed)
     sdCardStatusKnown = Property(bool, lambda self: self.values["sdCardStatusKnown"], notify=changed)
     sdCardInserted = Property(bool, lambda self: self.values["sdCardInserted"], notify=changed)
@@ -71,6 +72,16 @@ class Manager(QObject):
                            viewKnown=False, viewType=4, lastError="", localMediaError="",
                            cameraParameters={}, pendingParameter="")
         self.actions = []
+        # UI contract only: the real Manager's four-request serial queue is
+        # covered by its C++ fixture, not reimplemented in this service double.
+        self.refresh_requests = 0
+        self.refresh_cancellations = 0
+
+    @Slot()
+    def refreshCameraParameters(self): self.refresh_requests += 1
+
+    @Slot()
+    def cancelCameraParameterRefresh(self): self.refresh_cancellations += 1
 
     def update(self, **values):
         self.values.update(values)
@@ -258,11 +269,89 @@ Rectangle {
                     QFontMetricsF(item.property("font")).horizontalAdvance("2147483647"))
 
     assert not button("Focus").isEnabled() and not named("viewButton").isEnabled()
-    click("Take Photo")  # Local storage is independent of payload availability.
-    assert manager.actions == ["photo"]
+    assert not button("Take Photo").isEnabled(), "Offline UI must not offer local-only photography"
+    assert manager.actions == []
+
+    def assert_offline_dispatch_disabled():
+        commands = [item for item in host.findChildren(QObject)
+                    if item.objectName().startswith(("read_", "apply_"))]
+        assert commands, "Parameter command controls must be present"
+        for item in commands:
+            expected = (item.objectName().startswith("read_")
+                        and manager.values["controlAvailable"] and not manager.values["pending"])
+            assert item.isEnabled() == expected, ("Offline GET/write gate", item.objectName())
+
+    def click_disabled(item):
+        assert not item.isEnabled(), item.objectName()
+        point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+        QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(int(point.x()), int(point.y())))
+        QTest.qWait(40)
+
+    # Offline navigation and draft editing do not depend on a payload reply.
+    click_item(named("settingsButton"))
+    QTest.qWait(160)  # Popup.opened follows its entrance transition.
+    assert manager.refresh_requests == 1, "Opening settings requests one read-only refresh"
+    offline_popup = named("settingsPopup")
+    assert offline_popup.property("visible") and offline_popup.property("selectedPage") == 0
+    set_only_keys = ("focusMode", "shutterSpeed", "aperture", "imageQuality",
+                     "triggerPhoto", "shootingDistance", "distanceThreshold")
+    for key in set_only_keys:
+        assert "Set only; no read command." in named("hint_" + key).property("text"), key
+    for key in ("iso", "whiteBalance", "focusValue", "imageSize"):
+        assert "Set only; no read command." not in named("hint_" + key).property("text"), key
+    type_value(named("editor_iso"), "12")
+    assert named("parameter_iso").property("draftValue") == 12
+    assert_offline_dispatch_disabled()
+    click_disabled(named("read_iso"))
+    click_disabled(named("apply_iso"))
+    click_item(named("rangeTab"))
+    assert named("parameter_triggerPhoto").property("draftValue") == 0
+    assert not named("parameter_triggerPhoto").property("known")
+    click_item(named("choice_triggerPhoto"))
+    QTest.keyClick(view, Qt.Key_End)
+    QTest.keyClick(view, Qt.Key_Return)
+    QTest.qWait(60)
+    assert named("parameter_triggerPhoto").property("draftValue") == 1
+    click_disabled(named("apply_triggerPhoto"))
+    range_drafts = named("rangeSettingsScroll")
+    scroll_to(range_drafts, named("editor_shootingDistance"))
+    type_value(named("editor_shootingDistance"), "30")
+    assert named("parameter_shootingDistance").property("draftValue") == 30
+    assert_offline_dispatch_disabled()
+    assert manager.actions == [], "Offline editing must not read, write, or enable capture"
+    click_item(named("cameraTab"))
+    assert named("parameter_iso").property("draftValue") == 12
+    manager.update(controlAvailable=True, sdkResponding=True)
+    assert offline_popup.property("visible") and manager.actions == [], "Reconnect must not apply drafts automatically"
+    type_value(named("editor_iso"), "13")
+    manager.update(sdkResponding=False)  # Endpoint may remain writable despite no recent payload reply.
+    assert offline_popup.property("visible"), "A disconnect must leave the settings page open"
+    assert named("parameter_iso").property("draftValue") == 13
+    assert named("editor_iso").isEnabled()
+    assert_offline_dispatch_disabled()
+    type_value(named("editor_iso"), "14")
+    assert named("parameter_iso").property("draftValue") == 14
+    assert manager.actions == []
+    assert manager.refresh_requests == 1, "Tab navigation and draft edits must not refresh again"
+    click_item(named("read_iso"))
+    assert manager.actions == [("get", "iso")], "Offline configured endpoints allow a read-only probe"
+    assert not named("apply_iso").isEnabled() and not named("read_iso").isEnabled()
+    manager.update(pending=False, pendingParameter="", lastError="No response to read-only probe")
+    type_value(named("editor_iso"), "14")
+    manager.update(sdkResponding=True)
+    assert named("parameter_iso").property("draftValue") == 14
+    assert manager.actions == [("get", "iso")], "A returning endpoint must not apply the draft"
+    cancellations_before = manager.refresh_cancellations
+    invoke(root, "closeTransientUi")
+    assert manager.refresh_cancellations > cancellations_before, "Closing immediately cancels unsent refresh work"
+    QTest.qWait(350)
+    manager.actions.clear()
+    manager.update(sdkResponding=False, lastError="")
     manager.update(localMediaStorageEnabled=False)
     assert not button("Take Photo").isEnabled()
-    manager.update(controlAvailable=True)
+    manager.update(controlAvailable=True, sdkResponding=True)
+    click("Take Photo")
+    assert manager.actions == ["photo"]
     assert root.findChild(QObject, "stopButton") is None, "Recording has one toggle, not a separate stop control"
     click_item(named("recordButton"))
     assert manager.actions[-1] == "start" and named("recordButton").property("iconName") == "recordStop"
@@ -301,9 +390,10 @@ Rectangle {
     manager.update(pending=False, sdkResponding=True)
     assert named("focusButton").mapToScene(QPointF(0, 0)).y() < named("photoButton").mapToScene(QPointF(0, 0)).y(), "Focus belongs above the shutter"
 
-    # Opening either page is read-only; device state starts unknown and the
-    # trigger draft starts Off without silently sending a hardware command.
+    # Every open requests the Manager's read-only refresh once. Page changes
+    # never dispatch writes, and the trigger draft remains Off until applied.
     previous_actions = list(manager.actions)
+    refreshes_before = manager.refresh_requests
     click_item(named("settingsButton"))
     QTest.qWait(150)
     popup = named("settingsPopup")
@@ -320,6 +410,7 @@ Rectangle {
     assert named("parameter_triggerPhoto").property("draftValue") == 0
     assert not named("parameter_triggerPhoto").property("known")
     assert manager.actions == previous_actions
+    assert manager.refresh_requests == refreshes_before + 2, "Close/reopen starts exactly one fresh refresh"
     iso_editor = named("editor_iso")
     assert iso_editor.width() < camera_scroll.width() * 0.65, "Desktop inputs should not fill the entire row"
     input_edge = iso_editor.mapToScene(QPointF(iso_editor.width(), 0)).x()
@@ -448,6 +539,8 @@ Rectangle {
         view.engine().retranslate()
         QTest.qWait(30)
         assert button("拍照").isEnabled()
+        for key in set_only_keys:
+            assert "仅支持设置，协议无读取命令。" in named("hint_" + key).property("text"), key
     view.grabWindow().save(str(output / "rouke-panel.png"))
     click_item(named("settingsButton"))
     QTest.qWait(160)
@@ -516,18 +609,20 @@ Rectangle {
             for child in ui.descendants(flick):
                 if child.isVisible() and child.objectName().startswith(("editor_", "choice_", "apply_")):
                     assert child.width() > 30 and child.height() >= 36 * scale, child.objectName()
+                if child.isVisible() and child.objectName().startswith("hint_"):
+                    assert child.property("paintedWidth") <= child.width() + 1, (
+                        "Parameter hint must wrap within its row", child.objectName(), width, scale)
+                    assert child.property("paintedHeight") <= child.height() + 1, (
+                        "Parameter hint must retain every line", child.objectName(), width, scale)
         invoke(root, "closeTransientUi")
         QTest.qWait(350)
-        main_scroll = named("cameraControlScroll")
-        if main_scroll.property("contentHeight") > main_scroll.height():
-            point = main_scroll.mapToScene(QPointF(main_scroll.width() / 2, main_scroll.height() / 2))
-            QTest.wheelEvent(view, point, QPoint(0, -2400))
-            QTest.qWait(120)
-            assert main_scroll.property("contentY") > 0, "Main camera controls must scroll on small screens"
+        assert named("cameraActionsGrid").property("columns") == 2
+        # Whole-column overflow is tested through the production native entry
+        # in CameraControlPreviewTest, above the compass reservation.
         click_item(named("settingsButton"))
         QTest.qWait(160)
         assert popup.property("visible")
-    assert manager.actions == previous_actions, "Layout changes must not send commands"
+    assert manager.actions == previous_actions, "Layout changes must not send writes or manual commands"
     manager.update(enabled=False)
     QTest.qWait(150)
     assert not root.isVisible()
@@ -537,8 +632,8 @@ Rectangle {
     errors = [message for message in warnings if any(token in message for token in
               ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign"))]
     assert not errors, "\n".join(errors)
-    print("PASS: camera actions, ACK/draft isolation, explicit parameter dispatch, default-Off trigger, "
-          "range validation, scrolling, popup lifecycle, resize/font layouts; no QML errors")
+    print("PASS: camera actions, one refresh per open/immediate cancel, offline GET-only probe, ACK/draft isolation, explicit parameter dispatch, default-Off trigger, "
+          "range validation, set-only hints, scrolling, popup lifecycle, resize/font layouts; no QML errors")
     view.close()
 
 

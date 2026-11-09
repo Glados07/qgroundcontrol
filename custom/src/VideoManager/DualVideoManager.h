@@ -29,6 +29,7 @@ class DualVideoManager : public QObject
     Q_PROPERTY(bool hasVideo READ hasVideo NOTIFY hasVideoChanged)
     Q_PROPERTY(bool duplicateSource READ duplicateSource NOTIFY duplicateSourceChanged)
     Q_PROPERTY(bool initialized READ initialized NOTIFY initializedChanged)
+    Q_PROPERTY(bool renderItemEnabled READ renderItemEnabled NOTIFY renderItemEnabledChanged)
     Q_PROPERTY(bool streaming READ streaming NOTIFY streamingChanged)
     Q_PROPERTY(bool decoding READ decoding NOTIFY decodingChanged)
     Q_PROPERTY(bool fullScreen READ fullScreen WRITE setFullScreen NOTIFY fullScreenChanged)
@@ -45,6 +46,7 @@ public:
     bool hasVideo() const { return _enabled && !_uri.isEmpty() && !_duplicateSource; }
     bool duplicateSource() const { return _duplicateSource; }
     bool initialized() const { return !_receiver.isNull(); }
+    bool renderItemEnabled() const { return _renderItemEnabled; }
     bool streaming() const { return _streaming; }
     bool decoding() const { return _decoding; }
     bool fullScreen() const { return _fullScreen; }
@@ -69,6 +71,7 @@ signals:
     void hasVideoChanged();
     void duplicateSourceChanged();
     void initializedChanged();
+    void renderItemEnabledChanged();
     void videoObjectsAboutToBeReleased();
     void videoObjectsReleased();
     void streamingChanged();
@@ -84,6 +87,10 @@ private:
 
     void _refreshSettings();
     void _ensureReceiver();
+    void _observeRenderWindow(QQuickWindow *window);
+    void _handleSceneGraphInvalidated();
+    void _completeRenderItemRelease();
+    void _finishRenderRecovery();
     void _scheduleRenderInitialization(QQuickWindow *window);
     void _armDecodeStartupWatchdog();
     void _resetVideoPipelineGeneration();
@@ -98,6 +105,7 @@ private:
 
     VideoCustomSettings *_settings = nullptr;
     QPointer<QQuickWindow> _window;
+    QPointer<QQuickWindow> _renderWindow;
     QPointer<VideoReceiver> _primaryVideoReceiver;
     QPointer<VideoReceiver> _receiver;
     QPointer<QQuickItem> _requestedVideoItem;
@@ -105,6 +113,8 @@ private:
     QMetaObject::Connection _videoItemInitializedConnection;
     QMetaObject::Connection _videoItemWindowConnection;
     QMetaObject::Connection _videoItemDestroyedConnection;
+    QMetaObject::Connection _sceneGraphInitializedConnection;
+    QMetaObject::Connection _sceneGraphInvalidatedConnection;
     QMetaObject::Connection _primaryVideoUriConnection;
     QMetaObject::Connection _primaryVideoStartAttemptConnection;
     QMetaObject::Connection _primaryVideoStartConnection;
@@ -123,10 +133,15 @@ private:
     QString _selectedDecoderFactory;
     quint64 _videoPipelineGeneration = 0;
     quint64 _lastVideoPipelineGeneration = 0;
+    quint64 _renderWindowGeneration = 0;
+    quint64 _renderInitializationGeneration = 0;
     int _videoCodec = 0;
     bool _enabled = false;
     bool _duplicateSource = false;
     bool _renderReady = false;
+    bool _renderItemEnabled = true;
+    bool _renderRecoveryPending = false;
+    bool _sceneGraphReady = false;
     bool _streaming = false;
     bool _sourceFrameReceived = false;
     bool _adapterSelected = false;

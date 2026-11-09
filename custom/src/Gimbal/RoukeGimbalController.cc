@@ -61,7 +61,7 @@ int RoukeGimbalController::_speed(qint16 value, int limit, bool reversed)
 void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, qint16 channel14)
 {
     if (!_controller->available() || !_reasonable(channel11)
-        || !_reasonable(channel12) || !_reasonable(channel14)) {
+        || !_reasonable(channel12)) {
         cancel();
         return;
     }
@@ -71,7 +71,12 @@ void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, q
     const bool pressed = channel14 >= 1750;
     const bool released = channel14 <= 1250;
     bool centerEdge = false;
-    if (!_buttonArmed) {
+    if (!_reasonable(channel14)) {
+        // The optional centering button must not disable two valid axes.
+        // A recovered button needs a new release before it can trigger center.
+        _buttonArmed = false;
+        _buttonPressed = false;
+    } else if (!_buttonArmed) {
         if (released) _buttonArmed = true;
     } else if (released) {
         _buttonPressed = false;

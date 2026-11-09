@@ -26,7 +26,12 @@ Rectangle {
     readonly property var confirmedValue: known ? manager.cameraParameters[parameterKey] : undefined
     readonly property bool busy: Boolean(manager && manager.pending)
     readonly property bool pending: Boolean(busy && manager.pendingParameter === parameterKey)
-    readonly property bool canControl: Boolean(manager && manager.enabled && manager.controlAvailable && !busy)
+    // A read can establish the first payload response. Writes still require
+    // a responding endpoint, while offline drafts remain editable.
+    readonly property bool canRead: Boolean(manager && manager.enabled
+                                            && manager.controlAvailable && !busy)
+    readonly property bool canControl: Boolean(manager && manager.enabled && manager.sdkResponding
+                                               && manager.controlAvailable && !busy)
     readonly property bool hasOptions: options.length > 0
     readonly property var draftValue: hasOptions
                                      ? (choices.currentIndex >= 0 ? options[choices.currentIndex].value : undefined)
@@ -280,7 +285,7 @@ Rectangle {
                         iconName: "read"
                         iconOnly: true
                         subtle: true
-                        enabled: root.canControl
+                        enabled: root.canRead
                         onClicked: {
                             // A read is explicit and also replaces any unsent draft.
                             root.resetDraft()
@@ -305,9 +310,12 @@ Rectangle {
             }
         }
         Text {
+            objectName: "hint_" + root.parameterKey
             Layout.fillWidth: true
-            visible: root.hint.length > 0
-            text: root.hint
+            visible: root.hint.length > 0 || !root.readable
+            text: root.hint + (!root.readable
+                              ? (root.hint.length ? " · " : "") + qsTr("Set only; no read command.")
+                              : "")
             color: "#8da6b4"
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize

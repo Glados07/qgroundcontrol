@@ -6,6 +6,8 @@
 
 #include "AndroidH265DecoderRoutePolicy.h"
 
+#include <QtCore/QUrl>
+
 namespace {
 
 void appendUniqueFactories(QStringList &destination,
@@ -57,4 +59,23 @@ AndroidH265DecoderRoutePolicy::nextRoute(
     }
 
     return RouteSelection{QString(), factoryCount, true};
+}
+
+bool AndroidH265DecoderRoutePolicy::canRetryCapsOnlyTimeout(
+    const QString &currentUri,
+    const QString &pipelineUri,
+    quint64 generation,
+    bool h265Confirmed,
+    bool nativeByteStream,
+    bool sourceFrameReceived,
+    bool decoderFrameReceived,
+    bool sinkFrameReceived)
+{
+    const QString scheme = QUrl(pipelineUri).scheme();
+    const bool rtsp = scheme.compare(QStringLiteral("rtsp"), Qt::CaseInsensitive) == 0
+        || scheme.compare(QStringLiteral("rtsps"), Qt::CaseInsensitive) == 0;
+    return generation != 0 && !pipelineUri.isEmpty()
+        && currentUri == pipelineUri && rtsp && h265Confirmed
+        && !nativeByteStream && !sourceFrameReceived
+        && !decoderFrameReceived && !sinkFrameReceived;
 }

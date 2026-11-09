@@ -260,7 +260,6 @@ private slots:
         QTest::addColumn<int>("channel");
         QTest::newRow("CH11") << 0;
         QTest::newRow("CH12") << 1;
-        QTest::newRow("CH14") << 2;
     }
 
     void invalidInputStops()
@@ -280,6 +279,62 @@ private slots:
         _gimbal->updateChannels(2000, 1000, 1000);
         QTest::qWait(60);
         QVERIFY(_peer->takeAll().isEmpty());
+    }
+
+    void invalidCenterChannelDoesNotBlockAxes_data()
+    {
+        QTest::addColumn<int>("button");
+        QTest::newRow("unmapped-zero") << 0;
+        QTest::newRow("below-range") << 899;
+        QTest::newRow("above-range") << 2101;
+        QTest::newRow("negative") << -1;
+    }
+
+    void invalidCenterChannelDoesNotBlockAxes()
+    {
+        QFETCH(int, button);
+        _gimbal->updateChannels(2000, 1000, qint16(button));
+        QTest::qWait(60);
+        QVERIFY(_peer->takeAll().isEmpty()); // Axes still need fresh neutral.
+        _gimbal->updateChannels(1500, 1500, qint16(button));
+        _gimbal->updateChannels(2000, 1000, qint16(button));
+        verifySpeed(_peer->nextRequest(), 10, -5);
+        _gimbal->updateChannels(1000, 2000, qint16(button));
+        QTest::qWait(60); // Refresh is timer-driven; keep the Qt event loop running.
+        verifySpeed(_peer->nextRequest(), -10, 5);
+        QVERIFY(!_controller->gimbalCenterPending());
+
+        // The independent axis freshness watchdog remains effective.
+        QTest::qWait(510);
+        int stops = 0;
+        for (const auto &request : _peer->takeAll()) {
+            if (request.value("data").toObject().value("yaw_speed").toInt() == 0) {
+                verifySpeed(request, 0, 0);
+                ++stops;
+            } else {
+                verifySpeed(request, -10, 5);
+            }
+        }
+        QCOMPARE(stops, 3);
+    }
+
+    void recoveredCenterButtonNeedsFreshRelease()
+    {
+        _gimbal->updateChannels(1500, 1500, 1000);
+        _gimbal->updateChannels(2000, 1000, 1000);
+        verifySpeed(_peer->nextRequest(), 10, -5);
+        _gimbal->updateChannels(2000, 1000, 0);
+        QTest::qWait(60);
+        verifySpeed(_peer->nextRequest(), 10, -5);
+        _gimbal->updateChannels(2000, 1000, 2000);
+        QTest::qWait(60);
+        verifySpeed(_peer->nextRequest(), 10, -5);
+        QVERIFY(!_controller->gimbalCenterPending());
+        _gimbal->updateChannels(2000, 1000, 1000);
+        _gimbal->updateChannels(2000, 1000, 2000);
+        verifySpeed(_peer->nextRequest(), 0, 0);
+        QCOMPARE(_peer->nextRequest().value("cmd").toString(), QString("gimbal_center"));
+        QVERIFY(_controller->gimbalCenterPending());
     }
 
     void centerEdgeStopsThenRequiresFreshNeutralAfterAck()
