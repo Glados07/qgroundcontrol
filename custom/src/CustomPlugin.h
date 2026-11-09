@@ -7,12 +7,14 @@
 #pragma once
 
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QTranslator>
 #include <QtCore/QUrl>
 #include <QtCore/QMetaObject>
 #include <QtQml/QQmlAbstractUrlInterceptor>
 
 #include "QGCCorePlugin.h"
+#include "Gimbal/RoukeNativeMavlinkTrace.h"
 
 class External3DMapManager;
 class UniRcChannelController;
@@ -116,6 +118,7 @@ private:
     void _ensureVideoCustomSettings();
     void _ensureDualVideoManager();
     void _shutdownRoukeVideo();
+    void _observeNativeRoukeMessages();
 
     QQmlApplicationEngine *_qmlEngine = nullptr;
     class CustomOverrideInterceptor *_selector = nullptr;
@@ -134,6 +137,9 @@ private:
     VideoCustomSettings *_videoCustomSettings = nullptr;
     DualVideoManager *_dualVideoManager = nullptr;
     QMetaObject::Connection _aboutToQuitConnection;
+    QMetaObject::Connection _roukeNativeObservationConnection;
+    QElapsedTimer _roukeNativeObservationClock;
+    RoukeNativeMavlinkTrace _roukeNativeTrace;
 };
 
 class CustomOverrideInterceptor : public QQmlAbstractUrlInterceptor

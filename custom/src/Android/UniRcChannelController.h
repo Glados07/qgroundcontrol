@@ -156,6 +156,8 @@ private:
     QElapsedTimer _connectionElapsed;
     QElapsedTimer _requestElapsed;
     QElapsedTimer _diagnosticRefreshElapsed;
+    QElapsedTimer _roukeTraceElapsed;
+    int _roukeTraceGate = -1;
     QString _lastError;
     QString _diagnosticStage = QStringLiteral("DISABLED");
     QByteArray _receiveSample;

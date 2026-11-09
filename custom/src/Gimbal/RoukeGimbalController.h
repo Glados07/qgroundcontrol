@@ -3,6 +3,7 @@
  ****************************************************************************/
 #pragma once
 
+#include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
@@ -28,11 +29,14 @@ private:
     static int _speed(qint16 value, int limit, bool reversed);
     void _tick();
     void _stop(bool repeat);
+    void _traceChannels(qint16 channel11, qint16 channel12, qint16 channel14, const char *gate);
 
     RoukePayloadController *_controller = nullptr;
     QTimer _sendTimer;
     QTimer _inputWatchdog;
     QElapsedTimer _inputAge;
+    QElapsedTimer _traceElapsed;
+    QByteArray _traceGate;
     int _yawLimit = 10;
     int _pitchLimit = 5;
     int _yawSpeed = 0;

@@ -3,8 +3,11 @@
  ****************************************************************************/
 #include "RoukeGimbalController.h"
 #include "RoukePayloadController.h"
+#include "QGCLoggingCategory.h"
 
 #include <cmath>
+
+Q_LOGGING_CATEGORY(RoukeGimbalTraceLog, "gcs.custom.gimbal.rouke.channels", QtInfoMsg)
 
 namespace {
 constexpr int kSendIntervalMs = 50;
@@ -63,6 +66,8 @@ void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, q
     if (!_controller->available() || !_reasonable(channel11)
         || !_reasonable(channel12)) {
         cancel();
+        _traceChannels(channel11, channel12, channel14,
+                       _controller->available() ? "invalid-axes" : "endpoint-unavailable");
         return;
     }
     _inputAge.restart();
@@ -85,17 +90,23 @@ void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, q
         centerEdge = true;
     }
     if (centerEdge) {
+        _traceChannels(channel11, channel12, channel14, "center-edge");
         (void) centerGimbal();
         return;
     }
-    if (_controller->gimbalCenterPending()) return;
+    if (_controller->gimbalCenterPending()) {
+        _traceChannels(channel11, channel12, channel14, "center-pending");
+        return;
+    }
     if (!_axesArmed) {
         if (_neutral(channel11) && _neutral(channel12)) _axesArmed = true;
+        _traceChannels(channel11, channel12, channel14, _axesArmed ? "neutral-armed" : "await-neutral");
         return;
     }
 
     _yawSpeed = _speed(channel11, _yawLimit, _yawReversed);
     _pitchSpeed = _speed(channel12, _pitchLimit, _pitchReversed);
+    _traceChannels(channel11, channel12, channel14, (!_yawSpeed && !_pitchSpeed) ? "neutral-stop" : "motion");
     if (!_yawSpeed && !_pitchSpeed) {
         _stop(true);
     } else {
@@ -105,6 +116,25 @@ void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, q
             if (_motionSent) _sendTimer.start();
         }
     }
+}
+
+void RoukeGimbalController::_traceChannels(qint16 channel11, qint16 channel12, qint16 channel14,
+                                          const char *gate)
+{
+    if (!RoukeGimbalTraceLog().isDebugEnabled()) return;
+    // Analog movement may change every 50 ms. Sample it once a second, while
+    // preserving gate transitions such as neutral unlock, stop and centering.
+    if (_traceGate == gate && _traceElapsed.isValid() && !_traceElapsed.hasExpired(1000)) return;
+    _traceGate = gate;
+    _traceElapsed.start();
+    qCDebug(RoukeGimbalTraceLog) << "ROUKE_RC_INPUT CH11" << channel11 << "CH12" << channel12
+        << "CH14" << channel14 << "gate" << gate << "available" << _controller->available()
+        << "axesArmed" << _axesArmed << "centerButtonValid" << _reasonable(channel14)
+        << "buttonArmed" << _buttonArmed << "buttonPressed" << _buttonPressed
+        << "centerPending" << _controller->gimbalCenterPending()
+        << "targetYaw" << _yawSpeed << "targetPitch" << _pitchSpeed
+        << "yawLimit" << _yawLimit << "pitchLimit" << _pitchLimit
+        << "yawReversed" << _yawReversed << "pitchReversed" << _pitchReversed;
 }
 
 void RoukeGimbalController::_tick()
@@ -126,7 +156,10 @@ void RoukeGimbalController::_tick()
     }
     // Even a failed multi-packet write may have delivered part of the command.
     _motionSent = true;
-    if (!_controller->sendGimbalSpeed(_yawSpeed, _pitchSpeed)) cancel();
+    if (!_controller->sendGimbalSpeed(_yawSpeed, _pitchSpeed)) {
+        qCDebug(RoukeGimbalTraceLog) << "ROUKE_RC_SEND_FAILED targetYaw" << _yawSpeed << "targetPitch" << _pitchSpeed;
+        cancel();
+    }
 }
 
 void RoukeGimbalController::_stop(bool repeat)
@@ -134,6 +167,7 @@ void RoukeGimbalController::_stop(bool repeat)
     _yawSpeed = 0;
     _pitchSpeed = 0;
     if (_motionSent) {
+        qCDebug(RoukeGimbalTraceLog) << "ROUKE_RC_STOP available" << _controller->available() << "repeat" << repeat;
         _motionSent = false;
         if (_controller->available()) {
             (void) _controller->sendGimbalSpeed(0, 0);
@@ -151,6 +185,12 @@ void RoukeGimbalController::_stop(bool repeat)
 
 void RoukeGimbalController::cancel()
 {
+    if (_axesArmed || _motionSent || _inputAge.isValid()) {
+        qCDebug(RoukeGimbalTraceLog) << "ROUKE_RC_CANCEL inputAgeMs"
+            << (_inputAge.isValid() ? _inputAge.elapsed() : -1)
+            << "available" << _controller->available() << "motionSent" << _motionSent
+            << "centerPending" << _controller->gimbalCenterPending();
+    }
     _axesArmed = false;
     _buttonArmed = false;
     _buttonPressed = false;
@@ -165,5 +205,7 @@ bool RoukeGimbalController::centerGimbal()
     // No delayed zero-speed packet after centering: it could interrupt the
     // manufacturer's position command. Stop first, then center once.
     _stop(false);
-    return _controller->centerGimbal();
+    const bool submitted = _controller->centerGimbal();
+    qCDebug(RoukeGimbalTraceLog) << "ROUKE_RC_CENTER submitted" << submitted;
+    return submitted;
 }

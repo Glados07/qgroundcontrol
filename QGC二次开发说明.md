@@ -125,7 +125,7 @@ custom/
                                                             # ② 调用约定：以 C++ 路径、文件类型和执行结果隔离 Android Java API；Manager 负责生成文件与控制录制，本接口只承接平台存储操作，具体 JNI 签名和结果转换在同名 .cc。
 │   │   ├── UniRcChannelController.cc
                                                             # ① 接收链路：依据启用开关、前后台状态和 SDK 接口选择打开 UART2 或建立 RFCOMM 连接，开启 20 Hz 通道上报并以 1 Hz 查询图传信息；共用 StreamParser，分别更新 16 路输入与 UniRcLinkStatus，图传回包不刷新通道 watchdog。
-                                                            # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；独立将 CH11/12/14 转给 Rouke Manager；首包/持续输入超时、失联或切后台时停止动作并按条件重连。
+                                                            # ② 动作链路：用 UniRcChannelPolicy 将 CH9 转为 A8 连续变倍、CH10 转为共享回中/俯视，CH7/8 手动输入复位动作序列；独立将 CH11/12/14 转给 Rouke Manager，诊断开关开启时采样输入与转交状态；超时、失联或切后台时停止动作并按条件重连。
 │   │   ├── UniRcChannelController.h
                                                             # ① UniRC 控制器契约：声明 bluetoothConnected、uartConnected、transportConnected、sdkRouteActive、channelInputActive、channelValues、channel9/channel10、linkStatus 和诊断信息等 QML 属性，以及 shutdown 退出接口。
                                                             # ② 异步状态：保存互斥的 Bluetooth socket/UART2 传输、请求发送阶段、首包及输入 watchdog、图传轮询定时器和通道动作状态；持有 UniRcLinkStatus，生命周期变化同时清理输入与图传状态。
@@ -364,12 +364,15 @@ custom/
                                                             # ② 保存控制器与第二路 item/receiver、抓图 worker、录制生命周期成员；由 CustomPlugin 创建和退出收尾。
 │   │   ├── RoukeGimbalController.cc
                                                             # ① 柔克遥控姿态：CH11/CH12 映射为 yaw_speed/pitch_speed 协议值，roll_speed 固定 0；双轴归中后解锁，50 ms 刷新最新速度，350 ms 输入失效时停止。
-                                                            # ② 回中优先：CH14 释放/按下沿或面板回中先停速度，再发独立请求；无效 CH14 只解除按钮武装，不阻断有效双轴。回中结束后重新归中解锁，失联、后台、配置改变时撤销输入。
+                                                            # ② 回中优先：CH14 释放/按下沿或面板回中先停速度，再发独立请求；无效 CH14 不阻断有效双轴。回中结束后重新归中解锁，失联、后台、配置改变时撤销输入；按需记录门控、目标速度及停止明细。
 │   │   ├── RoukeGimbalController.h
                                                             # ① 遥控姿态接口：setConfiguration 设置双轴速度限值与反向，updateChannels 接收 CH11/12/14，cancel 停止，centerGimbal 供按键和面板共用。
                                                             # ② 保存中位/按键解锁状态、最新双轴速度、输入时效、发送节拍及零速补发计数，不保存非零运动命令队列。
+│   │   ├── RoukeNativeMavlinkTrace.h
+                                                            # ① 原生链路观察采样：按 MAVLink 通道分别累计首次/每秒日志，QPointer 区分链路销毁和通道复用；只保留身份与计数，不保存报文。
+                                                            # ② 接线边界：CustomPlugin 在 MAVLinkProtocol 的车辆过滤前只读观察 53022，记录原生 UDP 本地端口等元数据；不向负载控制器转交、不确认参数、不改消息分发。
 │   │   ├── RoukePayloadController.cc
-                                                            # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流；编译期校验消息契约，配置/超时日志汇总接收阶段计数。
+                                                            # ① 柔克 UDP 传输：独立 socket、MAVLink 2 收发状态，以连续 53022 分段携带柔克帧，按来源端点、地址码及 system/component 隔离接收流；配置/超时汇总接收计数，显式诊断时记录白名单数值及分片/请求关联。
                                                             # ② 相机命令、回中及 SD 查询分别等待 ACK；速度刷新不占 pending，同一命令分片连续写出；接收帧起始时标记三类本地请求版本，配置变化取消旧请求及半帧；payload_addr 默认 0，-1 禁控。
 │   │   ├── RoukePayloadController.h
                                                             # ① 载荷命令接口：提供 C++ sendCommand(command, data)、sendGimbalSpeed 与拍照、显式录像状态写入、切视角、对焦、回中及独立 gimbalCenterPending；requestSdCardStatus 使用独立只读状态通道。
@@ -536,6 +539,12 @@ custom/
 │   │           ├── A8RtspStreamRecovery.h
                                                             # ① 接收器恢复安装入口：install(receiver, sink, settings) 将 A8 RTSP 健康观察器安装到指定视频接收器和显示 sink，供 CustomPlugin 的视频初始化调用。
                                                             # ② 依赖边界：设置提供 A8/MT11 主机识别，接收器提供流状态及代次；探针、定时观察和恢复动作封装于 .cc，纯阈值/预算规则由 A8RtspRecoveryPolicy 承担。
+│   │           ├── AndroidH264HardwareDecoderAdapter.cc
+                                                            # ① H.264 格式适配：注册 qgcandroidh264hwdec，将 AVC/AVC3/AU 经 h264parse 转为 byte-stream/AU 后送入厂商 MediaCodec；保留源端和录像封装，不改 A8 H.265 路径。
+                                                            # ② 候选与生命周期：只筛选兼容 androidmedia 厂商硬解，预检连接及 READY；无有效子链时明确失败，内部队列有界，构造成功不代表实际解码出帧。
+│   │           ├── AndroidH264HardwareDecoderAdapter.h
+                                                            # ① 注册接口：GStreamer 初始化后、decodebin 创建前调用 registerElement；elementFactoryName 提供 H.264 适配工厂名供全局 rank 策略识别。
+                                                            # ② 平台边界：仅在 Android/GStreamer 构建中注册；关闭强制硬解时保留既有原生选择，不引入软件回退。
 │   │           ├── AndroidH265DecoderCapsPolicy.cc
                                                             # ① CAPS 内容实现：集中给出 video/x-h265 的 byte-stream、alignment=au、parsed=true 以及允许的帧率范围，描述 h265parse 到 Android MediaCodec 的协商约束。
                                                             # ② 协商目的：保留已知 A8 帧率，同时允许无公布帧率的流使用 0/1 哨兵值；AndroidH265HardwareDecoderAdapter 引用此契约，相关测试核对字符串要求，不在此执行解码。
@@ -567,7 +576,7 @@ custom/
                                                             # ① 按流选择分包格式：声明 parserOutputFormatForUri(uri, mt11Host) 和 receiverPropertyName，为管线建立前设置接收器动态属性提供统一入口。
                                                             # ② 输入/输出：根据 RTSP 主机与配置 MT11 主机匹配返回 byte-stream，其余返回空值沿用原生 hvc1；主路/第二路均可使用，识别依据是流地址而非固定 Video 1/2 槽位。
 │   │           ├── AndroidVideoDecoderPolicy.cc
-                                                            # ① 工厂优先级配置：识别可用厂商 MediaCodec，按 forceHardwareDecoding 设置硬解 rank，注册 H.265 归一化适配器并排除已知 Android 软件包装器；Android 静态构建缺少 androidmedia 注册宏时显式编译报错。
+                                                            # ① 工厂优先级配置：识别可用厂商 MediaCodec，按 forceHardwareDecoding 设置硬解 rank，注册 H.264/H.265 归一化适配器并排除已知 Android 软件包装器；Android 静态构建缺少 androidmedia 注册宏时显式编译报错。
                                                             # ② 候选供应：按当前输入是否原生 byte-stream 组合可兼容的备用适配器和直接解码器，提供给接收器级 Fallback；主/次流的自动选择共享初始策略，具体重试选择互不串用。
 │   │           ├── AndroidVideoDecoderPolicy.h
                                                             # ① 全局 Android 解码策略接口：apply(forceHardwareDecoding) 安装产品 H.264/H.265 厂商硬解选择规则，hardwareRetryFactoryNames 按当前分包格式返回候选工厂。
@@ -937,7 +946,7 @@ custom/
                                                             # ② 只由独立测试 include 路径使用，不替换应用原生 MAVLinkLib；网络收发仍使用真实 QUdpSocket。
 │   │   │   └── QGCLoggingCategory.h
                                                             # ① 测试日志适配：将 QGC_LOGGING_CATEGORY 映射为 Qt 日志类别，保留生产类别名、过滤和日志内容，免于链接完整应用日志注册器。
-                                                            # ② 仅用于独立控制器测试；诊断回归检查超时分类汇总、不打印连续速度包及原始 JSON，不替换产品日志实现。
+                                                            # ② 仅用于独立控制器测试；诊断回归检查超时分类汇总、明细默认关闭、开启后的速度采样及原始 JSON 不输出，不替换产品日志实现。
 │   │   ├── SiyiModeQueryTest.cc
                                                             # ① A8 模式查询通信测试：使用本地 UDP 端点核对明确模式命令的线上字节、当前查询端口和配置来源匹配，并检查普通相机请求报文保持有效。
                                                             # ② 请求隔离：模拟取消、重连、查询过期与零序号回复，确认旧 socket/旧请求反馈不会被接受或干扰普通轮询；测试生产 SiyiSdk 和 Protocol 的模式通道，不要求连接实际相机。
@@ -995,14 +1004,42 @@ custom/
 │               ├── A8RtspRecoveryPolicyTest.cc
                                                             # ① A8 健康策略测试：构造 URI、RTCP Sender Report、NTP/RTP 时间和进度，验证主机隔离、畸形报文、时钟跳变证据及媒体停滞阈值。
                                                             # ② 恢复边界：检查连续出帧不重启、时钟报文单独不足以触发、每代一次/跨重连预算、URI 切换和前台/录像门控；直接使用纯策略，测试不启动实际 GStreamer RTSP 会话。
-│               └── AndroidH265DecoderRoutePolicyTest.cc
+│               ├── AndroidH265DecoderRoutePolicyTest.cc
                                                             # ① 硬解路线测试：覆盖备用适配器优先、去重排序、每个候选只选一次、空列表/耗尽及旧索引修复，验证不同接收器的候选状态不混用。
                                                             # ② 格式契约联测：检查 MT11 主机选 byte-stream、其他 URI 保留既有路径，以及 H.265 caps 允许未知帧率；仅验证 Route/Caps/StreamFormat 纯规则，不等同 Android MediaCodec 实机成功解码。
+│               └── AndroidHardwareAdapterIntegration/
+                                                            # 独立手动 GStreamer 协商回归，不参与默认 QGC/APK 构建
+│                   ├── AndroidHardwareAdapterIntegrationTest.cc
+                                                            # ① 加载真实解析器/decodebin3 与生产适配器，以严格 byte-stream 接口的主机解码替身验证 AVC 转换、禁用适配器反例和 HVC1 并行出帧。
+                                                            # ② 检查软件自动选择仍禁用、实例独立及失败 READY；不等于真实 MediaCodec、GLMemory 或屏幕显示验证。
+│                   ├── AndroidHardwareAdapterIntegrationTest.pro
+                                                            # ① 独立 qmake 入口：解析主机 Qt/GStreamer SDK 并编译手动验证程序，不接入产品 CMake 目标。
+                                                            # ② 依赖隔离：测试 androidmedia 替身和 libav 只存在于测试程序，不能进入 APK。
+│                   ├── HostDecoderPolicy.cc
+                                                            # ① 在主机 Qt 头加载后启用生产 Android 条件分支，直接编译 DecoderPolicy。
+│                   ├── HostH264Adapter.cc
+                                                            # ① 直接编译生产 H.264 适配器的 Android/GStreamer 分支。
+│                   ├── HostH265Adapter.cc
+                                                            # ① 编译生产 H.265 分支；Qt 5 时使用仅修复初始化语法的构建目录副本。
+│                   ├── prepare_qt5_compat.py
+                                                            # ① 生成 Qt 5 兼容副本，显式构造 QStringList，不修改生产源码或管线逻辑。
+│                   ├── QGCLoggingCategory.h
+                                                            # ① 测试日志薄适配，不链接完整应用日志注册器。
+│                   ├── SyntheticHevc.h
+                                                            # ① 内嵌自行生成的黑色 HEVC 测试画面，避免测试运行时依赖 x265 编码插件。
+│                   └── README.md
+                                                            # ① 说明独立构建、插件依赖、合成输入生成及验证范围。
 ├── tools/
                                                             # 实机采集等开发工具
-│   └── a8-video-capture.sh
+│   ├── a8-video-capture.sh
                                                             # ① Ubuntu/ADB 实机采集工具：start 以诊断日志参数重启 QGC 并在设备上持续采集，支持拔掉 USB 后使用双路视频，再重连执行 finish 拉取日志和归档。
                                                             # ② 使用条件：检查设备约 1 GiB 可用空间，采集设置约 15 min/512 MiB 上限，可用 ANDROID_SERIAL 选设备、A8_CAPTURE_OUTPUT_DIR 指定输出；仅供开发取证，不参与 APK 运行功能，完整步骤见 4.3。
+│   ├── rouke-diagnostics-capture.sh
+                                                            # ① Rouke 三链路采集：Ubuntu 经 USB 启用诊断并重启 QGC，设备脱离 USB 后持续保存视频硬解、53022 参数通信、UniRC 云台通道及网络/USB/媒体服务证据。
+                                                            # ② 导出保护：默认 20 min/约 512 MiB 主日志；固定 ADB 设备、校验后台进程身份，成功拉取并验证归档后才允许新会话；保留原件、异常证据及三类索引，不自动发送动作或更改网络。
+│   └── rouke-diagnostics-capture-使用说明.md
+                                                            # ① 抓取流程：按准备、启动、拔线测试、重连导出、填写记录提交五步说明，保留具体命令和三项功能操作。
+                                                            # ② 日志内容：用表格说明视频/参数/通道索引、原始日志、覆盖提示及人工记录的用途。
 └── translations/
                                                             # 源文本模板、中文翻译与提取工具
     ├── custom_zh_CN.ts
@@ -1374,16 +1411,16 @@ RTSP 使用 GStreamer 原生 Auto 传输协商，GIO 默认直连；确需代理
 #### 3.2.3 Android 硬解工作模式
 
 - 开关开启时，仅使用符合条件的厂商 MediaCodec。H.265 优先经过 `qgcandroidh265hwdec` 适配器，失败按接收器、URI 和输入格式执行有界的硬解候选切换；运行中不改变全局候选 rank，也不自动转软件解码。
-- A8 首代保留 `hvc1/AU → adapter → byte-stream/AU → MediaCodec`。柔克使用通用解码流程；本分支不沿用 MT11 专属的首代 parser 格式强制设置，H.265 输入格式与硬解能力按真实码流及恢复策略处理。
+- A8 首代保留 `hvc1/AU → adapter → byte-stream/AU → MediaCodec`。柔克实际 H.264 流通过 `qgcandroidh264hwdec`，在解码分支将源端 AVC/AU 转成 byte-stream/AU 再送入兼容的厂商硬解；录像分支仍使用原源端封装。本分支不沿用 MT11 专属的首代 parser 格式强制设置。
 - byte-stream 管线重发参数集，并在解码输入端等待同一访问单元中的有效 SPS/PPS/IRAP。adapter 统一 decoder 输入 CAPS，帧率允许范围值，不固定伪造为 25 fps。
 - 首帧超时、已确认的 decoder 分支错误或解码启动失败才能推进对应恢复；普通网络错误和已健康播放的另一条流不参与候选切换。
 - 关闭硬解开关后恢复原生自动选择，供诊断对照使用。
 
 **硬解策略如何接入**
 
-1. `AndroidVideoDecoderPolicy::apply()` 在 GStreamer 初始化后、decodebin 创建前建立厂商候选，并注册 H.265 适配器。
+1. `AndroidVideoDecoderPolicy::apply()` 在 GStreamer 初始化后、decodebin 创建前建立厂商候选，并分别注册 H.264/H.265 适配器。H.264 适配器以高于直接厂商解码器的 rank 自动选择，解决厂商只接收 byte-stream 而源 parser 输出 avc 的契约冲突。
 2. 历史 `AndroidH265StreamFormatPolicy` 保留为 MT11 纯策略及回归来源；当前插件不再按 MT11 主机强制初始格式。GstVideoReceiver 在启动新 generation 时冻结通用格式配置。
-3. `AndroidH265HardwareDecoderAdapter` 负责规范化码流并连接实际 MediaCodec；`AndroidH265DecoderCapsPolicy` 提供 decoder 输入的 byte-stream/AU CAPS；码流格式选择和厂商候选选择是两个独立步骤。
+3. `AndroidH264HardwareDecoderAdapter` 使用 h264parse、byte-stream/AU/parsed CAPS 和有界 raw 队列连接厂商解码器，在 IDR 重发 SPS/PPS；`AndroidH265HardwareDecoderAdapter` 与 `AndroidH265DecoderCapsPolicy` 维持既有 H.265 规范化和候选恢复。两种适配器均允许未知帧率，结构/READY 预检不能代替实际出帧检查。
 4. 主路 `_handlePipelineError()` / `_restartAfterDecoderFailure()`，或第二路 `_handleDecodeStartupTimeout()`，将本代事实交给 `AndroidH265DecoderFallback::prepareHardwareRetry()`。两路原生 timeout 回调另接入 `prepareCapsOnlyTimeoutRetry()`：仅在同 URI 有效代、已确认 H.265、尚无 source/decoder/sink 帧且未切换 byte-stream 时，允许下一代进行一次格式切换；不额外发起停止，不依据未知编码或单纯断网轮换解码器。没有任何编码证据的 parser 停滞仍走普通重连。
 5. Fallback 使用 `AndroidH265DecoderRoutePolicy::orderedRetryFactories()` 去重排序，再由 `nextRoute()` 推进；URI 改变由 `install()` 安装的观察逻辑清除格式及候选，同 URI 重连保留已有兼容格式；旧 URI 回调和零代次不能改写当前路由。输入格式改变由 `resetForCurrentInputFormat()` 重建该格式下的尝试状态。
 6. 路由变化只作用于失败 receiver 的后续管线；候选用完回到首选适配器作为稳定路由，仍保持硬解约束。
@@ -1440,12 +1477,12 @@ flowchart LR
 | 视频配置输入 | `UI/AppSettings/VideoSettings.qml`；`Settings/VideoCustomSettings.h/.cc`、`VideoCustom.SettingsGroup.json`；`Gimbal/GimbalControlSettings.h/.cc` 及 JSON | 页面编辑第二路 URL 和解码策略；VideoCustom 持久化第二路地址，GimbalControl 保存 Android 策略及柔克端点等关联配置。 |
 | 主路与第二路生命周期 | `CustomPlugin.cc`；`VideoManager/DualVideoManager.h/.cc`；原生 `src/VideoManager/` | 主路复用原生 VideoManager；第二路独立持有 receiver/sink、处理重复源和重连；插件把各路显示项、恢复和相机媒体接口接起来。 |
 | A8 主路缺省值 | `Gimbal/GimbalVideoStreamSupport.h/.cc` | 在启动/消息入口安装主路默认视频配置，并按产品开关过滤 MAVLink 自动流信息，避免相机设置被自动 URI 接管。 |
-| Android 解码器初选 | `AndroidVideoDecoderPolicy.h/.cc`、`AndroidH265HardwareDecoderAdapter.h/.cc` | 启动策略建立厂商候选；H.265 适配器规范化封装并连接实际 MediaCodec。 |
+| Android 解码器初选 | `AndroidVideoDecoderPolicy.h/.cc`、`AndroidH264HardwareDecoderAdapter.h/.cc`、`AndroidH265HardwareDecoderAdapter.h/.cc` | 启动策略建立厂商候选；分别规范化 H.264 AVC 和 H.265 hvc1，衔接 byte-stream/AU 与实际 MediaCodec。 |
 | parser 与 decoder 格式衔接 | `AndroidH265StreamFormatPolicy.h/.cc`、`AndroidH265DecoderCapsPolicy.h/.cc` | 前者保留历史 MT11 格式策略，当前柔克产品不调用；后者仍提供 adapter 内部 decoder 接收的 byte-stream/AU CAPS。 |
 | 候选切换与首帧恢复 | `AndroidH265DecoderRoutePolicy.h/.cc`、`AndroidH265DecoderFallback.h/.cc`、`AndroidVideoDecoderRecovery.h/.cc`；`DualVideoManager.h/.cc` | 纯策略给出候选顺序，Fallback 保存逐路尝试状态；主路观察器与第二路 Manager 分别根据首帧/错误事实启动有界恢复。 |
 | A8 播放后停滞恢复 | `A8RtspRecoveryPolicy.h/.cc`、`A8RtspStreamRecovery.h/.cc` | StreamRecovery 安装 RTP/媒体/RTCP 探针并采样；Policy 判断时钟证据、停滞和恢复额度，再向运行层返回恢复决策。 |
 | 画面分辨率反馈 | `PulledVideoResolutionProbe.h/.cc`；两种相机 Manager | 从实际协商的 sink 获取像素尺寸，反馈给对应相机，用于倍率能力门控与本地照片尺寸选择。 |
-| 验证与实机证据 | `custom/test/VideoManager/VideoReceiver/GStreamer/` 两个测试；`custom/tools/a8-video-capture.sh` | 主机测试检查候选/格式/CAPS 与 A8 恢复规则；采集脚本收集设备上的播放和恢复证据，不能代替完整真机验收。 |
+| 验证与实机证据 | `custom/test/VideoManager/VideoReceiver/GStreamer/` 两个测试；`custom/tools/a8-video-capture.sh`、`rouke-diagnostics-capture.sh` | 主机测试检查候选/格式/CAPS 与 A8 恢复规则；采集脚本收集设备上的播放和恢复证据，Rouke 工具同时关联参数通信和通道动作，不能代替完整真机验收。 |
 
 ---
 
@@ -1738,6 +1775,10 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 
 诊断类别为 `gcs.custom.gimbal.rouke.payload`。配置生效时记录目标 IP/端口、请求及实际绑定的本地端口、payload_addr 和 available；相机、回中或 SD 查询超时才输出本端点会话的接收计数，区分无 UDP、来源 IP/端口拒绝、MAVLink CRC/签名失败、非 53022、relay 字段错误、内层重同步/未完成流、source/target 或地址码不匹配，以及命令关联失败。计数在端点重设时清零，是会话累计值而非单次命令的回包数；不逐条记录 20 Hz 速度包，也不输出原始 JSON。此诊断不改变回包接纳规则，不能将本机发送成功或历史累计匹配数当成当前设备已执行。
 
+实机精细取证另用三个默认关闭的 debug 类别：`gcs.custom.gimbal.rouke.trace` 记录参数数值、53022 分片、UDP 写入及回应关联；`gcs.custom.gimbal.rouke.channels` 记录中位保护、目标速度、停止/回中和发送失败；`gcs.custom.android.unircchannel.trace` 记录 SDK 的 CH11/12/14 输入及转交状态。标记分别为 `ROUKE_TX*`、`ROUKE_RX*`、`ROUKE_RC*`；连续速度/通道限频采样，低频命令及关键状态变化单独记录，不输出原始 JSON。通过 4.3 的采集脚本显式开启，正常启动不额外输出这些明细。发送写入、接收有效回应、参数确认及实际执行仍是不同阶段。
+
+配置时还输出 `ROUKE_DIAGNOSTICS schema=2 msgid=53022 len=132 crc=37 scope=build-contract`，常量来自实际编译头文件，仅证明本 APK 的协议契约和诊断能力。超时摘要的 `otherMavlinkHeaders` 最多记录 16 组其他消息的 msgid/magic/sysid/compid 及数量，超额单独累计；不能把普通 MAVLink 回流认作负载在线。原生通信链路上的 53022 由默认关闭的 `gcs.custom.gimbal.rouke.native` 只读观察并标记 `ROUKE_NATIVE_RX`，用于排查回复到了其他链路；`udpConfiguredLocalPort` 是配置端口，0 不能当作实际绑定端口，原生上层也不提供发送者 IP。观察不改变独立 UDP 的来源校验、参数确认或业务分发。
+
 **云台控制方式的选择**
 
 | 方式 | 命令含义 | 合适的交互 |
@@ -1758,11 +1799,13 @@ ISO、白平衡只展示文档定义的索引，不臆造摄影参数映射。�
 | 第二路媒体业务 | `Gimbal/RoukeControlManager.h/.cc`；`CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 插件绑定 Video 2，Manager 分开管理设备控制与本地媒体 |
 | 遥控云台 | `Android/UniRcChannelController.h/.cc`；`Gimbal/RoukeGimbalController.h/.cc` | 接收 CH11/12/14，映射双轴速度、处理 CH14 回中边沿与中位解锁，管理刷新和停转 |
 | 控制传输与帧 | `Gimbal/RoukePayloadController.h/.cc`、`RoukeProtocol.h/.cc` | Controller 管网络、分段发送、接收流生命周期、请求和 ACK；Protocol 管内层编解码、切分、字节流重组和严格校验 |
+| 原生链路取证 | `CustomPlugin.h/.cc`、`Gimbal/RoukeNativeMavlinkTrace.h` | 在车辆 system-id 过滤前只读观察原生链路的 53022，按通道采样，用于区别独立 socket 未收到和回到了原生端口；不扩大回执接纳来源 |
 | MAVLink 消息定义 | 团队 `Glados07/mavlink` 的 `message_definitions/v1.0/{rouke,all}.xml` | `rouke.xml` 定义 53022，`all.xml` 包含 `rouke.xml`，生成的 `all` 方言同时覆盖飞行消息与负载消息 |
 | 头文件与版本选择 | 团队 `Glados07/c_library_v2` 的 `all/all.h`、`rouke/mavlink_msg_vk_payload_data_relay.h`；`custom/cmake/CustomOverrides.cmake` | CPM 按产品指定的仓库和提交获取生成头文件，原生 `MAVLinkLib.h` 通过 `<mavlink.h>` 选中 `all` 入口 |
 | 原生枚举兼容 | `custom/src/MAVLink/CMakeLists.txt`；`custom/CMakeLists.txt` | `CustomMAVLink` 为主程序和协议回归提供 RELEASE→OPEN、GRAB→CLOSE 编译别名；保留枚举类型及线上动作值，不复制生成消息表 |
 | 资源与历史实现 | `custom/CMakeLists.txt`、`custom/custom.qrc` | 产品构建和 QML 改用 Rouke；旧 MT11 源文件/设置/测试保留供后续分支合并比对 |
 | 验证 | `custom/test/Gimbal/RoukeProtocolTest.cc`、`RoukePayloadControllerTest.cc`、`RoukeGimbalControllerTest.cc`；`custom/test/MAVLink/` | 分别覆盖内层帧、UDP 分段与 ACK 状态、通道速度/回中保护及完整 MAVLink；实机转发、运动、视频及媒体按 4.2 验收 |
+| 现场日志 | `custom/tools/rouke-diagnostics-capture.sh` 及配套使用说明 | 拔 USB 后持续采集三链路，重连导出原始日志及视频/参数/通道索引；流程、时间记录和边界见 4.3 |
 
 消息定义和生成的头文件分别在团队两个仓库的 `SecDev/ft/rouke` 分支维护。QGC 应用分支为 `SecDev/rouke`。本版 53022 的 [XML 定义](https://github.com/Glados07/mavlink/blob/6f9464e4881b3f407be2f67c2b5059310ece8f90/message_definitions/v1.0/rouke.xml) 对应源码提交 `6f9464e4881b3f407be2f67c2b5059310ece8f90`。该版本的 pymavlink 子模块提交为 `fcaa2c7d25e3169dc66155929c338487941555e9`。[团队 all 消息表](https://github.com/Glados07/c_library_v2/blob/b498a888ffc58a4dbe9c0f651207b70c978c7b0b/all/all.h) 所在的头文件提交为 `b498a888ffc58a4dbe9c0f651207b70c978c7b0b`，对应 QGC 的 `QGC_MAVLINK_GIT_TAG`。
 
@@ -2804,6 +2847,18 @@ Manager 与生产 UDP 控制器联合验证 8 项通过，覆盖无 SD 回应仍
 
 Qt/PySide6 6.10.2 的英文完整、中文原生 QRC 移动入口和最新中文五组窗口回归通过，无 QML 错误；覆盖打开一次刷新/关闭取消、切页签和重连不重复刷新、UDP 可用但无响应时读取允许而应用禁用、草稿保留，以及七条“仅支持设置”提示在 320×640、150% 字号下完整显示。中文翻译编译为 342 条完成、0 未完成。日志为 `tmp/rouke-audit-{layout,preview,layout-zh}-20261109.log`；Python 只验证界面调用，四项真实队列由上述 Manager 测试覆盖。本轮仍无 Android/AI 盒子/负载设备和旧版视频日志，不能据主机通过宣称现场所有问题已解决。
 
+同日增加 Rouke 三链路现场采集工具及默认关闭的日志明细。Windows Git Bash 5.3.9 通过主脚本/四段内嵌 shell 语法、12 组主机模拟 ADB 流程和 10 个提取设备脚本的分支检查，覆盖独立会话存活检查、未导出锁定、异常收尾、旧 PID 不误杀、空日志、串号隔离及拉取/打包/回写失败重试；证据在 `tmp/rouke-capture-qa-20261109/{result.txt,device-result.txt}`，不等同 Ubuntu/Android 运行。Qt 5.14.2/MSVC 重编生产 Controller/Protocol 并使用真实本机 UDP，日志专项 4 项通过（含初始化/收尾），验证安全数值、分片、三类请求编号、默认关闭、速度采样及拒绝计数；Gimbal 全套 27 项通过（含初始化/收尾），含新增门控/采样/失鲜日志回归。结果为 `tmp/team-rouke-controller/trace-result.txt`、`tmp/team-rouke-gimbal/result.txt`。UniRC 新增采样分支完成静态审查，未进行完整 Qt 6/Android 构建或设备测试。
+
+2026-11-09 现场归档 `rouke-diagnostics-20261109-113253-Kud6Lw.tar.gz` 的有效拔线区间约为 11:29:33～11:32:34，原始证据解包在 `tmp/rouke-field-20261109/`。Rouke 的 `.100:8554/live` 在 11:29:36 已协商 H.264 high/3.1、1280×720、avc/AU 并收到源首帧，但 decoder/sink 均无首帧，持续 `not-negotiated(-4)`；启动工厂日志明确 Qualcomm AVC 厂商解码器只兼容 byte-stream，原策略要求 avc 并将其降至 rank 0。同期 A8 H.265 已有硬解和 sink 首帧，因此该归档支持 H.264 封装衔接缺失的代码根因，不能笼统归为断网或 MAVLink。当前 custom 增加 H.264 AVC→Annex-B/AU 适配，实际修复后的 Android 出帧仍待重新安装验证。
+
+同一归档中，独立 Rouke UDP 本地端口 43755 收到来自配置 `.110:8888` 的 13,104 个完整 MAVLink 报文，来源拒绝和 CRC/签名错误均为 0，全部在版本/消息编号层归为 other，内层有效帧为 0；两轮 ISO/白平衡/焦距/图片大小请求均超时。11:29:35.854 UniRC 恢复 SDK_ROUTE_ACTIVE，首帧 CH11/12=1500、CH14=1050 满足初始保护。实际 APK 的函数行号与旧 HEAD 一致，缺少新增 TX/RX/RC 追踪；因此本次不能还原非零速度发包，也不能排除 53022 回复到了原生其他 UDP 端口。保留端点、协议及安全门控，补齐 other 消息头、原生链路观察和启动能力检测；AI 盒子转发及硬件实际动作仍未确认。源码同步/新 APK 安装由脚本 schema=2 检查辅助核对。
+
+现场审查后的独立 XML/X25 黄金报文和真实 QGC wrapper 测试 2/2 通过，真实发送路径的云台专项 19 项通过（含初始化/收尾）；证据为 `tmp/rouke-field-20261109/{golden-wire-results.txt,gimbal-regression.txt,rc-evidence.json}`。设备脚本 schema 检查 7 项通过，覆盖延迟/缺失/旧标记、权限拒绝及可恢复导出，见 `tmp/rouke-capture-qa-20261109/schema-result.txt`；此脚本测试仍为主机替身环境。
+
+生产 Controller/Protocol 的真实 UDP 及原生观察采样状态专项 6 项通过（含初始化/收尾），覆盖其他消息头统计上限、不误判负载在线、后续合法 53022 确认、日志限频及通道销毁/复用；结果为 `tmp/team-rouke-controller/native-observer-result.txt`。从生产 CustomPlugin 提取原生观察方法，使用真实 MAVLinkProtocol/LinkInterface/UDPLink 头和团队 MAVLink 进行 Qt 5/MSVC 语法检查通过，仅移除 Qt 6 的 Q_MOC_INCLUDE 注解，证据为 `tmp/rouke-native-observer-syntax/syntax-build.log`；这不是完整应用构建。独立审查确认观察不改分发/ACK，当前初始化、线程及清理次序无新增业务行为。
+
+H.264 修复使用官方 GStreamer 1.22.12 runtime/devel、Qt 5.14.2/MSVC，真实编译生产 H.264 适配器和 DecoderPolicy；H.265 仅在构建目录副本中将一处 QStringList 初始化改为显式类型以兼容 Qt 5。真实 h264parse/h265parse/decodebin3 的 5 组检查通过：禁用新适配器重现 AVC 协商失败且无输出；启用后 AVC 转 Annex-B/SPS/PPS/IDR 并出帧，HVC1 同时出帧；软件自动选择保持禁用、实例独立、无效内部解码器拒绝 READY。测试用 libav 承担严格 byte-stream 输入的厂商解码替身，不能当作 Android 硬解/GL/RTSP 验证；H.265 生产源文件未改。可维护的手动测试在 `custom/test/VideoManager/VideoReceiver/GStreamer/AndroidHardwareAdapterIntegration/`，其独立 shadow build 再次通过 5 组检查，AVC/HVC1 分别输出 12/1 帧；最终证据为 `tmp/rouke-h264-gst-20261109/maintained/{build.log,result.txt,run.cmd}` 及 `validation.txt`，构建与边界见测试 README。
+
 以下命令用于**已经配置好 Qt Kit 的桌面构建目录**。先将该目录配置为 Debug 并启用产品测试开关，再构建、执行；首次配置所需 Qt/平台路径仍使用项目已有 Kit 设置。
 
 ~~~sh
@@ -2909,30 +2964,36 @@ ctest --test-dir <desktop-build>/custom -R '^(RoukeMavlinkTest|RoukeProtocolTest
 | 遥测与界面 | 底部飞控航向显示与顶部云台换算；云台姿态 2 s 过期/失联隐藏及底部保留值的边界；电源阈值/缺参数回退、母线计时；Fuel/雷达有效值及失联显示 |
 | 平台集成 | USB 权限/插拔/重开；空配置 UDP 默认值及已有值保留；净安装字号、升级持久化、宽窄屏与中文 |
 
-### 4.3 A8 稳定性采集工具
+### 4.3 实机诊断采集工具
 
-`custom/tools/a8-video-capture.sh` 是随仓库维护的 Ubuntu/USB ADB 工具，不参与 APK 构建。用于启动采集后拔掉 USB，在实际图传条件下播放，再接回 USB 导出证据。
+`custom/tools/` 中的脚本在 Ubuntu 运行，不参与 APK 构建。目标遥控器插 USB 会影响图传，因此使用“插线启动 → 拔线测试 → 重连导出”，无人机、AI 盒子和负载全程持续上电。
 
-#### 4.3.1 操作步骤
+#### 4.3.1 Rouke 三链路采集
 
-1. Ubuntu 安装可用 ADB，进入工程根目录，USB 连接遥控器并确认调试授权。遥控器至少保留 1 GiB 空间。
-2. 执行启动命令；该步骤会重启 QGC 一次，成功后拔掉 USB。
-3. 保持双路前台播放约 10 min，接回 USB，再执行导出命令：
+完整人工测试与异常处理见 [Rouke 采集使用说明](custom/tools/rouke-diagnostics-capture-使用说明.md)。安装包含本次诊断点的 APK 后，在地面静止状态将 CH11/12 回中；Ubuntu 连接已授权 USB，遥控器保留至少 1 GiB 空间，执行：
 
 ~~~sh
-bash custom/tools/a8-video-capture.sh start
-# 启动成功后拔 USB，完成播放测试，再接回 USB
-bash custom/tools/a8-video-capture.sh finish
+bash custom/tools/rouke-diagnostics-capture.sh start
+# 确认启动成功，拔 USB，等链路恢复后人工测试约 5～8 分钟
+# 记录视频、参数读取/设置、CH11/12/14 各阶段和异常时间，再接回 USB
+bash custom/tools/rouke-diagnostics-capture.sh finish
 ~~~
 
-多设备时设置 `ANDROID_SERIAL`；自定义输出位置用 `A8_CAPTURE_OUTPUT_DIR`，目录必须预先存在。默认在 Ubuntu 用户目录生成 `a8-stability-*.tar.gz`，遥控器原件位于 `/sdcard/Download/QGC_A8_Stability/`。重复 start 不覆盖未导出的会话，finish 可在新终端执行。
+`start` 只在准备阶段重启 QGC 一次，不重启设备、不更改网络、不直接发送控制指令；通过 `applicationArguments` 显式开启 Qt/GStreamer 及 Rouke 明细/原生链路观察日志。启动后按本次 QGC PID 等待 schema=2 能力标记，缺失则保留采集并退出准备流程，提示先 `finish`、核对源码同步和 APK 安装；不会把“旧 APK 能启动”当作具备新诊断。能力与独立 ADB 会话检查均通过后才提示拔线。默认 20 min、约 512 MiB 主日志轮转，另保存启动/结尾日志和系统快照；剩余空间低于约 256 MiB 时提前停止。
 
-#### 4.3.2 工作方式与结果解读
+`finish` 等待本会话采集器收尾，校验 PID/开机标识/启动时间/命令身份，保留异常退出证据；拉回并验证归档成功后才写导出标记，失败时允许重试且不放行新 `start`。默认输出 `~/rouke-diagnostics-*.tar.gz` 及同名原始目录，设备原件保留在 `/sdcard/Download/QGC_Rouke_Diagnostics/`；填写 `observation.txt` 后重新打包。多设备用 `ANDROID_SERIAL`，时长用 `ROUKE_CAPTURE_SECONDS`（180～3600），输出目录用 `ROUKE_CAPTURE_OUTPUT_DIR`；`status` 只在已连接 USB 时查询，不应为了查询而中断测试。
 
-- 通过 Qt `applicationArguments` 启用 QGC/GStreamer 诊断；采集进程脱离 ADB 会话，最长约 15 min，轮转日志约 512 MiB，并保存进程、网络、USB 和媒体服务状态。
-- 按两路 receiver/generation 区分数据，结合日志覆盖、输入/输出间隔和恢复事件分析。脚本检查记录完整性，不自动给出“零断流”结论。
-- 目标遥控器插 USB 会影响图传，分析时排除插拔前后约 10 s，并根据日志扩大边界。详细采集有额外负担，短间隔异常应与低日志量播放对照。
-- 日志和压缩包不纳入 Git；对外分享前核对设备信息及流地址。当前保留的验证基础是脚本语法与替身 ADB 检查，目标设备脱离 USB 后的采集存活仍需实测。
+归档同时包含 `index-video.txt`、`index-payload.txt`、`index-rc.txt`、日志覆盖提示、版本/启动参数、USB/网络/媒体服务状态及原始日志。索引保留文件名和行号；轮转编号不是时间顺序，启动/结尾补充可能重叠。采集停止不重启 QGC，详细日志随当前进程继续生效；结束整轮取证后正常退出并重新打开 QGC，恢复日常日志量。
+
+#### 4.3.2 A8 工具与证据边界
+
+原 `custom/tools/a8-video-capture.sh` 保留，仍使用 `start` / `finish`，默认约 15 min/512 MiB；自定义输出使用 `A8_CAPTURE_OUTPUT_DIR`（目录预先存在），输出 `~/a8-stability-*.tar.gz`，设备原件位于 `/sdcard/Download/QGC_A8_Stability/`。
+
+- 分析先排除 USB 插拔前后约 10 s，再按实际链路恢复时间扩大范围；设备 USB 配置属性、路由或系统累计流量单独不能证明连接或 RTSP 正常。
+- 视频按 URI、receiver/generation 关联压缩帧、解码输出及显示端证据；创建硬解码器不代表成功出帧。参数区分本机 UDP 写出、负载回应、参数确认；通道日志区分 SDK 输入、中位门控、目标发送和实际动作。
+- 脚本收集程序和系统日志，不是网络抓包，也无法直接证明 AI 盒子内部转发。媒体服务缺失/权限拒绝及覆盖标记缺失不能自动判定功能故障。
+- 详细日志会增加负担，优先做短而明确的一轮；默认不在遥控器录屏，必要时另用手机拍屏。日志和压缩包不纳入 Git。
+- 当前验证为主机脚本语法与模拟 ADB 流程；目标设备拔线存活、Android 硬解、负载转发和云台动作仍待实测，不以工具完成代替真机验收。
 
 ---
 

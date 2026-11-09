@@ -1,5 +1,6 @@
 #include "RoukePayloadController.h"
 #include "RoukeProtocol.h"
+#include "RoukeNativeMavlinkTrace.h"
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QLoggingCategory>
@@ -29,7 +30,8 @@ public:
 private:
     static void handleMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
     {
-        if (current && qstrcmp(context.category, "gcs.custom.gimbal.rouke.payload") == 0) {
+        if (current && (qstrcmp(context.category, "gcs.custom.gimbal.rouke.payload") == 0
+                        || qstrcmp(context.category, "gcs.custom.gimbal.rouke.trace") == 0)) {
             current->messages.append(message);
         } else if (current && current->previous) {
             current->previous(type, context, message);
@@ -37,6 +39,12 @@ private:
     }
     inline static PayloadLogCapture *current = nullptr;
     QtMessageHandler previous = nullptr;
+};
+
+class PayloadTraceFilter {
+public:
+    PayloadTraceFilter() { QLoggingCategory::setFilterRules("gcs.custom.gimbal.rouke.trace.debug=true"); }
+    ~PayloadTraceFilter() { QLoggingCategory::setFilterRules({}); }
 };
 
 // Deliberately independent of the production frame encoder and splitter.
@@ -173,6 +181,175 @@ class RoukePayloadControllerTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void nativeTraceSamplesChannelsIndependentlyAndResetsDestroyedLinks()
+    {
+        RoukeNativeMavlinkTrace trace;
+        QObject second;
+        auto *first = new QObject;
+        QVERIFY(!trace.observe(nullptr, 0, 0).log);
+        QVERIFY(!trace.observe(first, -1, 0).log);
+        QVERIFY(!trace.observe(first, RoukeNativeMavlinkTrace::ChannelCount, 0).log);
+        auto sample = trace.observe(first, 0, 0);
+        QVERIFY(sample.log);
+        QCOMPARE(sample.count, quint64(1));
+        for (int i = 1; i < 20; ++i) QVERIFY(!trace.observe(first, 0, i * 50).log);
+        sample = trace.observe(&second, 1, 999);
+        QVERIFY(sample.log); // Another channel is never hidden by channel 0.
+        QCOMPARE(sample.count, quint64(1));
+        sample = trace.observe(first, 0, 1000);
+        QVERIFY(sample.log);
+        QCOMPARE(sample.count, quint64(21));
+        delete first;
+        first = new QObject;
+        sample = trace.observe(first, 0, 1001);
+        QVERIFY(sample.log);
+        QCOMPARE(sample.count, quint64(1));
+        sample = trace.observe(&second, 0, 1002);
+        QVERIFY(sample.log); // Reassigning a live channel also resets it.
+        QCOMPARE(sample.count, quint64(1));
+        trace.reset();
+        QVERIFY(trace.observe(&second, 0, 0).log);
+        delete first;
+    }
+
+    void unrelatedMavlinkHeadersAreBoundedAndNeverConfirmPayloadState()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        logs.messages.clear();
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        const auto sendHeartbeat = [&](int system) {
+            mavlink_message_t message{};
+            mavlink_status_t status{};
+            mavlink_heartbeat_t heartbeat{};
+            if (system == 2) status.flags = MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
+            mavlink_msg_heartbeat_encode_status(static_cast<uint8_t>(system), 1, &status, &message, &heartbeat);
+            uint8_t bytes[MAVLINK_MAX_PACKET_LEN]{};
+            const auto count = mavlink_msg_to_send_buffer(bytes, &message);
+            QCOMPARE(box.writeDatagram(reinterpret_cast<const char *>(bytes), count,
+                                      QHostAddress::LocalHost, controller.boundPort()), qint64(count));
+        };
+        // Seventeen different header tuples exceed the sixteen-entry budget;
+        // an already tracked tuple must still accumulate after the limit.
+        for (int system = 1; system <= 17; ++system) sendHeartbeat(system);
+        sendHeartbeat(1);
+        sendHeartbeat(1);
+        QTest::qWait(30);
+        QVERIFY(!controller.responding());
+        QVERIFY(controller.pending());
+        QVERIFY(controller.cameraParameters().isEmpty());
+        QVERIFY(logs.messages.isEmpty()); // No logging at telemetry frequency.
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QCOMPARE(logs.messages.size(), 1);
+        const QString summary = logs.messages.first();
+        QVERIFY(summary.contains("matchedPeerDatagrams 19"));
+        QVERIFY(summary.contains("otherMavlinkMessages 19"));
+        QVERIFY(summary.contains("badMavlinkCrcOrSignature 0"));
+        QVERIFY(summary.contains("id=0,magic=253,sys=1,comp=1,count=3"));
+        QVERIFY(summary.contains("id=0,magic=254,sys=2,comp=1,count=1"));
+        QVERIFY(!summary.contains("sys=17,"));
+        QVERIFY(summary.contains("otherMavlinkHeaderOverflow 1"));
+        QVERIFY(summary.contains("validInnerFrames 0"));
+        QVERIFY(!controller.responding());
+        // Header accounting never loosens the relay filter or blocks a later
+        // genuine 53022 value report from the same peer.
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        auto response = ack("lr1_iso");
+        response["data"] = QJsonObject{{"value", 5}};
+        sendStream(box, controller, response);
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(controller.responding());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 5);
+    }
+
+    void explicitTraceReportsSafeValuesAndThrottlesSpeed()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        logs.messages.clear();
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        auto response = ack("lr1_iso");
+        response["data"] = QJsonObject{{"value", 12}, {"private_note", "do-not-log-this-data"}};
+        response["msg"] = "do-not-log-this-message";
+        sendStream(box, controller, response);
+        QTRY_VERIFY(!controller.pending());
+        QVERIFY(logs.messages.isEmpty()); // The new trace category defaults off.
+
+        PayloadTraceFilter trace;
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        const QByteArray frame = rawFrame(response);
+        for (int offset = 0; offset < frame.size(); offset += 128) {
+            sendFragment(box, controller, frame.mid(offset, 128), 7, 42, 77, 51 + offset / 128);
+        }
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 12);
+        QString output = logs.messages.join('\n');
+        QVERIFY(output.contains("ROUKE_TX cmd \"lr1_iso\" operation read"));
+        QVERIFY(output.contains("action=0"));
+        QVERIFY(output.contains("ROUKE_TX_FRAGMENT"));
+        QVERIFY(output.contains("ROUKE_RX cmd \"lr1_iso\" ack true accepted true"));
+        QVERIFY(output.contains("value=12"));
+        QVERIFY(output.contains("seq=51,data_len=128"));
+        QVERIFY(output.contains("seq=52,data_len="));
+        QVERIFY(output.contains("ROUKE_RX_RESULT cmd \"lr1_iso\" success true"));
+        QVERIFY(!output.contains("do-not-log"));
+        QVERIFY(!output.contains("private_note"));
+        QVERIFY(!output.contains("{\""));
+
+        logs.messages.clear();
+        QVERIFY(controller.setCameraParameter("iso", 8));
+        receiveStreamRequest(box);
+        send(box, controller, ack("lr1_iso"));
+        QTRY_VERIFY(!controller.pending());
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains("operation write"));
+        QVERIFY(output.contains("value=8"));
+        QVERIFY(output.contains("action=1"));
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 8);
+
+        logs.messages.clear();
+        QVERIFY(controller.requestSdCardStatus());
+        receiveStreamRequest(box);
+        sendStream(box, controller, sdCardAck());
+        QTRY_VERIFY(!controller.sdCardQueryPending());
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains("lane storage serial 2"));
+        QVERIFY(output.contains("lane storage frameSerial 2 currentSerial 2 pendingMatch true"));
+        QVERIFY(output.contains("accepted true code 0"));
+        logs.messages.clear();
+        QVERIFY(controller.centerGimbal());
+        receiveStreamRequest(box);
+        send(box, controller, ack("gimbal_center"));
+        QTRY_VERIFY(!controller.gimbalCenterPending());
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains("lane center serial 2"));
+        QVERIFY(output.contains("lane center frameSerial 2 currentSerial 2 pendingMatch true"));
+
+        logs.messages.clear();
+        for (int i = 1; i <= 20; ++i) {
+            QVERIFY(controller.sendGimbalSpeed(i, -i));
+            receiveStreamRequest(box);
+            send(box, controller, ack("gimbal_speed_ctrl"));
+        }
+        QTest::qWait(30);
+        QCOMPARE(logs.messages.filter("ROUKE_TX cmd").size(), 1);
+        QCOMPARE(logs.messages.filter("ROUKE_TX_FRAGMENT").size(), 2);
+        QCOMPARE(logs.messages.filter("ROUKE_RX cmd").size(), 1);
+        QVERIFY(controller.sendGimbalSpeed(0, 0));
+        receiveStreamRequest(box);
+        QCOMPARE(logs.messages.filter("ROUKE_TX cmd").size(), 2); // Stop is immediate, not sampled away.
+    }
+
     void diagnosticsSummarizeRejectedPacketsWithoutLoggingPayloads()
     {
         QUdpSocket box, foreign;
@@ -182,6 +359,7 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         QVERIFY(logs.messages.join('\n').contains(QString("boundLocalPort %1").arg(controller.boundPort())));
+        QVERIFY(logs.messages.join('\n').contains("ROUKE_DIAGNOSTICS schema=2 msgid=53022 len=132 crc=37 scope=build-contract"));
         QVERIFY(logs.messages.join('\n').contains(QString("remotePort %1").arg(box.localPort())));
         QVERIFY(logs.messages.join('\n').contains("payloadAddress 7"));
         logs.messages.clear();

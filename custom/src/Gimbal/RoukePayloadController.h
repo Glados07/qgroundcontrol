@@ -11,6 +11,7 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QObject>
 #include <QtCore/QSet>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QVariantMap>
 #include <QtNetwork/QHostAddress>
@@ -76,7 +77,8 @@ private:
     void _handleMessage(const mavlink_message_t &message, quint64 requestSerial, quint64 centerSerial,
                         quint64 sdCardSerial);
     void _handleFrame(const QJsonObject &object, uint16_t payloadAddress,
-                      quint64 requestSerial, quint64 centerSerial, quint64 sdCardSerial);
+                      quint64 requestSerial, quint64 centerSerial, quint64 sdCardSerial,
+                      const QStringList &traceFragments);
     bool _writeCommand(const QString &command, const QJsonObject &data, QString *error);
     void _reset();
     void _timeout();
@@ -102,6 +104,11 @@ private:
         quint64 badMavlink = 0;
         quint64 noCompleteMavlink = 0;
         quint64 otherMavlink = 0;
+        // The field log contained only valid non-relay MAVLink traffic. Keep
+        // bounded header-only counts so the next timeout identifies that
+        // traffic without exposing message payloads or logging every packet.
+        QHash<quint64, quint64> otherMavlinkHeaders;
+        quint64 otherMavlinkHeaderOverflow = 0;
         quint64 invalidRelay = 0;
         quint64 innerResyncs = 0;
         quint64 expiredStreams = 0;
@@ -167,12 +174,19 @@ private:
     mavlink_status_t _txStatus{};
     mavlink_status_t _rxStatus{};
     mavlink_message_t _rxMessage{};
+    QElapsedTimer _txSpeedTraceElapsed;
+    QElapsedTimer _rxSpeedTraceElapsed;
+    bool _lastTracedSpeedZero = true;
+    bool _lastTracedSpeedAccepted = true;
     struct ResponseStream {
         RoukeProtocol::StreamDecoder decoder;
         QElapsedTimer lastFragment;
         quint64 requestSerial = 0;
         quint64 centerSerial = 0;
         quint64 sdCardSerial = 0;
+        // Only populated while explicit tracing is enabled; bounded even for
+        // unusually fragmented frames. Entries contain sequence/length only.
+        QStringList traceFragments;
     };
     // The peer IP/port is checked before parsing. Keep different MAVLink senders
     // and payload addresses separate even when the AI box relays them together.

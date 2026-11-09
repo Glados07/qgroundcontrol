@@ -24,6 +24,7 @@
 #include <QtGui/QGuiApplication>
 
 QGC_LOGGING_CATEGORY(UniRcChannelLog, "gcs.custom.android.unircchannel")
+Q_LOGGING_CATEGORY(UniRcRoukeTraceLog, "gcs.custom.android.unircchannel.trace", QtInfoMsg)
 
 UniRcChannelController::UniRcChannelController(
     GimbalControlSettings *settings,
@@ -844,6 +845,23 @@ void UniRcChannelController::_handleChannelPacket(
     // Rouke uses an independent channel policy and MAVLink UDP endpoint.
     // Route it before A8 validation so invalid CH9/CH10 cannot suppress a
     // Rouke stop or center. Channel numbers are one-based in the SDK manual.
+    if (UniRcRoukeTraceLog().isDebugEnabled()) {
+        const auto axisGate = [](qint16 value) {
+            return value < 900 || value > 2100 ? 0 : value >= 1400 && value <= 1600 ? 1 : 2;
+        };
+        const qint16 center = channels.at(13);
+        const int buttonGate = center < 900 || center > 2100 ? 0 : center <= 1250 ? 1 : center >= 1750 ? 3 : 2;
+        const int gate = axisGate(channels.at(10)) | (axisGate(channels.at(11)) << 2)
+            | (buttonGate << 4) | (_roukeControlManager ? 0x100 : 0);
+        if (gate != _roukeTraceGate || !_roukeTraceElapsed.isValid() || _roukeTraceElapsed.hasExpired(1000)) {
+            _roukeTraceGate = gate;
+            _roukeTraceElapsed.start();
+            qCDebug(UniRcRoukeTraceLog) << "ROUKE_RC_SDK attempt" << _connectionAttempt
+                << "frame" << _channelFrameCount << "sequence" << packet.sequence
+                << "CH11" << channels.at(10) << "CH12" << channels.at(11) << "CH14" << center
+                << "managerPresent" << bool(_roukeControlManager);
+        }
+    }
     if (_roukeControlManager) {
         _roukeControlManager->updateUniRcGimbalChannels(channels.at(10), channels.at(11), channels.at(13));
     }
@@ -1156,6 +1174,8 @@ void UniRcChannelController::_resetReceiveDiagnostics()
     _requestAwaitingTransmission = false;
     _requestElapsed.invalidate();
     _diagnosticRefreshElapsed.invalidate();
+    _roukeTraceElapsed.invalidate();
+    _roukeTraceGate = -1;
     _invalidChannelWarningActive = false;
     _lastFrameControl = 0;
     _lastFrameCommand = 0;

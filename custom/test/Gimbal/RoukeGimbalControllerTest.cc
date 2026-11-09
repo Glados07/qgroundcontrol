@@ -3,12 +3,42 @@
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QLoggingCategory>
 #include <QtNetwork/QNetworkDatagram>
 #include <QtTest/QTest>
 #include <cstring>
 #include <memory>
 
 namespace {
+class GimbalTraceCapture {
+public:
+    GimbalTraceCapture()
+    {
+        current = this;
+        previous = qInstallMessageHandler(handleMessage);
+        QLoggingCategory::setFilterRules("gcs.custom.gimbal.rouke.channels.debug=true");
+    }
+    ~GimbalTraceCapture()
+    {
+        QLoggingCategory::setFilterRules({});
+        qInstallMessageHandler(previous);
+        current = nullptr;
+    }
+    QStringList messages;
+
+private:
+    static void handleMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
+    {
+        if (current && qstrcmp(context.category, "gcs.custom.gimbal.rouke.channels") == 0) {
+            current->messages.append(message);
+        } else if (current && current->previous) {
+            current->previous(type, context, message);
+        }
+    }
+    inline static GimbalTraceCapture *current = nullptr;
+    QtMessageHandler previous = nullptr;
+};
+
 // Independently reconstruct the documented byte stream, so tests exercise the
 // actual two-packet speed request without using the production frame decoder.
 class PayloadPeer
@@ -161,6 +191,35 @@ private slots:
         _gimbal->updateChannels(2000, 1000, 1000);
         verifySpeed(_peer->nextRequest(), 10, -5);
         QVERIFY(!_controller->gimbalCenterPending());
+    }
+
+    void tracePreservesGateTransitionsAndSamplesAnalogInput()
+    {
+        GimbalTraceCapture logs;
+        for (int i = 0; i < 20; ++i) _gimbal->updateChannels(1900 + i, 1100 - i, 1900);
+        QCOMPARE(logs.messages.filter("await-neutral").size(), 1);
+        QVERIFY(_peer->takeAll().isEmpty());
+        _gimbal->updateChannels(1500, 1500, 1000);
+        QCOMPARE(logs.messages.filter("neutral-armed").size(), 1);
+        for (int i = 0; i < 20; ++i) _gimbal->updateChannels(1700 + i, 1300 - i, 0);
+        QCOMPARE(logs.messages.filter("gate motion").size(), 1);
+        QVERIFY(logs.messages.join('\n').contains("centerButtonValid false"));
+        verifySpeed(_peer->nextRequest(), 3, -1);
+        _gimbal->updateChannels(1500, 1500, 1000);
+        QCOMPARE(logs.messages.filter("ROUKE_RC_STOP").size(), 1);
+        verifySpeed(_peer->nextRequest(), 0, 0);
+        _gimbal->updateChannels(1500, 1500, 1900);
+        QCOMPARE(logs.messages.filter("center-edge").size(), 1);
+        QVERIFY(logs.messages.join('\n').contains("ROUKE_RC_CENTER submitted true"));
+        QCOMPARE(_peer->nextRequest().value("cmd").toString(), QString("gimbal_center"));
+        _peer->acknowledge(*_controller, "gimbal_center");
+        QTRY_VERIFY(!_controller->gimbalCenterPending());
+        _gimbal->updateChannels(1500, 1500, 1000);
+        _gimbal->updateChannels(1900, 1100, 1000);
+        QTest::qWait(450);
+        QVERIFY(logs.messages.join('\n').contains("ROUKE_RC_CANCEL inputAgeMs"));
+        QVERIFY(logs.messages.join('\n').contains("targetYaw 10 targetPitch -5")
+                || logs.messages.join('\n').contains("targetYaw 9 targetPitch -4"));
     }
 
     void channelMapping_data()

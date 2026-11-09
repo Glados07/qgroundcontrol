@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "AndroidVideoDecoderPolicy.h"
+#include "AndroidH264HardwareDecoderAdapter.h"
 
 #include "AndroidH265DecoderRoutePolicy.h"
 #include "AndroidH265HardwareDecoderAdapter.h"
@@ -89,9 +90,8 @@ bool isAdapterFactory(GstElementFactory *factory)
     const gchar *const name = factory
         ? gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory))
         : nullptr;
-    return name
-        && AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(
-            QString::fromUtf8(name));
+    return name && (qstrcmp(name, AndroidH264HardwareDecoderAdapter::elementFactoryName()) == 0
+        || AndroidH265HardwareDecoderAdapter::isAdapterElementFactoryName(QString::fromUtf8(name)));
 }
 
 bool isAndroidMediaFactory(GstElementFactory *factory)
@@ -308,6 +308,7 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
     // factories. Its rank is deliberately above direct hvc1 MediaCodec paths.
     const bool adapterRegistered =
         AndroidH265HardwareDecoderAdapter::registerElement();
+    const bool h264AdapterRegistered = AndroidH264HardwareDecoderAdapter::registerElement();
 
     GstCaps *h264Caps = gst_caps_from_string("video/x-h264");
     GstCaps *avcCaps = gst_caps_from_string("video/x-h264,stream-format=(string)avc");
@@ -331,7 +332,7 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
     }
 
     const int directH264VendorCount = rankNativeVendorMediaCodecDecoders(
-        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, false, nullptr,
+        "H.264", h264Caps, avcCaps, h264ByteStreamCaps, h264AdapterRegistered, nullptr,
         nullptr);
     QStringList directHvc1DecoderFactoryNames;
     QStringList directByteStreamDecoderFactoryNames;
@@ -367,7 +368,11 @@ void AndroidVideoDecoderPolicy::apply(bool forceHardwareDecoding)
             << directByteStreamDecoderFactoryNames;
     }
 
-    if (directH264VendorCount > 0) {
+    if (h264AdapterRegistered) {
+        qCInfo(AndroidVideoDecoderPolicyLog)
+            << "Android H.264 AVC-to-Annex-B adapter is preferred; "
+               "software H.264 autoplug candidates were disabled";
+    } else if (directH264VendorCount > 0) {
         qCInfo(AndroidVideoDecoderPolicyLog)
             << "Prioritized" << directH264VendorCount
             << "vendor Android MediaCodec H.264 decoder(s) that accept avc; "
