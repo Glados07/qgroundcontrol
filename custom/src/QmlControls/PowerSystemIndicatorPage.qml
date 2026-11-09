@@ -292,7 +292,7 @@ ToolIndicatorPage {
 
         SettingsGroupLayout {
             Layout.fillWidth: true
-            heading: qsTr("Fuel Cell Controller")
+            heading: qsTr("Fuel Cell")
             showDividers: false
             contentSpacing: ScreenTools.defaultFontPixelHeight / 4
 
@@ -308,10 +308,6 @@ ToolIndicatorPage {
                                 : QGroundControl.globalPalette.text
             }
             StatusField {
-                label: qsTr("Lithium battery SOC")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 2, "%")
-            }
-            StatusField {
                 label: qsTr("DCDC output current")
                 labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 2, "A")
             }
@@ -319,13 +315,13 @@ ToolIndicatorPage {
 
         SettingsGroupLayout {
             Layout.fillWidth: true
-            heading: qsTr("Flight controller setpoints")
+            heading: qsTr("Lithium battery")
             showDividers: false
             contentSpacing: ScreenTools.defaultFontPixelHeight / 4
 
             StatusField {
-                label: qsTr("Requested power")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.requestedPower, 0, "W")
+                label: qsTr("SOC")
+                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 2, "%")
             }
         }
 
@@ -335,6 +331,10 @@ ToolIndicatorPage {
             showDividers: false
             contentSpacing: ScreenTools.defaultFontPixelHeight / 2
 
+            StatusField {
+                label: qsTr("Requested power")
+                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.requestedPower, 0, "W")
+            }
             StatusField {
                 label: qsTr("Current command")
                 labelText: fuelCellPane.controller.commandText(fuelCellPane.manager.acceptedCommand)

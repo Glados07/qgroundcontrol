@@ -1307,8 +1307,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="139"/>
-        <source>Fuel Cell Controller</source>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="295"/>
+        <source>Fuel Cell</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1322,8 +1322,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="153"/>
-        <source>Lithium battery SOC</source>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="318"/>
+        <source>Lithium battery</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1332,12 +1332,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="160"/>
-        <source>Flight controller setpoints</source>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="323"/>
+        <source>SOC</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="173"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="335"/>
         <source>Requested power</source>
         <translation type="unfinished"></translation>
     </message>

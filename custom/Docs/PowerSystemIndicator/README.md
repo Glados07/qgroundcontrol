@@ -72,18 +72,15 @@ FCS 状态不会改变主图标的电池颜色。新鲜遥测确认 FCS 已断�
 
 修改前应记录原值，确认参数适用于当前机型，并在测试结束后恢复。界面不提供跨参数的统一保存或原子提交。
 
-## 5. 右侧：燃料电池控制器
+## 5. 右侧：燃料电池
 
 ### 状态信息
 
-右侧显示：
+右侧按以下分组显示：
 
-- Device connection：设备连接状态；
-- FCS system status：FCS 实际执行状态；
-- Lithium battery SOC：FCS 返回的锂电池 SOC；
-- DCDC output current：FCS 返回的 DCDC 输出电流；
-- Requested power：飞控当前用于 CAN 下发的请求功率；
-- Current command：飞控当前保存并持续发送的 FCS 指令。
+- **燃料电池**：Device connection（设备连接状态）、FCS system status（FCS 实际执行状态）、DCDC output current（FCS 返回的 DCDC 输出电流）；
+- **锂电池**：SOC（FCS 返回的锂电池 SOC）；
+- **FCS 控制**：Requested power（飞控当前用于 CAN 下发的请求功率）、Current command（飞控当前保存并持续发送的 FCS 指令），下方是控制按钮。
 
 左侧功率由 PMU/电池测量值计算，右侧是飞控下发给 FCS 的请求功率，两者来源不同。PMU 回退或采样时刻不同时，左右功率可以不同。
 DCDC 输出电流是 FCS 设备遥测，不是 PMU 电流或飞控内部 CAN 控制电流。SOC 和 DCDC 电流显示两位小数；设备未连接、断连或 QGC 遥测过期时显示 `—`，有效的 `0.00 A` 正常显示。

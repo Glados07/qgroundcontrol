@@ -1320,9 +1320,9 @@
         <translation>确认清除飞控 #%1 的燃料电池控制器故障？此操作会将当前 FCS 指令切换为关机。</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="139"/>
-        <source>Fuel Cell Controller</source>
-        <translation>燃料电池控制器</translation>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="295"/>
+        <source>Fuel Cell</source>
+        <translation>燃料电池</translation>
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="144"/>
@@ -1335,9 +1335,9 @@
         <translation>FCS 系统状态</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="153"/>
-        <source>Lithium battery SOC</source>
-        <translation>锂电池 SOC</translation>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="318"/>
+        <source>Lithium battery</source>
+        <translation>锂电池</translation>
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="291"/>
@@ -1345,12 +1345,12 @@
         <translation>DCDC 输出电流</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="160"/>
-        <source>Flight controller setpoints</source>
-        <translation>飞控下发参数</translation>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="323"/>
+        <source>SOC</source>
+        <translation>SOC</translation>
     </message>
     <message>
-        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="173"/>
+        <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="335"/>
         <source>Requested power</source>
         <translation>请求功率</translation>
     </message>
