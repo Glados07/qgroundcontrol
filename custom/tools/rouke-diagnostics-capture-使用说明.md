@@ -28,7 +28,7 @@ bash ./rouke-diagnostics-capture.sh start
 
 **3. 拔线后测试**
 
-等待链路恢复，保持 QGC 前台。在“应用设置 → Video → Connection”先记下原来的两个地址，视频源保持 **RTSP**、视频总开关保持开启：清空 **RTSP URL 1** 并提交，使 A8 全程停止拉流；通过 **RTSP URL 2 (Rouke)** 的“清空 → 填回 `rtsp://192.168.144.100:8554/live` → 清空”完成以下对照。每次编辑后提交输入，再返回飞行页测试；测试结束恢复原地址。
+等待链路恢复，保持 QGC 前台。在“应用设置 → Video → Connection”先记下原来的两个地址，视频源保持 **RTSP**、视频总开关保持开启：清空 **RTSP URL 1** 并提交，使 A8 全程停止拉流；通过 **RTSP URL 2** 的“清空 → 填回 `rtsp://192.168.144.100:8554/live` → 清空”完成以下对照。每次编辑后提交输入，再返回飞行页测试；测试结束恢复原地址。
 
 确实无法关闭 A8 时，全程保持同一状态并记录。每阶段保持 **30～60 秒**，记下开始/结束及每次操作时间：
 
@@ -85,7 +85,7 @@ tar -czf "$log_dir.tar.gz" -C "$(dirname "$log_dir")" "$(basename "$log_dir")"
 | `index-video.txt` | 视频拉流、H.264/H.265 格式、硬解码器、出帧、显示及重连事件。 |
 | `index-payload.txt` | MAVLink 53022 发送、外层接收、内层校验及命令回应；周期/超时快照按 `session/report` 对齐。 |
 | `index-rc.txt` | CH11/CH12/CH14 输入、中位保护、目标速度、停止、回中和发送失败。 |
-| `index-network.txt` | 约每 5 秒的网卡收发/丢弃/错误、UDP 错误、CPU 与内核收包统计；约每 15 秒的 UDP socket 队列/丢弃及路由。 |
+| `index-network.txt` | 约每 5 秒的网卡收发/丢弃/错误、UDP 错误、CPU 与内核收包统计；约每 15 秒的 UDP socket 队列/丢弃及路由。另含原生 UDP 本地端口和自动学习目标，只说明 QGC 端配置路径，不代表 AI 盒子已改变回程路由。 |
 | `device/` | 原始 QGC/Android 日志、USB 插拔时间线、网络状态、媒体服务状态及 APK 启动信息。 |
 | `coverage.txt` | 关键日志是否出现、是否被轮转覆盖、采集是否异常结束；不代表功能测试通过。 |
 | `index-readme.txt` | 索引阅读顺序、分层接收计数与网络采样字段的解释。 |

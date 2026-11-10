@@ -113,7 +113,7 @@ if [ "$MODE" = start ]; then
         GST_LEVELS='2,rtspsrc:5,rtpsession:4,rtpjitterbuffer:5,rtph265depay:4,rtph264depay:4,h265parse:4,h264parse:4,decodebin3:4,amcvideodec:5,amc:4,videodecoder:4,qtsink:5,qgcsinkbin:5,qtglwidget:5,qtglutility:4,glupload:4,glcolorconvert:4'
     fi
     printf 'verbose_video=%s\ngst_debug=%s\n' "$VERBOSE_VIDEO" "$GST_LEVELS" > "$CAP/capture-profile.txt"
-    APP_ARGS="--logging:gcs.custom.customplugin,gcs.custom.videomanager.dualvideo,gcs.custom.video.androidh264hardwaredecoderadapter,gcs.custom.video.androidh265decoderfallback,gcs.custom.video.androidh265hardwaredecoderadapter,gcs.custom.video.androidvideodecoderpolicy,gcs.custom.video.androidvideodecoderrecovery,gcs.custom.video.a8rtsprecovery,gcs.custom.gimbal.pulledvideoresolution,gcs.custom.gimbal.rouke.payload,gcs.custom.gimbal.rouke.control,gcs.custom.gimbal.rouke.trace,gcs.custom.gimbal.rouke.channels,gcs.custom.gimbal.rouke.native,gcs.custom.android.unircchannel,gcs.custom.android.unircchannel.trace,qgc.android.androidserial,qgc.android.libs.qtandroidserialport.qserialport_android,qgc.videomanager.videomanager,qgc.videomanager.videoreceiver.gstreamer,qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver,qgc.videomanager.videoreceiver.gstreamer.api --gst-debug=$GST_LEVELS"
+    APP_ARGS="--logging:gcs.custom.customplugin,gcs.custom.videomanager.dualvideo,gcs.custom.video.androidh264hardwaredecoderadapter,gcs.custom.video.androidh265decoderfallback,gcs.custom.video.androidh265hardwaredecoderadapter,gcs.custom.video.androidvideodecoderpolicy,gcs.custom.video.androidvideodecoderrecovery,gcs.custom.video.a8rtsprecovery,gcs.custom.gimbal.pulledvideoresolution,gcs.custom.gimbal.rouke.payload,gcs.custom.gimbal.rouke.control,gcs.custom.gimbal.rouke.trace,gcs.custom.gimbal.rouke.channels,gcs.custom.gimbal.rouke.native,gcs.custom.android.unircchannel,gcs.custom.android.unircchannel.trace,qgc.comms.udplink,qgc.android.androidserial,qgc.android.libs.qtandroidserialport.qserialport_android,qgc.videomanager.videomanager,qgc.videomanager.videoreceiver.gstreamer,qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver,qgc.videomanager.videoreceiver.gstreamer.api --gst-debug=$GST_LEVELS"
     printf '%s\n' "$APP_ARGS" > "$CAP/launch-arguments.txt"
     cat > "$CAP/recorder.sh" <<'RECORDER'
 #!/system/bin/sh
@@ -371,7 +371,8 @@ INNER 的 valid/matched/rejectRoute/rejectPayload 等是累计；pending 为当�
 valid 为完整合法信封，matched 为进一步通过方向/地址检查；都不等于参数请求成功。
 日志索引可重复包含 ring/tail；coverage 的命中行数只是覆盖情况，不是网络报文数。
 
-index-network.txt 汇集下列原始采样（文件名/行号保留）：
+index-network.txt 汇集下列原始采样及 qgc.comms.udplink / UDP Adding target 日志（文件名/行号保留）：
+原生 UDP 日志记录本地绑定端口和自动学习目标，只说明 QGC 端配置/目标发现，不证明 AI 盒子已改变回程路由。
 network-stats.txt：约每 5 秒；NET_SAMPLE 的 uptime/elapsed 单位为秒，wall 为设备时钟。
 /proc/net/dev：每个网卡 RX/TX bytes/packets/errs/drop 等累计计数，按标题列读取。
 /proc/net/snmp：Udp 标题与下一行数值对应，关注 InDatagrams/OutDatagrams/InErrors/
@@ -400,6 +401,7 @@ else
     coverage 'WARNING: 启动时未验证新版 APK 诊断能力；检查 app-diagnostic-readiness.txt，不能据缺少明细推断控制未发送。'
 fi
 if (( ${#LOGS[@]} )); then
+    grep -nHEi 'qgc\.comms\.udplink|UDP Adding target:' "${LOGS[@]}" >> "$LOCAL/index-network.txt" || true
     grep -nHEi 'videomanager|gcs\.custom\.video|pulledvideoresolution|192\.168\.144\.100|secondaryVideoContent|Secondary |androidh265|androidvideodecoder|Negotiated compressed video|source frame|decoder.*frame|sink.*frame|amcvid|MediaCodec|CCodec|ACodec|qml6|qt6gl|rtspsrc|not-negotiated' "${LOGS[@]}" > "$LOCAL/index-video.txt" || true
     grep -nHEi 'rouke\.(payload|trace|native)|ROUKE_(TX|RX|NATIVE_RX)|Rouke UDP|Rouke command|53022|lr1_|get_sdcard_capacity|gimbal_speed_ctrl|payloadAddress' "${LOGS[@]}" > "$LOCAL/index-payload.txt" || true
     grep -nHEi 'unirc|rouke\.channels|ROUKE_RC|CH11|CH12|CH14|gimbal_speed_ctrl|gimbal_center|UART2|SDK_ROUTE' "${LOGS[@]}" > "$LOCAL/index-rc.txt" || true

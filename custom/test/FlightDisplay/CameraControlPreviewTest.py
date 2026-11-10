@@ -479,7 +479,7 @@ Rectangle {
         popup = named("settingsPopup")
         assert popup.property("visible")
         assert payload.actions == previous_actions + [5], "Opening settings must not send a write"
-        assert payload.refresh_requests == refreshes_before + 1
+        assert payload.refresh_requests == refreshes_before, "Settings only displays the cache"
         camera = named("cameraSettingsScroll")
         for fraction, label in ((0, "04-camera-upper"), (0.5, "05-camera-middle"), (1, "06-camera-lower")):
             camera.setProperty("contentY", max(0, camera.property("contentHeight") - camera.height()) * fraction)
@@ -553,8 +553,8 @@ Rectangle {
         payload.update(controlAvailable=True, sdkResponding=False)
         refreshes_before = payload.refresh_requests
         click_mobile("settingsButton")
-        QTest.qWait(160)  # Refresh is requested by Popup.opened.
-        assert payload.refresh_requests == refreshes_before + 1
+        QTest.qWait(160)  # Wait for the popup entrance transition.
+        assert payload.refresh_requests == refreshes_before
         popup = named("settingsPopup")
         assert popup.property("visible") and popup.property("selectedPage") == 0
         camera_form = named("cameraSettingsScroll")
@@ -620,7 +620,7 @@ Rectangle {
         payload.update(sdkResponding=True)
         assert popup.property("visible") and named("parameter_iso").property("draftValue") == 12
         assert payload.actions == before, "Reconnection must not apply a saved draft"
-        assert payload.refresh_requests == refreshes_before + 1, "Tabs and connectivity changes must not restart refresh"
+        assert payload.refresh_requests == refreshes_before, "Navigation and connectivity changes must not send reads"
         payload.update(sdkResponding=False)
         assert popup.property("visible"), "The page must remain open when the device disconnects"
         assert named("parameter_iso").property("draftValue") == 12
@@ -633,7 +633,7 @@ Rectangle {
         QTest.qWait(160)
         assert column.property("_selectedCamera") == 0
         assert not isValid(popup) or not popup.property("visible")
-        assert payload.refresh_cancellations > cancellations_before, "Payload switching cancels unsent reads"
+        assert payload.refresh_cancellations == cancellations_before, "Payload switching must not cancel backend event reads"
         assert payload.actions == before
         click_mobile("selectRouke")
         QTest.qWait(160)

@@ -139,6 +139,9 @@ QStringList traceFields(const QString &command, const QJsonObject &data)
 RoukePayloadController::RoukePayloadController(QObject *parent)
     : QObject(parent)
 {
+    _parameterReadTimer.setSingleShot(true);
+    _parameterReadTimer.setInterval(0);
+    connect(&_parameterReadTimer, &QTimer::timeout, this, &RoukePayloadController::_dispatchParameterRead);
     _commandTimer.setSingleShot(true);
     _commandTimer.setInterval(kCommandTimeoutMs);
     _responseTimer.setSingleShot(true);
@@ -171,7 +174,8 @@ RoukePayloadController::RoukePayloadController(QObject *parent)
         _responding = false;
         _recordingKnown = false;
         _viewKnown = false;
-        _cameraParameters.clear();
+        // Retain last confirmed parameters across a liveness timeout. The
+        // responding flag describes freshness; only a new endpoint clears them.
         _sdCardFreshnessTimer.stop();
         _setSdCardState(false, false);
         emit stateChanged();
@@ -244,6 +248,12 @@ bool RoukePayloadController::available() const
 void RoukePayloadController::_reset()
 {
     ++_configurationSerial;
+    _parameterReadTimer.stop();
+    _parameterReadQueue.clear();
+    _parameterReadReasons.clear();
+    _parameterInitializationStages = 0;
+    _parameterVerification.clear();
+    _verificationTargets.clear();
     ++_requestSerial;
     ++_centerSerial;
     ++_sdCardRequestSerial;
@@ -423,6 +433,16 @@ bool RoukePayloadController::sendCommand(const QString &command, const QJsonObje
     ++_requestSerial;
     _pendingCommand = command;
     _pendingData = data;
+    if (const auto *parameter = parameterForCommand(command)) {
+        const QString key = QString::fromLatin1(parameter->key);
+        if (isParameterRead(*parameter, command, data)) {
+            _parameterReadQueue.removeAll(key);
+            _parameterReadReasons.remove(key);
+        } else if (_parameterInitializationStages && parameter->readCommand) {
+            _parameterVerification.insert(key, QStringLiteral("applying"));
+            _verificationTargets.insert(key, data.value(QString::fromLatin1(parameter->field)).toInt());
+        }
+    }
     _lastError.clear();
     _commandTimer.start();
     qCDebug(RoukePayloadTraceLog) << "ROUKE_TX_PENDING cmd" << traceCommand(command)
@@ -497,7 +517,8 @@ bool RoukePayloadController::_writeCommand(const QString &command, const QJsonOb
                 _rememberUncertainRequest(command, data);
                 if (command == QStringLiteral("lr1_record")) _recordingKnown = false;
                 if (command == QStringLiteral("lr1_switch_view")) _viewKnown = false;
-                _invalidateParameter(command);
+                const auto *parameter = parameterForCommand(command);
+                if (!parameter || !isParameterRead(*parameter, command, data)) _invalidateParameter(command);
             }
             *error = tr("Failed to send Rouke fragment %1/%2: %3. The command was not fully sent.")
                           .arg(index + 1).arg(fragments.size()).arg(_socket.errorString());
@@ -649,14 +670,118 @@ bool RoukePayloadController::requestCameraParameter(const QString &key)
     return sendCommand(QString::fromLatin1(parameter->readCommand), data);
 }
 
+void RoukePayloadController::initializeCameraParameters()
+{
+    _initializeParameterStage(1);
+    if (_responding) _initializeParameterStage(4);
+}
+
+void RoukePayloadController::notifyVideoFrameReceived()
+{
+    if (_parameterInitializationStages) _initializeParameterStage(2);
+}
+
+void RoukePayloadController::_initializeParameterStage(int stage)
+{
+    if (!available() || (_parameterInitializationStages & stage)) return;
+    // Consume the event before queuing work. Responses/reconnects must not
+    // repeatedly start a failed initialization round.
+    _parameterInitializationStages |= stage;
+    for (const auto &parameter : kCameraParameters) {
+        if (parameter.readCommand) _queueParameterRead(QString::fromLatin1(parameter.key), InitializationRead);
+    }
+}
+
+void RoukePayloadController::refreshCameraParameters()
+{
+    if (!available()) return;
+    for (const auto &parameter : kCameraParameters) {
+        if (parameter.readCommand) _queueParameterRead(QString::fromLatin1(parameter.key), ManualRead);
+    }
+}
+
+void RoukePayloadController::cancelCameraParameterRefresh()
+{
+    // Page closure may cancel a user batch, never initialization or write
+    // verification. An in-flight request retains its ACK and deadline.
+    const QStringList keys = _parameterReadQueue;
+    for (const QString &key : keys) {
+        const int reasons = _parameterReadReasons.value(key) & ~ManualRead;
+        if (reasons) _parameterReadReasons.insert(key, reasons);
+        else {
+            _parameterReadReasons.remove(key);
+            _parameterReadQueue.removeAll(key);
+        }
+    }
+}
+
+void RoukePayloadController::_queueParameterRead(const QString &key, int reason)
+{
+    const auto *parameter = parameterForKey(key);
+    if (!available() || !parameter || !parameter->readCommand) return;
+    if (reason == InitializationRead && _cameraParameters.contains(key)) return;
+    if (pending() && parameterForCommand(_pendingCommand) == parameter
+        && isParameterRead(*parameter, _pendingCommand, _pendingData)) return;
+    if (!_parameterReadReasons.contains(key)) _parameterReadQueue.append(key);
+    _parameterReadReasons.insert(key, _parameterReadReasons.value(key) | reason);
+    _scheduleParameterRead();
+}
+
+void RoukePayloadController::_scheduleParameterRead()
+{
+    if (available() && !pending() && !_recordingStopQueued && !_parameterReadQueue.isEmpty()) {
+        _parameterReadTimer.start();
+    }
+}
+
+void RoukePayloadController::_dispatchParameterRead()
+{
+    if (!available() || pending() || _recordingStopQueued) return;
+    while (!_parameterReadQueue.isEmpty()) {
+        const QString key = _parameterReadQueue.takeFirst();
+        const int reasons = _parameterReadReasons.take(key);
+        if (reasons == InitializationRead && _cameraParameters.contains(key)) continue;
+        // Pop before sending: signals may reenter and change the endpoint or
+        // add another batch. Failed sends consume this attempt without retry.
+        const quint64 session = _configurationSerial;
+        if (!requestCameraParameter(key) && session == _configurationSerial) {
+            if (_parameterVerification.value(key).toString() == QStringLiteral("verifying")) {
+                _parameterVerification.insert(key, QStringLiteral("unverified"));
+                emit stateChanged();
+            }
+            _scheduleParameterRead();
+        }
+        return;
+    }
+}
+
+void RoukePayloadController::_finishParameterVerification(const QString &command, bool success, bool validReadReport)
+{
+    const auto *parameter = parameterForCommand(command);
+    if (!parameter || success) return;
+    const QString key = QString::fromLatin1(parameter->key);
+    const QString state = _parameterVerification.value(key).toString();
+    if (!state.isEmpty() && !(validReadReport && state == QStringLiteral("mismatch"))) {
+        _parameterVerification.insert(key, QStringLiteral("unverified"));
+    }
+}
+
 void RoukePayloadController::_invalidateParameter(const QString &command)
 {
     const auto *parameter = parameterForCommand(command);
-    if (parameter) _cameraParameters.remove(QString::fromLatin1(parameter->key));
+    if (parameter) {
+        const QString key = QString::fromLatin1(parameter->key);
+        _cameraParameters.remove(key);
+        if (_parameterVerification.contains(key)) _parameterVerification.insert(key, QStringLiteral("unverified"));
+    }
     if (command == QStringLiteral("lr1_focus") || command == QStringLiteral("lr1_focus_mode")) {
         // A mode change may have reached the camera before the ACK was lost;
         // autofocus can then move the lens even though the mode is unknown.
         _cameraParameters.remove(QStringLiteral("focusValue"));
+        _verificationTargets.remove(QStringLiteral("focusValue"));
+        if (_parameterVerification.contains(QStringLiteral("focusValue"))) {
+            _parameterVerification.insert(QStringLiteral("focusValue"), QStringLiteral("unverified"));
+        }
     }
 }
 
@@ -674,15 +799,37 @@ bool RoukePayloadController::_applyParameterAck(const QString &command, const QJ
     const QJsonValue value = response.contains(field) ? response.value(field)
         : reading ? QJsonValue() : request.value(field);
     if (!validParameterValue(*parameter, value)) {
-        _cameraParameters.remove(key);
+        if (!reading) _cameraParameters.remove(key);
         _lastError = tr("Rouke returned a missing or invalid value for %1; device state is unknown.").arg(key);
         return false;
     }
+    if (!reading && parameter->readCommand && _parameterInitializationStages) {
+        // A setter ACK is not the verification report. Preserve the previous
+        // confirmed value until the forced GET reports the actual camera value.
+        _verificationTargets.insert(key, request.value(field).toInt());
+        _parameterVerification.insert(key, QStringLiteral("verifying"));
+        _queueParameterRead(key, VerificationRead);
+        return true;
+    }
     _cameraParameters.insert(key, value.toInt());
+    if (reading && _parameterVerification.contains(key)) {
+        if (_verificationTargets.contains(key) && _verificationTargets.value(key) != value.toInt()) {
+            _parameterVerification.insert(key, QStringLiteral("mismatch"));
+            _lastError = tr("Rouke reported %1 as %2 after requesting %3.")
+                            .arg(key).arg(value.toInt()).arg(_verificationTargets.value(key));
+            return false;
+        }
+        _parameterVerification.insert(key, QStringLiteral("verified"));
+    }
     if (key == QStringLiteral("focusMode")) {
         // A mode transition can move the lens independently of a raw value
         // previously read or set. Read it again before presenting it as current.
         _cameraParameters.remove(QStringLiteral("focusValue"));
+        if (_parameterInitializationStages) {
+            _verificationTargets.remove(QStringLiteral("focusValue"));
+            _parameterVerification.insert(QStringLiteral("focusValue"), QStringLiteral("verifying"));
+            _queueParameterRead(QStringLiteral("focusValue"), VerificationRead);
+        }
     }
     return true;
 }
@@ -890,6 +1037,7 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
     _lastMatchedFrameAge.restart();
     _responding = true;
     _responseTimer.start();
+    if (_parameterInitializationStages) _initializeParameterStage(4);
     const QString command = object.value(QStringLiteral("cmd")).toString();
     const bool isAck = object.value(QStringLiteral("type")).toString() == QStringLiteral("ack");
     const bool accepted = object.value(QStringLiteral("code")).toInt(-1) == 0;
@@ -937,7 +1085,13 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
         return;
     }
     if (isAck && command == QStringLiteral("gimbal_center")) {
-        if (!_gimbalCenterPending || centerSerial != _centerSerial) return;
+        if (!_gimbalCenterPending || centerSerial != _centerSerial) {
+            // The validated frame refreshed liveness even though it cannot
+            // complete this request. Return immediately after publishing: a
+            // state observer may synchronously start a new center request.
+            emit stateChanged();
+            return;
+        }
         _gimbalCenterPending = false;
         _gimbalCenterTimer.stop();
         const bool success = accepted && !_uncertainCommands.contains(command);
@@ -1015,7 +1169,7 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
     bool success = accepted && (!_uncertainCommands.contains(command)
                                 || sameDirectionStopRetry || validReadReport);
     if (accepted && !success) {
-        _invalidateParameter(command);
+        if (!parameterRead) _invalidateParameter(command);
         _lastError = tr("Rouke acknowledged %1 after an earlier timeout or partial send. Without a transaction ID, device state remains unknown until a new endpoint session.").arg(command);
     } else if (!accepted) {
         if (recordingCommand && recordingStart && _pendingStartCreatedIntent
@@ -1041,14 +1195,23 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
             ++_photoCount;
         } else if (command == QStringLiteral("lr1_focus")) {
             _cameraParameters.remove(QStringLiteral("focusValue"));
+            if (_parameterInitializationStages) {
+                _verificationTargets.remove(QStringLiteral("focusValue"));
+                _parameterVerification.insert(QStringLiteral("focusValue"), QStringLiteral("verifying"));
+                _queueParameterRead(QStringLiteral("focusValue"), VerificationRead);
+            }
         }
         success = _applyParameterAck(command, data, responseData);
     }
+    // A legal unequal report has its own mismatch state; other failed reads
+    // cannot retain a previous verified marker for the latest refresh attempt.
+    _finishParameterVerification(command, success, accepted && validReadReport);
     _pendingStartCreatedIntent = false;
     qCDebug(RoukePayloadTraceLog) << "ROUKE_RX_RESULT cmd" << traceCommand(command)
         << "success" << success << "writeOutcomeUncertain" << _uncertainCommands.contains(command)
         << "parameterKnown" << (parameter && _cameraParameters.contains(QString::fromLatin1(parameter->key)));
     _sendQueuedStop();
+    _scheduleParameterRead();
     emit stateChanged();
     emit commandFinished(command, success);
 }
@@ -1075,14 +1238,18 @@ void RoukePayloadController::_timeout()
         _recordingStartOutcomeUncertain = true;
     }
     _pendingStartCreatedIntent = false;
+    const auto *parameter = parameterForCommand(command);
+    const bool parameterRead = parameter && isParameterRead(*parameter, command, _pendingData);
     _rememberUncertainRequest(command, _pendingData);
     _pendingCommand.clear();
     _pendingData = {};
     if (command == QStringLiteral("lr1_record")) _recordingKnown = false;
     if (command == QStringLiteral("lr1_switch_view")) _viewKnown = false;
-    _invalidateParameter(command);
+    if (!parameterRead) _invalidateParameter(command);
+    _finishParameterVerification(command, false);
     _lastError = tr("No acknowledgement for Rouke command %1; device state is unknown.").arg(command);
     _sendQueuedStop();
+    _scheduleParameterRead();
     emit stateChanged();
     emit commandFinished(command, false);
 }

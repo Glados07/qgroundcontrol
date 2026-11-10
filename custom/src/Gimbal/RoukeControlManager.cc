@@ -157,10 +157,6 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
     _localRecordingStopTimer.setInterval(kLocalRecordingStopTimeoutMs);
     _localPhotoSaveThreadPool.setMaxThreadCount(1);
     _sdCardPollTimer.setInterval(kSdCardPollIntervalMs);
-    _parameterRefreshTimer.setSingleShot(true);
-    _parameterRefreshTimer.setInterval(0);
-    connect(&_parameterRefreshTimer, &QTimer::timeout,
-            this, &RoukeControlManager::_requestNextCameraParameter);
     connect(&_sdCardPollTimer, &QTimer::timeout, this, [this]() {
         if (_controller.available()) (void) _controller.requestSdCardStatus();
     });
@@ -170,9 +166,6 @@ RoukeControlManager::RoukeControlManager(GimbalControlSettings *settings, QObjec
     connect(&_controller, &RoukePayloadController::stateChanged, this, [this]() {
         emit stateChanged();
         _notifyRecordingSessionStateChanged();
-        if (!_parameterRefreshQueue.isEmpty() && !_controller.pending()) {
-            _parameterRefreshTimer.start();
-        }
     });
     for (Fact *fact : {_settings->roukeEnabled(), _settings->roukeUdpHost(),
                        _settings->roukeUdpPort(), _settings->roukeLocalPort(),
@@ -233,6 +226,7 @@ void RoukeControlManager::_settingsChanged()
         localPort >= 0 && localPort <= 65535 ? static_cast<quint16>(localPort) : 0,
         _settings->roukePayloadAddress()->rawValue().toInt());
     if (_controller.available()) {
+        _controller.initializeCameraParameters();
         (void) _controller.requestSdCardStatus();
         _sdCardPollTimer.start();
     } else {
@@ -259,40 +253,12 @@ void RoukeControlManager::_gimbalSettingsChanged()
 
 void RoukeControlManager::refreshCameraParameters()
 {
-    cancelCameraParameterRefresh();
-    if (!_controller.available()) {
-        return;
-    }
-    // These are the only parameter GETs defined by the M400 protocol.
-    // A valid endpoint is sufficient for a read-only first-response probe;
-    // neither an SD-card response nor a previous parameter ACK is required.
-    _parameterRefreshQueue = QStringList{QStringLiteral("iso"), QStringLiteral("whiteBalance"),
-                                         QStringLiteral("focusValue"), QStringLiteral("imageSize")};
-    _parameterRefreshTimer.start();
+    _controller.refreshCameraParameters();
 }
 
 void RoukeControlManager::cancelCameraParameterRefresh()
 {
-    _parameterRefreshTimer.stop();
-    _parameterRefreshQueue.clear();
-    // An already transmitted request still owns its ACK/timeout. Closing the
-    // page must not relabel or cancel that request in the payload controller.
-}
-
-void RoukeControlManager::_requestNextCameraParameter()
-{
-    if (!_controller.available()) {
-        cancelCameraParameterRefresh();
-        return;
-    }
-    if (_controller.pending() || _parameterRefreshQueue.isEmpty()) {
-        return;
-    }
-    const QString key = _parameterRefreshQueue.takeFirst();
-    (void) _controller.requestCameraParameter(key);
-    if (!_controller.pending() && !_parameterRefreshQueue.isEmpty()) {
-        _parameterRefreshTimer.start();
-    }
+    _controller.cancelCameraParameterRefresh();
 }
 
 bool RoukeControlManager::recordingSessionActive() const
@@ -393,6 +359,8 @@ void RoukeControlManager::setVideoReceiver(VideoReceiver* receiver)
         }
     }
     _videoReceiver = receiver;
+    _videoPipelineGeneration = 0;
+    _videoPipelineUri.clear();
     _negotiatedPulledVideoSize = QSize();
     _receiverStreamingActive = false;
     _receiverDecodingActive = false;
@@ -421,10 +389,20 @@ void RoukeControlManager::setVideoReceiver(VideoReceiver* receiver)
     connect(_videoReceiver,
             &VideoReceiver::videoPipelineGenerationStarted,
             this,
-            [this, guardedReceiver](const QString&, quint64) {
+            [this, guardedReceiver](const QString& uri, quint64 generation) {
                 if (guardedReceiver
                     && guardedReceiver.data() == _videoReceiver.data()) {
+                    _videoPipelineGeneration = generation;
+                    _videoPipelineUri = uri;
                     _negotiatedPulledVideoSize = QSize();
+                }
+            });
+    connect(_videoReceiver, &VideoReceiver::sinkFrameReceived, this,
+            [this, guardedReceiver](const QString& uri, quint64 generation) {
+                if (guardedReceiver && guardedReceiver.data() == _videoReceiver.data()
+                    && generation != 0 && !uri.isEmpty()
+                    && generation == _videoPipelineGeneration && uri == _videoPipelineUri) {
+                    _controller.notifyVideoFrameReceived();
                 }
             });
     connect(_videoReceiver, &VideoReceiver::onStopRecordingComplete,

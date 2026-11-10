@@ -58,6 +58,7 @@ class Manager(QObject):
     lastError = Property(str, lambda self: self.values["lastError"], notify=changed)
     localMediaError = Property(str, lambda self: self.values["localMediaError"], notify=changed)
     cameraParameters = Property("QVariantMap", lambda self: self.values["cameraParameters"], notify=changed)
+    cameraParameterVerification = Property("QVariantMap", lambda self: self.values["cameraParameterVerification"], notify=changed)
     pendingParameter = Property(str, lambda self: self.values["pendingParameter"], notify=changed)
 
     def __init__(self):
@@ -70,10 +71,10 @@ class Manager(QObject):
                            recordingKnown=False, localRecording=False,
                            localRecordingPending=False, photoCount=0, localPhotoCount=0,
                            viewKnown=False, viewType=4, lastError="", localMediaError="",
-                           cameraParameters={}, pendingParameter="")
+                           cameraParameters={}, cameraParameterVerification={}, pendingParameter="")
         self.actions = []
-        # UI contract only: the real Manager's four-request serial queue is
-        # covered by its C++ fixture, not reimplemented in this service double.
+        # The Controller's event-driven queue is covered by C++ tests. These
+        # counters detect accidental network work tied to a popup lifecycle.
         self.refresh_requests = 0
         self.refresh_cancellations = 0
 
@@ -125,7 +126,10 @@ class Manager(QObject):
     @Slot(str, "QVariant", result=bool)
     def setCameraParameter(self, key, value):
         self.actions.append(("set", key, value))
-        self.update(pending=True, pendingParameter=key)
+        verification = dict(self.values["cameraParameterVerification"])
+        if key in ("iso", "whiteBalance", "focusValue", "imageSize"):
+            verification[key] = "applying"
+        self.update(pending=True, pendingParameter=key, cameraParameterVerification=verification, lastError="")
         return True
 
     @Slot(str, result=bool)
@@ -134,10 +138,19 @@ class Manager(QObject):
         self.update(pending=True, pendingParameter=key)
         return True
 
-    def acknowledge(self, key, value):
+    def accept_write(self, key):
+        verification = dict(self.values["cameraParameterVerification"])
+        verification[key] = "verifying"
+        self.update(cameraParameterVerification=verification)
+
+    def acknowledge(self, key, value, verification=None):
         parameters = dict(self.values["cameraParameters"])
         parameters[key] = value
-        self.update(cameraParameters=parameters, pending=False, pendingParameter="")
+        states = dict(self.values["cameraParameterVerification"])
+        if verification is not None:
+            states[key] = verification
+        self.update(cameraParameters=parameters, cameraParameterVerification=states,
+                    pending=False, pendingParameter="")
 
 
 
@@ -290,7 +303,7 @@ Rectangle {
     # Offline navigation and draft editing do not depend on a payload reply.
     click_item(named("settingsButton"))
     QTest.qWait(160)  # Popup.opened follows its entrance transition.
-    assert manager.refresh_requests == 1, "Opening settings requests one read-only refresh"
+    assert manager.refresh_requests == 0, "Opening settings only presents cached values"
     offline_popup = named("settingsPopup")
     assert offline_popup.property("visible") and offline_popup.property("selectedPage") == 0
     set_only_keys = ("focusMode", "shutterSpeed", "aperture", "imageQuality",
@@ -332,18 +345,19 @@ Rectangle {
     type_value(named("editor_iso"), "14")
     assert named("parameter_iso").property("draftValue") == 14
     assert manager.actions == []
-    assert manager.refresh_requests == 1, "Tab navigation and draft edits must not refresh again"
+    assert manager.refresh_requests == 0, "Navigation and draft edits do not request automatic reads"
     click_item(named("read_iso"))
     assert manager.actions == [("get", "iso")], "Offline configured endpoints allow a read-only probe"
     assert not named("apply_iso").isEnabled() and not named("read_iso").isEnabled()
     manager.update(pending=False, pendingParameter="", lastError="No response to read-only probe")
+    assert named("parameter_iso").property("draftValue") == 14, "A failed read preserves the draft"
     type_value(named("editor_iso"), "14")
     manager.update(sdkResponding=True)
     assert named("parameter_iso").property("draftValue") == 14
     assert manager.actions == [("get", "iso")], "A returning endpoint must not apply the draft"
     cancellations_before = manager.refresh_cancellations
     invoke(root, "closeTransientUi")
-    assert manager.refresh_cancellations > cancellations_before, "Closing immediately cancels unsent refresh work"
+    assert manager.refresh_cancellations == cancellations_before, "Closing must not cancel backend event reads"
     QTest.qWait(350)
     manager.actions.clear()
     manager.update(sdkResponding=False, lastError="")
@@ -390,8 +404,7 @@ Rectangle {
     manager.update(pending=False, sdkResponding=True)
     assert named("focusButton").mapToScene(QPointF(0, 0)).y() < named("photoButton").mapToScene(QPointF(0, 0)).y(), "Focus belongs above the shutter"
 
-    # Every open requests the Manager's read-only refresh once. Page changes
-    # never dispatch writes, and the trigger draft remains Off until applied.
+    # Opening, closing and switching pages only present the cache and drafts.
     previous_actions = list(manager.actions)
     refreshes_before = manager.refresh_requests
     click_item(named("settingsButton"))
@@ -407,48 +420,71 @@ Rectangle {
     click_item(named("settingsButton"))
     QTest.qWait(150)
     assert not named("parameter_iso").property("known")
-    assert named("parameter_triggerPhoto").property("draftValue") == 0
+    assert named("parameter_triggerPhoto").property("draftValue") == 1, "Reopen preserves an unsent selection"
+    assert named("parameter_iso").property("draftValue") == 14, "Reopen preserves an unsent numeric edit"
     assert not named("parameter_triggerPhoto").property("known")
     assert manager.actions == previous_actions
-    assert manager.refresh_requests == refreshes_before + 2, "Close/reopen starts exactly one fresh refresh"
+    assert manager.refresh_requests == refreshes_before, "Close/reopen must not repeat event-driven reads"
     iso_editor = named("editor_iso")
     assert iso_editor.width() < camera_scroll.width() * 0.65, "Desktop inputs should not fill the entire row"
     input_edge = iso_editor.mapToScene(QPointF(iso_editor.width(), 0)).x()
     read_edge = named("read_iso").mapToScene(QPointF(0, 0)).x()
     assert 0 <= read_edge - input_edge <= 20, "Read/apply actions should sit next to their input"
 
-    # Real keyboard edits do not overwrite confirmed state. Applying a draft
-    # waits for an ACK, and the device's returned value is authoritative.
+    # SET acceptance is distinct from GET verification. A differing or failed
+    # verification leaves the draft available beside the device's actual value.
     type_value(named("editor_iso"), "12")
     assert manager.actions == previous_actions
     click_item(named("apply_iso"))
     assert manager.actions[-1] == ("set", "iso", 12)
     assert not named("parameter_iso").property("known")
     assert not named("apply_iso").isEnabled()
-    manager.acknowledge("iso", 10)
+    assert "Applying" in named("confirmed_iso").property("text")
+    manager.accept_write("iso")
+    assert "Verifying" in named("confirmed_iso").property("text")
+    assert not named("parameter_iso").property("known"), "SET ACK must not invent a readback value"
+    manager.acknowledge("iso", 10, "mismatch")
     assert named("parameter_iso").property("confirmedValue") == 10
-    assert named("parameter_iso").property("draftValue") == 10
+    assert named("parameter_iso").property("draftValue") == 12
+    assert "Value differs" in named("confirmed_iso").property("text")
     type_value(named("editor_iso"), "14")
     manager.update(photoCount=3)
     assert named("parameter_iso").property("draftValue") == 14
     assert named("parameter_iso").property("confirmedValue") == 10
     click_item(named("read_iso"))
     assert manager.actions[-1] == ("get", "iso")
-    manager.acknowledge("iso", 6)
-    assert named("parameter_iso").property("draftValue") == 6
+    manager.acknowledge("iso", 6, "mismatch")
+    assert named("parameter_iso").property("draftValue") == 14, "Manual reads do not discard edits"
     type_value(named("editor_iso"), "12")
     click_item(named("read_iso"))
-    manager.acknowledge("iso", 6)  # Identical ACK value still discards the unsent edit.
-    assert named("parameter_iso").property("draftValue") == 6
+    manager.acknowledge("iso", 6, "mismatch")
+    assert named("parameter_iso").property("draftValue") == 12
     type_value(named("editor_iso"), "12")
     click_item(named("apply_iso"))
-    manager.acknowledge("iso", 6)  # Device may return the existing actual value.
-    assert named("parameter_iso").property("draftValue") == 6
-    type_value(named("editor_iso"), "12")
-    click_item(named("apply_iso"))
-    manager.update(pending=False, pendingParameter="", lastError="Payload rejected ISO")
-    assert named("parameter_iso").property("draftValue") == 12, "Rejected input remains editable"
+    manager.accept_write("iso")
+    assert "Last confirmed: 6" in named("confirmed_iso").property("text")
+    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "unverified"},
+                   lastError="Readback timed out")
+    assert named("parameter_iso").property("draftValue") == 12
     assert named("parameter_iso").property("confirmedValue") == 6
+    assert "Not verified" in named("confirmed_iso").property("text")
+    manager.update(sdkResponding=False)
+    assert "Last confirmed: 6" in named("confirmed_iso").property("text")
+    assert not named("apply_iso").isEnabled()
+    manager.update(sdkResponding=True, lastError="")
+    click_item(named("read_iso"))
+    manager.acknowledge("iso", 12, "verified")
+    assert named("parameter_iso").property("draftValue") == 12
+    assert not named("parameter_iso").property("dirty"), "Matching GET completes the submitted draft"
+    manager.update(sdkResponding=False)
+    assert named("confirmed_iso").property("text") == "Last confirmed: 12"
+    manager.update(sdkResponding=True)
+    type_value(named("editor_iso"), "12")
+    click_item(named("apply_iso"))
+    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "unverified"},
+                   lastError="Payload rejected ISO")
+    assert named("parameter_iso").property("draftValue") == 12, "Rejected input remains editable"
+    assert named("parameter_iso").property("confirmedValue") == 12
     manager.update(lastError="")
 
     # Reach lower camera cards through the actual scrollable viewport and
@@ -472,7 +508,8 @@ Rectangle {
     QTest.qWait(60)
     click_item(named("apply_imageSize"))
     assert manager.actions[-1] == ("set", "imageSize", 0), "L uses wire value 0"
-    manager.acknowledge("imageSize", 0)
+    manager.accept_write("imageSize")
+    manager.acknowledge("imageSize", 0, "verified")
 
     previous_actions = list(manager.actions)
     click_item(named("rangeTab"))
@@ -541,6 +578,10 @@ Rectangle {
         assert button("拍照").isEnabled()
         for key in set_only_keys:
             assert "仅支持设置，协议无读取命令。" in named("hint_" + key).property("text"), key
+        manager.update(sdkResponding=False)
+        assert "上次确认：12" in named("confirmed_iso").property("text")
+        assert "尚未完成核对" in named("confirmed_iso").property("text")
+        manager.update(sdkResponding=True)
     view.grabWindow().save(str(output / "rouke-panel.png"))
     click_item(named("settingsButton"))
     QTest.qWait(160)
@@ -609,11 +650,11 @@ Rectangle {
             for child in ui.descendants(flick):
                 if child.isVisible() and child.objectName().startswith(("editor_", "choice_", "apply_")):
                     assert child.width() > 30 and child.height() >= 36 * scale, child.objectName()
-                if child.isVisible() and child.objectName().startswith("hint_"):
+                if child.isVisible() and child.objectName().startswith(("hint_", "confirmed_")):
                     assert child.property("paintedWidth") <= child.width() + 1, (
-                        "Parameter hint must wrap within its row", child.objectName(), width, scale)
+                        "Parameter hint/status must wrap within its row", child.objectName(), width, scale)
                     assert child.property("paintedHeight") <= child.height() + 1, (
-                        "Parameter hint must retain every line", child.objectName(), width, scale)
+                        "Parameter hint/status must retain every line", child.objectName(), width, scale)
         invoke(root, "closeTransientUi")
         QTest.qWait(350)
         assert named("cameraActionsGrid").property("columns") == 2
@@ -632,7 +673,7 @@ Rectangle {
     errors = [message for message in warnings if any(token in message for token in
               ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign"))]
     assert not errors, "\n".join(errors)
-    print("PASS: camera actions, one refresh per open/immediate cancel, offline GET-only probe, ACK/draft isolation, explicit parameter dispatch, default-Off trigger, "
+    print("PASS: camera actions, cache-only page lifecycle, offline GET-only probe, SET/readback states, retained drafts, explicit parameter dispatch, default-Off trigger, "
           "range validation, set-only hints, scrolling, popup lifecycle, resize/font layouts; no QML errors")
     view.close()
 

@@ -24,6 +24,20 @@ Rectangle {
     readonly property bool known: Boolean(manager && manager.cameraParameters
                                           && manager.cameraParameters[parameterKey] !== undefined)
     readonly property var confirmedValue: known ? manager.cameraParameters[parameterKey] : undefined
+    readonly property bool online: Boolean(manager && manager.enabled && manager.sdkResponding)
+    readonly property string verification: manager && manager.cameraParameterVerification
+                                           ? (manager.cameraParameterVerification[parameterKey] || "") : ""
+    readonly property bool verifying: verification === "applying" || verification === "verifying"
+    readonly property bool verificationFailed: verification === "mismatch" || verification === "unverified"
+    readonly property string statusText: verification === "applying" ? qsTr("Applying…")
+                                        : verification === "verifying" ? qsTr("Verifying…")
+                                        : verification === "mismatch" ? qsTr("Value differs")
+                                        : verification === "unverified" ? qsTr("Not verified")
+                                        : pending ? qsTr("Waiting for payload…") : ""
+    readonly property string valueStatusText: !known ? qsTr("Not confirmed")
+        : !online || verifying || verification === "unverified"
+          ? qsTr("Last confirmed: %1").arg(valueText(confirmedValue))
+          : qsTr("Confirmed: %1").arg(valueText(confirmedValue))
     readonly property bool busy: Boolean(manager && manager.pending)
     readonly property bool pending: Boolean(busy && manager.pendingParameter === parameterKey)
     // A read can establish the first payload response. Writes still require
@@ -79,7 +93,12 @@ Rectangle {
         return String(value) + (unit.length ? " " + unit : "")
     }
     function syncDraft() {
-        if (dirty) return
+        // A read updates the report beside the editor, never an unsent edit.
+        // A successful confirmation only settles a draft that still matches it.
+        if (dirty) {
+            if (!known || draftValue !== confirmedValue || verifying || verificationFailed) return
+            dirty = false
+        }
         const value = known ? confirmedValue : defaultDraft >= 0 ? defaultDraft : undefined
         numeric.text = value === undefined ? "" : String(value)
         choices.currentIndex = -1
@@ -87,8 +106,8 @@ Rectangle {
             if (options[i].value === Number(value)) choices.currentIndex = i
         }
     }
-    function resetDraft() { choices.popup.close(); dirty = false; syncDraft() }
     onConfirmedValueChanged: syncDraft()
+    onVerificationChanged: syncDraft()
     onPendingChanged: {
         // A successful reply may report the same device value as before,
         // including when the requested value was adjusted by the camera.
@@ -96,7 +115,7 @@ Rectangle {
         if (!pending && manager && !manager.lastError) syncDraft()
     }
     onVisibleChanged: if (!visible) choices.popup.close()
-    onResetSerialChanged: resetDraft()
+    onResetSerialChanged: choices.popup.close()
     Component.onCompleted: syncDraft()
 
     ColumnLayout {
@@ -128,14 +147,16 @@ Rectangle {
                 implicitWidth: badgeText.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
                 implicitHeight: badgeText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.45
                 radius: implicitHeight * 0.5
-                color: root.pending ? "#244451" : root.known ? "#1b3640" : "#24313a"
+                color: root.verificationFailed ? "#403727" : root.pending || root.verifying ? "#244451"
+                       : root.known && root.online ? "#1b3640" : "#24313a"
                 Rectangle {
                     x: ScreenTools.defaultFontPixelWidth * 0.8
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(4, ScreenTools.defaultFontPixelHeight * 0.22)
                     height: width
                     radius: width * 0.5
-                    color: root.pending ? "#72d9ef" : root.known ? "#72bdbd" : "#78909e"
+                    color: root.verificationFailed ? "#e3b66d" : root.pending || root.verifying ? "#72d9ef"
+                           : root.known && root.online ? "#72bdbd" : "#78909e"
                 }
                 Text {
                     id: badgeText
@@ -143,9 +164,9 @@ Rectangle {
                     x: ScreenTools.defaultFontPixelWidth * 1.9
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - x - ScreenTools.defaultFontPixelWidth * 0.8
-                    text: root.pending ? qsTr("Waiting for payload…")
-                          : root.known ? qsTr("Confirmed: %1").arg(root.valueText(root.confirmedValue)) : qsTr("Not confirmed")
-                    color: root.pending ? "#a3e5f3" : root.known ? "#a9d5d7" : "#9db0bb"
+                    text: (root.statusText.length ? root.statusText + "\n" : "") + root.valueStatusText
+                    color: root.verificationFailed ? "#ecc791" : root.pending || root.verifying ? "#a3e5f3"
+                           : root.known && root.online ? "#a9d5d7" : "#9db0bb"
                     font.family: ScreenTools.normalFontFamily
                     font.pointSize: ScreenTools.smallFontPointSize
                     wrapMode: Text.Wrap
@@ -287,8 +308,6 @@ Rectangle {
                         subtle: true
                         enabled: root.canRead
                         onClicked: {
-                            // A read is explicit and also replaces any unsent draft.
-                            root.resetDraft()
                             root.manager.requestCameraParameter(root.parameterKey)
                         }
                     }
@@ -302,9 +321,7 @@ Rectangle {
                     primary: root.dirty || !root.known
                     enabled: root.canControl && root.valid
                     onClicked: {
-                        if (root.manager.setCameraParameter(root.parameterKey, root.draftValue) !== false) {
-                            root.dirty = false
-                        }
+                        root.manager.setCameraParameter(root.parameterKey, root.draftValue)
                     }
                 }
             }

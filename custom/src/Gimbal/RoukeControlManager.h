@@ -32,6 +32,7 @@ class RoukeControlManager : public QObject
     Q_PROPERTY(int discoveredPayloadAddress READ discoveredPayloadAddress NOTIFY stateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap cameraParameters READ cameraParameters NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap cameraParameterVerification READ cameraParameterVerification NOTIFY stateChanged)
     Q_PROPERTY(QString pendingParameter READ pendingParameter NOTIFY stateChanged)
     Q_PROPERTY(bool sdCardStatusKnown READ sdCardStatusKnown NOTIFY stateChanged)
     Q_PROPERTY(bool sdCardInserted READ sdCardInserted NOTIFY stateChanged)
@@ -63,6 +64,7 @@ public:
     int discoveredPayloadAddress() const { return _controller.discoveredPayloadAddress(); }
     QString lastError() const { return _controller.lastError(); }
     QVariantMap cameraParameters() const { return _controller.cameraParameters(); }
+    QVariantMap cameraParameterVerification() const { return _controller.cameraParameterVerification(); }
     QString pendingParameter() const { return _controller.pendingParameter(); }
     bool sdCardStatusKnown() const { return _controller.sdCardStatusKnown(); }
     bool sdCardInserted() const { return _controller.sdCardInserted(); }
@@ -114,7 +116,6 @@ signals:
 private:
     void _settingsChanged();
     void _gimbalSettingsChanged();
-    void _requestNextCameraParameter();
     void _handleReceiverStreamingChanged(bool active);
     void _handleReceiverDecodingChanged(bool active);
     void _handleReceiverRecordingChanged(bool active);
@@ -138,8 +139,6 @@ private:
     RoukeGimbalController _gimbalController;
     QTimer _localPhotoTimer;
     QTimer _sdCardPollTimer;
-    QTimer _parameterRefreshTimer;
-    QStringList _parameterRefreshQueue;
     QTimer _localRecordingStartTimer;
     QTimer _localRecordingStopTimer;
     QThreadPool _localPhotoSaveThreadPool;
@@ -148,6 +147,8 @@ private:
     QSize _negotiatedPulledVideoSize;
     QPointer<QQuickItem> _videoItem;
     QPointer<VideoReceiver> _videoReceiver;
+    quint64 _videoPipelineGeneration = 0;
+    QString _videoPipelineUri;
     QPointer<QObject> _localPhotoGrabLifetime;
     int _localPhotoGrabLifetimeCount = 0;
     quint64 _localPhotoSequence = 0;

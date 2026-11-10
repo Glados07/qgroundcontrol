@@ -16,7 +16,6 @@ import QGroundControl
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
 import QGroundControl.Controls
-import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.AppSettings
 
@@ -38,9 +37,6 @@ SettingsPage {
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
     property var    _gimbalControlSettings:     QGroundControl.corePlugin.gimbalControlSettings
     property var    _videoCustomSettings:       QGroundControl.corePlugin.videoCustomSettings
-    property var    _dualVideoManager:          QGroundControl.corePlugin.dualVideoManager
-
-    QGCPalette { id: qgcPal }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
@@ -60,9 +56,6 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Connection")
-        headingDescription: _isRTSP
-                            ? qsTr("Set video stream addresses here. Configure camera controls under Fly View settings.")
-                            : ""
         visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP || _requiresUDPUrl)
 
         LabelledFactTextField {
@@ -76,28 +69,9 @@ SettingsPage {
         LabelledFactTextField {
             Layout.fillWidth:           true
             textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("RTSP URL 2 (Rouke)")
+            label:                      qsTr("RTSP URL 2")
             fact:                       _videoCustomSettings.secondaryRtspUrl
             visible:                    _isRTSP
-        }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.")
-            visible: _isRTSP
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            opacity: 0.72
-        }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.")
-            visible: _isRTSP && _dualVideoManager
-                     && _dualVideoManager.duplicateSource
-            wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
-            color: qgcPal.warningText
         }
 
         LabelledFactTextField {

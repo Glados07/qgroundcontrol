@@ -44,6 +44,13 @@ public:
     // endpoint session. Reads cannot prove which transaction produced a report.
     // Missing keys must be unknown, including the default-off trigger draft.
     QVariantMap cameraParameters() const { return _cameraParameters; }
+    QVariantMap cameraParameterVerification() const { return _parameterVerification; }
+    // Manager starts this workflow once the configured endpoint is available.
+    // The controller owns all deduplication and the finite per-session stages.
+    void initializeCameraParameters();
+    void notifyVideoFrameReceived();
+    void refreshCameraParameters();
+    void cancelCameraParameterRefresh();
     QString pendingParameter() const;
     bool sdCardStatusKnown() const { return _sdCardStatusKnown; }
     bool sdCardInserted() const { return _sdCardInserted; }
@@ -94,6 +101,12 @@ private:
     void _logTimeoutDiagnostics(const QString &command);
     void _logReceiveDiagnostics(const char *reason, const QString &command = {});
     void _rememberUncertainRequest(const QString &command, const QJsonObject &data);
+    enum ParameterReadReason { InitializationRead = 1, ManualRead = 2, VerificationRead = 4 };
+    void _initializeParameterStage(int stage);
+    void _queueParameterRead(const QString &key, int reason);
+    void _dispatchParameterRead();
+    void _scheduleParameterRead();
+    void _finishParameterVerification(const QString &command, bool success, bool validReadReport = false);
 
     // Session totals. Explicit tracing samples these even while no packets
     // arrive; timeouts also report them. No per-packet logging at 20 Hz.
@@ -155,6 +168,12 @@ private:
     QString _pendingCommand;
     QJsonObject _pendingData;
     QVariantMap _cameraParameters;
+    QVariantMap _parameterVerification;
+    QHash<QString, int> _verificationTargets;
+    QStringList _parameterReadQueue;
+    QHash<QString, int> _parameterReadReasons;
+    QTimer _parameterReadTimer;
+    int _parameterInitializationStages = 0;
     bool _recordingStopQueued = false;
     struct RecordingIntent {
         bool stopRequired = false;

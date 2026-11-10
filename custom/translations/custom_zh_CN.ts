@@ -453,29 +453,14 @@
         <translation>连接</translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
-        <source>Set video stream addresses here. Configure camera controls under Fly View settings.</source>
-        <translation>在此设置视频流地址，相机控制请在“飞行视图”设置中配置。</translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
         <source>RTSP URL 1</source>
         <translation>RTSP地址1</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
-        <source>RTSP URL 2 (Rouke)</source>
-        <translation>RTSP 地址2（Rouke）</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.</source>
-        <translation>视频2显示 Rouke 负载画面，地址留空可关闭第二路视频。</translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
-        <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
-        <translation>RTSP 地址2与已配置或当前生效的视频1流相同。为避免重复拉取同一视频流，第二路接收器已禁用。</translation>
+        <source>RTSP URL 2</source>
+        <translation>RTSP地址2</translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="112"/>
@@ -1371,6 +1356,10 @@
         <translation>Rouke 返回的 %1 值缺失或无效，设备状态未知。</translation>
     </message>
     <message>
+        <source>Rouke reported %1 as %2 after requesting %3.</source>
+        <translation>Rouke 参数 %1 请求设置为 %3，实际回读为 %2。</translation>
+    </message>
+    <message>
         <source>Rouke rejected command %1.</source>
         <translation>Rouke 拒绝执行命令 %1。</translation>
     </message>
@@ -1447,6 +1436,26 @@
     <message>
         <source>Confirmed: %1</source>
         <translation>已确认：%1</translation>
+    </message>
+    <message>
+        <source>Last confirmed: %1</source>
+        <translation>上次确认：%1</translation>
+    </message>
+    <message>
+        <source>Applying…</source>
+        <translation>正在应用…</translation>
+    </message>
+    <message>
+        <source>Verifying…</source>
+        <translation>正在核对…</translation>
+    </message>
+    <message>
+        <source>Value differs</source>
+        <translation>回读值不一致</translation>
+    </message>
+    <message>
+        <source>Not verified</source>
+        <translation>尚未完成核对</translation>
     </message>
     <message>
         <source>Not confirmed</source>

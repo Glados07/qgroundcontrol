@@ -610,8 +610,8 @@ Rouke 对应 Video 2 和右侧第二个相机面板，提供 LR1/OV2735 图像�
 
 ```text
 RoukeCameraControl / RoukeCameraSettings / RoukeCameraParameter
-    → RoukeControlManager：QML 接口、参数读取队列、Video 2 本地媒体
-    → RoukePayloadController：请求状态、独立 UDP、MAVLink 53022
+    → RoukeControlManager：QML 接口、Video 2 首帧通知与本地媒体
+    → RoukePayloadController：有限参数读取队列、确认缓存、独立 UDP、MAVLink 53022
     → RoukeProtocol：JSON 内层帧、切分与字节流重组
     → AI 盒子 UDP 8888 → 负载控制端
 
@@ -623,7 +623,7 @@ Video 2 RTSP → DualVideoManager → 显示与本地媒体
 
 #### 3.4.2 连接配置与操作入口
 
-连接设置位于“应用设置 → 飞行视图 → Rouke”，视频地址位于“应用设置 → 视频 → RTSP 地址2（Rouke）”。连接参数由 Fact 持久化；修改后 Manager 取消旧输入和未发送的参数队列，重新配置 Controller。
+连接设置位于“应用设置 → 飞行视图 → Rouke”，视频地址位于“应用设置 → 视频 → RTSP地址2”。连接参数由 Fact 持久化；修改后 Manager 取消旧输入，重新配置 Controller，由 Controller 清理旧会话的参数队列和确认缓存。
 
 | 设置键 | 默认值 | 作用与范围 |
 |---|---|---|
@@ -643,7 +643,7 @@ Video 2 RTSP → DualVideoManager → 显示与本地媒体
 
 #### 3.4.3 参数模型与读写流程
 
-`RoukeCameraParameter` 以 `parameterKey` 绑定 `cameraParameters` 中的设备报告值，输入控件另存草稿。Controller 的 `kCameraParameters` 是命令、字段、读写方式和范围的统一定义，当前共 11 项运行参数：
+`RoukeCameraParameter` 以 `parameterKey` 绑定 `cameraParameters` 中最近一次确认的参数值，输入控件另存草稿；`cameraParameterVerification` 表示可读参数的写入和回读核对进度。Controller 的 `kCameraParameters` 是命令、字段、读写方式和范围的统一定义，当前共 11 项运行参数：
 
 | 页面 / 参数键 | 命令 | 字段、值及读取支持 |
 |---|---|---|
@@ -661,21 +661,28 @@ Video 2 RTSP → DualVideoManager → 显示与本地媒体
 
 ISO、白平衡按 M400 文档的索引输入；快门、光圈没有秒数或 F 值映射，焦距值也采用十进制原始整数。后三项未定义设备范围的整数输入使用软件 `int` 上限，设备实际接受范围由其回执决定。运行参数不作为应用 Fact 保存，不在重连时自动重放。
 
-**打开与读取**：`onOpened` 调用 `refreshCameraParameters()`，Manager 依次排队 `iso → whiteBalance → focusValue → imageSize`。每项完成或超时后，`_requestNextCameraParameter()` 才提交下一项；已有相机 pending 时等待。ISO、白平衡、图片大小的读取请求在操作字段置 0，并按协议带值字段 0；焦距使用独立 GET 命令。这四项读取可以建立首次 SDK 响应，无需先收到 SD 查询结果。关闭页面或配置变化清空尚未发送队列，已发送请求仍按自身 ACK/超时结束。
+**有限事件读取**：Manager 在有效配置启动后调用 `initializeCameraParameters()`，在 Rouke 视频接收器首次输出画面时调用 `notifyVideoFrameReceived()`；Controller 接纳首个有效内层回执时触发通信就绪阶段。三个阶段在当前端点会话各执行一次，按 `iso → whiteBalance → focusValue → imageSize` 补读尚未确认的项目。已确认项目直接跳过，队列中的同项请求合并；相机通道空闲后由 `_dispatchParameterRead()` 逐项发送，一项完成或超时再处理下一项。失败项目可在后续尚未触发的阶段补读，三个阶段结束后由用户点击行内读取按钮重试，不定时轮询参数，也不随视频重连或反复开关设置页重复初始化。
 
-**单项提交**：用户编辑 → 点击读取或应用 → `requestCameraParameter()` / `setCameraParameter()` → Controller 校验类型和范围并生成请求 → ACK 更新 `cameraParameters` → 卡片刷新报告值。`pendingParameter` 标记正在等待的卡片，`pending` 控制参数操作互斥。输入通过 `dirty` 区分未提交编辑：有编辑时普通报告变化不覆盖草稿；应用受理后清除 `dirty`，后续由 `syncDraft()` 同步报告值或默认输入。显式读取、关闭及重新打开设置页会重置草稿；失联本身不关闭页面或提交输入。打开页面、切换页签和重连均不会自动设置触发拍照开关。
+ISO、白平衡、图片大小的 GET 在操作字段置 0，并按协议带值字段 0；焦距使用独立 GET 命令。这四项读取可以建立首次 SDK 响应，无需先收到 SD 查询结果。行内 `requestCameraParameter()` 是显式读取，即使已有确认值也可以刷新。`refreshCameraParameters()` 保留为手动批量刷新四项的后端接口；设置页面只展示缓存和提供逐行操作，不在打开、关闭或销毁时启动或取消后台队列。仅设置的七项不生成 GET，也不通过预设值伪造相机当前状态。
+
+**单项提交与回读**：用户编辑 → 点击应用 → `setCameraParameter()` 校验类型和范围 → 发送 SET。可读项进入 `applying`，SET 成功 ACK 后进入 `verifying` 并排队一次强制 GET，已有缓存不能跳过这次核对。GET 返回合法值后更新缓存：与提交值相同为 `verified`，不同为 `mismatch`，界面保留草稿并展示实际回读值和差异提示；GET 失败为 `unverified`，保留最近确认值供参考。仅设置项以成功 ACK 中的合法值确认；协议允许的空成功 `data` 确认本次提交值。SET 超时或部分发送不自动重发，也不主动追加 GET。一次对焦或对焦模式设置成功可能改变焦距，因此追加一次 `focusValue` 读取。
+
+`pendingParameter` 标记正在等待的卡片，`pending` 控制相机参数操作互斥。输入通过 `dirty` 与确认值分离：手动读取、后台回执、离线和关闭重开均保留未提交草稿；确认值与草稿一致且不处于核对中或核对失败时，草稿才恢复为已确认状态。应用不一致或失败后可继续编辑并重新提交。打开页面、切换页签和重连均不会自动设置触发拍照开关。
 
 **报告值与请求完成**：
 
 | 情况 | 当前处理 |
 |---|---|
 | GET 成功 | 必须含合法返回字段，才发布设备报告值；请求中的占位 0 不用于填充缺失字段 |
-| SET 成功 | 合法返回字段作为报告值；成功空 `data` 按协议兼容规则确认本次提交值 |
-| 明确拒绝 | 保留此前报告值，显示设备错误；未发生报告变化时输入保持原内容 |
-| 超时、部分发送或执行结果不确定 | 撤销对应参数确认；一次对焦/对焦模式变化还撤销旧 `focusValue` |
-| 响应过期或端点重设 | 清空该会话报告值，界面显示未确认 |
+| 可读项 SET 成功 | ACK 后读取一次实际值，核对期间展示“正在核对”和上次确认值 |
+| 仅设置项 SET 成功 | 合法返回字段或空成功 ACK 确认提交值，不追加无协议依据的 GET |
+| GET 拒绝、超时或坏字段 | 保留此前确认值和编辑草稿；写后回读失败标记为尚未完成核对 |
+| SET 明确拒绝 | 保留此前确认值，显示设备错误，保留编辑草稿 |
+| SET 超时、部分发送或执行结果不确定 | 撤销对应参数确认；一次对焦/对焦模式变化还撤销旧 `focusValue` |
+| 通信暂时中断 | 保留参数缓存，界面标记“上次确认”，禁用应用；有效配置下仍可手动读取 |
+| 端点会话重设或进程重启 | 清空运行时确认值和核对状态，按新会话重新执行有限事件读取 |
 
-M400 ACK 没有事务序号，因此 Controller 分开管理“可能迟到的 GET”与“写入/动作结果不确定”。合法 GET 可以继续更新报告值，但不解除既有写入不确定状态。ISO、白平衡、图片大小共用 GET/SET 命令名：只有迟到 GET 风险时，后续 SET 可接受空成功 ACK；带值 ACK 必须合法且等于当前提交目标，不同值继续等待原截止时间。界面显示的是本会话最后的有效状态报告，不是持续参数遥测。
+确认缓存只存在于当前 QGC 进程的当前端点会话中，不写入 Fact 或跨重启保存。其他客户端或相机端改变参数后，需要手动读取以更新显示。M400 ACK 没有事务序号，ISO、白平衡、图片大小又共用 GET/SET 命令名，因此回读确认的是设备报告值，不能作为某次写入的唯一事务凭据。Controller 分开管理“可能迟到的 GET”与“写入/动作结果不确定”：合法 GET 可以更新报告值，但不解除既有写入不确定状态；只有迟到 GET 风险时，后续 SET 可接受空成功 ACK，带值 ACK 必须合法且等于当前提交目标，不同值继续等待原截止时间。
 
 #### 3.4.4 53022 编码、发送与接收
 
@@ -718,20 +725,20 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 | 入口 / 通道 | 命令与状态规则 |
 |---|---|
 | 选择图像源 | `lr1_switch_view`，`view_type=4` 为 LR1、5 为 OV2735；成功 ACK 更新 `viewType/viewKnown` |
-| 一次对焦 | `lr1_focus`，空 `data`；完成后清除旧焦距报告值，需重新读取 |
+| 一次对焦 | `lr1_focus`，空 `data`；成功后清除旧焦距值并排队一次 `focusValue` GET，对焦模式设置成功同样补读 |
 | 拍照 | `lr1_take_photo`，空 `data`；成功 ACK 增加设备照片计数 |
 | 录像 | `lr1_record`，`action=0` 开始、1 停止；ACK 更新 `recording/recordingKnown` |
 | 云台速度 | `gimbal_speed_ctrl`，`yaw_speed/pitch_speed/roll_speed`；滚转固定 0，持续刷新不占相机 pending |
 | 云台回中 | `gimbal_center`，空 `data`；`gimbalCenterPending` 独立于相机请求 |
 | SD 查询 | `get_sdcard_capacity`，独立 pending、错误及新鲜度；不占用相机或回中通道 |
 
-相机侧同一时刻只等待一个命令，参数与拍照、对焦、图像源、录像共用此通道。相机、回中和 SD 查询分别采用 3.5 s 截止时间。有效内层回应保持 `sdkResponding` 15 s；到期将视角、录像及参数状态置为未知。写入失败时停止余下分段；已部分写出的动作结果按不确定状态处理，不自动重放拍照等业务动作。
+相机侧同一时刻只等待一个命令，参数与拍照、对焦、图像源、录像共用此通道。相机、回中和 SD 查询分别采用 3.5 s 截止时间。有效内层回应保持 `sdkResponding` 15 s，并通知界面更新在线状态；未匹配当前请求的回中回执同样刷新在线状态，但不确认当前回中动作。到期将视角和录像状态置为未知，参数保留最近确认缓存并标记为离线参考值。写入失败时停止余下分段；已部分写出的动作结果按不确定状态处理，不自动重放拍照等业务动作。
 
 **单按钮录像**：`toggleVideoRecording()` 与 QML 使用同一 `recordingStopRequired` 判断下一次动作。开始已提交或本地启动后即保留停止方向；开始 pending 时再次点击可排队停止。停止 pending 内再次点击不重复排队，停止拒绝/超时后保留停止方向；确认停止后清除远端意图。若只有未确认的停止请求，后续同方向 STOP ACK 可确认停止；曾有未确定的 START 时仍保留未知结果，等待新的端点会话。
 
 停止意图在内存中按远端 IP、端口和负载地址保存，同端点禁用、重连或改变本地端口不会丢失；切换端点使用各自意图，程序重启不从磁盘重放动作。`recordingSessionCapturing` 只在远端已确认录制或本地已实际录制时为 true，决定红色和计时；停止意图与等待本身不显示为正在采集。本地停止、文件收尾不依赖远端 ACK，完整媒体流程见 3.5。
 
-**SD 状态**：配置有效后立即查询一次，随后每 10 s 查询。成功回执的 `total_capacity`、`free_capacity` 均为合法整数，且总量大于 0、剩余量处于 0～总量时，发布 `sdCardStatusKnown=true`、`sdCardInserted=true`。零容量、拒绝、坏字段和超时发布未确认；状态有效期 25 s。该命令目前提供“卡容量可读取”的依据，不提供独立的无卡布尔值。
+**SD 状态**：配置有效后立即查询一次，随后每 10 s 查询。这是独立的容量与在线检测，不启动相机参数轮询。成功回执的 `total_capacity`、`free_capacity` 均为合法整数，且总量大于 0、剩余量处于 0～总量时，发布 `sdCardStatusKnown=true`、`sdCardInserted=true`。零容量、拒绝、坏字段和超时发布未确认；状态有效期 25 s。该命令目前提供“卡容量可读取”的依据，不提供独立的无卡布尔值。
 
 **遥控云台**：`RoukeGimbalController` 将 CH11/12 映射为速度，CH14 回中前先停止连续速度；轴输入要求新鲜和归中解锁。它使用有效控制端点作为发送条件，不依赖 SD 回执或当前相机 pending。通道门槛、映射公式和停止周期集中见 [3.7](#unirc)，不与顶部 MAVLink 云台的 CH10 交替状态共用。
 
@@ -744,8 +751,8 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 | `Gimbal/GimbalControlSettings.h/.cc`、JSON；`UI/AppSettings/GimbalControlSettingsGroup.qml` | 连接端点、地址码、速度上限和反向 Fact |
 | `FlightDisplay/RoukeCameraControl.qml` | 一级栏动作、图像源菜单、录像按钮、设置弹层生命周期 |
 | `FlightDisplay/RoukeCameraSettings.qml`、`RoukeCameraParameter.qml`、`RoukeCameraButton.qml` | 双页参数布局、草稿/报告值、读取与应用门控；新增参数同步修改此处与后端参数表 |
-| `Gimbal/RoukeControlManager.h/.cc` | QML 接口、四项 GET 队列、SD 轮询、Video 2 本地照片和录像 |
-| `Gimbal/RoukePayloadController.h/.cc` | `setConfiguration()`、`sendCommand()`、`_writeCommand()`、接收/ACK、请求与状态生命周期 |
+| `Gimbal/RoukeControlManager.h/.cc` | QML 接口、初始化与 Video 2 首帧通知、SD 轮询、本地照片和录像 |
+| `Gimbal/RoukePayloadController.h/.cc` | 有限参数队列、确认缓存与写后回读；`setConfiguration()`、`sendCommand()`、`_writeCommand()`、接收/ACK 与请求生命周期 |
 | `Gimbal/RoukeProtocol.h/.cc` | JSON 信封、内层帧、128 字节切分、`StreamDecoder` |
 | `Gimbal/RoukeGimbalController.h/.cc`；`Android/UniRcChannelController.h/.cc` | CH11/12/14 路由、速度与回中状态机 |
 | `CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 对象创建、Video 2 receiver/item 和媒体回调绑定 |
@@ -1668,7 +1675,7 @@ bash custom/tools/rouke-diagnostics-capture.sh finish
 | `index-video.txt` | 按 URI、receiver / generation 关联 RTSP 协商 → 压缩源首帧 → decoder 输出 → sink 首帧 | 收流、解码、显示分别进行到哪一步 |
 | `index-payload.txt` | 请求及分片 → 本机 UDP 写出 → 周期接收计数 → 外层 53022 → 内层回应 → 参数确认或超时 | 区分无接收、普通遥测、53022 字段/内层拒绝及有效回执 |
 | `index-rc.txt` | SDK 通道输入 → 中位/边沿判断 → 目标速度/回中 → 发送/停止 | 通道数据是否到达、动作是否形成、是否提交给载荷控制器 |
-| `index-network.txt`、网络统计与 socket 快照 | 对齐阶段时间，比较网卡字节/丢弃、UDP 错误、socket 队列/丢弃和 CPU 计数的增量 | 本机收包与处理负载；系统计数覆盖所有进程，socket 需按本轮端口/inode 匹配；无权限时保留读取失败记录 |
+| `index-network.txt`、网络统计与 socket 快照 | 对齐阶段时间，比较网卡字节/丢弃、UDP 错误、socket 队列/丢弃和 CPU 计数的增量，同时核对原生 UDP 的绑定端口及自动学习目标 | 本机收包与处理负载、是否存在另一路发往 AI 盒子的原生 UDP 连接；自动学习日志不证明盒子已改变回包路由；系统计数覆盖所有进程，socket 需按本轮端口/inode 匹配；无权限时保留读取失败记录 |
 | `device/`、`coverage.txt`、`observation.txt` | 对齐系统时间、USB 插拔、日志覆盖范围与人工现象 | 区分测试区间、环境变化和程序行为 |
 
 索引用于定位，保留原始日志供上下文核对。分析有效测试区间时排除 USB 插拔导致的通信中断，按实际链路恢复时间划分。日志轮转文件应按时间排列，启动和结束补充日志可能与主日志重叠。

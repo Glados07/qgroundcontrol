@@ -453,28 +453,13 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="71"/>
-        <source>Set video stream addresses here. Configure camera controls under Fly View settings.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="78"/>
         <source>RTSP URL 1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../src/UI/AppSettings/VideoSettings.qml" line="86"/>
-        <source>RTSP URL 2 (Rouke)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="93"/>
-        <source>Video 2 displays the Rouke payload stream. Leave its URL empty to disable the second video window.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/UI/AppSettings/VideoSettings.qml" line="102"/>
-        <source>RTSP URL 2 matches the configured or active Video 1 stream. The second receiver is disabled to avoid opening the same stream twice.</source>
+        <source>RTSP URL 2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1347,6 +1332,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Rouke reported %1 as %2 after requesting %3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Rouke rejected command %1.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1422,6 +1411,26 @@
     </message>
     <message>
         <source>Confirmed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last confirmed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verifying…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Value differs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not verified</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
