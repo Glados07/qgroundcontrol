@@ -33,6 +33,7 @@ constexpr int kSdCardFreshnessMs = 25000;
 constexpr int kPartialFrameTimeoutMs = 3500;
 constexpr int kMaxResponseStreams = 8;
 constexpr int kMaxOtherMavlinkHeaders = 16;
+constexpr int kReceiveDiagnosticIntervalMs = 1000;
 // Standard QGC sender identity; this independent payload endpoint does not
 // route or impersonate an active aircraft's MAVLink system/component.
 constexpr uint8_t kGroundStationSystemId = 255;
@@ -148,6 +149,11 @@ RoukePayloadController::RoukePayloadController(QObject *parent)
     _sdCardQueryTimer.setInterval(kCommandTimeoutMs);
     _sdCardFreshnessTimer.setSingleShot(true);
     _sdCardFreshnessTimer.setInterval(kSdCardFreshnessMs);
+    _receiveDiagnosticTimer.setInterval(kReceiveDiagnosticIntervalMs);
+    _receiveDiagnosticTimer.setTimerType(Qt::PreciseTimer);
+    connect(&_receiveDiagnosticTimer, &QTimer::timeout, this, [this]() {
+        if (RoukePayloadTraceLog().isDebugEnabled()) _logReceiveDiagnostics("periodic");
+    });
     connect(&_sdCardQueryTimer, &QTimer::timeout, this, [this]() {
         _logTimeoutDiagnostics(QStringLiteral("get_sdcard_capacity"));
         _sdCardQueryPending = false;
@@ -210,7 +216,7 @@ void RoukePayloadController::setConfiguration(bool enabled, const QString &host,
     // Advertise this binary's diagnostic capability even with tracing off.
     // This is a build contract, not evidence that a packet reached the peer.
     qCInfo(RoukePayloadLog).noquote()
-        << QStringLiteral("ROUKE_DIAGNOSTICS schema=2 msgid=%1 len=%2 crc=%3 scope=build-contract")
+        << QStringLiteral("ROUKE_DIAGNOSTICS schema=3 msgid=%1 len=%2 crc=%3 scope=build-contract")
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY)
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN)
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_CRC);
@@ -219,6 +225,12 @@ void RoukePayloadController::setConfiguration(bool enabled, const QString &host,
         << "remotePort" << _port << "requestedLocalPort" << _localPort
         << "boundLocalPort" << _socket.localPort() << "payloadAddress" << _payloadAddress
         << "available" << available();
+    qCInfo(RoukePayloadLog).noquote()
+        << QStringLiteral("ROUKE_RX_CONFIG session=%1 peer=%2:%3 localPort=%4 payload=%5 enabled=%6 available=%7")
+               .arg(_configurationSerial).arg(_host.toString()).arg(_port).arg(_socket.localPort())
+               .arg(_payloadAddress).arg(_enabled).arg(available());
+    if (_enabled) _receiveDiagnosticTimer.start();
+    if (RoukePayloadTraceLog().isDebugEnabled()) _logReceiveDiagnostics("configured");
     emit stateChanged();
 }
 
@@ -237,6 +249,16 @@ void RoukePayloadController::_reset()
     ++_sdCardRequestSerial;
     _responseStreams.clear();
     _receiveDiagnostics = {};
+    _receiveDiagnosticTimer.stop();
+    _receiveDiagnosticAge.start();
+    _receiveDiagnosticLastReportAge.invalidate();
+    _lastUdpAge.invalidate();
+    _lastUdpSource = {};
+    _lastUdpSourcePort = 0;
+    _lastPeerAge.invalidate();
+    _lastRelayAge.invalidate();
+    _lastMatchedFrameAge.invalidate();
+    _receiveDiagnosticReport = 0;
     const QString cancelled = _pendingCommand;
     const bool centerCancelled = _gimbalCenterPending;
     _commandTimer.stop();
@@ -282,35 +304,58 @@ void RoukePayloadController::_setError(const QString &error)
     emit stateChanged();
 }
 
-void RoukePayloadController::_logTimeoutDiagnostics(const QString &command) const
+void RoukePayloadController::_logTimeoutDiagnostics(const QString &command)
 {
+    _logReceiveDiagnostics("timeout", command);
+}
+
+void RoukePayloadController::_logReceiveDiagnostics(const char *reason, const QString &command)
+{
+    const bool timeout = qstrcmp(reason, "timeout") == 0;
+    if (!timeout && !RoukePayloadTraceLog().isDebugEnabled()) return;
     const auto &rx = _receiveDiagnostics;
-    QStringList otherHeaders;
-    auto headerKeys = rx.otherMavlinkHeaders.keys();
-    std::sort(headerKeys.begin(), headerKeys.end());
-    for (const quint64 key : headerKeys) {
-        otherHeaders.append(QStringLiteral("id=%1,magic=%2,sys=%3,comp=%4,count=%5")
-            .arg(key & 0xffffff).arg((key >> 40) & 0xff)
-            .arg((key >> 24) & 0xff).arg((key >> 32) & 0xff)
-            .arg(rx.otherMavlinkHeaders.value(key)));
+    const QString tag = QStringLiteral(" session=%1 report=%2")
+                            .arg(_configurationSerial).arg(++_receiveDiagnosticReport);
+    const auto age = [](const QElapsedTimer &timer) -> qint64 {
+        return timer.isValid() ? timer.elapsed() : -1;
+    };
+    // Keep essential stages in short separate records. Android's logging
+    // backend may truncate a single message at about 1 KiB including context.
+    QStringList lines;
+    lines << QStringLiteral("ROUKE_RX_SNAPSHOT") + tag
+        + QStringLiteral(" reason=%1 cmd=%2 peer=%3:%4 localPort=%5 payload=%6 enabled=%7 available=%8 responding=%9 ageMs=%10 lastUdpMs=%11 lastPeerMs=%12 lastRelayMs=%13 lastMatchedMs=%14 gapMs=%15 lastSource=%16:%17")
+              .arg(QString::fromLatin1(reason), command.isEmpty() ? QStringLiteral("none") : traceCommand(command))
+              .arg(_host.toString()).arg(_port).arg(_socket.localPort()).arg(_payloadAddress)
+              .arg(_enabled).arg(available()).arg(_responding).arg(age(_receiveDiagnosticAge))
+              .arg(age(_lastUdpAge)).arg(age(_lastPeerAge)).arg(age(_lastRelayAge)).arg(age(_lastMatchedFrameAge))
+              .arg(age(_receiveDiagnosticLastReportAge))
+              .arg(_lastUdpSource.isNull() ? QStringLiteral("none") : _lastUdpSource.toString()).arg(_lastUdpSourcePort);
+    _receiveDiagnosticLastReportAge.restart();
+    lines << QStringLiteral("ROUKE_RX_TRANSPORT") + tag
+        + QStringLiteral(" udp=%1 bytes=%2 peer=%3 rejectAddress=%4 rejectPort=%5 badCrc=%6 incomplete=%7 other=%8 relay=%9 invalidRelay=%10 otherOverflow=%11")
+              .arg(rx.datagrams).arg(rx.bytes).arg(rx.matchedDatagrams).arg(rx.rejectedAddress)
+              .arg(rx.rejectedPort).arg(rx.badMavlink).arg(rx.noCompleteMavlink).arg(rx.otherMavlink)
+              .arg(rx.relayMavlink).arg(rx.invalidRelay).arg(rx.otherMavlinkHeaderOverflow);
+    lines << QStringLiteral("ROUKE_RX_INNER") + tag
+        + QStringLiteral(" resync=%1 expired=%2 streamLimit=%3 pending=%4 valid=%5 matched=%6 rejectRoute=%7 rejectPayload=%8 unmatchedAck=%9 ignoredRead=%10")
+              .arg(rx.innerResyncs).arg(rx.expiredStreams).arg(rx.streamLimit).arg(_responseStreams.size())
+              .arg(rx.innerFrames).arg(rx.matchedFrames).arg(rx.rejectedRoute).arg(rx.rejectedPayload)
+              .arg(rx.unmatchedCommandAcks).arg(rx.ignoredReadReports);
+    if (timeout) {
+        auto headerKeys = rx.otherMavlinkHeaders.keys();
+        std::sort(headerKeys.begin(), headerKeys.end());
+        for (const quint64 key : headerKeys) {
+            lines << QStringLiteral("ROUKE_RX_OTHER") + tag
+                + QStringLiteral(" id=%1 magic=%2 sys=%3 comp=%4 count=%5")
+                      .arg(key & 0xffffff).arg((key >> 40) & 0xff)
+                      .arg((key >> 24) & 0xff).arg((key >> 32) & 0xff)
+                      .arg(rx.otherMavlinkHeaders.value(key));
+        }
     }
-    qCWarning(RoukePayloadLog) << "Rouke command acknowledgement timeout"
-        << "command" << command << "host" << _host.toString() << "remotePort" << _port
-        << "boundLocalPort" << _socket.localPort() << "payloadAddress" << _payloadAddress
-        << "sessionRxDatagrams" << rx.datagrams
-        << "rejectedPeerAddress" << rx.rejectedAddress << "rejectedPeerPort" << rx.rejectedPort
-        << "matchedPeerDatagrams" << rx.matchedDatagrams
-        << "badMavlinkCrcOrSignature" << rx.badMavlink
-        << "datagramsWithoutCompleteMavlink" << rx.noCompleteMavlink
-        << "otherMavlinkMessages" << rx.otherMavlink << "invalidRelayFields" << rx.invalidRelay
-        << "otherMavlinkHeaders" << otherHeaders
-        << "otherMavlinkHeaderOverflow" << rx.otherMavlinkHeaderOverflow
-        << "innerFrameResyncs" << rx.innerResyncs << "expiredInnerStreams" << rx.expiredStreams
-        << "innerStreamLimitRejects" << rx.streamLimit << "pendingInnerStreams" << _responseStreams.size()
-        << "validInnerFrames" << rx.innerFrames << "rejectedSourceTarget" << rx.rejectedRoute
-        << "rejectedPayloadAddress" << rx.rejectedPayload << "matchedPayloadFrames" << rx.matchedFrames
-        << "unmatchedCommandAcks" << rx.unmatchedCommandAcks
-        << "ignoredReadReports" << rx.ignoredReadReports;
+    for (const QString &line : lines) {
+        if (timeout) qCWarning(RoukePayloadLog).noquote() << line;
+        else qCDebug(RoukePayloadTraceLog).noquote() << line;
+    }
 }
 
 void RoukePayloadController::_rememberUncertainRequest(const QString &command, const QJsonObject &data)
@@ -687,6 +732,10 @@ void RoukePayloadController::_readDatagrams()
         const QNetworkDatagram datagram = _socket.receiveDatagram();
         if (!_enabled) continue;
         ++_receiveDiagnostics.datagrams;
+        _receiveDiagnostics.bytes += static_cast<quint64>(datagram.data().size());
+        _lastUdpAge.restart();
+        _lastUdpSource = datagram.senderAddress();
+        _lastUdpSourcePort = datagram.senderPort();
         if (datagram.senderAddress() != _host) {
             ++_receiveDiagnostics.rejectedAddress;
             continue;
@@ -696,6 +745,7 @@ void RoukePayloadController::_readDatagrams()
             continue;
         }
         ++_receiveDiagnostics.matchedDatagrams;
+        _lastPeerAge.restart();
         // UDP preserves boundaries. Reject partial MAVLink packets instead of
         // joining bytes from unrelated datagrams into a fabricated message.
         _rxStatus = {};
@@ -736,8 +786,17 @@ void RoukePayloadController::_handleMessage(const mavlink_message_t &message, qu
         else ++_receiveDiagnostics.otherMavlinkHeaderOverflow;
         return;
     }
+    ++_receiveDiagnostics.relayMavlink;
+    _lastRelayAge.restart();
     mavlink_vk_payload_data_relay_t relay{};
     mavlink_msg_vk_payload_data_relay_decode(&message, &relay);
+    if (_receiveDiagnostics.relayMavlink == 1) {
+        qCDebug(RoukePayloadTraceLog).noquote()
+            << QStringLiteral("ROUKE_RX_RELAY_FIRST session=%1 peer=%2:%3 localPort=%4 msgid=%5 sys=%6 comp=%7 seq=%8 len=%9 payload=%10 reserve=%11 dataLen=%12")
+                   .arg(_configurationSerial).arg(_host.toString()).arg(_port).arg(_socket.localPort())
+                   .arg(message.msgid).arg(message.sysid).arg(message.compid).arg(message.seq).arg(message.len)
+                   .arg(relay.payload_addr).arg(relay.reserve).arg(relay.data_len);
+    }
     const quint64 key = (quint64(relay.payload_addr) << 16)
         | (quint64(message.sysid) << 8) | message.compid;
     if (relay.reserve != 0 || relay.data_len == 0
@@ -828,6 +887,7 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
         return;
     }
     ++_receiveDiagnostics.matchedFrames;
+    _lastMatchedFrameAge.restart();
     _responding = true;
     _responseTimer.start();
     const QString command = object.value(QStringLiteral("cmd")).toString();

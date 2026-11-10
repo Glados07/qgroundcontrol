@@ -91,22 +91,25 @@ private:
     void _setSdCardState(bool known, bool inserted);
     void _handleSdCardAck(const QJsonObject &object, quint64 sdCardSerial);
     QString _recordingEndpointKey() const;
-    void _logTimeoutDiagnostics(const QString &command) const;
+    void _logTimeoutDiagnostics(const QString &command);
+    void _logReceiveDiagnostics(const char *reason, const QString &command = {});
     void _rememberUncertainRequest(const QString &command, const QJsonObject &data);
 
-    // Session totals, reported only on bounded command timeouts. Speed ACKs
-    // can arrive at 20 Hz; receive diagnostics must never log per packet.
+    // Session totals. Explicit tracing samples these even while no packets
+    // arrive; timeouts also report them. No per-packet logging at 20 Hz.
     struct ReceiveDiagnostics {
         quint64 datagrams = 0;
+        quint64 bytes = 0;
         quint64 rejectedAddress = 0;
         quint64 rejectedPort = 0;
         quint64 matchedDatagrams = 0;
         quint64 badMavlink = 0;
         quint64 noCompleteMavlink = 0;
         quint64 otherMavlink = 0;
-        // The field log contained only valid non-relay MAVLink traffic. Keep
-        // bounded header-only counts so the next timeout identifies that
-        // traffic without exposing message payloads or logging every packet.
+        // Count valid outer 53022 packets BEFORE relay/inner-field validation.
+        // Datagram counts cannot distinguish a mixed telemetry/relay datagram.
+        quint64 relayMavlink = 0;
+        // Bounded header-only counts identify other traffic on timeouts.
         QHash<quint64, quint64> otherMavlinkHeaders;
         quint64 otherMavlinkHeaderOverflow = 0;
         quint64 invalidRelay = 0;
@@ -120,6 +123,16 @@ private:
         quint64 unmatchedCommandAcks = 0;
         quint64 ignoredReadReports = 0;
     } _receiveDiagnostics;
+    QTimer _receiveDiagnosticTimer;
+    QElapsedTimer _receiveDiagnosticAge;
+    QElapsedTimer _receiveDiagnosticLastReportAge;
+    QElapsedTimer _lastUdpAge;
+    QHostAddress _lastUdpSource;
+    quint16 _lastUdpSourcePort = 0;
+    QElapsedTimer _lastPeerAge;
+    QElapsedTimer _lastRelayAge;
+    QElapsedTimer _lastMatchedFrameAge;
+    quint64 _receiveDiagnosticReport = 0;
 
     QUdpSocket _socket;
     QHostAddress _host;

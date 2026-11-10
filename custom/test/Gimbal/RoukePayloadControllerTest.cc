@@ -244,16 +244,20 @@ private slots:
         QVERIFY(controller.cameraParameters().isEmpty());
         QVERIFY(logs.messages.isEmpty()); // No logging at telemetry frequency.
         QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
-        QCOMPARE(logs.messages.size(), 1);
-        const QString summary = logs.messages.first();
-        QVERIFY(summary.contains("matchedPeerDatagrams 19"));
-        QVERIFY(summary.contains("otherMavlinkMessages 19"));
-        QVERIFY(summary.contains("badMavlinkCrcOrSignature 0"));
-        QVERIFY(summary.contains("id=0,magic=253,sys=1,comp=1,count=3"));
-        QVERIFY(summary.contains("id=0,magic=254,sys=2,comp=1,count=1"));
-        QVERIFY(!summary.contains("sys=17,"));
-        QVERIFY(summary.contains("otherMavlinkHeaderOverflow 1"));
-        QVERIFY(summary.contains("validInnerFrames 0"));
+        QCOMPARE(logs.messages.size(), 19); // Three stages and sixteen bounded header records.
+        const QString summary = logs.messages.join('\n');
+        QVERIFY(summary.contains("peer=19"));
+        QVERIFY(summary.contains("other=19 relay=0"));
+        QVERIFY(summary.contains("badCrc=0"));
+        QVERIFY(summary.contains("id=0 magic=253 sys=1 comp=1 count=3"));
+        QVERIFY(summary.contains("id=0 magic=254 sys=2 comp=1 count=1"));
+        QVERIFY(!summary.contains("sys=17 "));
+        QVERIFY(summary.contains("otherOverflow=1"));
+        QVERIFY(summary.contains("valid=0"));
+        for (const QString &line : logs.messages) {
+            QVERIFY(line.toUtf8().size() < 600); // Leave room for Android's timestamp/category context.
+            QVERIFY(line.contains("session=1 report=1"));
+        }
         QVERIFY(!controller.responding());
         // Header accounting never loosens the relay filter or blocks a later
         // genuine 53022 value report from the same peer.
@@ -359,7 +363,7 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         QVERIFY(logs.messages.join('\n').contains(QString("boundLocalPort %1").arg(controller.boundPort())));
-        QVERIFY(logs.messages.join('\n').contains("ROUKE_DIAGNOSTICS schema=2 msgid=53022 len=132 crc=37 scope=build-contract"));
+        QVERIFY(logs.messages.join('\n').contains("ROUKE_DIAGNOSTICS schema=3 msgid=53022 len=132 crc=37 scope=build-contract"));
         QVERIFY(logs.messages.join('\n').contains(QString("remotePort %1").arg(box.localPort())));
         QVERIFY(logs.messages.join('\n').contains("payloadAddress 7"));
         logs.messages.clear();
@@ -388,20 +392,147 @@ private slots:
         QTRY_VERIFY(controller.responding());
         QVERIFY(logs.messages.isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
-        QCOMPARE(logs.messages.size(), 1);
-        const QString summary = logs.messages.first();
-        QVERIFY(summary.contains("command \"lr1_take_photo\""));
-        QVERIFY(summary.contains("rejectedPeerPort 1"));
-        QVERIFY(summary.contains("badMavlinkCrcOrSignature 1"));
-        QVERIFY(summary.contains("datagramsWithoutCompleteMavlink 2"));
-        QVERIFY(summary.contains("invalidRelayFields 1"));
-        QVERIFY(!summary.contains("innerFrameResyncs 0"));
-        QVERIFY(summary.contains("rejectedSourceTarget 1"));
-        QVERIFY(summary.contains("rejectedPayloadAddress 1"));
-        QVERIFY(summary.contains("matchedPayloadFrames 20"));
+        QCOMPARE(logs.messages.size(), 3);
+        const QString summary = logs.messages.join('\n');
+        QVERIFY(summary.contains("reason=timeout cmd=lr1_take_photo"));
+        QVERIFY(summary.contains("rejectPort=1"));
+        QVERIFY(summary.contains("badCrc=1"));
+        QVERIFY(summary.contains("incomplete=2"));
+        QVERIFY(summary.contains("invalidRelay=1"));
+        QVERIFY(!summary.contains("resync=0"));
+        QVERIFY(summary.contains("rejectRoute=1"));
+        QVERIFY(summary.contains("rejectPayload=1"));
+        QVERIFY(summary.contains("matched=20"));
         QVERIFY(!summary.contains("private-payload-note"));
         QVERIFY(!summary.contains("{\""));
         QCOMPARE(controller.photoCount(), 0);
+    }
+
+    void mixedDatagramAndRejectedInnerFramesStillCountOuterRelay()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        logs.messages.clear();
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        mavlink_message_t heartbeatMessage{};
+        mavlink_status_t heartbeatStatus{};
+        mavlink_heartbeat_t heartbeat{};
+        mavlink_msg_heartbeat_encode_status(1, 1, &heartbeatStatus, &heartbeatMessage, &heartbeat);
+        uint8_t wire[MAVLINK_MAX_PACKET_LEN]{};
+        const auto count = mavlink_msg_to_send_buffer(wire, &heartbeatMessage);
+        QByteArray datagram(reinterpret_cast<const char *>(wire), count);
+        auto response = ack("lr1_iso");
+        response["data"] = QJsonObject{{"value", 12}};
+        datagram += messageBytes(response);
+        QCOMPARE(box.writeDatagram(datagram, QHostAddress::LocalHost, controller.boundPort()), qint64(datagram.size()));
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 12);
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("other=1 relay=1 invalidRelay=0"), 1500);
+        QString output = logs.messages.join('\n');
+        QVERIFY(output.contains(QString("udp=1 bytes=%1 peer=1").arg(datagram.size())));
+        QVERIFY(output.contains("valid=1 matched=1"));
+        QCOMPARE(logs.messages.filter("ROUKE_RX_RELAY_FIRST").size(), 1);
+        QVERIFY(!output.contains("lastRelayMs=-1"));
+
+        logs.messages.clear();
+        // Valid MAVLink with invalid inner bytes, then invalid relay length.
+        // Neither can acknowledge a camera request, but both reached 53022.
+        const QByteArray badInner = fragmentBytes("not-an-inner-frame");
+        QCOMPARE(box.writeDatagram(badInner, QHostAddress::LocalHost, controller.boundPort()), qint64(badInner.size()));
+        send(box, controller, response, 7, 129);
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("other=1 relay=3 invalidRelay=1"), 1500);
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains("valid=1 matched=1"));
+        QVERIFY(!output.contains("resync=0"));
+        QVERIFY(logs.messages.filter("ROUKE_RX_RELAY_FIRST").isEmpty());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 12);
+        for (const QString &line : logs.messages) QVERIFY(line.toUtf8().size() < 600);
+    }
+
+    void receiveSnapshotsAreOptInPeriodicAndResetWithConfiguration()
+    {
+        QUdpSocket box, nextBox, foreign;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        QVERIFY(nextBox.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        QVERIFY(foreign.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        logs.messages.clear();
+        QTest::qWait(1100);
+        QVERIFY(logs.messages.isEmpty()); // Snapshot timer does not opt in to debug output.
+        PayloadTraceFilter trace;
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.filter("ROUKE_RX_SNAPSHOT").size() == 1, 1500);
+        QString output = logs.messages.join('\n');
+        QVERIFY(output.contains("reason=periodic"));
+        QVERIFY(output.contains("udp=0 bytes=0 peer=0"));
+        QVERIFY(output.contains("lastUdpMs=-1 lastPeerMs=-1 lastRelayMs=-1 lastMatchedMs=-1"));
+        for (const QString &line : logs.messages) QVERIFY(line.contains("session=1 report=1"));
+
+        for (int i = 0; i < 20; ++i) send(box, controller, ack("gimbal_speed_ctrl"));
+        QTRY_VERIFY(controller.responding());
+        QTest::qWait(200);
+        QCOMPARE(logs.messages.filter("ROUKE_RX_SNAPSHOT").size(), 1); // Burst never starts extra snapshots.
+        QCOMPARE(logs.messages.filter("ROUKE_RX_RELAY_FIRST").size(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("other=0 relay=20 invalidRelay=0"), 1500);
+        QCOMPARE(logs.messages.filter("ROUKE_RX_SNAPSHOT").size(), 2);
+
+        logs.messages.clear();
+        send(foreign, controller, ack("gimbal_speed_ctrl"));
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("rejectPort=1"), 1500);
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains(QString("lastSource=127.0.0.1:%1").arg(foreign.localPort())));
+        QVERIFY(output.contains("peer=20"));
+        QVERIFY(output.contains("relay=20")); // Rejected peer is visible but never decoded/admitted.
+
+        logs.messages.clear();
+        controller.setConfiguration(true, "127.0.0.1", nextBox.localPort(), 0, 7);
+        output = logs.messages.join('\n');
+        QVERIFY(output.contains(QString("ROUKE_RX_CONFIG session=2 peer=127.0.0.1:%1 localPort=%2")
+                                    .arg(nextBox.localPort()).arg(controller.boundPort())));
+        QVERIFY(output.contains("session=2 report=1 reason=configured"));
+        QVERIFY(output.contains("udp=0 bytes=0 peer=0"));
+        QVERIFY(output.contains("lastUdpMs=-1 lastPeerMs=-1 lastRelayMs=-1 lastMatchedMs=-1"));
+        QVERIFY(!controller.responding());
+        send(nextBox, controller, ack("gimbal_speed_ctrl"));
+        QTRY_VERIFY(controller.responding());
+        QCOMPARE(logs.messages.filter("ROUKE_RX_RELAY_FIRST").size(), 1);
+        QVERIFY(logs.messages.filter("ROUKE_RX_RELAY_FIRST").first().contains("session=2"));
+
+        controller.setConfiguration(false, {}, 0, 0, -1);
+        logs.messages.clear();
+        QTest::qWait(1100);
+        QVERIFY(logs.messages.isEmpty()); // Disabled endpoint has no periodic timer output.
+    }
+
+    void zeroReceiveTimeoutProducesShortCorrelatedStages()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        logs.messages.clear();
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.pending(), 4500);
+        QCOMPARE(logs.messages.size(), 3);
+        const QString output = logs.messages.join('\n');
+        QVERIFY(output.contains("reason=timeout cmd=lr1_iso"));
+        QVERIFY(output.contains("udp=0 bytes=0 peer=0"));
+        QVERIFY(output.contains("other=0 relay=0 invalidRelay=0"));
+        QVERIFY(output.contains("lastRelayMs=-1"));
+        QVERIFY(output.contains("valid=0 matched=0"));
+        for (const QString &line : logs.messages) {
+            QVERIFY(line.contains("session=1 report=1"));
+            QVERIFY(line.toUtf8().size() < 600);
+        }
+        QVERIFY(controller.cameraParameters().isEmpty());
     }
 
     void singleRecordingButtonStopsWhileStartIsPending()
