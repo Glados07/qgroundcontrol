@@ -12,6 +12,7 @@
 #include "Comms/DefaultCommunicationLinkInstaller.h"
 #include "FactMetaData.h"
 #include "FuelCellController/FuelCellControllerManager.h"
+#include "FuelCellTelemetry/FuelCellTelemetry.h"
 #include "Gimbal/GimbalAzimuthProvider.h"
 #include "Gimbal/GimbalCenterCoordinator.h"
 #include "Gimbal/GimbalModeController.h"
@@ -188,6 +189,7 @@ void CustomPlugin::init()
 
     _ensureFlyViewCustomSettings();
 
+    qmlRegisterType<FuelCellTelemetry>("Custom.FuelCell", 1, 0, "FuelCellTelemetry");
     qmlRegisterUncreatableType<FuelCellControllerManager>(
         "Custom.FuelCell", 1, 0, "FuelCellControllerManager",
         "Use QGroundControl.corePlugin.fuelCellController");

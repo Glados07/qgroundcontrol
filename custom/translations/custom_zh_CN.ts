@@ -1255,8 +1255,8 @@
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="33"/>
-        <source>Unknown (telemetry expired)</source>
-        <translation>状态未知（遥测已失效）</translation>
+        <source>Telemetry expired</source>
+        <translation>遥测已失效</translation>
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="40"/>
@@ -1434,6 +1434,46 @@
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="196"/>
         <source>Emergency Voltage</source>
         <translation>紧急电压(立刻降落)</translation>
+    </message>
+    <message>
+        <source>Inlet temp.</source>
+        <translation>进风温度</translation>
+    </message>
+    <message>
+        <source>Outlet temp.</source>
+        <translation>出风温度</translation>
+    </message>
+    <message>
+        <source>Fan duty</source>
+        <translation>风扇占空比</translation>
+    </message>
+    <message>
+        <source>Inlet pressure</source>
+        <translation>进气压力</translation>
+    </message>
+    <message>
+        <source>Stack voltage</source>
+        <translation>电堆电压</translation>
+    </message>
+    <message>
+        <source>Stack current</source>
+        <translation>电堆电流</translation>
+    </message>
+    <message>
+        <source>DCDC state</source>
+        <translation>DCDC 状态</translation>
+    </message>
+    <message>
+        <source>DCDC fault</source>
+        <translation>DCDC 故障码</translation>
+    </message>
+    <message>
+        <source>DCDC temp.</source>
+        <translation>DCDC 温度</translation>
+    </message>
+    <message>
+        <source>System substate</source>
+        <translation>系统子状态</translation>
     </message>
 </context>
 <context>

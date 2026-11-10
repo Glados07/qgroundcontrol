@@ -1,4 +1,5 @@
 #include "FuelCellControllerManager.h"
+#include "FuelCellTelemetry.h"
 #include "TestDoubles.h"
 
 #include <QtCore/QMetaProperty>
@@ -84,6 +85,66 @@ private slots:
     {
         MultiVehicleManager::instance()->setActiveVehicle(nullptr);
         _link.reset();
+    }
+
+    void directTelemetryChecksSourceDecodesExtensionsAndExpires()
+    {
+        FuelCellTelemetry telemetry;
+        telemetry.setSystemId(42);
+
+        auto publish = [](uint8_t system, uint8_t component, uint32_t timestamp, uint16_t substate) {
+            mavlink_fuel_cell_telemetry_t sample{};
+            sample.time_boot_ms = timestamp;
+            sample.valid_flags = FUEL_CELL_VALID_INLET_TEMPERATURE | FUEL_CELL_VALID_DCDC_FAULT | (1u << 15);
+            sample.inlet_temperature = 24.8f;
+            sample.dcdc_fault = 0;
+
+            mavlink_message_t outgoing{};
+            mavlink_msg_fuel_cell_telemetry_encode(system, component, &outgoing, &sample);
+            auto *payload = _MAV_PAYLOAD_NON_CONST(&outgoing);
+            payload[48] = static_cast<char>(substate & 0xff);
+            payload[49] = static_cast<char>(substate >> 8);
+            mavlink_finalize_message(&outgoing, system, component,
+                                     MAVLINK_MSG_ID_FUEL_CELL_TELEMETRY_MIN_LEN, 50,
+                                     MAVLINK_MSG_ID_FUEL_CELL_TELEMETRY_CRC);
+
+            uint8_t wire[MAVLINK_MAX_PACKET_LEN]{};
+            const uint16_t length = mavlink_msg_to_send_buffer(wire, &outgoing);
+            mavlink_message_t buffer{}, received{};
+            mavlink_status_t parser{}, status{};
+            for (uint16_t i = 0; i < length; ++i) {
+                if (mavlink_frame_char_buffer(&buffer, &parser, wire[i], &received, &status) == MAVLINK_FRAMING_OK) {
+                    emit MAVLinkProtocol::instance()->messageReceived(nullptr, received);
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        QVERIFY(publish(41, MAV_COMP_ID_ONBOARD_COMPUTER, 10, 1024));
+        QVERIFY(publish(42, MAV_COMP_ID_AUTOPILOT1, 10, 1024));
+        QVERIFY(telemetry.values().isEmpty());
+        QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 10, 1024));
+        QCOMPARE(telemetry.values().value(QStringLiteral("systemSubstate")).toInt(), 1024);
+        QCOMPARE(telemetry.values().value(QStringLiteral("dcdcFault")).toInt(), 0);
+        QVERIFY(!telemetry.values().contains(QStringLiteral("outletTemperature")));
+
+        // MAVLink 2 truncates trailing zeros, so a valid zero substate can be absent on the wire.
+        QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 11, 0));
+        QVERIFY(telemetry.values().contains(QStringLiteral("systemSubstate")));
+        QCOMPARE(telemetry.values().value(QStringLiteral("systemSubstate")).toInt(), 0);
+        QTest::qWait(1100);
+        QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 11, 1024));
+        QCOMPARE(telemetry.values().value(QStringLiteral("systemSubstate")).toInt(), 0);
+        QTRY_VERIFY_WITH_TIMEOUT(telemetry.values().isEmpty(), 1550);
+
+        QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 11, 1024));
+        QVERIFY(telemetry.values().isEmpty());
+
+        QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 12, 1));
+        QVERIFY(!telemetry.values().isEmpty());
+        telemetry.setSystemId(43);
+        QVERIFY(telemetry.values().isEmpty());
     }
 
     void noTelemetryIsUnknownAndPropertiesAreReadOnly()

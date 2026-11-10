@@ -76,10 +76,13 @@ private:
     QPointer<Vehicle> _active;
 };
 
-class MAVLinkProtocol {
+class MAVLinkProtocol : public QObject {
+    Q_OBJECT
 public:
     static MAVLinkProtocol *instance() { static MAVLinkProtocol protocol; return &protocol; }
     int getSystemId() const { return systemId; }
     static int getComponentId() { return MAV_COMP_ID_MISSIONPLANNER; }
     int systemId = 255;
+signals:
+    void messageReceived(LinkInterface *link, const mavlink_message_t &message);
 };

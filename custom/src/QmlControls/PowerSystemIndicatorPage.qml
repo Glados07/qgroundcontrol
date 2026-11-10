@@ -36,7 +36,7 @@ ToolIndicatorPage {
         case FuelCellControllerManager.NeverConnected: return qsTr("Never connected")
         case FuelCellControllerManager.Connected: return qsTr("Connected")
         case FuelCellControllerManager.Disconnected: return qsTr("Disconnected")
-        default: return qsTr("Unknown (telemetry expired)")
+        default: return qsTr("Telemetry expired")
         }
     }
     readonly property string requestText: {
@@ -68,8 +68,10 @@ ToolIndicatorPage {
     }
 
     function formatValue(value, decimals, unit) {
+        if (value === null || value === undefined) return "—"
         const numericValue = Number(value)
-        return Number.isFinite(numericValue) ? numericValue.toFixed(decimals) + " " + unit : "—"
+        return Number.isFinite(numericValue)
+                ? numericValue.toFixed(decimals) + (unit ? " " + unit : "") : "—"
     }
 
     function fcsStateText(state) {
@@ -154,7 +156,7 @@ ToolIndicatorPage {
         id: field
         property string label
         property string labelText
-        property color labelTextColor: QGroundControl.globalPalette.text
+        property bool singleLine: false
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         implicitHeight: Math.max(nameLabel.implicitHeight, valueLabel.implicitHeight)
@@ -163,15 +165,40 @@ ToolIndicatorPage {
             id: nameLabel
             width: Math.max(0, (field.width - ScreenTools.defaultFontPixelWidth * 2) * 0.45)
             text: field.label
-            wrapMode: Text.Wrap
+            wrapMode: field.singleLine ? Text.NoWrap : Text.Wrap
+            elide: field.singleLine ? Text.ElideRight : Text.ElideNone
         }
         QGCLabel {
             id: valueLabel
             anchors.right: parent.right
             width: Math.max(0, (field.width - ScreenTools.defaultFontPixelWidth * 2) * 0.55)
             text: field.labelText
-            color: field.labelTextColor
-            wrapMode: Text.Wrap
+            wrapMode: field.singleLine ? Text.NoWrap : Text.Wrap
+            elide: field.singleLine ? Text.ElideRight : Text.ElideNone
+            horizontalAlignment: Text.AlignRight
+        }
+    }
+
+    component CompactStatusField: RowLayout {
+        id: compactField
+        property string label
+        property string labelText
+        property color labelTextColor: QGroundControl.globalPalette.text
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        spacing: ScreenTools.defaultFontPixelWidth / 2
+
+        QGCLabel {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
+            text: compactField.label
+            elide: Text.ElideRight
+        }
+        QGCLabel {
+            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
+            text: compactField.labelText
+            color: compactField.labelTextColor
             horizontalAlignment: Text.AlignRight
         }
     }
@@ -282,6 +309,18 @@ ToolIndicatorPage {
                 item.facts = batteryPane.model.configurationFacts
             }
         }
+
+        SettingsGroupLayout {
+            Layout.fillWidth: true
+            heading: qsTr("Lithium battery")
+            showDividers: false
+            contentSpacing: ScreenTools.defaultFontPixelHeight / 4
+
+            StatusField {
+                label: qsTr("SOC")
+                labelText: root.formatValue(root.manager.socPercent, 2, "%")
+            }
+        }
     }
 
     component FuelCellPane: ColumnLayout {
@@ -298,30 +337,51 @@ ToolIndicatorPage {
 
             StatusField {
                 label: qsTr("Device connection")
+                singleLine: true
                 labelText: fuelCellPane.controller.connectionText
             }
-            StatusField {
-                label: qsTr("FCS system status")
-                labelText: fuelCellPane.controller.fcsStateText(fuelCellPane.manager.fcsState)
-                labelTextColor: fuelCellPane.manager.fcsState === 13
-                                ? QGroundControl.globalPalette.colorOrange
-                                : QGroundControl.globalPalette.text
-            }
-            StatusField {
-                label: qsTr("DCDC output current")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 2, "A")
-            }
-        }
 
-        SettingsGroupLayout {
-            Layout.fillWidth: true
-            heading: qsTr("Lithium battery")
-            showDividers: false
-            contentSpacing: ScreenTools.defaultFontPixelHeight / 4
+            GridLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                columns: 2
+                uniformCellWidths: true
+                columnSpacing: root.gap
+                rowSpacing: 0
 
-            StatusField {
-                label: qsTr("SOC")
-                labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.socPercent, 2, "%")
+                CompactStatusField {
+                    label: qsTr("FCS system status")
+                    labelText: fuelCellPane.controller.fcsStateText(fuelCellPane.manager.fcsState)
+                    labelTextColor: fuelCellPane.manager.fcsState === 13
+                                    ? QGroundControl.globalPalette.colorOrange
+                                    : QGroundControl.globalPalette.text
+                }
+                CompactStatusField {
+                    label: qsTr("DCDC output current")
+                    labelText: fuelCellPane.controller.formatValue(fuelCellPane.manager.dcdcOutputCurrent, 2, "A")
+                }
+
+                Repeater {
+                    model: [
+                        { label: qsTr("Inlet temp."), key: "inletTemperature", decimals: 1, unit: "°C" },
+                        { label: qsTr("Outlet temp."), key: "outletTemperature", decimals: 1, unit: "°C" },
+                        { label: qsTr("Fan duty"), key: "fanDuty", decimals: 2, unit: "%" },
+                        { label: qsTr("Inlet pressure"), key: "inletPressure", decimals: 2, unit: "kPa" },
+                        { label: qsTr("Stack voltage"), key: "stackVoltage", decimals: 2, unit: "V" },
+                        { label: qsTr("Stack current"), key: "stackCurrent", decimals: 2, unit: "A" },
+                        { label: qsTr("DCDC state"), key: "dcdcState", decimals: 0, unit: "" },
+                        { label: qsTr("DCDC fault"), key: "dcdcFault", decimals: 0, unit: "" },
+                        { label: qsTr("DCDC temp."), key: "dcdcTemperature", decimals: 0, unit: "" },
+                        { label: qsTr("System substate"), key: "systemSubstate", decimals: 0, unit: "" }
+                    ]
+
+                    delegate: CompactStatusField {
+                        required property var modelData
+                        label: modelData.label
+                        labelText: root.formatValue(root.indicator.aiTelemetry.values[modelData.key],
+                                                    modelData.decimals, modelData.unit)
+                    }
+                }
             }
         }
 
@@ -339,8 +399,11 @@ ToolIndicatorPage {
                 label: qsTr("Current command")
                 labelText: fuelCellPane.controller.commandText(fuelCellPane.manager.acceptedCommand)
             }
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
+                columns: 2
+                uniformCellWidths: true
+                rowSpacing: ScreenTools.defaultFontPixelHeight / 2
                 QGCButton {
                     Layout.fillWidth: true
                     text: qsTr("FCS On")
@@ -353,22 +416,22 @@ ToolIndicatorPage {
                     enabled: fuelCellPane.manager.canControl
                     onClicked: fuelCellPane.controller.confirmCommand(fuelCellPane.controller._commandOff)
                 }
-            }
-            QGCButton {
-                Layout.fillWidth: true
-                text: qsTr("FCS Fault Reset")
-                enabled: fuelCellPane.manager.canResetFault
-                onClicked: fuelCellPane.controller.confirmFaultReset()
-            }
-            // 急停有独立门限，普通请求等待确认时仍可抢占。
-            QGCButton {
-                Layout.fillWidth: true
-                text: qsTr("FCS Emergency Stop")
-                enabled: fuelCellPane.manager.canEmergencyStop
-                backgroundColor: enabled ? QGroundControl.globalPalette.colorRed
-                                         : QGroundControl.globalPalette.button
-                textColor: enabled ? "white" : QGroundControl.globalPalette.buttonText
-                onClicked: fuelCellPane.controller.confirmCommand(fuelCellPane.controller._commandEmergencyStop)
+                QGCButton {
+                    Layout.fillWidth: true
+                    text: qsTr("FCS Fault Reset")
+                    enabled: fuelCellPane.manager.canResetFault
+                    onClicked: fuelCellPane.controller.confirmFaultReset()
+                }
+                // 急停有独立门限，普通请求等待确认时仍可抢占。
+                QGCButton {
+                    Layout.fillWidth: true
+                    text: qsTr("FCS Emergency Stop")
+                    enabled: fuelCellPane.manager.canEmergencyStop
+                    backgroundColor: enabled ? QGroundControl.globalPalette.colorRed
+                                             : QGroundControl.globalPalette.button
+                    textColor: enabled ? "white" : QGroundControl.globalPalette.buttonText
+                    onClicked: fuelCellPane.controller.confirmCommand(fuelCellPane.controller._commandEmergencyStop)
+                }
             }
         }
 

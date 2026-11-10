@@ -37,8 +37,8 @@ FCS 状态不会改变主图标的电池颜色。新鲜遥测确认 FCS 已断�
 
 点击顶部 PowerSystemIndicator 后，详情页始终按左右双栏显示：
 
-- 左侧：电池状态和低电量保护配置；
-- 右侧：FCS 状态、飞控请求功率和控制按钮；
+- 左侧：电池状态、低电量保护配置和锂电池 SOC；
+- 右侧：燃料电池状态、盒子直发的测量值、飞控请求功率和控制按钮；
 - 中间分隔线用于区分两个区域。
 
 切换活动车辆时，当前详情页会自动关闭，以避免旧车辆的参数编辑状态被用于新车辆。
@@ -76,11 +76,12 @@ FCS 状态不会改变主图标的电池颜色。新鲜遥测确认 FCS 已断�
 
 ### 状态信息
 
-右侧按以下分组显示：
+右侧按以下分组显示。FCS 返回的锂电池 SOC 显示在左栏底部。
 
 - **燃料电池**：Device connection（设备连接状态）、FCS system status（FCS 实际执行状态）、DCDC output current（FCS 返回的 DCDC 输出电流）；
-- **锂电池**：SOC（FCS 返回的锂电池 SOC）；
 - **FCS 控制**：Requested power（飞控当前用于 CAN 下发的请求功率）、Current command（飞控当前保存并持续发送的 FCS 指令），下方是控制按钮。
+
+设备连接独占一行，FCS 系统状态和 DCDC 输出电流并列。其下两列显示电堆温度、风扇占空比、进气压力、电堆电压和电流、DCDC 状态与故障码、DCDC 温度及系统子状态。QGC 从与活动车辆系统号一致、组件号为 191 的盒子接收 `FUEL_CELL_TELEMETRY`（61002），按有效位显示，测量更新超时后使用占位。
 
 左侧功率由 PMU/电池测量值计算，右侧是飞控下发给 FCS 的请求功率，两者来源不同。PMU 回退或采样时刻不同时，左右功率可以不同。
 DCDC 输出电流是 FCS 设备遥测，不是 PMU 电流或飞控内部 CAN 控制电流。SOC 和 DCDC 电流显示两位小数；设备未连接、断连或 QGC 遥测过期时显示 `—`，有效的 `0.00 A` 正常显示。
@@ -99,7 +100,7 @@ DCDC 输出电流是 FCS 设备遥测，不是 PMU 电流或飞控内部 CAN 控
 | Never connected | 飞控尚未确认 FCS 连接 |
 | Connected | FCS 状态有效且设备已连接 |
 | Disconnected | 飞控确认 FCS 已断连 |
-| Unknown (telemetry expired) | QGroundControl 的状态遥测已经过期，不能判断设备当前状态 |
+| Telemetry expired | QGroundControl 的状态遥测已经过期，不能判断设备当前状态 |
 
 ## 6. FCS 操作
 

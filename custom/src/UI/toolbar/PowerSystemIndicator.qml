@@ -16,6 +16,13 @@ Item {
     width: indicatorRow.width
 
     readonly property var manager: QGroundControl.corePlugin.fuelCellController
+    readonly property alias aiTelemetry: directTelemetry
+
+    FuelCellTelemetry {
+        id: directTelemetry
+        systemId: batteryModel.vehicleAvailable ? batteryModel.vehicle.id : 0
+    }
+
     readonly property QtObject batteryModel: QtObject {
         readonly property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
         readonly property bool vehicleAvailable: Boolean(vehicle && !vehicle.isOfflineEditingVehicle)

@@ -396,6 +396,8 @@ set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CustomPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController/FuelCellControllerManager.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController/FuelCellControllerManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellTelemetry/FuelCellTelemetry.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellTelemetry/FuelCellTelemetry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AutoPilotPlugin/CustomAutoPilotPlugin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FirmwarePlugin/CustomFirmwarePlugin.cc
@@ -671,10 +673,13 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/FuelCellController/Stubs/TestDoubles.h
         src/FuelCellController/FuelCellControllerManager.cc
         src/FuelCellController/FuelCellControllerManager.h
+        src/FuelCellTelemetry/FuelCellTelemetry.cc
+        src/FuelCellTelemetry/FuelCellTelemetry.h
     )
     target_include_directories(FuelCellControllerManagerTest BEFORE PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/test/FuelCellController/Stubs
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellController
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FuelCellTelemetry
         ${CMAKE_SOURCE_DIR}/src/MAVLink
         ${mavlink_SOURCE_DIR}
         ${mavlink_SOURCE_DIR}/all

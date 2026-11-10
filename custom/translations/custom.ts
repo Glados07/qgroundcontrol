@@ -1242,7 +1242,7 @@
     </message>
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="33"/>
-        <source>Unknown (telemetry expired)</source>
+        <source>Telemetry expired</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1420,6 +1420,46 @@
     <message>
         <location filename="../src/QmlControls/PowerSystemIndicatorPage.qml" line="196"/>
         <source>Emergency Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inlet temp.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outlet temp.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fan duty</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inlet pressure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stack voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stack current</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DCDC state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DCDC fault</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DCDC temp.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System substate</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
