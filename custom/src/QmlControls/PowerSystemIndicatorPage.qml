@@ -261,6 +261,12 @@ ToolIndicatorPage {
             return qsTr("Unavailable")
         }
 
+        function consumedEnergyText(value) {
+            const fact = value ? value.energyConsumed : null
+            return model.measurementsAvailable && model.hasValue(fact)
+                    ? (Number(fact.rawValue) / 36).toFixed(2) + " Wh" : "— Wh"
+        }
+
         SettingsGroupLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
@@ -286,7 +292,7 @@ ToolIndicatorPage {
             }
             LabelledLabel {
                 label: qsTr("Consumed")
-                labelText: batteryPane.model.formatFact(batteryPane.model.battery ? batteryPane.model.battery.energyConsumed : null, "hJ")
+                labelText: batteryPane.consumedEnergyText(batteryPane.model.battery)
             }
         }
 

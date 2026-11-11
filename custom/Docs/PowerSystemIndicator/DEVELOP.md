@@ -83,6 +83,8 @@ FCS 状态不改变主图标的电池配色。
 | Power Status | 电源状态、实测电压、功率、电流、已消耗能量 |
 | Low Power Failsafe | `COM_LOW_BAT_ACT`、`UAVCAN_POW_LOW`、`UAVCAN_POW_CRITI`、`UAVCAN_POW_EMERG` |
 
+“已消耗 / Consumed”由 `BatteryPane.consumedEnergyText` 读取 `energyConsumed.rawValue`，按 `hJ / 36` 换算后使用 `toFixed(2)` 显示 Wh。有效零值为 `0.00 Wh`；沿用 `measurementsAvailable` 和 `hasValue` 判断，不可用时显示 `— Wh`。标准 MAVLink 字段及 `BatteryFact.json` 中的原始 Fact 仍为整数 hJ，不在接收层转换、不改变飞控积分规则，也不新增积分或超时定时器。
+
 配置继续使用标准 Fact 控件，保留原有校验、逐项提交及参数本身的重启要求。不新增统一保存按钮、批量事务或额外解锁条件。
 
 右栏直接集成原 `FuelCellControllerPage.qml` 的以下内容：
@@ -325,3 +327,11 @@ PowerSystemIndicator 文档固定为三份：
 - PX4 直接修改原 BatteryStatus，保持原消息版本，不新增旧定义归档或版本转换改动。
 - 删除 uORB 独立有效标志，UAVCAN 以能量数值 -1 表示尚无有效采样；QGC 的负值无效处理和 hJ 显示无需改动。
 - 同步说明其他未修改电池来源的默认零值会显示 `0 hJ`，不再声称能够区分未实现与有效零值。
+
+
+### 2026-11-11：展开页已消耗能量改用 Wh
+
+- 仅在 `PowerSystemIndicatorPage.qml` 的 `BatteryPane.consumedEnergyText` 中将原始 hJ 除以 36，以两位小数显示 Wh；例如 96 hJ 显示 `2.67 Wh`，零值显示 `0.00 Wh`。
+- 字段无效或飞控整体失联时显示 `— Wh`；保留原测量可用性判断及 PMU 停止更新时的保持行为。
+- 飞控积分、标准消息和原始能量 Fact 仍使用 hJ，MAVLink 定义及接收层不变。更新本目录与飞控能量文档中的显示说明，其余内容保持原有约定。
+- Linux Qt 6.8.3 Debug Desktop 增量构建、QML 缓存生成和应用链接通过，执行范围见 TEST.md 第 24 节。

@@ -625,15 +625,15 @@ QGC 的 MAVLink C 库固定到 `7da72f6ed37f41389d6d284bd18d7b2e9f66682e`；实�
 
 ### 22. 2026-11-10：已消耗能量 hJ
 
-#### 专项验收计划（硬件项目均待测）
+#### 专项验收计划（硬件项目均待测，显示预期已同步为 Wh）
 
 | 编号 | 场景与预期 | 状态 |
 | --- | --- | --- |
-| E01 | 首个有效样本显示 `0 hJ`，随后显示整数 hJ；旧 mAh 不出现在本页 Consumed | 待台架 |
-| E02 | 以 CAN 同窗口原始 V/I 按新样本矩形法、2 秒间隔上限积分，对照 uORB、MAVLink Inspector 和页面；48 V × 20 A × 10 s 的软件参考值为 96 hJ | 待台架 |
+| E01 | 首个有效样本显示 `0.00 Wh`，随后显示两位小数 Wh；旧 mAh 不出现在本页 Consumed | 待台架 |
+| E02 | 以 CAN 同窗口原始 V/I 按新样本矩形法、2 秒间隔上限积分，对照 uORB、MAVLink Inspector 和页面；48 V × 20 A × 10 s 的软件参考值为 96 hJ，页面按除以 36 显示 `2.67 Wh` | 待台架 |
 | E03 | 未解锁也增加；解锁/锁定不清零；PMU 同节点重启或 QGC 重连保留累计；飞控重启清零 | 待台架 |
-| E04 | PMU 暂停后累计保持，恢复只补最多 2 秒；飞控在线期间页面保持旧值，飞控整体失联显示 `— hJ` | 待台架 |
-| E05 | 旧固件/不支持来源的 -1 显示 `— hJ`，不回退 mAh；数值零有效；其他电池/车辆数据不串用 | 待台架 |
+| E04 | PMU 暂停后累计保持，恢复只补最多 2 秒；飞控在线期间页面保持旧值，飞控整体失联显示 `— Wh` | 待台架 |
+| E05 | 标准消息值 -1 显示 `— Wh`，不回退 mAh；数值零显示 `0.00 Wh`；其他电池/车辆数据不串用 | 待台架 |
 | E06 | Raw、RawAux、Filter、CBAT 分别注入检查；Aux 不重复积分，Filter 不覆盖，模式变化保留总量并重建时间基准 | 待台架 |
 | E07 | mAh MAVLink 字段仍有效，通用 BatteryIndicator 仍可使用；低电压告警和 FCS 控制无行为变化 | 待台架 |
 
@@ -657,6 +657,19 @@ QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 CCACHE_DIR=/tmp/bat-energy-ccache \
 
 新增测试源码及注册已删除，三处注册文件与修改前 HEAD 一致；原 PX4 转换文件已恢复，旧消息归档已删除，原消息版本保持 1。两侧 `git diff --check`、文档链接、BatteryFact JSON 检查通过。构建日志为 `/tmp/bat-energy-trim-px4-build.log` 和 `/tmp/bat-energy-trim-qgc-build.log`（临时文件可能被清理）。
 
-当前接口不再包含独立能量有效标志。UAVCAN 的 -1 和标准消息负值显示 `— hJ`；其他未修改来源若发送默认零值，则显示 `0 hJ`，无法据此判断其是否支持能量统计。
+当前接口不再包含独立能量有效标志。飞控和原始 Fact 仍为 hJ，页面换算为 Wh；UAVCAN 的 -1 和标准消息负值显示 `— Wh`；其他未修改来源若发送默认零值，则显示 `0.00 Wh`，无法据此判断其是否支持能量统计。
 
 Android 构建、真实窗口视觉、ROS 2/DDS 和 PMU/CAN/飞控端到端联调未执行，未刷写设备；E01～E07 仍需台架验证。
+
+
+### 24. 2026-11-11：展开页已消耗能量显示 Wh
+
+- Linux Qt 6.8.3 Debug Desktop 的 `Custom-QGroundControl` 增量构建通过，包括修改后的 QML 缓存生成、CustomModule 编译和应用最终链接。构建使用以下命令，日志位于 `/tmp/bat-energy-wh-qgc-build.log`（临时文件可能被清理）：
+
+  ```sh
+  QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 CCACHE_DIR=/tmp/bat-energy-ccache \
+    cmake --build build/Desktop_Qt_6_8_3-Debug --target Custom-QGroundControl -j 4
+  ```
+
+- 静态核对：原始能量 Fact 仍为 hJ，页面读取 rawValue 除以 36，以两位小数显示 Wh；可用性判断沿用 `measurementsAvailable` / `hasValue`，无效占位为 `— Wh`。换算参考为 0 hJ → `0.00 Wh`、36 hJ → `1.00 Wh`、96 hJ → `2.67 Wh`，这些是验收预期，不声称已完成真实界面观察。
+- 文档同步仅涉及 Wh 显示、换算、精度及占位，飞控和传输单位仍为 hJ。没有新增测试代码；未执行 Android 构建、真实窗口视觉或 PMU/CAN 联调，E01～E07 仍待台架验证。
