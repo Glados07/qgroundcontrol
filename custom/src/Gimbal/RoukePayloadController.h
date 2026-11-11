@@ -70,7 +70,8 @@ public:
     bool requestCameraParameter(const QString &key);
     bool centerGimbal();
     // Latest velocity setpoint; never waits behind camera or gimbal ACKs.
-    // Values are protocol integers, not assumed degrees per second.
+    // Signed protocol values: 0 stops, magnitudes 35..525 map to levels 1..15.
+    // Nonzero values are quantized toward zero to multiples of 35.
     bool sendGimbalSpeed(int yaw, int pitch);
     // C++ transport entry point for documented commands. One complete inner
     // frame may span several consecutive 53022 messages; UI actions use this too.

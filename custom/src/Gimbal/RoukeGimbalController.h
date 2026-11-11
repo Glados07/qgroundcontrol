@@ -3,6 +3,8 @@
  ****************************************************************************/
 #pragma once
 
+#include "RoukeGimbalSpeed.h"
+
 #include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
@@ -17,7 +19,7 @@ public:
     explicit RoukeGimbalController(RoukePayloadController *controller, QObject *parent = nullptr);
     ~RoukeGimbalController() override;
 
-    // Speeds are protocol integers: the vendor document does not specify units.
+    // Positive raw limits: 35..525; each 35 encodes one speed grade.
     void setConfiguration(int yawLimit, int pitchLimit, bool yawReversed, bool pitchReversed);
     void updateChannels(qint16 channel11, qint16 channel12, qint16 channel14);
     void cancel();
@@ -37,8 +39,8 @@ private:
     QElapsedTimer _inputAge;
     QElapsedTimer _traceElapsed;
     QByteArray _traceGate;
-    int _yawLimit = 10;
-    int _pitchLimit = 5;
+    int _yawLimit = RoukeGimbalSpeed::DefaultYaw;
+    int _pitchLimit = RoukeGimbalSpeed::DefaultPitch;
     int _yawSpeed = 0;
     int _pitchSpeed = 0;
     int _stopRepeats = 0;

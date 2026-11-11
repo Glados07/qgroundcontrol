@@ -976,7 +976,7 @@ private slots:
 
         logs.messages.clear();
         for (int i = 1; i <= 20; ++i) {
-            QVERIFY(controller.sendGimbalSpeed(i, -i));
+            QVERIFY(controller.sendGimbalSpeed(35 * (i % 15 + 1), -35 * (i % 15 + 1)));
             receiveStreamRequest(box);
             send(box, controller, ack("gimbal_speed_ctrl"));
         }
@@ -1021,7 +1021,7 @@ private slots:
         send(box, controller, ack("lr1_take_photo"), 8);
         // Ordinary speed traffic produces no per-packet or per-command logs.
         for (int i = 0; i < 20; ++i) {
-            QVERIFY(controller.sendGimbalSpeed(i, -i));
+            QVERIFY(controller.sendGimbalSpeed(35 * (i % 15 + 1), -35 * (i % 15 + 1)));
             receiveStreamRequest(box);
             send(box, controller, ack("gimbal_speed_ctrl"));
         }
@@ -2135,7 +2135,7 @@ private slots:
         QTest::addColumn<int>("frameLength");
         QTest::newRow("one-full-relay") << 128;
         QTest::newRow("one-byte-continuation") << 129;
-        QTest::newRow("documented-gimbal-speed-128-plus-24") << 152;
+        QTest::newRow("gimbal-speed-128-plus-27") << 155;
         QTest::newRow("exact-two-relays") << 256;
         QTest::newRow("three-relays") << 321;
     }
@@ -2147,14 +2147,14 @@ private slots:
         QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
-        const QString command = frameLength == 152 ? QStringLiteral("gimbal_speed_ctrl")
+        const QString command = frameLength == 155 ? QStringLiteral("gimbal_speed_ctrl")
                                                    : QStringLiteral("stream_fixture");
-        QJsonObject data = frameLength == 152
-            ? QJsonObject{{"yaw_speed", 10}, {"pitch_speed", 5}, {"roll_speed", 0}}
+        QJsonObject data = frameLength == 155
+            ? QJsonObject{{"yaw_speed", 350}, {"pitch_speed", 175}, {"roll_speed", 0}}
             : QJsonObject{{"padding", QString()}};
         QJsonObject request{{"source", "msdk"}, {"target", "psdk"}, {"type", "req"},
                             {"cmd", command}, {"code", 0}, {"msg", ""}, {"data", data}};
-        if (frameLength != 152) {
+        if (frameLength != 155) {
             const int padding = frameLength - rawFrame(request).size();
             QVERIFY(padding >= 0);
             data["padding"] = QString(padding, QLatin1Char('x'));
@@ -2190,6 +2190,114 @@ private slots:
         QTRY_VERIFY(controller.responding());
     }
 
+    void speedProtocolSteps_data()
+    {
+        QTest::addColumn<int>("input");
+        QTest::addColumn<int>("wire");
+        QTest::newRow("stop") << 0 << 0;
+        QTest::newRow("first-step") << 35 << 35;
+        QTest::newRow("first-step-upper-bound") << 69 << 35;
+        QTest::newRow("second-step") << 70 << 70;
+        QTest::newRow("second-step-upper-bound") << 104 << 70;
+        QTest::newRow("third-step") << 105 << 105;
+        QTest::newRow("below-maximum") << 524 << 490;
+        QTest::newRow("maximum") << 525 << 525;
+    }
+
+    void speedProtocolSteps()
+    {
+        QFETCH(int, input);
+        QFETCH(int, wire);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.sendGimbalSpeed(input, -input));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject(),
+                 QJsonObject({{"yaw_speed", wire}, {"pitch_speed", -wire}, {"roll_speed", 0}}));
+        // The generic command entry point uses the same signed quantization.
+        QVERIFY(controller.sendCommand("gimbal_speed_ctrl",
+                {{"yaw_speed", -input}, {"pitch_speed", input}, {"roll_speed", 0}}));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject(),
+                 QJsonObject({{"yaw_speed", -wire}, {"pitch_speed", wire}, {"roll_speed", 0}}));
+        QVERIFY(!controller.pending());
+    }
+
+    void invalidSpeedNeverWritesOrClearsStopObligation_data()
+    {
+        QTest::addColumn<int>("invalid");
+        QTest::newRow("old-yaw-default") << 10;
+        QTest::newRow("old-pitch-default") << 5;
+        QTest::newRow("positive-below-minimum") << 34;
+        QTest::newRow("negative-below-minimum") << -34;
+        QTest::newRow("positive-above-maximum") << 526;
+        QTest::newRow("negative-above-maximum") << -526;
+        QTest::newRow("integer-maximum") << std::numeric_limits<int>::max();
+        QTest::newRow("integer-minimum") << std::numeric_limits<int>::min();
+    }
+
+    void invalidSpeedNeverWritesOrClearsStopObligation()
+    {
+        QFETCH(int, invalid);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.takePhoto());
+        receiveStreamRequest(box);
+        QVERIFY(controller.sendGimbalSpeed(350, -175));
+        receiveStreamRequest(box);
+        QVERIFY(!controller.sendGimbalSpeed(invalid, 0));
+        QVERIFY(!controller.sendGimbalSpeed(0, invalid));
+        QVERIFY(!controller.sendCommand("gimbal_speed_ctrl",
+                {{"yaw_speed", invalid}, {"pitch_speed", 0}, {"roll_speed", 0}}));
+        QVERIFY(!controller.sendCommand("gimbal_speed_ctrl",
+                {{"yaw_speed", 0}, {"pitch_speed", invalid}, {"roll_speed", 0}}));
+        QVERIFY(!controller.lastError().isEmpty());
+        QCOMPARE(controller.pendingCommand(), QString("lr1_take_photo"));
+        QTest::qWait(30);
+        QVERIFY(!box.hasPendingDatagrams());
+        // Rejecting invalid input must not lose the obligation to stop a prior
+        // successful nonzero command before centering.
+        QVERIFY(controller.centerGimbal());
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject(),
+                 QJsonObject({{"yaw_speed", 0}, {"pitch_speed", 0}, {"roll_speed", 0}}));
+        QCOMPARE(receiveStreamRequest(box).value("cmd").toString(), QString("gimbal_center"));
+        QCOMPARE(controller.pendingCommand(), QString("lr1_take_photo"));
+    }
+
+    void speedAckLevelsDoNotReplaceWireTargetsOrCameraPending()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QSignalSpy rejected(&controller, &RoukePayloadController::gimbalControlError);
+        QSignalSpy state(&controller, &RoukePayloadController::stateChanged);
+        QVERIFY(controller.takePhoto());
+        receiveStreamRequest(box);
+        for (const int level : {1, 5, 10, 15}) {
+            QVERIFY(controller.sendGimbalSpeed(level * 35, -level * 35));
+            QCOMPARE(receiveStreamRequest(box).value("data").toObject(),
+                     QJsonObject({{"yaw_speed", level * 35}, {"pitch_speed", -level * 35}, {"roll_speed", 0}}));
+            auto response = ack("gimbal_speed_ctrl");
+            response["data"] = QJsonObject{{"yaw_speed", level}, {"pitch_speed", -level}, {"roll_speed", 0}};
+            state.clear();
+            sendStream(box, controller, response);
+            QTRY_VERIFY(!state.isEmpty());
+            QVERIFY(controller.responding());
+            QCOMPARE(rejected.size(), 0);
+            QCOMPARE(controller.pendingCommand(), QString("lr1_take_photo"));
+            QVERIFY(controller.lastError().isEmpty());
+            QVERIFY(!box.hasPendingDatagrams()); // ACK values never become a new speed command.
+        }
+        QVERIFY(controller.sendGimbalSpeed(0, 0));
+        QCOMPARE(receiveStreamRequest(box).value("data").toObject(),
+                 QJsonObject({{"yaw_speed", 0}, {"pitch_speed", 0}, {"roll_speed", 0}}));
+        send(box, controller, ack("lr1_take_photo"));
+        QTRY_COMPARE(controller.photoCount(), 1);
+    }
+
     void speedAndStopBypassCameraPendingWithoutInterleaving()
     {
         QUdpSocket box;
@@ -2197,12 +2305,12 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         QVERIFY(controller.takePhoto());
-        QVERIFY(controller.sendGimbalSpeed(10, -5));
+        QVERIFY(controller.sendGimbalSpeed(350, -175));
         QVERIFY(controller.sendGimbalSpeed(0, 0));
         QCOMPARE(receiveStreamRequest(box).value("cmd").toString(), QString("lr1_take_photo"));
         auto speed = receiveStreamRequest(box);
         QCOMPARE(speed.value("cmd").toString(), QString("gimbal_speed_ctrl"));
-        QCOMPARE(speed.value("data").toObject(), QJsonObject({{"yaw_speed", 10}, {"pitch_speed", -5}, {"roll_speed", 0}}));
+        QCOMPARE(speed.value("data").toObject(), QJsonObject({{"yaw_speed", 350}, {"pitch_speed", -175}, {"roll_speed", 0}}));
         speed = receiveStreamRequest(box);
         QCOMPARE(speed.value("data").toObject(), QJsonObject({{"yaw_speed", 0}, {"pitch_speed", 0}, {"roll_speed", 0}}));
         QCOMPARE(controller.pendingCommand(), QString("lr1_take_photo"));
@@ -2228,7 +2336,7 @@ private slots:
         const QByteArray frame = rawFrame(response);
         sendFragment(box, controller, frame.left(128));
         QTest::qWait(30);
-        QVERIFY(controller.sendGimbalSpeed(10, 5));
+        QVERIFY(controller.sendGimbalSpeed(350, 175));
         QCOMPARE(receiveStreamRequest(box).value("cmd").toString(), QString("gimbal_speed_ctrl"));
         QVERIFY(controller.centerGimbal());
         QCOMPARE(receiveStreamRequest(box).value("data").toObject().value("yaw_speed").toInt(-1), 0);
@@ -2284,7 +2392,7 @@ private slots:
         send(box, controller, photoResponse);
         QTRY_VERIFY(!controller.pending());
         const QString cameraError = controller.lastError();
-        QVERIFY(controller.sendGimbalSpeed(10, 5));
+        QVERIFY(controller.sendGimbalSpeed(350, 175));
         receiveStreamRequest(box);
         connect(&controller, &RoukePayloadController::gimbalControlError, &controller, [&controller]() {
             QVERIFY(controller.sendGimbalSpeed(0, 0));
@@ -2412,7 +2520,7 @@ private slots:
         QVERIFY(second.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", first.localPort(), 0, 7);
-        QVERIFY(controller.sendGimbalSpeed(10, -5));
+        QVERIFY(controller.sendGimbalSpeed(350, -175));
         receiveStreamRequest(first);
         controller.setConfiguration(true, "127.0.0.1", second.localPort(), 0, 7);
         QCOMPARE(receiveStreamRequest(first).value("data").toObject(), QJsonObject({{"yaw_speed", 0}, {"pitch_speed", 0}, {"roll_speed", 0}}));
@@ -2424,7 +2532,7 @@ private slots:
         QCOMPARE(completed.count(), 1);
         QVERIFY(!completed.at(0).at(0).toBool());
         QVERIFY(!controller.gimbalCenterPending());
-        QVERIFY(!controller.sendGimbalSpeed(1, 1));
+        QVERIFY(!controller.sendGimbalSpeed(35, 35));
     }
 
     void fragmentedUtf8AckWaitsForOneByteTail()

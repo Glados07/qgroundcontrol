@@ -362,8 +362,8 @@ def main():
     assert QMetaObject.invokeMethod(field, "editingFinished", Qt.DirectConnection)
     assert core.gimbal["sdkHost"].get_value() == "192.168.144.26"
 
-    for key, label, value in (("roukeYawSpeedLimit", "Maximum Yaw Speed (protocol value)", "12"),
-                              ("roukePitchSpeedLimit", "Maximum Pitch Speed (protocol value)", "6")):
+    for key, label, value in (("roukeYawSpeedLimit", "Maximum Yaw Speed (protocol value)", "420"),
+                              ("roukePitchSpeedLimit", "Maximum Pitch Speed (protocol value)", "210")):
         row = next(item for item in descendants(root)
                    if "FlyViewFactTextField" in item.metaObject().className()
                    and item.property("label") == QCoreApplication.translate("GimbalControlSettingsGroup", label))

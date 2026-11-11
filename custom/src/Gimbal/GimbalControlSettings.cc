@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "GimbalControlSettings.h"
+#include "RoukeGimbalSpeed.h"
 
 #include <QtCore/QSettings>
 #include <QtQml/QQmlEngine>
@@ -57,6 +58,17 @@ DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")
             QLatin1String(kUniRcBluetoothAddressMigrationVersionKey),
             kUniRcBluetoothAddressMigrationVersion);
     }
+    // Normalize stored raw limits before SettingsFact loads them. SettingsFact
+    // converts the type but does not enforce metadata bounds on saved values.
+    const auto normalizeSpeedLimit = [&settings](const char *name, int fallback) {
+        const QString key = QString::fromLatin1(name);
+        if (!settings.contains(key)) return;
+        const int stored = settings.value(key).toInt();
+        const int normalized = RoukeGimbalSpeed::normalizeLimit(stored, fallback);
+        if (stored != normalized) settings.setValue(key, normalized);
+    };
+    normalizeSpeedLimit(roukeYawSpeedLimitName, RoukeGimbalSpeed::DefaultYaw);
+    normalizeSpeedLimit(roukePitchSpeedLimitName, RoukeGimbalSpeed::DefaultPitch);
     settings.endGroup();
 
     qmlRegisterUncreatableType<GimbalControlSettings>("QGroundControl.GimbalControl", 1, 0, "GimbalControlSettings", "Reference only");

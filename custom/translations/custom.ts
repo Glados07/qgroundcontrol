@@ -661,7 +661,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The protocol does not specify speed units or limits. Use values confirmed by the payload vendor.</source>
+        <source>Speed limits: 35–525 in steps of 35 (levels 1–15). Stick direction sets the sign; centering sends 0 to stop.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1289,6 +1289,10 @@
     </message>
     <message>
         <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rouke speed must be 0 or have a magnitude between 35 and 525.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

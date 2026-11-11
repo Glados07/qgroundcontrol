@@ -508,6 +508,7 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         test/Gimbal/RoukeGimbalControllerTest.cc
         src/Gimbal/RoukeGimbalController.cc
         src/Gimbal/RoukeGimbalController.h
+        src/Gimbal/RoukeGimbalSpeed.h
         src/Gimbal/RoukePayloadController.cc
         src/Gimbal/RoukePayloadController.h
         src/Gimbal/RoukeProtocol.cc

@@ -146,19 +146,19 @@ void RoukeProtocolTest::documentedCommandCapacity()
     // Preserve every field; a complete long command is split only after encoding.
     QString error;
     const QByteArray speedFrame = RoukeProtocol::encodeRequest(QStringLiteral("gimbal_speed_ctrl"),
-        {{QStringLiteral("yaw_speed"), 10}, {QStringLiteral("pitch_speed"), 5}, {QStringLiteral("roll_speed"), 0}}, &error);
-    QCOMPARE(speedFrame.size(), 152);
+        {{QStringLiteral("yaw_speed"), 350}, {QStringLiteral("pitch_speed"), 175}, {QStringLiteral("roll_speed"), 0}}, &error);
+    QCOMPARE(speedFrame.size(), 155);
     QVERIFY(error.isEmpty());
     const auto speedChunks = RoukeProtocol::splitFrame(speedFrame);
     QCOMPARE(speedChunks.at(0).size(), 128);
-    QCOMPARE(speedChunks.at(1).size(), 24);
+    QCOMPARE(speedChunks.at(1).size(), 27);
     RoukeProtocol::StreamDecoder stream;
     QVERIFY(stream.append(speedChunks.at(0)).isEmpty());
     QCOMPARE(stream.bufferedSize(), 128);
     const auto messages = stream.append(speedChunks.at(1));
     QCOMPARE(messages.size(), 1);
     QCOMPARE(messages.at(0).value(QStringLiteral("cmd")).toString(), QStringLiteral("gimbal_speed_ctrl"));
-    QCOMPARE(messages.at(0).value(QStringLiteral("data")).toObject().value(QStringLiteral("yaw_speed")).toInt(), 10);
+    QCOMPARE(messages.at(0).value(QStringLiteral("data")).toObject().value(QStringLiteral("yaw_speed")).toInt(), 350);
     QVERIFY(!stream.hasPendingData());
     QCOMPARE(RoukeProtocol::encodeRequest(QStringLiteral("gimbal_absolute_angle"),
         {{QStringLiteral("yaw_angle"), 900}, {QStringLiteral("pitch_angle"), 450}, {QStringLiteral("roll_angle"), 0}}, &error).size(), 159);

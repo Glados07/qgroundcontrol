@@ -302,7 +302,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 wrapMode: Text.Wrap
-                text: qsTr("The protocol does not specify speed units or limits. Use values confirmed by the payload vendor.")
+                text: qsTr("Speed limits: 35–525 in steps of 35 (levels 1–15). Stick direction sets the sign; centering sends 0 to stop.")
             }
         }
     }

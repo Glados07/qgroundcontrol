@@ -2,6 +2,7 @@
  * Rouke UDP transport and acknowledgement state. No automatic command retry.
  ****************************************************************************/
 #include "RoukePayloadController.h"
+#include "RoukeGimbalSpeed.h"
 #include "RoukeProtocol.h"
 #include "QGCLoggingCategory.h"
 
@@ -859,6 +860,15 @@ bool RoukePayloadController::_applyParameterAck(const QString &command, const QJ
 
 bool RoukePayloadController::sendGimbalSpeed(int yaw, int pitch)
 {
+    if (!RoukeGimbalSpeed::isValid(yaw) || !RoukeGimbalSpeed::isValid(pitch)) {
+        _gimbalError = tr("Rouke speed must be 0 or have a magnitude between 35 and 525.");
+        emit stateChanged();
+        return false;
+    }
+    // The payload applies signed integer division by 35. Send exact steps so
+    // the wire values describe the requested direction and effective level.
+    yaw = RoukeGimbalSpeed::quantize(yaw);
+    pitch = RoukeGimbalSpeed::quantize(pitch);
     QString error;
     const bool wasActive = _speedMayBeActive;
     // Retain the stop obligation even if a nonzero frame is partially written.

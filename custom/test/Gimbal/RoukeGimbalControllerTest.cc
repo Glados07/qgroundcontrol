@@ -189,7 +189,7 @@ private slots:
         QVERIFY(_peer->takeAll().isEmpty()); // High at startup is not a button edge.
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         QVERIFY(!_controller->gimbalCenterPending());
     }
 
@@ -204,7 +204,7 @@ private slots:
         for (int i = 0; i < 20; ++i) _gimbal->updateChannels(1700 + i, 1300 - i, 0);
         QCOMPARE(logs.messages.filter("gate motion").size(), 1);
         QVERIFY(logs.messages.join('\n').contains("centerButtonValid false"));
-        verifySpeed(_peer->nextRequest(), 3, -1);
+        verifySpeed(_peer->nextRequest(), 105, -105);
         _gimbal->updateChannels(1500, 1500, 1000);
         QCOMPARE(logs.messages.filter("ROUKE_RC_STOP").size(), 1);
         verifySpeed(_peer->nextRequest(), 0, 0);
@@ -218,8 +218,8 @@ private slots:
         _gimbal->updateChannels(1900, 1100, 1000);
         QTest::qWait(450);
         QVERIFY(logs.messages.join('\n').contains("ROUKE_RC_CANCEL inputAgeMs"));
-        QVERIFY(logs.messages.join('\n').contains("targetYaw 10 targetPitch -5")
-                || logs.messages.join('\n').contains("targetYaw 9 targetPitch -4"));
+        QVERIFY(logs.messages.join('\n').contains("targetYaw 350 targetPitch -350")
+                || logs.messages.join('\n').contains("targetYaw 315 targetPitch -315"));
     }
 
     void channelMapping_data()
@@ -229,16 +229,16 @@ private slots:
         QTest::addColumn<bool>("reversed");
         QTest::addColumn<int>("yaw");
         QTest::addColumn<int>("pitch");
-        QTest::newRow("maximum") << 1950 << 1950 << false << 10 << 5;
-        QTest::newRow("minimum") << 1050 << 1050 << false << -10 << -5;
-        QTest::newRow("reasonable-clamp") << 2100 << 900 << false << 10 << -5;
+        QTest::newRow("maximum") << 1950 << 1950 << false << 350 << 175;
+        QTest::newRow("minimum") << 1050 << 1050 << false << -350 << -175;
+        QTest::newRow("reasonable-clamp") << 2100 << 900 << false << 350 << -175;
         QTest::newRow("deadband-inclusive") << 1400 << 1600 << false << 0 << 0;
         QTest::newRow("neutral") << 1500 << 1500 << false << 0 << 0;
-        QTest::newRow("just-outside") << 1601 << 1399 << false << 1 << -1;
-        QTest::newRow("half-speed") << 1775 << 1225 << false << 5 << -3;
-        QTest::newRow("yaw-only") << 2000 << 1500 << false << 10 << 0;
-        QTest::newRow("pitch-only") << 1500 << 1000 << false << 0 << -5;
-        QTest::newRow("reversed") << 2000 << 1000 << true << -10 << 5;
+        QTest::newRow("just-outside") << 1601 << 1399 << false << 35 << -35;
+        QTest::newRow("half-speed") << 1775 << 1225 << false << 175 << -105;
+        QTest::newRow("yaw-only") << 2000 << 1500 << false << 350 << 0;
+        QTest::newRow("pitch-only") << 1500 << 1000 << false << 0 << -175;
+        QTest::newRow("reversed") << 2000 << 1000 << true << -350 << 175;
     }
 
     void channelMapping()
@@ -248,7 +248,7 @@ private slots:
         QFETCH(bool, reversed);
         QFETCH(int, yaw);
         QFETCH(int, pitch);
-        _gimbal->setConfiguration(10, 5, reversed, reversed);
+        _gimbal->setConfiguration(350, 175, reversed, reversed);
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(qint16(yawChannel), qint16(pitchChannel), 1000);
         if (yaw || pitch) verifySpeed(_peer->nextRequest(), yaw, pitch);
@@ -258,17 +258,71 @@ private slots:
         }
     }
 
+    void allSpeedGrades_data()
+    {
+        QTest::addColumn<int>("channel");
+        QTest::addColumn<int>("speed");
+        for (int grade = 1; grade <= 15; ++grade) {
+            const int travel = qRound(grade * 350.0 / 15);
+            QTest::newRow(qPrintable(QString("positive-%1").arg(grade)))
+                << 1600 + travel << grade * 35;
+            QTest::newRow(qPrintable(QString("negative-%1").arg(grade)))
+                << 1400 - travel << -grade * 35;
+        }
+        QTest::newRow("first-positive-step") << 1601 << 35;
+        QTest::newRow("first-negative-step") << 1399 << -35;
+        QTest::newRow("positive-saturation") << 2100 << 525;
+        QTest::newRow("negative-saturation") << 900 << -525;
+    }
+
+    void allSpeedGrades()
+    {
+        QFETCH(int, channel);
+        QFETCH(int, speed);
+        _gimbal->setConfiguration(525, 525, false, true);
+        _gimbal->updateChannels(1500, 1500, 1000);
+        _gimbal->updateChannels(qint16(channel), qint16(channel), 1000);
+        verifySpeed(_peer->nextRequest(), speed, -speed);
+    }
+
+    void limitNormalization_data()
+    {
+        QTest::addColumn<int>("yawLimit");
+        QTest::addColumn<int>("pitchLimit");
+        QTest::addColumn<int>("yaw");
+        QTest::addColumn<int>("pitch");
+        QTest::newRow("saved-defaults") << 10 << 5 << 350 << 350;
+        QTest::newRow("below-minimum") << 0 << 34 << 350 << 350;
+        QTest::newRow("minimum") << 35 << 35 << 35 << 35;
+        QTest::newRow("floor-first-step") << 69 << 70 << 35 << 70;
+        QTest::newRow("floor-next-step") << 104 << 105 << 70 << 105;
+        QTest::newRow("near-maximum") << 524 << 525 << 490 << 525;
+        QTest::newRow("above-maximum") << 526 << 10000 << 525 << 525;
+    }
+
+    void limitNormalization()
+    {
+        QFETCH(int, yawLimit);
+        QFETCH(int, pitchLimit);
+        QFETCH(int, yaw);
+        QFETCH(int, pitch);
+        _gimbal->setConfiguration(yawLimit, pitchLimit, false, false);
+        _gimbal->updateChannels(1500, 1500, 1000);
+        _gimbal->updateChannels(1950, 1050, 1000);
+        verifySpeed(_peer->nextRequest(), yaw, -pitch);
+    }
+
     void refreshesLatestSpeedWithoutAck()
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 2000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, 5);
+        verifySpeed(_peer->nextRequest(), 350, 350);
         _gimbal->updateChannels(1000, 1500, 1000);
         QTest::qWait(220);
         const auto requests = _peer->takeAll();
         QVERIFY(requests.size() >= 3);
         QVERIFY(requests.size() <= 6); // Approximately 20 Hz, no per-input backlog.
-        for (const auto &request : requests) verifySpeed(request, -10, 0);
+        for (const auto &request : requests) verifySpeed(request, -350, 0);
         QVERIFY(!_controller->pending());
     }
 
@@ -276,7 +330,7 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 2000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, 5);
+        verifySpeed(_peer->nextRequest(), 350, 350);
         for (int i = 0; i < 8; ++i) {
             _gimbal->updateChannels(1500, 1500, 1000);
             QTest::qWait(20);
@@ -292,7 +346,7 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 2000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, 5);
+        verifySpeed(_peer->nextRequest(), 350, 350);
         QTest::qWait(510);
         int stops = 0;
         bool stopped = false;
@@ -311,7 +365,7 @@ private slots:
         QVERIFY(_peer->takeAll().isEmpty());
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(1000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), -10, -5);
+        verifySpeed(_peer->nextRequest(), -350, -350);
     }
 
     void invalidInputStops_data()
@@ -326,7 +380,7 @@ private slots:
         QFETCH(int, channel);
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         qint16 values[] = {2000, 1000, 1000};
         values[channel] = 899;
         _gimbal->updateChannels(values[0], values[1], values[2]);
@@ -357,10 +411,10 @@ private slots:
         QVERIFY(_peer->takeAll().isEmpty()); // Axes still need fresh neutral.
         _gimbal->updateChannels(1500, 1500, qint16(button));
         _gimbal->updateChannels(2000, 1000, qint16(button));
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         _gimbal->updateChannels(1000, 2000, qint16(button));
         QTest::qWait(60); // Refresh is timer-driven; keep the Qt event loop running.
-        verifySpeed(_peer->nextRequest(), -10, 5);
+        verifySpeed(_peer->nextRequest(), -350, 350);
         QVERIFY(!_controller->gimbalCenterPending());
 
         // The independent axis freshness watchdog remains effective.
@@ -371,7 +425,7 @@ private slots:
                 verifySpeed(request, 0, 0);
                 ++stops;
             } else {
-                verifySpeed(request, -10, 5);
+                verifySpeed(request, -350, 350);
             }
         }
         QCOMPARE(stops, 3);
@@ -381,13 +435,13 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         _gimbal->updateChannels(2000, 1000, 0);
         QTest::qWait(60);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         _gimbal->updateChannels(2000, 1000, 2000);
         QTest::qWait(60);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         QVERIFY(!_controller->gimbalCenterPending());
         _gimbal->updateChannels(2000, 1000, 1000);
         _gimbal->updateChannels(2000, 1000, 2000);
@@ -400,7 +454,7 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         _gimbal->updateChannels(2000, 1000, 2000);
         verifySpeed(_peer->nextRequest(), 0, 0);
         QCOMPARE(_peer->nextRequest().value("cmd").toString(), QString("gimbal_center"));
@@ -415,7 +469,7 @@ private slots:
         QVERIFY(_peer->takeAll().isEmpty()); // Neutral received before ACK is insufficient.
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         _gimbal->updateChannels(2000, 1000, 2000);
         verifySpeed(_peer->nextRequest(), 0, 0);
         QCOMPARE(_peer->nextRequest().value("cmd").toString(), QString("gimbal_center"));
@@ -425,7 +479,7 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
+        verifySpeed(_peer->nextRequest(), 350, -350);
         QVERIFY(_controller->takePhoto());
         QCOMPARE(_peer->nextRequest().value("cmd").toString(), QString("lr1_take_photo"));
         QVERIFY(_controller->pending());
@@ -441,8 +495,8 @@ private slots:
     {
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), 10, -5);
-        _gimbal->setConfiguration(20, 8, true, true);
+        verifySpeed(_peer->nextRequest(), 350, -350);
+        _gimbal->setConfiguration(525, 280, true, true);
         verifySpeed(_peer->nextRequest(), 0, 0);
         QTest::qWait(130);
         for (const auto &request : _peer->takeAll()) verifySpeed(request, 0, 0);
@@ -451,7 +505,7 @@ private slots:
         QVERIFY(_peer->takeAll().isEmpty());
         _gimbal->updateChannels(1500, 1500, 1000);
         _gimbal->updateChannels(2000, 1000, 1000);
-        verifySpeed(_peer->nextRequest(), -20, 8);
+        verifySpeed(_peer->nextRequest(), -525, 280);
     }
 
 private:

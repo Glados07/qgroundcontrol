@@ -671,8 +671,8 @@
         <translation>反转 CH12 俯仰方向</translation>
     </message>
     <message>
-        <source>The protocol does not specify speed units or limits. Use values confirmed by the payload vendor.</source>
-        <translation>协议未注明速度单位及范围，请按负载厂商确认值配置。</translation>
+        <source>Speed limits: 35–525 in steps of 35 (levels 1–15). Stick direction sets the sign; centering sends 0 to stop.</source>
+        <translation>速度上限：35～525，步长 35，对应 1～15 档。正负方向由杆量和反向设置决定，杆回中发送 0 停转。</translation>
     </message>
 </context>
 <context>
@@ -1314,6 +1314,10 @@
     <message>
         <source>Rouke speed controls require integer yaw/pitch values and zero roll.</source>
         <translation>Rouke 速度控制要求偏转和俯仰为整数协议值，滚转为 0。</translation>
+    </message>
+    <message>
+        <source>Rouke speed must be 0 or have a magnitude between 35 and 525.</source>
+        <translation>Rouke 速度必须为 0，或绝对值在 35～525 之间。</translation>
     </message>
     <message>
         <source>Set a valid Rouke IPv4 address and UDP port.</source>

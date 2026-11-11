@@ -631,11 +631,13 @@ Video 2 RTSP → DualVideoManager → 显示与本地媒体
 | `roukeUdpHost` / `roukeUdpPort` | `192.168.144.110` / 8888 | AI 盒子 IPv4 UDP 端点 |
 | `roukeLocalPort` | 0 | 0 为自动分配；回包需返回实际绑定端口，也可配置固定本地端口 |
 | `roukePayloadAddress` | 0 | 53022 的 `payload_addr`，范围 0～65535；-1 显式禁止发送控制命令 |
-| `roukeYawSpeedLimit` / `roukePitchSpeedLimit` | 10 / 5 | CH11/12 满量程的原始协议值，软件输入范围 1～10000 |
+| `roukeYawSpeedLimit` / `roukePitchSpeedLimit` | 350 / 350 | CH11/12 满量程的协议值；范围 35～525、步长 35，对应 1～15 档 |
 | `roukeYawReversed` / `roukePitchReversed` | false / false | 两轴分别反向 |
 | `Video/secondaryRtspUrl` | `rtsp://192.168.144.100:8554/live` | Video 2 视频地址 |
 
 `payload_addr` 是负载地址码，独立于 IP 和 UDP 端口。默认值只影响未保存的键；已有 -1 仍表示禁控。负载端及 AI 转发节点需支持相同的 53022 定义和回复路径，回复来自已配置远端 IP/端口并返回 QGC 的本地 socket。MAVLink 定义和构建版本的维护落点见本节末表。
+
+速度上限保存正数，方向由通道杆量和轴反向设置决定。初始化设置时，已保存的上限低于 35 则恢复该轴默认值，高于 525 则限制为 525，其余按整除 35 向下对齐到有效档位；通道控制器使用同一规则。满杆速度及中位停转的计算见 [3.7.3](#unirc)。
 
 主栏采用三行双列：图像源/回中、对焦/设置、拍照/录像，对焦位于拍照正上方。`online = enabled && sdkResponding`；普通设备动作要求在线，单个相机请求等待期间禁止叠加相机动作，回中使用独立等待状态。失联关闭图像源菜单，保留已打开设置及未提交草稿；已有录像停止意图仍保留停止入口。
 
@@ -712,7 +714,7 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 
 `splitFrame()` 先对完整内层帧校验，再按最多 128 字节连续切分。每段独立编码为一条 MAVLink 2 消息并写为 UDP 数据报；同一内层帧的全部分段在一次发送流程中连续写出，不与另一命令交错。发送使用私有 MAVLink 状态，system ID 为 255、component ID 为 190，包序号逐条递增。MAVLink 2 可以裁去外层 payload 末尾零字节，线上长度可小于定义长度，接收方按标准解码补零。
 
-例如 `gimbal_speed_ctrl` 携带 `yaw_speed=10`、`pitch_speed=5`、`roll_speed=0` 时，完整内层帧为 152 字节，拆为 128+24；第二段直接延续字节流，不重复头尾，也不增加片号。设备需按相同连续流规则重组。此格式没有额外分片重传或乱序整理，MAVLink 包序号不充当内层事务号。
+例如 `gimbal_speed_ctrl` 携带 `yaw_speed=350`、`pitch_speed=175`、`roll_speed=0` 时，完整内层帧为 155 字节，拆为 128+27；第二段直接延续字节流，不重复头尾，也不增加片号。设备需按相同连续流规则重组。此格式没有额外分片重传或乱序整理，MAVLink 包序号不充当内层事务号。
 
 接收路径为 `_readDatagrams()` → `_handleMessage()` → `StreamDecoder` → `_handleFrame()`：
 
@@ -731,7 +733,7 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 | 一次对焦 | `lr1_focus`，空 `data`；成功后清除旧焦距值并排队一次 `focusValue` GET，对焦模式设置成功同样补读 |
 | 拍照 | `lr1_take_photo`，空 `data`；成功 ACK 增加设备照片计数 |
 | 录像 | `lr1_record`，`action=0` 开始、1 停止；ACK 更新 `recording/recordingKnown` |
-| 云台速度 | `gimbal_speed_ctrl`，`yaw_speed/pitch_speed/roll_speed`；滚转固定 0，持续刷新不占相机 pending |
+| 云台速度 | `gimbal_speed_ctrl`；yaw/pitch 为带符号的协议值，非零幅值 35～525、每档 35，0 停转；滚转固定 0，持续刷新不占相机 pending |
 | 云台回中 | `gimbal_center`，空 `data`；`gimbalCenterPending` 独立于相机请求 |
 | SD 查询 | `get_sdcard_capacity`，独立 pending、错误及新鲜度；不占用相机或回中通道 |
 
@@ -759,6 +761,7 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 | `Gimbal/RoukeProtocol.h/.cc` | JSON 信封、内层帧、128 字节切分、`StreamDecoder` |
 | `Gimbal/RoukeRawMavlinkTrace.h`；`RoukePayloadController.cc`、`CustomPlugin.cc` 的原始观察入口 | 限量 HEX、商家样例精确匹配和每入口累计诊断；不参与业务接纳 |
 | `Gimbal/RoukeGimbalController.h/.cc`；`Android/UniRcChannelController.h/.cc` | CH11/12/14 路由、速度与回中状态机 |
+| `Gimbal/RoukeGimbalSpeed.h` | 共用速度步长、范围、默认值和归一规则，由设置、通道映射与发送入口使用 |
 | `CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 对象创建、Video 2 receiver/item 和媒体回调绑定 |
 | `custom/CMakeLists.txt`、`custom/custom.qrc` | C++ 构建、QML 模块和资源；产品使用 Rouke，未实例化旧 MT11 业务对象 |
 | 外部 `Glados07/mavlink`：`message_definitions/v1.0/rouke.xml`、`all.xml` | 53022 定义及 all 方言包含关系 |
@@ -1055,17 +1058,31 @@ CH10 与顶部姿态操作共享下一动作和 revision，只有匹配的成功
 
 **Rouke 双轴速度公式**
 
-令通道值为 `v`，对应轴的配置上限为 `L`：
+厂家确认速度按 `value / 35` 整数除法解释，非零输入的绝对值为 35～525，符号表示方向，0 表示停转。QGC 直接发送 35 的整数倍，对应 1～15 档；例如 35 对应 1 档、70 对应 2 档、525 对应 15 档。该档位尚无已确认的物理速度单位。
+
+令通道值为 `v`，对应轴归一后的协议值上限为 `L`：
 
 ```text
 v ∈ [1400,1600]：speed = 0
 其他合理值：
     offset = clamp(v, 1050, 1950) - 1500
-    magnitude = max(1, round((abs(offset) - 100) × L / 350))
-    speed = sign(offset) × magnitude × (反向 ? -1 : 1)
+    levelLimit = L / 35
+    level = max(1, round((abs(offset) - 100) × levelLimit / 350))
+    speed = sign(offset) × level × 35 × (反向 ? -1 : 1)
 ```
 
-满量程采用 SDK 默认 1050～1950，中值为 1500；死区外的剩余行程为 350，超出标称端点但仍在合理范围内的值按满量程饱和。yaw/pitch 默认上限分别为 10/5，滚转固定 0。这里是厂家原始协议值，物理单位、安装方向和设备允许上限需与具体负载对应。
+满量程采用 SDK 默认 1050～1950，中值为 1500；死区外的剩余行程为 350，超出标称端点但仍在合理范围内的值按满量程饱和。yaw/pitch 默认上限均为 350，即 10 档，两轴均可设置到最高 525（15 档），滚转固定 0。以下为默认上限且未启用反向时，同一通道输入分别映射到两轴的结果：
+
+| 通道输入 | yaw 协议值 | pitch 协议值 | 含义 |
+|---|---|---|---|
+| 1050 | -350 | -350 | 反方向满杆 |
+| 1399 | -35 | -35 | 刚越过负向死区，最低有效档 |
+| 1400～1600 | 0 | 0 | 中位停转 |
+| 1601 | 35 | 35 | 刚越过正向死区，最低有效档 |
+| 1775 | 175 | 175 | 死区外半行程，按最近整数档取整 |
+| 1950 | 350 | 350 | 正方向满杆 |
+
+`sendGimbalSpeed()` 在发送入口校验两轴：只接受 0 或绝对值在 35～525 内的整数，对范围内非 35 倍数按有符号整数除法对齐后再编码。成功 ACK 依据命令及 `code` 判断；回执中的速度值保留原值用于诊断，不要求与请求协议值数值相等，也不将其当作实测角速度。
 
 `RoukeGimbalController` 每 50 ms 发送最新双轴目标，不排队积压旧输入；使用 Controller 的有效端点作为发送条件，不依赖相机 pending 或 SD 查询。任一旋转轴越界、350 ms 输入超时、应用后台或配置变化时取消运动并重新要求归中。CH14 单独校验，越界只解除按钮边沿状态；恢复后重新释放即可，不影响两个合法旋转轴。
 

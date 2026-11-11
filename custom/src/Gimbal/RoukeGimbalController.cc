@@ -43,8 +43,8 @@ void RoukeGimbalController::setConfiguration(int yawLimit, int pitchLimit,
                                             bool yawReversed, bool pitchReversed)
 {
     cancel();
-    _yawLimit = qBound(1, yawLimit, 10000);
-    _pitchLimit = qBound(1, pitchLimit, 10000);
+    _yawLimit = RoukeGimbalSpeed::normalizeLimit(yawLimit, RoukeGimbalSpeed::DefaultYaw);
+    _pitchLimit = RoukeGimbalSpeed::normalizeLimit(pitchLimit, RoukeGimbalSpeed::DefaultPitch);
     _yawReversed = yawReversed;
     _pitchReversed = pitchReversed;
 }
@@ -56,9 +56,10 @@ int RoukeGimbalController::_speed(qint16 value, int limit, bool reversed)
 {
     if (_neutral(value)) return 0;
     const int offset = qBound(1050, int(value), 1950) - 1500;
-    const int magnitude = qMax(1, qRound((std::abs(offset) - 100) * limit / 350.0));
+    const int levelLimit = limit / RoukeGimbalSpeed::Step;
+    const int level = qMax(1, qRound((std::abs(offset) - 100) * levelLimit / 350.0));
     const int sign = offset < 0 ? -1 : 1;
-    return magnitude * sign * (reversed ? -1 : 1);
+    return level * RoukeGimbalSpeed::Step * sign * (reversed ? -1 : 1);
 }
 
 void RoukeGimbalController::updateChannels(qint16 channel11, qint16 channel12, qint16 channel14)

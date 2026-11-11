@@ -86,20 +86,22 @@
         {
             "name": "roukeYawSpeedLimit",
             "shortDesc": "Rouke maximum yaw speed (protocol value)",
-            "longDesc": "Raw gimbal_speed_ctrl value. The vendor document does not specify units or hardware limits; 10000 is only a software input bound.",
+            "longDesc": "Raw gimbal_speed_ctrl limit: 35 to 525 in steps of 35, corresponding to levels 1 to 15. Direction is set separately; a centered stick sends 0 to stop.",
             "type": "int32",
-            "min": 1,
-            "max": 10000,
-            "default": 10
+            "min": 35,
+            "max": 525,
+            "increment": 35,
+            "default": 350
         },
         {
             "name": "roukePitchSpeedLimit",
             "shortDesc": "Rouke maximum pitch speed (protocol value)",
-            "longDesc": "Raw gimbal_speed_ctrl value. Confirm units and hardware limits with the vendor before increasing it.",
+            "longDesc": "Raw gimbal_speed_ctrl limit: 35 to 525 in steps of 35, corresponding to levels 1 to 15. Direction is set separately; a centered stick sends 0 to stop.",
             "type": "int32",
-            "min": 1,
-            "max": 10000,
-            "default": 5
+            "min": 35,
+            "max": 525,
+            "increment": 35,
+            "default": 350
         },
         {
             "name": "roukeYawReversed",
