@@ -23,6 +23,7 @@ class FlyViewCustomSettings;
 class GimbalAzimuthProvider;
 class GimbalCenterCoordinator;
 class GimbalModeController;
+class QTimer;
 class GimbalControlManager;
 class GimbalControlSettings;
 class RoukeControlManager;
@@ -140,6 +141,8 @@ private:
     QMetaObject::Connection _roukeNativeObservationConnection;
     QElapsedTimer _roukeNativeObservationClock;
     RoukeNativeMavlinkTrace _roukeNativeTrace;
+    QTimer *_roukeRawObservationTimer = nullptr;
+    quint64 _roukeRawObservationSession = 0;
 };
 
 class CustomOverrideInterceptor : public QQmlAbstractUrlInterceptor

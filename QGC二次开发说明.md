@@ -716,9 +716,11 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 接收路径为 `_readDatagrams()` → `_handleMessage()` → `StreamDecoder` → `_handleFrame()`：
 
 1. 限定配置的发送方 IP 和 UDP 端口，对字节流进行 MAVLink CRC/格式解析，只处理 MAVLink 2 的 53022。
-2. 校验 `reserve=0`、`data_len=1…128`，按 `payload_addr + sysid + compid` 区分重组流，最多 8 条；未完成帧 3.5 s 无后续字节则清理。
+2. `reserve` 是厂商确认未使用的保留字段，接收时只记录、不作为拒绝条件，发送仍置 0；继续校验 `data_len=1…128`。按 `payload_addr + sysid + compid` 区分重组流，最多 8 条；未完成帧 3.5 s 无后续字节则清理。
 3. `StreamDecoder` 支持半帧、连帧及损坏后的帧头重新同步。完整 JSON 的 `source=psdk`、`target=msdk`、负载地址和信封合法后，才刷新响应状态。
 4. ACK 还需匹配所在请求通道、命令名及本地请求版本。内层帧开始时快照本地版本，防止旧半帧或同一数据报的后续重复 ACK 完成刚刚排队的新请求；该版本不写入线上协议。
+
+通过来源、负载地址、方向及完整内层校验的 `heartbeat` 可以刷新在线状态，但不完成正在等待的参数 ACK。C1 尾片须结合同源首片重组成完整内层帧，再按命令与请求状态处理；单独收到尾片不能确认参数值。
 
 #### 3.4.5 动作、录像与状态管理
 
@@ -754,6 +756,7 @@ F0 E0 | JSON 字节数 LE16 | UTF-8 紧凑 JSON | 00 | F1 E1
 | `Gimbal/RoukeControlManager.h/.cc` | QML 接口、初始化与 Video 2 首帧通知、SD 轮询、本地照片和录像 |
 | `Gimbal/RoukePayloadController.h/.cc` | 有限参数队列、确认缓存与写后回读；`setConfiguration()`、`sendCommand()`、`_writeCommand()`、接收/ACK 与请求生命周期 |
 | `Gimbal/RoukeProtocol.h/.cc` | JSON 信封、内层帧、128 字节切分、`StreamDecoder` |
+| `Gimbal/RoukeRawMavlinkTrace.h`；`RoukePayloadController.cc`、`CustomPlugin.cc` 的原始观察入口 | 限量 HEX、商家样例精确匹配和每入口累计诊断；不参与业务接纳 |
 | `Gimbal/RoukeGimbalController.h/.cc`；`Android/UniRcChannelController.h/.cc` | CH11/12/14 路由、速度与回中状态机 |
 | `CustomPlugin.h/.cc`；`VideoManager/DualVideoManager.h/.cc` | 对象创建、Video 2 receiver/item 和媒体回调绑定 |
 | `custom/CMakeLists.txt`、`custom/custom.qrc` | C++ 构建、QML 模块和资源；产品使用 Rouke，未实例化旧 MT11 业务对象 |
@@ -1654,7 +1657,7 @@ bash custom/tools/rouke-diagnostics-capture.sh start
 bash custom/tools/rouke-diagnostics-capture.sh finish
 ```
 
-`start` 在准备阶段重启 QGC 并开启本轮诊断，检查 APK 的 schema=3 标记和独立采集会话后提示拔线。脚本与配套 QGC 日志代码一起部署；旧 APK 缺少接收分层计数时不进入正式测试。默认采集 20 分钟、主日志约 512 MiB 轮转，视频默认保留 RTSP 协商及关键生命周期日志。`finish` 收尾并导出到 Ubuntu 用户主目录，生成 `rouke-diagnostics-*.tar.gz` 与原始目录；填写 `observation.txt` 记录操作和异常时间，重新打包后提交，具体命令见采集说明。
+`start` 在准备阶段重启 QGC 并开启本轮诊断，检查 APK 同一能力标记中的 `schema=5` 和 `reservePolicy=ignored`，以及独立采集会话后提示拔线。脚本与配套 QGC 日志代码一起部署；缺少原始入口诊断或接收策略标记时不进入正式测试。默认采集 20 分钟、主日志约 512 MiB 轮转，视频默认保留 RTSP 协商及关键生命周期日志。`finish` 收尾并导出到 Ubuntu 用户主目录，生成 `rouke-diagnostics-*.tar.gz` 与原始目录；填写 `observation.txt` 记录操作和异常时间，重新打包后提交，具体命令见采集说明。
 
 排查视频与控制的相互影响时，固定 A8 的状态，依次执行“停止视频发送/订阅 → 开启 Rouke 视频 → 再停止视频”，每阶段保持 30～60 秒，读取同一相机参数并记录时刻。隐藏视频窗口或切换主辅画面不会停止收流；应由服务端停推或明确关闭订阅。整个对照期间保持 QGC 前台，不插拔 USB、不重启 QGC。
 
@@ -1674,6 +1677,7 @@ bash custom/tools/rouke-diagnostics-capture.sh finish
 |---|---|---|
 | `index-video.txt` | 按 URI、receiver / generation 关联 RTSP 协商 → 压缩源首帧 → decoder 输出 → sink 首帧 | 收流、解码、显示分别进行到哪一步 |
 | `index-payload.txt` | 请求及分片 → 本机 UDP 写出 → 周期接收计数 → 外层 53022 → 内层回应 → 参数确认或超时 | 区分无接收、普通遥测、53022 字段/内层拒绝及有效回执 |
+| `index-53022-raw.txt` | 按进程、`lane/session/sample` 对齐原始字段与 HEX，按同入口 `ROUKE_WIRE_TOTAL` 比较视频开关前后累计量 | 合法外层 53022 是否到达 QGC 接收入口、是否与商家 A1 心跳/C1 尾片完整样例匹配；不代替网卡抓包 |
 | `index-rc.txt` | SDK 通道输入 → 中位/边沿判断 → 目标速度/回中 → 发送/停止 | 通道数据是否到达、动作是否形成、是否提交给载荷控制器 |
 | `index-network.txt`、网络统计与 socket 快照 | 对齐阶段时间，比较网卡字节/丢弃、UDP 错误、socket 队列/丢弃和 CPU 计数的增量，同时核对原生 UDP 的绑定端口及自动学习目标 | 本机收包与处理负载、是否存在另一路发往 AI 盒子的原生 UDP 连接；自动学习日志不证明盒子已改变回包路由；系统计数覆盖所有进程，socket 需按本轮端口/inode 匹配；无权限时保留读取失败记录 |
 | `device/`、`coverage.txt`、`observation.txt` | 对齐系统时间、USB 插拔、日志覆盖范围与人工现象 | 区分测试区间、环境变化和程序行为 |
@@ -1681,6 +1685,12 @@ bash custom/tools/rouke-diagnostics-capture.sh finish
 索引用于定位，保留原始日志供上下文核对。分析有效测试区间时排除 USB 插拔导致的通信中断，按实际链路恢复时间划分。日志轮转文件应按时间排列，启动和结束补充日志可能与主日志重叠。
 
 `RoukePayloadController` 在 trace 启用且模块配置启用时每秒输出短行快照，无收包时仍输出；各行以 `session/report` 关联，配置变更重新累计，超时也输出同组计数。`gapMs` 是两次快照的实际间隔，可用于观察调度停顿。`ROUKE_RX_TRANSPORT` 的 `relay` 统计配置 IP/端口匹配、MAVLink 2 和 CRC 校验通过的 53022，增加位置在 relay 字段及内层协议过滤之前；`ROUKE_RX_INNER` 的 `valid/matched` 再区分完整内层帧和来源/目标/负载地址匹配。首次外层接收产生 `ROUKE_RX_RELAY_FIRST`；既有 `ROUKE_RX cmd` 表示匹配后的业务回应。普通飞控消息计入 `other`，不能当作 53022 接收。
+
+**53022 原始入口观察**：`gcs.custom.gimbal.rouke.raw` 默认关闭，采集脚本按需启用。独立控制 UDP socket 在来源端点及内层业务过滤前记录 CRC 校验通过的 53022；原生 MAVLink 入口观察已校验消息。`ROUKE_WIRE_RX` 提供来源/链路、sys/comp/seq、外层长度/校验值、负载地址、reserve 和 data_len；`ROUKE_WIRE_DATA` 输出有效 data。独立 socket 的 `ROUKE_WIRE_FRAME` 直接截取所收数据报中的实际帧字节，标记 `representation=udp-bytes`；原生入口只有已解码消息，标记 `representation=decoded`，用 `ROUKE_WIRE_PAYLOAD` 输出外层 payload，不重建为所谓线上整帧。HEX 按 offset 分行，通过 `lane/session/sample` 关联。
+
+`ROUKE_WIRE_TOTAL` 每秒输出累计量，其中 `reserveA1/reserveC1` 仅按 reserve 统计；`a1Heartbeat/c1AckTail` 还要求 `payload_addr=0`、长度 118/48 及完整 data 字节与商家样例一致。C1 尾片的命令归属需结合同源首片确认。每入口最多 4 个详细样本/秒、总计 240 个，达到限额后计数仍继续。阶段比较使用同进程、同入口会话的累计增量，排除重复索引；native 的 `liveOnly=1` 汇总该观察会话内所有非回放原生链路，不能将两入口相加当作唯一网卡报文数。细节样本缺失不能解释为零接收。reserve 分类仅用于诊断，不参与接收门控；记录不包含网卡头、坏 CRC 或未进入 QGC socket 的流量，这些情况需要实际抓包补证。
+
+`payload` 入口样例命中表示该报文已送到 QGC 独立 socket，不能把该报文判成视频拥塞丢失。`native` 命中只证明原生链路收到了消息，不代表它也送达独立 Rouke socket。`decision=outer-pass` 只通过初步外层检查，最终参数回执是否被接纳仍看内层检查及请求结果；A1 心跳使设备在线与参数读写成功是不同状态。
 
 比较相同 session 的前后快照：`relay` 增长而 `matched` 不增长时查看内层、来源/目标与负载地址拒绝计数；`relay` 不增长但 `other` 持续增长时，普通遥测仍在回流；接收和快照同时停顿则结合 `gapMs`、进程 CPU 和线程信息检查本机调度。计数只覆盖应用读取到的数据，网卡/系统丢弃需结合网络快照；没有诊断输出不能按零接收处理。
 

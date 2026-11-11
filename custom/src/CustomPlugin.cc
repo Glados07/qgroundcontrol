@@ -43,6 +43,7 @@
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtCore/QThread>
+#include <QtCore/QTimer>
 #include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickItem>
@@ -50,6 +51,7 @@
 
 QGC_LOGGING_CATEGORY(CustomLog, "gcs.custom.customplugin")
 Q_LOGGING_CATEGORY(RoukeNativeTraceLog, "gcs.custom.gimbal.rouke.native", QtInfoMsg)
+Q_LOGGING_CATEGORY(RoukeNativeRawLog, "gcs.custom.gimbal.rouke.raw", QtInfoMsg)
 
 namespace {
 
@@ -173,6 +175,7 @@ void CustomPlugin::cleanup()
 {
     disconnect(_roukeNativeObservationConnection);
     _roukeNativeObservationConnection = {};
+    if (_roukeRawObservationTimer) _roukeRawObservationTimer->stop();
     _roukeNativeTrace.reset();
     _roukeNativeObservationClock.invalidate();
     if (_gimbalCenterCoordinator) {
@@ -347,10 +350,23 @@ void CustomPlugin::_observeNativeRoukeMessages()
                   "Native Rouke trace must cover every QGC MAVLink channel");
     if (_roukeNativeObservationConnection) return;
     _roukeNativeObservationClock.start();
+    ++_roukeRawObservationSession;
+    if (!_roukeRawObservationTimer) {
+        _roukeRawObservationTimer = new QTimer(this);
+        _roukeRawObservationTimer->setInterval(1000);
+        connect(_roukeRawObservationTimer, &QTimer::timeout, this, [this]() {
+            if (RoukeNativeRawLog().isDebugEnabled()) {
+                qCDebug(RoukeNativeRawLog).noquote()
+                    << _roukeNativeTrace.raw().summary(QStringLiteral("native"), _roukeRawObservationSession)
+                           + QStringLiteral(" liveOnly=1");
+            }
+        });
+    }
+    _roukeRawObservationTimer->start();
     _roukeNativeObservationConnection = connect(
         MAVLinkProtocol::instance(), &MAVLinkProtocol::messageReceived, this,
         [this](LinkInterface *link, const mavlink_message_t &message) {
-            if (!RoukeNativeTraceLog().isDebugEnabled()
+            if ((!RoukeNativeTraceLog().isDebugEnabled() && !RoukeNativeRawLog().isDebugEnabled())
                 || message.msgid != MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY) return;
             // Native receiveBytes holds a shared link while emitting. Observe
             // it synchronously; never queue a raw link or retain packet bytes.
@@ -361,16 +377,31 @@ void CustomPlugin::_observeNativeRoukeMessages()
                 static std::atomic_bool reported{false};
                 if (!reported.exchange(true)) {
                     qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_OBSERVER skipped unsafe-thread-or-null-link";
+                    qCDebug(RoukeNativeRawLog) << "ROUKE_NATIVE_OBSERVER skipped unsafe-thread-or-null-link";
                 }
                 return;
             }
             if (!link->mavlinkChannelIsSet()) return;
             const int channel = link->mavlinkChannel();
             const auto sample = _roukeNativeTrace.observe(link, channel, _roukeNativeObservationClock.elapsed());
-            if (!sample.log) return;
+            // Replayed telemetry is not live arrival evidence. Keep it only
+            // in the legacy metadata observer with its explicit logReplay flag.
+            const auto rawSample = RoukeNativeRawLog().isDebugEnabled() && !link->isLogReplay()
+                ? _roukeNativeTrace.raw().observe(message, _roukeNativeObservationClock.elapsed())
+                : RoukeRawMavlinkTrace::Sample{};
+            if ((!RoukeNativeTraceLog().isDebugEnabled() || !sample.log) && !rawSample.log) return;
             const auto configuration = link->linkConfiguration();
             const auto *udp = configuration ? qobject_cast<const UDPConfiguration *>(configuration.get()) : nullptr;
-            qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_RX msgid" << message.msgid
+            if (rawSample.log) {
+                const QString context = QStringLiteral(" channel=%1 linkType=%2 udpConfiguredLocalPort=%3 logReplay=%4 decision=observe-only")
+                    .arg(channel).arg(configuration ? int(configuration->type()) : -1)
+                    .arg(udp ? int(udp->localPort()) : -1).arg(link->isLogReplay());
+                for (const QString &line : _roukeNativeTrace.raw().sampleLines(rawSample, message,
+                            QStringLiteral("native"), _roukeRawObservationSession, context)) {
+                    qCDebug(RoukeNativeRawLog).noquote() << line;
+                }
+            }
+            if (sample.log) qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_RX msgid" << message.msgid
                 << "magic" << message.magic << "sys" << message.sysid << "comp" << message.compid
                 << "seq" << message.seq << "len" << message.len << "channel" << channel
                 << "linkClass" << link->metaObject()->className()
@@ -378,7 +409,7 @@ void CustomPlugin::_observeNativeRoukeMessages()
                 << "udpConfiguredLocalPort" << (udp ? int(udp->localPort()) : -1)
                 << "logReplay" << link->isLogReplay() << "channelCount" << sample.count;
         }, Qt::DirectConnection);
-    qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_OBSERVER installed metadata-only";
+    qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_OBSERVER installed observation-only";
 }
 
 bool CustomPlugin::adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData)

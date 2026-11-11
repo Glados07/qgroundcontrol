@@ -17,6 +17,7 @@ QGC_LOGGING_CATEGORY(RoukePayloadLog, "gcs.custom.gimbal.rouke.payload")
 // QGC's registration wrapper has no default-level constructor. This explicit
 // category remains off unless enabled by --logging or Qt filter rules.
 Q_LOGGING_CATEGORY(RoukePayloadTraceLog, "gcs.custom.gimbal.rouke.trace", QtInfoMsg)
+Q_LOGGING_CATEGORY(RoukePayloadRawLog, "gcs.custom.gimbal.rouke.raw", QtInfoMsg)
 
 namespace {
 static_assert(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY == 53022, "Rouke relay message ID mismatch");
@@ -156,6 +157,9 @@ RoukePayloadController::RoukePayloadController(QObject *parent)
     _receiveDiagnosticTimer.setTimerType(Qt::PreciseTimer);
     connect(&_receiveDiagnosticTimer, &QTimer::timeout, this, [this]() {
         if (RoukePayloadTraceLog().isDebugEnabled()) _logReceiveDiagnostics("periodic");
+        if (RoukePayloadRawLog().isDebugEnabled()) {
+            qCDebug(RoukePayloadRawLog).noquote() << _rawTrace.summary(QStringLiteral("payload"), _configurationSerial);
+        }
     });
     connect(&_sdCardQueryTimer, &QTimer::timeout, this, [this]() {
         _logTimeoutDiagnostics(QStringLiteral("get_sdcard_capacity"));
@@ -220,7 +224,7 @@ void RoukePayloadController::setConfiguration(bool enabled, const QString &host,
     // Advertise this binary's diagnostic capability even with tracing off.
     // This is a build contract, not evidence that a packet reached the peer.
     qCInfo(RoukePayloadLog).noquote()
-        << QStringLiteral("ROUKE_DIAGNOSTICS schema=3 msgid=%1 len=%2 crc=%3 scope=build-contract")
+        << QStringLiteral("ROUKE_DIAGNOSTICS schema=5 msgid=%1 len=%2 crc=%3 scope=build-contract raw53022=1 reservePolicy=ignored")
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY)
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN)
                .arg(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_CRC);
@@ -259,6 +263,7 @@ void RoukePayloadController::_reset()
     ++_sdCardRequestSerial;
     _responseStreams.clear();
     _receiveDiagnostics = {};
+    _rawTrace.reset();
     _receiveDiagnosticTimer.stop();
     _receiveDiagnosticAge.start();
     _receiveDiagnosticLastReportAge.invalidate();
@@ -873,11 +878,48 @@ bool RoukePayloadController::centerGimbal()
     return true;
 }
 
+void RoukePayloadController::_observeRawDatagram(const QNetworkDatagram &datagram)
+{
+    // Diagnostic-only parser: the business path below still rejects a foreign
+    // peer before parsing and retains its length/address/route gates.
+    const QByteArray bytes = datagram.data();
+    mavlink_message_t rx{};
+    mavlink_status_t parser{};
+    const bool peerMatches = datagram.senderAddress() == _host && datagram.senderPort() == _port;
+    for (int index = 0; index < bytes.size(); ++index) {
+        mavlink_message_t message{};
+        mavlink_status_t status{};
+        if (mavlink_frame_char_buffer(&rx, &parser, static_cast<uint8_t>(bytes.at(index)), &message, &status)
+            != MAVLINK_FRAMING_OK) continue;
+        const auto sample = _rawTrace.observe(message, _receiveDiagnosticAge.elapsed(), peerMatches);
+        if (!sample.log) continue;
+        mavlink_vk_payload_data_relay_t relay{};
+        mavlink_msg_vk_payload_data_relay_decode(&message, &relay);
+        const QString decision = datagram.senderAddress() != _host ? QStringLiteral("peer-address")
+            : datagram.senderPort() != _port ? QStringLiteral("peer-port")
+            : relay.data_len < 1 || relay.data_len > 128 ? QStringLiteral("data-length")
+            : QStringLiteral("outer-pass");
+        const QString context = QStringLiteral(" peer=%1:%2 localPort=%3 peerMatch=%4 expectedPayload=%5 decision=%6")
+            .arg(datagram.senderAddress().toString()).arg(datagram.senderPort()).arg(_socket.localPort())
+            .arg(peerMatches).arg(_payloadAddress).arg(decision);
+        const int wireLength = int(message.len) + MAVLINK_NUM_NON_PAYLOAD_BYTES
+            + ((message.incompat_flags & MAVLINK_IFLAG_SIGNED) ? MAVLINK_SIGNATURE_BLOCK_LEN : 0);
+        // Extract the bytes actually read, including untrimmed trailing zeros
+        // and the received checksum. Re-encoding may change MAVLink length.
+        const QByteArray wire = index + 1 >= wireLength ? bytes.mid(index + 1 - wireLength, wireLength) : QByteArray{};
+        for (const QString &line : _rawTrace.sampleLines(sample, message, QStringLiteral("payload"),
+                                                       _configurationSerial, context, wire)) {
+            qCDebug(RoukePayloadRawLog).noquote() << line;
+        }
+    }
+}
+
 void RoukePayloadController::_readDatagrams()
 {
     while (_socket.hasPendingDatagrams()) {
         const QNetworkDatagram datagram = _socket.receiveDatagram();
         if (!_enabled) continue;
+        if (RoukePayloadRawLog().isDebugEnabled()) _observeRawDatagram(datagram);
         ++_receiveDiagnostics.datagrams;
         _receiveDiagnostics.bytes += static_cast<quint64>(datagram.data().size());
         _lastUdpAge.restart();
@@ -946,7 +988,9 @@ void RoukePayloadController::_handleMessage(const mavlink_message_t &message, qu
     }
     const quint64 key = (quint64(relay.payload_addr) << 16)
         | (quint64(message.sysid) << 8) | message.compid;
-    if (relay.reserve != 0 || relay.data_len == 0
+    // The vendor confirms reserve is unused. It is recorded for diagnostics,
+    // but does not carry framing or acceptance semantics on receive.
+    if (relay.data_len == 0
         || relay.data_len > RoukeProtocol::MaxRelayDataLength) {
         ++_receiveDiagnostics.invalidRelay;
         _responseStreams.remove(key);

@@ -113,7 +113,7 @@ if [ "$MODE" = start ]; then
         GST_LEVELS='2,rtspsrc:5,rtpsession:4,rtpjitterbuffer:5,rtph265depay:4,rtph264depay:4,h265parse:4,h264parse:4,decodebin3:4,amcvideodec:5,amc:4,videodecoder:4,qtsink:5,qgcsinkbin:5,qtglwidget:5,qtglutility:4,glupload:4,glcolorconvert:4'
     fi
     printf 'verbose_video=%s\ngst_debug=%s\n' "$VERBOSE_VIDEO" "$GST_LEVELS" > "$CAP/capture-profile.txt"
-    APP_ARGS="--logging:gcs.custom.customplugin,gcs.custom.videomanager.dualvideo,gcs.custom.video.androidh264hardwaredecoderadapter,gcs.custom.video.androidh265decoderfallback,gcs.custom.video.androidh265hardwaredecoderadapter,gcs.custom.video.androidvideodecoderpolicy,gcs.custom.video.androidvideodecoderrecovery,gcs.custom.video.a8rtsprecovery,gcs.custom.gimbal.pulledvideoresolution,gcs.custom.gimbal.rouke.payload,gcs.custom.gimbal.rouke.control,gcs.custom.gimbal.rouke.trace,gcs.custom.gimbal.rouke.channels,gcs.custom.gimbal.rouke.native,gcs.custom.android.unircchannel,gcs.custom.android.unircchannel.trace,qgc.comms.udplink,qgc.android.androidserial,qgc.android.libs.qtandroidserialport.qserialport_android,qgc.videomanager.videomanager,qgc.videomanager.videoreceiver.gstreamer,qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver,qgc.videomanager.videoreceiver.gstreamer.api --gst-debug=$GST_LEVELS"
+    APP_ARGS="--logging:gcs.custom.customplugin,gcs.custom.videomanager.dualvideo,gcs.custom.video.androidh264hardwaredecoderadapter,gcs.custom.video.androidh265decoderfallback,gcs.custom.video.androidh265hardwaredecoderadapter,gcs.custom.video.androidvideodecoderpolicy,gcs.custom.video.androidvideodecoderrecovery,gcs.custom.video.a8rtsprecovery,gcs.custom.gimbal.pulledvideoresolution,gcs.custom.gimbal.rouke.payload,gcs.custom.gimbal.rouke.control,gcs.custom.gimbal.rouke.trace,gcs.custom.gimbal.rouke.raw,gcs.custom.gimbal.rouke.channels,gcs.custom.gimbal.rouke.native,gcs.custom.android.unircchannel,gcs.custom.android.unircchannel.trace,qgc.comms.udplink,qgc.android.androidserial,qgc.android.libs.qtandroidserialport.qserialport_android,qgc.videomanager.videomanager,qgc.videomanager.videoreceiver.gstreamer,qgc.videomanager.videoreceiver.gstreamer.gstvideoreceiver,qgc.videomanager.videoreceiver.gstreamer.api --gst-debug=$GST_LEVELS"
     printf '%s\n' "$APP_ARGS" > "$CAP/launch-arguments.txt"
     cat > "$CAP/recorder.sh" <<'RECORDER'
 #!/system/bin/sh
@@ -248,12 +248,12 @@ RECORDER
     while :; do
         logcat -b main -d -v threadtime --pid="$APP_PID" '*:V' \
             > "$CAP/app-diagnostic-readiness.txt" 2> "$CAP/app-diagnostic-readiness-error.txt" || true
-        if grep -Fq 'ROUKE_DIAGNOSTICS schema=3 msgid=53022 len=132 crc=37' "$CAP/app-diagnostic-readiness.txt"; then
-            printf 'schema=3 verified for QGC pid=%s\n' "$APP_PID" > "$CAP/diagnostics-schema.txt"
+        if awk 'index($0, "ROUKE_DIAGNOSTICS schema=5 msgid=53022 len=132 crc=37") && /(^|[[:space:]])reservePolicy=ignored([[:space:]]|$)/ {found=1} END {exit !found}' "$CAP/app-diagnostic-readiness.txt"; then
+            printf 'schema=5 reservePolicy=ignored verified for QGC pid=%s\n' "$APP_PID" > "$CAP/diagnostics-schema.txt"
             break
         fi
         if [ "$I" -ge 20 ]; then
-            echo '未检测到新版 APK 的 Rouke 诊断能力标记，暂不要拔 USB。可能是旧 APK 或 QGC 未完成启动。' >&2
+            echo '未检测到新版 APK 的 schema=5 / reservePolicy=ignored 标记，暂不要拔 USB。可能是旧 APK 或 QGC 未完成启动。' >&2
             echo '先执行 finish 导出启动日志；将本地 custom 改动同步到构建电脑、重新构建安装后再 start。' >&2
             exit 10
         fi
@@ -343,6 +343,7 @@ CH14测试：释放及按下时间/回中结果：
 远端是否仍在发送视频（仅隐藏窗口不等于停止传输，不确定请注明）：
 是否切后台/录屏/改IP或视频设置/重启QGC：
 三类症状是否在同一时间出现：
+商家同期发送A1/118心跳、C1/48尾片的时间/频率及对应日志（若可提供）：
 NOTES
 shopt -s nullglob
 LOGS=()
@@ -357,7 +358,8 @@ INDEX_NOTE='索引保留文件名/行号；轮转文件编号不是时间顺序�
 printf '%s\n' "$INDEX_NOTE" > "$LOCAL/index-readme.txt"
 cat >> "$LOCAL/index-readme.txt" <<'FIELDS'
 
-schema=3：ROUKE_RX_CONFIG 记录 session、端点及本地端口；同 session/report 的
+schema=5 / reservePolicy=ignored：接收 reserve 只记录、不作为拒绝条件，发送保持 0。
+ROUKE_RX_CONFIG 记录 session、端点及本地端口；同 session/report 的
 ROUKE_RX_SNAPSHOT / TRANSPORT / INNER 为一次周期或超时快照。
 ROUKE_RX_RELAY_FIRST 表示配置端点第一次送来 CRC 通过的 MAVLink 2 / 53022，
 此时还未检查 relay 字段和内层。ROUKE_RX cmd 表示完整内层通过方向/地址检查，
@@ -370,6 +372,32 @@ invalidRelay 等是会话累计；bytes 单位为字节，relay 在内层检查�
 INNER 的 valid/matched/rejectRoute/rejectPayload 等是累计；pending 为当前重组流数。
 valid 为完整合法信封，matched 为进一步通过方向/地址检查；都不等于参数请求成功。
 日志索引可重复包含 ring/tail；coverage 的命中行数只是覆盖情况，不是网络报文数。
+
+index-53022-raw.txt 为 QGC 入口观察，不是网卡 pcap：
+ROUKE_WIRE_RX 记录通过 MAVLink CRC 的 53022 字段，lane=payload 是独立控制 UDP
+socket（在远端来源及内层业务过滤前观察）；lane=native 是原生 MAVLink 已解析入口。
+payload 的 peer/localPort/peerMatch 定位回到哪个 socket，native 的 channel/linkType/
+udpConfiguredLocalPort/logReplay 定位原生链路；native 不提供已验证的远端 UDP 源地址。
+native 的 WIRE_TOTAL 带 liveOnly=1，按观察会话汇总所有非回放原生链路，不是逐 link 计数；
+旧 ROUKE_NATIVE_RX 仍可能含 logReplay=1，仅其非回放记录可作为实时证据。
+sys/comp/seq/len/checksum 是外层信息；payload/reserve/dataLen 是 53022 字段，reserve 为十六进制。
+ROUKE_WIRE_DATA 按 offset 拼接有效 data；独立 socket 的 ROUKE_WIRE_FRAME 直接取
+已收 UDP 数据报内的真实 MAVLink 帧字节（representation=udp-bytes），不含以太网/IP/UDP头。
+原生入口只有解码消息，representation=decoded，ROUKE_WIRE_PAYLOAD 输出外层 payload，
+不伪称线上完整帧。每行最多 48 字节 HEX，用 lane/session/sample 关联，再按 offset 排序。
+ROUKE_WIRE_TOTAL 每秒输出 valid53022/reserveA1/reserveC1/a1Heartbeat/c1AckTail/
+peerRejected/emitted/suppressed/cap，累计量按同进程、同 lane/session 比较阶段增量。
+reserveA1/reserveC1 只统计该 reserve；sampleMatch 与 a1Heartbeat/c1AckTail 要求
+payload_addr=0、reserve、data_len 和完整 data 字节都与商家样例相同，不只是长度相同。
+C1 尾片必须与同源首片重组成完整内层帧，才能确认命令并进入 ACK 匹配。
+payload 样例命中说明该报文已到独立 socket，不能把这一报文归因为视频拥塞丢失；
+native 命中只证明原生链路收到，不证明独立控制 socket 收到。
+decision=outer-pass 只表示通过初步外层检查，后续业务结果看 INNER/ROUKE_RX_RESULT。
+两个 lane 可能观察同一网络流量的副本，不能相加当作唯一网卡报文总数。
+详细样本按 reserve 分类限速，每入口最多 4 个/秒、总上限 240；超过限额仍累计 TOTAL，
+因此缺少某一时刻的 HEX 不等于未收到，不能用 RX 命中行数代替 TOTAL 计数。
+合法的 A1 heartbeat 内层帧可刷新在线状态，但不是参数 ACK；raw 样例命中不等于参数请求成功。
+坏 CRC、未到 QGC socket 或日志覆盖范围外的字节不能由这些记录证明，需要网卡抓包补证。
 
 index-network.txt 汇集下列原始采样及 qgc.comms.udplink / UDP Adding target 日志（文件名/行号保留）：
 原生 UDP 日志记录本地绑定端口和自动学习目标，只说明 QGC 端配置/目标发现，不证明 AI 盒子已改变回程路由。
@@ -395,17 +423,18 @@ for file in "${NETWORK_LOGS[@]}"; do
 done
 coverage() { printf '%s\n' "$*" | tee -a "$LOCAL/coverage.txt"; }
 coverage '这是日志覆盖提示，不是自动诊断或零断流结论。'
-if [[ -f $LOCAL/device/diagnostics-schema.txt ]] && grep -Fq 'schema=3 verified' "$LOCAL/device/diagnostics-schema.txt"; then
-    coverage 'FOUND Rouke schema=3（本次启动检测到分层接收计数；不代表三链路已通过）'
+if [[ -f $LOCAL/device/diagnostics-schema.txt ]] && grep -Fq 'schema=5 reservePolicy=ignored verified' "$LOCAL/device/diagnostics-schema.txt"; then
+    coverage 'FOUND Rouke schema=5 reservePolicy=ignored（本次启动已确认入口诊断及reserve接收策略；不代表三链路已通过）'
 else
     coverage 'WARNING: 启动时未验证新版 APK 诊断能力；检查 app-diagnostic-readiness.txt，不能据缺少明细推断控制未发送。'
 fi
 if (( ${#LOGS[@]} )); then
     grep -nHEi 'qgc\.comms\.udplink|UDP Adding target:' "${LOGS[@]}" >> "$LOCAL/index-network.txt" || true
     grep -nHEi 'videomanager|gcs\.custom\.video|pulledvideoresolution|192\.168\.144\.100|secondaryVideoContent|Secondary |androidh265|androidvideodecoder|Negotiated compressed video|source frame|decoder.*frame|sink.*frame|amcvid|MediaCodec|CCodec|ACodec|qml6|qt6gl|rtspsrc|not-negotiated' "${LOGS[@]}" > "$LOCAL/index-video.txt" || true
-    grep -nHEi 'rouke\.(payload|trace|native)|ROUKE_(TX|RX|NATIVE_RX)|Rouke UDP|Rouke command|53022|lr1_|get_sdcard_capacity|gimbal_speed_ctrl|payloadAddress' "${LOGS[@]}" > "$LOCAL/index-payload.txt" || true
+    grep -nHEi 'rouke\.(payload|trace|raw|native)|ROUKE_(TX|RX|WIRE|NATIVE_RX)|Rouke UDP|Rouke command|53022|lr1_|get_sdcard_capacity|gimbal_speed_ctrl|payloadAddress' "${LOGS[@]}" > "$LOCAL/index-payload.txt" || true
+    grep -nHE 'ROUKE_WIRE_(RX|DATA|FRAME|PAYLOAD|TOTAL)|ROUKE_RX_CONFIG|ROUKE_DIAGNOSTICS' "${LOGS[@]}" > "$LOCAL/index-53022-raw.txt" || true
     grep -nHEi 'unirc|rouke\.channels|ROUKE_RC|CH11|CH12|CH14|gimbal_speed_ctrl|gimbal_center|UART2|SDK_ROUTE' "${LOGS[@]}" > "$LOCAL/index-rc.txt" || true
-    for marker in 'Negotiated compressed video source caps' 'gcs.custom.gimbal.rouke.payload' 'gcs.custom.android.unircchannel' 'ROUKE_TX' 'ROUKE_RX_RELAY_FIRST' 'ROUKE_RX_TRANSPORT' 'ROUKE_RX_INNER' 'ROUKE_RX cmd ' 'ROUKE_RX_RESULT' 'ROUKE_RC'; do
+    for marker in 'Negotiated compressed video source caps' 'gcs.custom.gimbal.rouke.payload' 'gcs.custom.android.unircchannel' 'ROUKE_TX' 'ROUKE_WIRE_TOTAL' 'ROUKE_WIRE_RX' 'ROUKE_RX_RELAY_FIRST' 'ROUKE_RX_TRANSPORT' 'ROUKE_RX_INNER' 'ROUKE_RX cmd ' 'ROUKE_RX_RESULT' 'ROUKE_RC'; do
         if grep -Eql "$marker" "${LOGS[@]}"; then coverage "FOUND $marker"
         else coverage "MISSING $marker（可能未操作、日志未启用、旧 APK、链路未到该阶段或日志被覆盖）"; fi
     done
@@ -414,6 +443,7 @@ if (( ${#LOGS[@]} )); then
         coverage "INDEX_LINES $marker=$COUNT（可能含重复快照，仅表示日志覆盖；报文累计量看 TRANSPORT/INNER）"
     done
     coverage '默认关闭 AMC/GL 逐帧 debug；视频判断结合 QGC codec、decoder/sink 首帧和错误。'
+    coverage '53022 HEX 有限采样；A/B/C阶段样例接收数量看同lane/session的WIRE_TOTAL增量，日志索引行数不是包数。'
 else
     coverage 'WARNING: 没有 logcat 文件，只能检查采集器/启动错误。'
 fi

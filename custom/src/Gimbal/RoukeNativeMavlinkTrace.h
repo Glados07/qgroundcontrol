@@ -7,6 +7,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <array>
+#include "RoukeRawMavlinkTrace.h"
 
 class RoukeNativeMavlinkTrace
 {
@@ -36,7 +37,8 @@ public:
         return {log, state.count};
     }
 
-    void reset() { _channels = {}; }
+    RoukeRawMavlinkTrace &raw() { return _raw; }
+    void reset() { _channels = {}; _raw.reset(); }
 
 private:
     struct Channel {
@@ -46,4 +48,5 @@ private:
         bool logged = false;
     };
     std::array<Channel, ChannelCount> _channels{};
+    RoukeRawMavlinkTrace _raw;
 };

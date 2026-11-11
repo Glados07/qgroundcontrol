@@ -1,6 +1,7 @@
 #include "RoukePayloadController.h"
 #include "RoukeProtocol.h"
 #include "RoukeNativeMavlinkTrace.h"
+#include "RoukeRawMavlinkTrace.h"
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QLoggingCategory>
@@ -31,7 +32,8 @@ private:
     static void handleMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
     {
         if (current && (qstrcmp(context.category, "gcs.custom.gimbal.rouke.payload") == 0
-                        || qstrcmp(context.category, "gcs.custom.gimbal.rouke.trace") == 0)) {
+                        || qstrcmp(context.category, "gcs.custom.gimbal.rouke.trace") == 0
+                        || qstrcmp(context.category, "gcs.custom.gimbal.rouke.raw") == 0)) {
             current->messages.append(message);
         } else if (current && current->previous) {
             current->previous(type, context, message);
@@ -47,6 +49,34 @@ public:
     ~PayloadTraceFilter() { QLoggingCategory::setFilterRules({}); }
 };
 
+class PayloadRawTraceFilter {
+public:
+    PayloadRawTraceFilter() {
+        QLoggingCategory::setFilterRules("gcs.custom.gimbal.rouke.trace.debug=true\ngcs.custom.gimbal.rouke.raw.debug=true");
+    }
+    ~PayloadRawTraceFilter() { QLoggingCategory::setFilterRules({}); }
+};
+
+// Exact vendor DATA samples, not a claim that their complete outer wire header
+// or checksum was supplied. Tests wrap these bytes with the real generated SDK.
+QByteArray vendorRelayData(bool heartbeat)
+{
+    return QByteArray::fromHex(heartbeat
+        ? "f0e06f007b22636d64223a22686561727462656174222c22636f6465223a302c2264617461223a7b2269734f73646b4f6e6c696e65223a747275657d2c226d7367223a22222c22736f75726365223a227073646b222c22746172676574223a226d73646b222c2274797065223a22726571227d00f1e1"
+        : "22736f75726365223a227073646b222c22746172676574223a226d73646b222c2274797065223a2261636b227d00f1e1");
+}
+
+QByteArray loggedHex(const QStringList &lines, const QString &prefix)
+{
+    QByteArray hex;
+    for (const auto &line : lines) {
+        if (!line.startsWith(prefix)) continue;
+        const int index = line.indexOf(" hex=");
+        if (index >= 0) hex += line.mid(index + 5).section(' ', 0, 0).toLatin1();
+    }
+    return QByteArray::fromHex(hex);
+}
+
 // Deliberately independent of the production frame encoder and splitter.
 QByteArray rawFrame(const QJsonObject &object)
 {
@@ -60,12 +90,13 @@ QByteArray rawFrame(const QJsonObject &object)
 }
 
 QByteArray fragmentBytes(const QByteArray &fragment, int address = 7, int system = 42,
-                         int component = 77, int sequence = 0, int lengthOverride = -1)
+                         int component = 77, int sequence = 0, int lengthOverride = -1, int reserve = 0)
 {
     Q_ASSERT(fragment.size() <= 128);
     if (fragment.size() > 128) return {}; // Keep Release fixtures memory-safe too.
     mavlink_vk_payload_data_relay_t relay{};
     relay.payload_addr = static_cast<uint16_t>(address);
+    relay.reserve = static_cast<uint8_t>(reserve);
     relay.data_len = static_cast<uint8_t>(lengthOverride < 0 ? fragment.size() : lengthOverride);
     std::memcpy(relay.data, fragment.constData(), static_cast<size_t>(fragment.size()));
     mavlink_message_t message{};
@@ -75,6 +106,30 @@ QByteArray fragmentBytes(const QByteArray &fragment, int address = 7, int system
     uint8_t bytes[MAVLINK_MAX_PACKET_LEN]{};
     const auto count = mavlink_msg_to_send_buffer(bytes, &message);
     return QByteArray(reinterpret_cast<char *>(bytes), count);
+}
+
+bool decodeMavlinkWire(const QByteArray &bytes, mavlink_message_t *message)
+{
+    mavlink_message_t rx{};
+    mavlink_status_t parser{}, status{};
+    int complete = 0;
+    for (const char byte : bytes) {
+        if (mavlink_frame_char_buffer(&rx, &parser, uint8_t(byte), message, &status) == MAVLINK_FRAMING_OK) ++complete;
+    }
+    return complete == 1;
+}
+
+QByteArray untrimmedRelayWire(const QByteArray &trimmed)
+{
+    const int payloadSize = uint8_t(trimmed.at(1));
+    QByteArray wire = trimmed.left(10 + payloadSize);
+    wire.append(QByteArray(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN - payloadSize, '\0'));
+    wire[1] = char(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_LEN);
+    uint16_t crc = crc_calculate(reinterpret_cast<const uint8_t *>(wire.constData() + 1), uint16_t(wire.size() - 1));
+    crc_accumulate(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_CRC, &crc);
+    wire.append(char(crc & 0xff));
+    wire.append(char(crc >> 8));
+    return wire;
 }
 
 QByteArray messageBytes(const QJsonObject &object, int address = 7, int lengthOverride = -1)
@@ -208,6 +263,217 @@ class RoukePayloadControllerTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void rawSampleCapKeepsExactMatchCountersAndNativeRepresentation()
+    {
+        mavlink_message_t heartbeat{}, tail{}, unrelated{};
+        QVERIFY(decodeMavlinkWire(untrimmedRelayWire(fragmentBytes(vendorRelayData(true), 0, 42, 77, 0, -1, 0xa1)), &heartbeat));
+        QVERIFY(decodeMavlinkWire(fragmentBytes(vendorRelayData(false), 0, 42, 77, 0, -1, 0xc1), &tail));
+        auto altered = vendorRelayData(true); altered[20] = char(altered.at(20) ^ 1);
+        QVERIFY(decodeMavlinkWire(fragmentBytes(altered, 0, 42, 77, 0, -1, 0xa1), &unrelated));
+        RoukeRawMavlinkTrace trace;
+        const auto first = trace.observe(heartbeat, 0, false);
+        QVERIFY(first.log);
+        QCOMPARE(first.match, QString("a1-heartbeat"));
+        const auto native = trace.sampleLines(first, heartbeat, "native", 1, " channel=0 linkType=1");
+        QVERIFY(native.join('\n').contains("representation=decoded"));
+        QVERIFY(native.filter("ROUKE_WIRE_FRAME").isEmpty());
+        QCOMPARE(loggedHex(native, "ROUKE_WIRE_PAYLOAD"), QByteArray(_MAV_PAYLOAD(&heartbeat), heartbeat.len));
+        QCOMPARE(loggedHex(native, "ROUKE_WIRE_DATA"), vendorRelayData(true));
+        QVERIFY(!trace.observe(heartbeat, 10).log); // Same bucket suppressed, still counted.
+        QVERIFY(trace.observe(tail, 10).log);      // Other reserve bucket remains visible.
+        trace.reset();
+        for (quint64 i = 0; i < RoukeRawMavlinkTrace::SampleLimit + 40; ++i) {
+            const auto sample = trace.observe(i % 2 ? tail : heartbeat, qint64(i * 1000), i % 2 == 0);
+            QCOMPARE(sample.log, i < RoukeRawMavlinkTrace::SampleLimit);
+            QCOMPARE(sample.match, i % 2 ? QString("c1-ack-tail") : QString("a1-heartbeat"));
+        }
+        QCOMPARE(trace.counters().valid53022, quint64(280));
+        QCOMPARE(trace.counters().a1Heartbeat, quint64(140));
+        QCOMPARE(trace.counters().c1AckTail, quint64(140));
+        QCOMPARE(trace.counters().peerRejected, quint64(140));
+        QCOMPARE(trace.counters().emitted, quint64(240));
+        QCOMPARE(trace.counters().suppressed, quint64(40));
+        const auto changed = trace.observe(unrelated, 300000);
+        QVERIFY(!changed.log);
+        QCOMPARE(changed.match, QString("none"));
+        QCOMPARE(trace.counters().reserveA1, quint64(141));
+        QCOMPARE(trace.counters().a1Heartbeat, quint64(140));
+        QVERIFY(trace.summary("payload", 3).contains("valid53022=281"));
+        QVERIFY(trace.summary("payload", 3).contains("emitted=240 suppressed=41 cap=240"));
+        trace.reset();
+        QCOMPARE(trace.counters().valid53022, quint64(0));
+        QVERIFY(trace.observe(heartbeat, 0).log);
+    }
+
+    void vendorReserveSamplesKeepHeartbeatAndAckSemantics_data()
+    {
+        QTest::addColumn<bool>("heartbeat");
+        QTest::newRow("a1-heartbeat") << true;
+        QTest::newRow("c1-ack-tail") << false;
+    }
+
+    void vendorReserveSamplesKeepHeartbeatAndAckSemantics()
+    {
+        QFETCH(bool, heartbeat);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadRawTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        QTRY_VERIFY(box.hasPendingDatagrams());
+        while (box.hasPendingDatagrams()) box.receiveDatagram();
+        logs.messages.clear();
+        const QByteArray data = vendorRelayData(heartbeat);
+        QCOMPARE(data.size(), heartbeat ? 118 : 48);
+        const QByteArray wire = fragmentBytes(data, 0, 42, 77, 0, -1, heartbeat ? 0xa1 : 0xc1);
+        mavlink_message_t decoded{};
+        QVERIFY(decodeMavlinkWire(wire, &decoded));
+        QCOMPARE(decoded.msgid, uint32_t(53022));
+        QCOMPARE(MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY_CRC, 37);
+        QCOMPARE(box.writeDatagram(wire, QHostAddress::LocalHost, controller.boundPort()), qint64(wire.size()));
+        QTRY_COMPARE(logs.messages.filter("ROUKE_WIRE_RX").size(), 1);
+        QString output = logs.messages.join('\n');
+        QVERIFY(output.contains(heartbeat ? "sampleMatch=a1-heartbeat" : "sampleMatch=c1-ack-tail"));
+        QVERIFY(output.contains(heartbeat ? "reserve=a1" : "reserve=c1"));
+        QVERIFY(output.contains(QString("dataLen=%1").arg(data.size())));
+        QVERIFY(output.contains("decision=outer-pass"));
+        QCOMPARE(loggedHex(logs.messages, "ROUKE_WIRE_DATA"), data);
+        QCOMPARE(loggedHex(logs.messages, "ROUKE_WIRE_FRAME"), wire);
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("relay=1 invalidRelay=0"), 1500);
+        QVERIFY(controller.pending());
+        QCOMPARE(controller.responding(), heartbeat);
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(controller.cameraParameters().isEmpty());
+        QCOMPARE(controller.photoCount(), 0);
+        for (const auto &line : logs.messages.filter("ROUKE_WIRE_")) QVERIFY2(line.toUtf8().size() < 600, qPrintable(line));
+    }
+
+    void differentNonzeroReserveFragmentsReassembleExactVendorAckTail()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadRawTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        QTRY_VERIFY(box.hasPendingDatagrams());
+        while (box.hasPendingDatagrams()) box.receiveDatagram();
+
+        auto response = ack("lr1_iso");
+        response["data"] = QJsonObject{{"value", 12}};
+        const QByteArray frame = rawFrame(response);
+        const QByteArray tail = vendorRelayData(false);
+        QCOMPARE(frame.right(tail.size()), tail); // Exactly the merchant's 48 DATA bytes.
+        const QByteArray prefix = frame.left(frame.size() - tail.size());
+        QVERIFY(!prefix.isEmpty() && prefix.size() <= 128);
+        const auto firstWire = fragmentBytes(prefix, 0, 42, 77, 0, -1, 0xa1);
+        const auto lastWire = fragmentBytes(tail, 0, 42, 77, 1, -1, 0xc1);
+        QCOMPARE(box.writeDatagram(firstWire, QHostAddress::LocalHost, controller.boundPort()), qint64(firstWire.size()));
+        QTRY_COMPARE(logs.messages.filter("ROUKE_WIRE_RX").size(), 1);
+        QVERIFY(controller.pending());
+        QVERIFY(!controller.responding());
+        QVERIFY(controller.cameraParameters().isEmpty());
+        QCOMPARE(finished.count(), 0);
+
+        QCOMPARE(box.writeDatagram(lastWire, QHostAddress::LocalHost, controller.boundPort()), qint64(lastWire.size()));
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(!controller.pending());
+        QVERIFY(controller.responding());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 12);
+        QVERIFY(logs.messages.join('\n').contains("sampleMatch=c1-ack-tail"));
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("relay=2 invalidRelay=0"), 1500);
+        QCOMPARE(controller.photoCount(), 0);
+    }
+
+    void invalidRelayLengthsStillRejected_data()
+    {
+        QTest::addColumn<int>("dataLength");
+        QTest::newRow("zero") << 0;
+        QTest::newRow("over-capacity") << 129;
+    }
+
+    void invalidRelayLengthsStillRejected()
+    {
+        QFETCH(int, dataLength);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadRawTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        QTRY_VERIFY(box.hasPendingDatagrams());
+        while (box.hasPendingDatagrams()) box.receiveDatagram();
+        const auto wire = fragmentBytes(vendorRelayData(true), 0, 42, 77, 0, dataLength, 0xa1);
+        QCOMPARE(box.writeDatagram(wire, QHostAddress::LocalHost, controller.boundPort()), qint64(wire.size()));
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains("relay=1 invalidRelay=1"), 1500);
+        QVERIFY(logs.messages.join('\n').contains("decision=data-length"));
+        QVERIFY(controller.pending());
+        QVERIFY(!controller.responding());
+        QVERIFY(controller.cameraParameters().isEmpty());
+    }
+
+    void rawIngressObservesForeignPeerBeforeAddressAndPortFilter_data()
+    {
+        QTest::addColumn<QString>("sourceAddress");
+        QTest::addColumn<QString>("rejectionCounter");
+        QTest::newRow("wrong-port") << QString("127.0.0.1") << QString("rejectPort=1");
+        QTest::newRow("wrong-address") << QString("127.0.0.2") << QString("rejectAddress=1");
+    }
+
+    void rawIngressObservesForeignPeerBeforeAddressAndPortFilter()
+    {
+        QFETCH(QString, sourceAddress);
+        QFETCH(QString, rejectionCounter);
+        QUdpSocket box, foreign;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        QVERIFY(foreign.bind(QHostAddress(sourceAddress), quint16(0)));
+        PayloadRawTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
+        logs.messages.clear();
+        const auto wire = fragmentBytes(vendorRelayData(true), 0, 42, 77, 0, -1, 0xa1);
+        QCOMPARE(foreign.writeDatagram(wire, QHostAddress::LocalHost, controller.boundPort()), qint64(wire.size()));
+        QTRY_COMPARE(logs.messages.filter("ROUKE_WIRE_RX").size(), 1);
+        const QString output = logs.messages.join('\n');
+        QVERIFY(output.contains("sampleMatch=a1-heartbeat"));
+        QVERIFY(output.contains(QString("%1:%2").arg(sourceAddress).arg(foreign.localPort())));
+        QCOMPARE(loggedHex(logs.messages, "ROUKE_WIRE_FRAME"), wire);
+        QTRY_VERIFY_WITH_TIMEOUT(logs.messages.join('\n').contains(rejectionCounter), 1500);
+        QVERIFY(logs.messages.join('\n').contains("relay=0 invalidRelay=0"));
+        QVERIFY(logs.messages.join('\n').contains("peerRejected=1"));
+        QVERIFY(!controller.responding());
+        QVERIFY(controller.cameraParameters().isEmpty());
+    }
+
+    void rawIngressPreservesWireTailZeros()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        PayloadRawTraceFilter trace;
+        PayloadLogCapture logs;
+        RoukePayloadController controller;
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 0);
+        logs.messages.clear();
+        const auto wire = untrimmedRelayWire(fragmentBytes(vendorRelayData(true), 0, 42, 77, 0, -1, 0xa1));
+        QCOMPARE(wire.size(), 144);
+        mavlink_message_t decoded{};
+        QVERIFY(decodeMavlinkWire(wire, &decoded));
+        QCOMPARE(decoded.len, uint8_t(132));
+        QCOMPARE(box.writeDatagram(wire, QHostAddress::LocalHost, controller.boundPort()), qint64(wire.size()));
+        QTRY_COMPARE(logs.messages.filter("ROUKE_WIRE_RX").size(), 1);
+        QCOMPARE(loggedHex(logs.messages, "ROUKE_WIRE_FRAME"), wire);
+        QVERIFY(logs.messages.join('\n').contains("representation=udp-bytes"));
+        QCOMPARE(loggedHex(logs.messages, "ROUKE_WIRE_DATA"), vendorRelayData(true));
+        QTRY_VERIFY(controller.responding());
+    }
+
     void initializationStagesCoalesceAndConfirmedValuesAreSkipped()
     {
         QUdpSocket box;
@@ -731,7 +997,8 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         QVERIFY(logs.messages.join('\n').contains(QString("boundLocalPort %1").arg(controller.boundPort())));
-        QVERIFY(logs.messages.join('\n').contains("ROUKE_DIAGNOSTICS schema=3 msgid=53022 len=132 crc=37 scope=build-contract"));
+        QVERIFY(logs.messages.join('\n').contains("ROUKE_DIAGNOSTICS schema=5 msgid=53022 len=132 crc=37 scope=build-contract"));
+        QVERIFY(logs.messages.join('\n').contains("raw53022=1 reservePolicy=ignored"));
         QVERIFY(logs.messages.join('\n').contains(QString("remotePort %1").arg(box.localPort())));
         QVERIFY(logs.messages.join('\n').contains("payloadAddress 7"));
         logs.messages.clear();

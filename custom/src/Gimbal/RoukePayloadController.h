@@ -5,6 +5,7 @@
 
 #include "MAVLinkLib.h"
 #include "RoukeProtocol.h"
+#include "RoukeRawMavlinkTrace.h"
 
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QHash>
@@ -16,6 +17,8 @@
 #include <QtCore/QVariantMap>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
+
+class QNetworkDatagram;
 
 class RoukePayloadController : public QObject
 {
@@ -81,6 +84,7 @@ signals:
 
 private:
     void _readDatagrams();
+    void _observeRawDatagram(const QNetworkDatagram &datagram);
     void _handleMessage(const mavlink_message_t &message, quint64 requestSerial, quint64 centerSerial,
                         quint64 sdCardSerial);
     void _handleFrame(const QJsonObject &object, uint16_t payloadAddress,
@@ -146,6 +150,7 @@ private:
     QElapsedTimer _lastRelayAge;
     QElapsedTimer _lastMatchedFrameAge;
     quint64 _receiveDiagnosticReport = 0;
+    RoukeRawMavlinkTrace _rawTrace;
 
     QUdpSocket _socket;
     QHostAddress _host;
