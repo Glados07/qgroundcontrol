@@ -46,6 +46,13 @@
     "units":            "mAh"
 },
 {
+    "name":             "energyConsumed",
+    "shortDesc":        "Consumed Energy",
+    "type":             "double",
+    "decimalPlaces":    0,
+    "units":            "hJ"
+},
+{
     "name":             "current",
     "shortDesc":        "Current",
     "type":             "double",

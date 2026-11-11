@@ -286,7 +286,7 @@ ToolIndicatorPage {
             }
             LabelledLabel {
                 label: qsTr("Consumed")
-                labelText: batteryPane.model.formatFact(batteryPane.model.battery ? batteryPane.model.battery.mahConsumed : null, "mAh")
+                labelText: batteryPane.model.formatFact(batteryPane.model.battery ? batteryPane.model.battery.energyConsumed : null, "hJ")
             }
         }
 

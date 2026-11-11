@@ -1,6 +1,6 @@
 # PowerSystemIndicator 开发文档
 
-更新日期：2026-11-06。适用仓库：`/home/glados/app/qgroundcontrol`。
+更新日期：2026-11-11。适用仓库：`/home/glados/app/qgroundcontrol`。
 
 本文面向开发人员，记录 PowerSystemIndicator 的设计约定、实现边界、代码组织和开发日志。用户操作说明见 [README.md](README.md)，测试计划与执行记录见 [TEST.md](TEST.md)，FuelCellController 后端接口见 [后端 README](../../src/FuelCellController/README.md)。
 
@@ -8,7 +8,7 @@
 
 将顶部独立的 BatteryIndicator 和 FuelCellControllerIndicator 合并为一个 `PowerSystemIndicator`，减少工具栏占用，并在同一详情面板内查看 PMU 电池状态、低电量配置及 FCS 状态和控制。
 
-按现有 QGC 做法完成最小必要变更，界面和集成修改限于 `custom/`。复用既有电池 Fact、参数编辑控件及 FuelCellController 后端，不修改 PX4、MAVLink 协议、通用工具栏框架或其他无关功能。
+按现有 QGC 做法完成最小必要变更，界面修改位于 `custom/`，复用参数编辑控件及 FuelCellController 后端。2026-11-10 起，为显示飞控累计能量，在通用电池 FactGroup 中新增 `energyConsumed` Fact，并配套修改 PX4 的能量累计及发送；不修改 MAVLink 协议定义、通用工具栏框架或其他无关功能。
 
 ## 2. 已确认的交互选择
 
@@ -80,7 +80,7 @@ FCS 状态不改变主图标的电池配色。
 
 | 分组 | 内容 |
 | --- | --- |
-| Power Status | 电源状态、实测电压、功率、电流、已消耗电量 |
+| Power Status | 电源状态、实测电压、功率、电流、已消耗能量 |
 | Low Power Failsafe | `COM_LOW_BAT_ACT`、`UAVCAN_POW_LOW`、`UAVCAN_POW_CRITI`、`UAVCAN_POW_EMERG` |
 
 配置继续使用标准 Fact 控件，保留原有校验、逐项提交及参数本身的重启要求。不新增统一保存按钮、批量事务或额外解锁条件。
@@ -147,7 +147,7 @@ FCS 开机点击后立即请求，不显示确认框；关机和急停保留确�
 
 通过 `CustomFirmwarePlugin` 在原 BatteryIndicator 位置替换为合并入口，保留独立 FuelStatusIndicator 的原有顺序。同步 QRC、QML 模块和翻译注册，移除不再使用的自定义电池覆盖及独立 FCS 顶部入口。
 
-不改通用 `ToolIndicatorPage`、`MainWindow`、`FlyViewToolBar`、上游电池 FactGroup 或上游 BatteryIndicator。FuelCellControllerManager 暴露请求功率、DCDC 电流和 FCS 状态等只读属性，不再暴露协议已删除的母线电压和电流；QGC 只消费固定版本的生成库，不在本仓库定义 MAVLink 消息，也不引入新的运行依赖或永久 QML 测试依赖。
+不改通用 `ToolIndicatorPage`、`MainWindow`、`FlyViewToolBar` 或上游 BatteryIndicator。通用电池 FactGroup 仅新增能量 Fact 及标准字段接收，既有属性继续保留。FuelCellControllerManager 暴露请求功率、DCDC 电流和 FCS 状态等只读属性，不再暴露协议已删除的母线电压和电流；QGC 只消费固定版本的生成库，不在本仓库定义 MAVLink 消息，也不引入新的运行依赖或永久 QML 测试依赖。
 
 ## 7. 验收标准
 
@@ -189,6 +189,11 @@ PowerSystemIndicator 前端只保留两个 QML 文件：
 
 - `custom/src/UI/toolbar/PowerSystemIndicator.qml`
 - `custom/src/QmlControls/PowerSystemIndicatorPage.qml`
+
+能量数据接入文件：
+
+- `src/Vehicle/FactGroups/VehicleBatteryFactGroup.h/.cc`
+- `src/Vehicle/FactGroups/BatteryFact.json`
 
 主要集成和说明文件：
 
@@ -304,3 +309,19 @@ PowerSystemIndicator 文档固定为三份：
 - 右栏首个分组标题改为 `Fuel Cell`（燃料电池），保留设备连接、FCS 状态和 DCDC 输出电流。
 - 以“锂电池 / SOC”分组替换“飞控下发参数”分组；将“请求功率”移至“FCS 控制”分组首行，位于“当前控制指令”之上。
 - 数据绑定、单位、精度、控制门限和请求行为不变；同步更新中英文翻译与用户说明。
+
+
+### 2026-11-10：已消耗改为能量 hJ
+
+- `VehicleBatteryFactGroup` / `BatteryFact.json` 新增 `energyConsumed`，接收标准 `BATTERY_STATUS.energy_consumed`，负值无效，单位 hJ、零位小数。
+- PowerSystemIndicator 的 Consumed 改用新 Fact；不再显示 mAh，不提供旧值回退；原 mAh 接收和其他界面保持原状。
+- PX4 配套实现 UAVCAN 四路径的能量积分及有效性，不增加 QGC 积分或 PMU 超时判断，不修改 FCS 控制。
+- 初版包含 Fact 消息验证，并更新用户说明、测试计划及飞控能量文档；新增测试代码和注册已于 2026-11-11 按要求移除。初版历史记录见 TEST.md。
+
+
+### 2026-11-11：精简能量改动
+
+- 删除本次新增的 Fact 测试源码、测试列表和 CMake/CTest 注册，既有其他功能的测试保持原状。
+- PX4 直接修改原 BatteryStatus，保持原消息版本，不新增旧定义归档或版本转换改动。
+- 删除 uORB 独立有效标志，UAVCAN 以能量数值 -1 表示尚无有效采样；QGC 的负值无效处理和 hJ 显示无需改动。
+- 同步说明其他未修改电池来源的默认零值会显示 `0 hJ`，不再声称能够区分未实现与有效零值。

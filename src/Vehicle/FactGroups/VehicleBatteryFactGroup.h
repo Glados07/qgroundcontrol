@@ -21,6 +21,7 @@ class VehicleBatteryFactGroup : public FactGroup
     Q_PROPERTY(Fact *voltage            READ voltage            CONSTANT)
     Q_PROPERTY(Fact *current            READ current            CONSTANT)
     Q_PROPERTY(Fact *mahConsumed        READ mahConsumed        CONSTANT)
+    Q_PROPERTY(Fact *energyConsumed     READ energyConsumed     CONSTANT)
     Q_PROPERTY(Fact *percentRemaining   READ percentRemaining   CONSTANT)
     Q_PROPERTY(Fact *timeRemaining      READ timeRemaining      CONSTANT)
     Q_PROPERTY(Fact *timeRemainingStr   READ timeRemainingStr   CONSTANT)
@@ -36,6 +37,7 @@ public:
     Fact *voltage() { return &_voltageFact; }
     Fact *percentRemaining() { return &_percentRemainingFact; }
     Fact *mahConsumed() { return &_mahConsumedFact; }
+    Fact *energyConsumed() { return &_energyConsumedFact; }
     Fact *current() { return &_currentFact; }
     Fact *temperature() { return &_temperatureFact; }
     Fact *instantPower() { return &_instantPowerFact; }
@@ -66,6 +68,7 @@ private:
     Fact _voltageFact = Fact(0, QStringLiteral("voltage"), FactMetaData::valueTypeDouble);
     Fact _currentFact = Fact(0, QStringLiteral("current"), FactMetaData::valueTypeDouble);
     Fact _mahConsumedFact = Fact(0, QStringLiteral("mahConsumed"), FactMetaData::valueTypeDouble);
+    Fact _energyConsumedFact = Fact(0, QStringLiteral("energyConsumed"), FactMetaData::valueTypeDouble);
     Fact _temperatureFact = Fact(0, QStringLiteral("temperature"), FactMetaData::valueTypeDouble);
     Fact _percentRemainingFact = Fact(0, QStringLiteral("percentRemaining"), FactMetaData::valueTypeDouble);
     Fact _timeRemainingFact = Fact(0, QStringLiteral("timeRemaining"), FactMetaData::valueTypeDouble);

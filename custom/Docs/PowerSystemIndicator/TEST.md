@@ -1,6 +1,6 @@
 # PowerSystemIndicator 测试计划与记录
 
-更新时间：2026-11-06。适用仓库：`/home/glados/app/qgroundcontrol`。
+更新时间：2026-11-11。适用仓库：`/home/glados/app/qgroundcontrol`。
 
 本文面向测试人员，集中保存 PowerSystemIndicator 的测试准备、测试用例、执行结果和证据边界。用户操作说明见 [README.md](README.md)，开发设计与变更记录见 [DEVELOP.md](DEVELOP.md)，FuelCellController 后端接口见 [后端 README](../../src/FuelCellController/README.md)。
 
@@ -621,3 +621,42 @@ QGC 的 MAVLink C 库固定到 `7da72f6ed37f41389d6d284bd18d7b2e9f66682e`；实�
 3. `xmllint --noout` 验证两份 TS 文件；页面全部 `qsTr` 源文本在两份翻译目录中均可找到；`git diff --check` 通过。
 
 本次未在真实窗口中检查字体、间距和滚动效果，U07 的视觉验收仍待测；未运行 Android 构建或真实设备联调。
+
+
+### 22. 2026-11-10：已消耗能量 hJ
+
+#### 专项验收计划（硬件项目均待测）
+
+| 编号 | 场景与预期 | 状态 |
+| --- | --- | --- |
+| E01 | 首个有效样本显示 `0 hJ`，随后显示整数 hJ；旧 mAh 不出现在本页 Consumed | 待台架 |
+| E02 | 以 CAN 同窗口原始 V/I 按新样本矩形法、2 秒间隔上限积分，对照 uORB、MAVLink Inspector 和页面；48 V × 20 A × 10 s 的软件参考值为 96 hJ | 待台架 |
+| E03 | 未解锁也增加；解锁/锁定不清零；PMU 同节点重启或 QGC 重连保留累计；飞控重启清零 | 待台架 |
+| E04 | PMU 暂停后累计保持，恢复只补最多 2 秒；飞控在线期间页面保持旧值，飞控整体失联显示 `— hJ` | 待台架 |
+| E05 | 旧固件/不支持来源的 -1 显示 `— hJ`，不回退 mAh；数值零有效；其他电池/车辆数据不串用 | 待台架 |
+| E06 | Raw、RawAux、Filter、CBAT 分别注入检查；Aux 不重复积分，Filter 不覆盖，模式变化保留总量并重建时间基准 | 待台架 |
+| E07 | mAh MAVLink 字段仍有效，通用 BatteryIndicator 仍可使用；低电压告警和 FCS 控制无行为变化 | 待台架 |
+
+#### 初版软件验证记录（历史）
+
+2026-11-10 初版的 PX4 固件及 Linux QGC 完整构建通过，主机积分验证通过，QGC 消息验证为 4 passed，既有 FCS 回归为 37 passed。这些结果来自精简前实现。
+
+2026-11-11 已按要求删除本次新增的全部测试源码和注册，移除内部消息版本递增、旧定义归档及独立有效标志；原测试命令不再适用于当前源码，因此不保留其运行说明。既有其他功能的测试不受此次删除影响。
+
+### 23. 2026-11-11：精简实现的构建检查
+
+本轮只做构建和静态检查，不新增测试代码。精简后的 PX4 `cuav_x25-evo_default` 固件编译、链接与 `.px4` 打包通过；Linux Qt 6.8.3 Debug Desktop 的 `Custom-QGroundControl` 重新构建及应用最终链接通过。
+
+```sh
+# PX4 仓库根目录
+CCACHE_DIR=/tmp/bat-energy-ccache cmake --build build/cuav_x25-evo_default -j 6
+# QGC 仓库根目录
+QTFRAMEWORK_BYPASS_LICENSE_CHECK=1 CCACHE_DIR=/tmp/bat-energy-ccache \
+  cmake --build build/Desktop_Qt_6_8_3-Debug --target Custom-QGroundControl -j 4
+```
+
+新增测试源码及注册已删除，三处注册文件与修改前 HEAD 一致；原 PX4 转换文件已恢复，旧消息归档已删除，原消息版本保持 1。两侧 `git diff --check`、文档链接、BatteryFact JSON 检查通过。构建日志为 `/tmp/bat-energy-trim-px4-build.log` 和 `/tmp/bat-energy-trim-qgc-build.log`（临时文件可能被清理）。
+
+当前接口不再包含独立能量有效标志。UAVCAN 的 -1 和标准消息负值显示 `— hJ`；其他未修改来源若发送默认零值，则显示 `0 hJ`，无法据此判断其是否支持能量统计。
+
+Android 构建、真实窗口视觉、ROS 2/DDS 和 PMU/CAN/飞控端到端联调未执行，未刷写设备；E01～E07 仍需台架验证。

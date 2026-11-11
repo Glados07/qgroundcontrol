@@ -20,6 +20,7 @@ VehicleBatteryFactGroup::VehicleBatteryFactGroup(uint8_t batteryId, QObject *par
     _addFact(&_voltageFact);
     _addFact(&_currentFact);
     _addFact(&_mahConsumedFact);
+    _addFact(&_energyConsumedFact);
     _addFact(&_temperatureFact);
     _addFact(&_percentRemainingFact);
     _addFact(&_timeRemainingFact);
@@ -33,6 +34,7 @@ VehicleBatteryFactGroup::VehicleBatteryFactGroup(uint8_t batteryId, QObject *par
     _voltageFact.setRawValue(qQNaN());
     _currentFact.setRawValue(qQNaN());
     _mahConsumedFact.setRawValue(qQNaN());
+    _energyConsumedFact.setRawValue(qQNaN());
     _temperatureFact.setRawValue(qQNaN());
     _percentRemainingFact.setRawValue(qQNaN());
     _timeRemainingFact.setRawValue(qQNaN());
@@ -115,6 +117,7 @@ void VehicleBatteryFactGroup::_handleBatteryStatus(Vehicle *vehicle, const mavli
     group->voltage()->setRawValue(totalVoltage);
     group->current()->setRawValue((batteryStatus.current_battery == -1) ? qQNaN() : (static_cast<double>(batteryStatus.current_battery) / 100.0));
     group->mahConsumed()->setRawValue((batteryStatus.current_consumed == -1) ? qQNaN() : batteryStatus.current_consumed);
+    group->energyConsumed()->setRawValue((batteryStatus.energy_consumed < 0) ? qQNaN() : batteryStatus.energy_consumed);
     group->percentRemaining()->setRawValue((batteryStatus.battery_remaining == -1) ? qQNaN() : batteryStatus.battery_remaining);
     group->timeRemaining()->setRawValue((batteryStatus.time_remaining == 0) ? qQNaN() : batteryStatus.time_remaining);
     group->chargeState()->setRawValue(batteryStatus.charge_state);
