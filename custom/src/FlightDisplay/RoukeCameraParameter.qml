@@ -17,6 +17,8 @@ Rectangle {
     property int maximum: 2147483647
     property var options: []
     property bool readable: false
+    // Some commands report a physical value but accept a separate setting code.
+    property bool syncReportedValueToDraft: true
     property int defaultDraft: -1
     property int resetSerial: 0
     property bool dirty: false
@@ -33,6 +35,7 @@ Rectangle {
                                         : verification === "verifying" ? qsTr("Verifying…")
                                         : verification === "mismatch" ? qsTr("Value differs")
                                         : verification === "unverified" ? qsTr("Not verified")
+                                        : verification === "reported" && !pending ? qsTr("Read back")
                                         : pending ? qsTr("Waiting for payload…") : ""
     readonly property string valueStatusText: !known ? qsTr("Not confirmed")
         : !online || verifying || verification === "unverified"
@@ -93,6 +96,7 @@ Rectangle {
         return String(value) + (unit.length ? " " + unit : "")
     }
     function syncDraft() {
+        if (!syncReportedValueToDraft) return
         // A read updates the report beside the editor, never an unsent edit.
         // A successful confirmation only settles a draft that still matches it.
         if (dirty) {

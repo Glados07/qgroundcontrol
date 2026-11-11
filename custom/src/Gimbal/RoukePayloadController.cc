@@ -50,10 +50,10 @@ struct CameraParameter {
     const char *readCommand;
 };
 
-// M400 sections 3.1.5-9, 17-18, 20-21 and 23-25. ISO/white balance,
-// shutter/aperture and focus values are protocol indices/raw integers, not
-// invented ISO, seconds, f-numbers or millimetres. INT_MAX is a wire integer
-// representation limit, not a claimed camera capability.
+// M400 sections 3.1.5-9, 17-18, 20-21 and 23-25. These are SET domains:
+// ISO uses an encoded index, while its GET reports the actual ISO value.
+// No index-to-ISO mapping is documented. Other values retain their documented
+// indices/raw integers; INT_MAX is a representation limit, not a capability.
 constexpr CameraParameter kCameraParameters[] = {
     {"iso",              "lr1_iso",                "value",          0, 34, "action", "lr1_iso"},
     {"whiteBalance",     "lr1_white_balance",      "value",          0, 14, "action", "lr1_white_balance"},
@@ -91,6 +91,17 @@ bool validParameterValue(const CameraParameter &parameter, const QJsonValue &val
     const double number = value.toDouble();
     return std::isfinite(number) && std::floor(number) == number
         && number >= parameter.minimum && number <= parameter.maximum;
+}
+
+bool validParameterReportValue(const CameraParameter &parameter, const QJsonValue &value)
+{
+    if (qstrcmp(parameter.key, "iso") != 0) return validParameterValue(parameter, value);
+    // M400 3.1.6 limits the SET encoding to 0x00..0x22, but defines the
+    // returned value as the current ISO (for example, 1600), not that index.
+    if (!value.isDouble()) return false;
+    const double number = value.toDouble();
+    return std::isfinite(number) && std::floor(number) == number
+        && number >= 0 && number <= std::numeric_limits<int>::max();
 }
 
 bool isParameterRead(const CameraParameter &parameter, const QString &command,
@@ -803,7 +814,7 @@ bool RoukePayloadController::_applyParameterAck(const QString &command, const QJ
     // missing/malformed getter response into zero or the submitted placeholder.
     const QJsonValue value = response.contains(field) ? response.value(field)
         : reading ? QJsonValue() : request.value(field);
-    if (!validParameterValue(*parameter, value)) {
+    if (!(reading ? validParameterReportValue(*parameter, value) : validParameterValue(*parameter, value))) {
         if (!reading) _cameraParameters.remove(key);
         _lastError = tr("Rouke returned a missing or invalid value for %1; device state is unknown.").arg(key);
         return false;
@@ -818,6 +829,13 @@ bool RoukePayloadController::_applyParameterAck(const QString &command, const QJ
     }
     _cameraParameters.insert(key, value.toInt());
     if (reading && _parameterVerification.contains(key)) {
+        if (key == QStringLiteral("iso") && _verificationTargets.contains(key)) {
+            // The submitted index and reported ISO have different domains.
+            // A valid report does not verify their undocumented mapping or
+            // clear any earlier write uncertainty.
+            _parameterVerification.insert(key, QStringLiteral("reported"));
+            return true;
+        }
         if (_verificationTargets.contains(key) && _verificationTargets.value(key) != value.toInt()) {
             _parameterVerification.insert(key, QStringLiteral("mismatch"));
             _lastError = tr("Rouke reported %1 as %2 after requesting %3.")
@@ -1162,14 +1180,20 @@ void RoukePayloadController::_handleFrame(const QJsonObject &object, uint16_t pa
     const auto *parameter = parameterForCommand(command);
     const bool parameterRead = parameter && isParameterRead(*parameter, command, _pendingData);
     const QJsonObject responseData = object.value(QStringLiteral("data")).toObject();
+    const bool mismatchedReadOperation = parameterRead && qstrcmp(parameter->key, "iso") == 0
+        && responseData.contains(QStringLiteral("action"))
+        && responseData.value(QStringLiteral("action")) != QJsonValue(0);
     const bool validReadReport = parameterRead
-        && validParameterValue(*parameter, responseData.value(QString::fromLatin1(parameter->field)));
+        && !mismatchedReadOperation
+        && validParameterReportValue(*parameter, responseData.value(QString::fromLatin1(parameter->field)));
     const bool delayedReadPossible = _possiblyDelayedReadCommands.contains(command);
-    if (accepted && parameterRead
-        && (_uncertainCommands.contains(command) || delayedReadPossible) && !validReadReport) {
+    if (parameterRead
+        && (mismatchedReadOperation
+            || (accepted && (_uncertainCommands.contains(command) || delayedReadPossible) && !validReadReport))) {
         ++_receiveDiagnostics.ignoredReadReports;
         qCDebug(RoukePayloadTraceLog) << "ROUKE_RX_IGNORED cmd" << traceCommand(command)
-            << "reason ambiguous-read-without-valid-value";
+            << "reason" << (mismatchedReadOperation ? "read-operation-does-not-match"
+                                                   : "ambiguous-read-without-valid-value");
         // GET and SET share command names for ISO, white balance and image
         // size. An empty delayed SET ACK must not consume a later GET or turn
         // its placeholder into zero. Keep waiting for a real reported value;

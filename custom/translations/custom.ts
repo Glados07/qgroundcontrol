@@ -1434,6 +1434,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Read back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Not confirmed</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1489,7 +1493,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Index 0–34</source>
+        <source>Set code 0–34; reported ISO is shown separately.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

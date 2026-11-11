@@ -312,6 +312,16 @@ Rectangle {
         assert "Set only; no read command." in named("hint_" + key).property("text"), key
     for key in ("iso", "whiteBalance", "focusValue", "imageSize"):
         assert "Set only; no read command." not in named("hint_" + key).property("text"), key
+    # Reported ISO and its setting code are independent domains, even when
+    # the reported number happens to fit the editor's 0..34 range.
+    assert named("editor_iso").property("text") == ""
+    manager.acknowledge("iso", 1600)
+    assert named("parameter_iso").property("confirmedValue") == 1600
+    assert named("editor_iso").property("text") == ""
+    manager.acknowledge("iso", 20)
+    assert named("parameter_iso").property("confirmedValue") == 20
+    assert named("editor_iso").property("text") == ""
+    manager.update(cameraParameters={})
     type_value(named("editor_iso"), "12")
     assert named("parameter_iso").property("draftValue") == 12
     assert_offline_dispatch_disabled()
@@ -431,60 +441,88 @@ Rectangle {
     read_edge = named("read_iso").mapToScene(QPointF(0, 0)).x()
     assert 0 <= read_edge - input_edge <= 20, "Read/apply actions should sit next to their input"
 
-    # SET acceptance is distinct from GET verification. A differing or failed
-    # verification leaves the draft available beside the device's actual value.
-    type_value(named("editor_iso"), "12")
-    assert manager.actions == previous_actions
+    # An ISO SET reads back the physical ISO without comparing it with the
+    # submitted setting code or silently settling the editor's draft.
+    type_value(named("editor_iso"), "20")
     click_item(named("apply_iso"))
-    assert manager.actions[-1] == ("set", "iso", 12)
-    assert not named("parameter_iso").property("known")
-    assert not named("apply_iso").isEnabled()
+    assert manager.actions[-1] == ("set", "iso", 20)
     assert "Applying" in named("confirmed_iso").property("text")
     manager.accept_write("iso")
     assert "Verifying" in named("confirmed_iso").property("text")
-    assert not named("parameter_iso").property("known"), "SET ACK must not invent a readback value"
-    manager.acknowledge("iso", 10, "mismatch")
-    assert named("parameter_iso").property("confirmedValue") == 10
-    assert named("parameter_iso").property("draftValue") == 12
-    assert "Value differs" in named("confirmed_iso").property("text")
-    type_value(named("editor_iso"), "14")
-    manager.update(photoCount=3)
-    assert named("parameter_iso").property("draftValue") == 14
-    assert named("parameter_iso").property("confirmedValue") == 10
+    manager.acknowledge("iso", 1600, "reported")
+    assert named("parameter_iso").property("confirmedValue") == 1600
+    assert named("parameter_iso").property("draftValue") == 20
+    assert named("parameter_iso").property("dirty")
+    assert named("parameter_iso").property("statusText") == "Read back"
+    assert not named("parameter_iso").property("verificationFailed")
+    assert named("confirmed_iso").property("text") == "Read back\nConfirmed: 1600"
     click_item(named("read_iso"))
-    assert manager.actions[-1] == ("get", "iso")
-    manager.acknowledge("iso", 6, "mismatch")
-    assert named("parameter_iso").property("draftValue") == 14, "Manual reads do not discard edits"
-    type_value(named("editor_iso"), "12")
+    assert "Waiting for payload" in named("confirmed_iso").property("text")
+    manager.acknowledge("iso", 20, "reported")
+    assert named("parameter_iso").property("draftValue") == 20
+    assert named("parameter_iso").property("dirty"), "Equal digits do not make an ISO value a setting code"
     click_item(named("read_iso"))
-    manager.acknowledge("iso", 6, "mismatch")
-    assert named("parameter_iso").property("draftValue") == 12
-    type_value(named("editor_iso"), "12")
-    click_item(named("apply_iso"))
-    manager.accept_write("iso")
-    assert "Last confirmed: 6" in named("confirmed_iso").property("text")
-    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "unverified"},
-                   lastError="Readback timed out")
-    assert named("parameter_iso").property("draftValue") == 12
-    assert named("parameter_iso").property("confirmedValue") == 6
-    assert "Not verified" in named("confirmed_iso").property("text")
+    manager.acknowledge("iso", 1600, "reported")
     manager.update(sdkResponding=False)
-    assert "Last confirmed: 6" in named("confirmed_iso").property("text")
-    assert not named("apply_iso").isEnabled()
-    manager.update(sdkResponding=True, lastError="")
-    click_item(named("read_iso"))
-    manager.acknowledge("iso", 12, "verified")
-    assert named("parameter_iso").property("draftValue") == 12
-    assert not named("parameter_iso").property("dirty"), "Matching GET completes the submitted draft"
-    manager.update(sdkResponding=False)
-    assert named("confirmed_iso").property("text") == "Last confirmed: 12"
+    assert named("confirmed_iso").property("text") == "Read back\nLast confirmed: 1600"
     manager.update(sdkResponding=True)
-    type_value(named("editor_iso"), "12")
-    click_item(named("apply_iso"))
-    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "unverified"},
-                   lastError="Payload rejected ISO")
-    assert named("parameter_iso").property("draftValue") == 12, "Rejected input remains editable"
-    assert named("parameter_iso").property("confirmedValue") == 12
+
+    # SET acceptance is distinct from GET verification. A differing or failed
+    # verification leaves the draft available beside the device's actual value.
+    previous_actions = list(manager.actions)
+    scroll_to(camera_scroll, named("editor_whiteBalance"))
+    type_value(named("editor_whiteBalance"), "12")
+    assert manager.actions == previous_actions
+    click_item(named("apply_whiteBalance"))
+    assert manager.actions[-1] == ("set", "whiteBalance", 12)
+    assert not named("parameter_whiteBalance").property("known")
+    assert not named("apply_whiteBalance").isEnabled()
+    assert "Applying" in named("confirmed_whiteBalance").property("text")
+    manager.accept_write("whiteBalance")
+    assert "Verifying" in named("confirmed_whiteBalance").property("text")
+    assert not named("parameter_whiteBalance").property("known"), "SET ACK must not invent a readback value"
+    manager.acknowledge("whiteBalance", 10, "mismatch")
+    assert named("parameter_whiteBalance").property("confirmedValue") == 10
+    assert named("parameter_whiteBalance").property("draftValue") == 12
+    assert "Value differs" in named("confirmed_whiteBalance").property("text")
+    type_value(named("editor_whiteBalance"), "14")
+    manager.update(photoCount=3)
+    assert named("parameter_whiteBalance").property("draftValue") == 14
+    assert named("parameter_whiteBalance").property("confirmedValue") == 10
+    click_item(named("read_whiteBalance"))
+    assert manager.actions[-1] == ("get", "whiteBalance")
+    manager.acknowledge("whiteBalance", 6, "mismatch")
+    assert named("parameter_whiteBalance").property("draftValue") == 14, "Manual reads do not discard edits"
+    type_value(named("editor_whiteBalance"), "12")
+    click_item(named("read_whiteBalance"))
+    manager.acknowledge("whiteBalance", 6, "mismatch")
+    assert named("parameter_whiteBalance").property("draftValue") == 12
+    type_value(named("editor_whiteBalance"), "12")
+    click_item(named("apply_whiteBalance"))
+    manager.accept_write("whiteBalance")
+    assert "Last confirmed: 6" in named("confirmed_whiteBalance").property("text")
+    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "reported", "whiteBalance": "unverified"},
+                   lastError="Readback timed out")
+    assert named("parameter_whiteBalance").property("draftValue") == 12
+    assert named("parameter_whiteBalance").property("confirmedValue") == 6
+    assert "Not verified" in named("confirmed_whiteBalance").property("text")
+    manager.update(sdkResponding=False)
+    assert "Last confirmed: 6" in named("confirmed_whiteBalance").property("text")
+    assert not named("apply_whiteBalance").isEnabled()
+    manager.update(sdkResponding=True, lastError="")
+    click_item(named("read_whiteBalance"))
+    manager.acknowledge("whiteBalance", 12, "verified")
+    assert named("parameter_whiteBalance").property("draftValue") == 12
+    assert not named("parameter_whiteBalance").property("dirty"), "Matching GET completes the submitted draft"
+    manager.update(sdkResponding=False)
+    assert named("confirmed_whiteBalance").property("text") == "Last confirmed: 12"
+    manager.update(sdkResponding=True)
+    type_value(named("editor_whiteBalance"), "12")
+    click_item(named("apply_whiteBalance"))
+    manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "reported", "whiteBalance": "unverified"},
+                   lastError="Payload rejected white balance")
+    assert named("parameter_whiteBalance").property("draftValue") == 12, "Rejected input remains editable"
+    assert named("parameter_whiteBalance").property("confirmedValue") == 12
     manager.update(lastError="")
 
     # Reach lower camera cards through the actual scrollable viewport and
@@ -579,8 +617,11 @@ Rectangle {
         for key in set_only_keys:
             assert "仅支持设置，协议无读取命令。" in named("hint_" + key).property("text"), key
         manager.update(sdkResponding=False)
-        assert "上次确认：12" in named("confirmed_iso").property("text")
-        assert "尚未完成核对" in named("confirmed_iso").property("text")
+        assert "上次确认：12" in named("confirmed_whiteBalance").property("text")
+        assert "尚未完成核对" in named("confirmed_whiteBalance").property("text")
+        assert "已读回" in named("confirmed_iso").property("text")
+        assert "上次确认：1600" in named("confirmed_iso").property("text")
+        assert "设置编码 0–34" in named("hint_iso").property("text")
         manager.update(sdkResponding=True)
     view.grabWindow().save(str(output / "rouke-panel.png"))
     click_item(named("settingsButton"))
@@ -673,7 +714,7 @@ Rectangle {
     errors = [message for message in warnings if any(token in message for token in
               ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign"))]
     assert not errors, "\n".join(errors)
-    print("PASS: camera actions, cache-only page lifecycle, offline GET-only probe, SET/readback states, retained drafts, explicit parameter dispatch, default-Off trigger, "
+    print("PASS: camera actions, cache-only page lifecycle, offline GET-only probe, SET/readback states, separate ISO report/setting domains, retained drafts, explicit parameter dispatch, default-Off trigger, "
           "range validation, set-only hints, scrolling, popup lifecycle, resize/font layouts; no QML errors")
     view.close()
 

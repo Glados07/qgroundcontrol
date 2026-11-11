@@ -250,7 +250,8 @@ QtControls.Popup {
                         parameterKey: "iso"
                         title: qsTr("ISO")
                         minimum: 0; maximum: 34; readable: true
-                        hint: qsTr("Index 0–34")
+                        syncReportedValueToDraft: false
+                        hint: qsTr("Set code 0–34; reported ISO is shown separately.")
                     }
                     Parameter {
                         parameterKey: "whiteBalance"

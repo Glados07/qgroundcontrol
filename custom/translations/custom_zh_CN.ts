@@ -1458,6 +1458,10 @@
         <translation>尚未完成核对</translation>
     </message>
     <message>
+        <source>Read back</source>
+        <translation>已读回</translation>
+    </message>
+    <message>
         <source>Not confirmed</source>
         <translation>尚未确认</translation>
     </message>
@@ -1513,8 +1517,8 @@
         <translation>ISO 感光度</translation>
     </message>
     <message>
-        <source>Index 0–34</source>
-        <translation>索引 0–34</translation>
+        <source>Set code 0–34; reported ISO is shown separately.</source>
+        <translation>输入设置编码 0–34；当前 ISO 单独显示。</translation>
     </message>
     <message>
         <source>White balance</source>

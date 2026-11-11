@@ -599,12 +599,13 @@ private slots:
         QTest::addColumn<int>("target");
         QTest::addColumn<int>("actual");
         QTest::addColumn<QString>("outcome");
-        QTest::newRow("iso-match") << QString("iso") << 8 << 8 << QString("verified");
+        QTest::newRow("iso-equal-number-is-only-report") << QString("iso") << 8 << 8 << QString("reported");
+        QTest::newRow("iso-physical-value") << QString("iso") << 8 << 1600 << QString("reported");
         QTest::newRow("wb-match") << QString("whiteBalance") << 4 << 4 << QString("verified");
         QTest::newRow("focus-match") << QString("focusValue") << 200 << 200 << QString("verified");
         QTest::newRow("size-match") << QString("imageSize") << 2 << 2 << QString("verified");
-        QTest::newRow("different-report") << QString("iso") << 8 << 5 << QString("mismatch");
-        QTest::newRow("invalid-report") << QString("iso") << 8 << 80 << QString("unverified");
+        QTest::newRow("different-report") << QString("whiteBalance") << 8 << 5 << QString("mismatch");
+        QTest::newRow("invalid-report") << QString("whiteBalance") << 8 << 80 << QString("unverified");
         QTest::newRow("missing-report") << QString("iso") << 8 << -1 << QString("unverified");
     }
 
@@ -637,7 +638,7 @@ private slots:
         QTRY_COMPARE(finished.count(), 2);
         QCOMPARE(controller.cameraParameterVerification().value(key).toString(), outcome);
         QCOMPARE(controller.cameraParameters().value(key), outcome == "unverified" ? old : QVariant(actual));
-        QCOMPARE(finished.last().at(1).toBool(), outcome == "verified");
+        QCOMPARE(finished.last().at(1).toBool(), outcome == "verified" || outcome == "reported");
         QTest::qWait(80);
         QVERIFY(!box.hasPendingDatagrams());
     }
@@ -661,10 +662,10 @@ private slots:
         QVERIFY(!box.hasPendingDatagrams());
         QVERIFY(controller.requestCameraParameter("iso"));
         receiveStreamRequest(box);
-        sendStream(box, controller, parameterReport(read, 8));
+        sendStream(box, controller, parameterReport(read, 1600));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 8);
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("verified"));
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 1600);
+        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("reported"));
     }
 
     void writeTimeoutNeverRetriesOrReadsBackAndKeepsWriteUncertainty()
@@ -683,10 +684,10 @@ private slots:
         QVERIFY(!box.hasPendingDatagrams());
         QVERIFY(controller.requestCameraParameter("iso"));
         const auto read = receiveStreamRequest(box);
-        sendStream(box, controller, parameterReport(read, 5));
+        sendStream(box, controller, parameterReport(read, 1600));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("mismatch"));
-        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 5);
+        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("reported"));
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 1600);
         QVERIFY(controller.setCameraParameter("iso", 9));
         receiveStreamRequest(box);
         send(box, controller, ack("lr1_iso"));
@@ -704,19 +705,19 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         completeParameterInitialization(box, controller);
-        QVERIFY(controller.setCameraParameter("iso", 8));
+        QVERIFY(controller.setCameraParameter("whiteBalance", 8));
         receiveStreamRequest(box);
-        send(box, controller, ack("lr1_iso", 1));
+        send(box, controller, ack("lr1_white_balance", 1));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 2);
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("unverified"));
+        QCOMPARE(controller.cameraParameters().value("whiteBalance").toInt(), 3);
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("unverified"));
         QTest::qWait(80);
         QVERIFY(!box.hasPendingDatagrams());
-        QVERIFY(controller.requestCameraParameter("iso"));
+        QVERIFY(controller.requestCameraParameter("whiteBalance"));
         const auto read = receiveStreamRequest(box);
         sendStream(box, controller, parameterReport(read, 2));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("mismatch"));
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("mismatch"));
     }
 
     void manualRefreshRechecksTheLastSubmittedTarget()
@@ -726,31 +727,31 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         completeParameterInitialization(box, controller);
-        QVERIFY(controller.setCameraParameter("iso", 8));
+        QVERIFY(controller.setCameraParameter("whiteBalance", 8));
         receiveStreamRequest(box);
-        send(box, controller, ack("lr1_iso"));
+        send(box, controller, ack("lr1_white_balance"));
         QTRY_VERIFY(box.hasPendingDatagrams());
         const auto read = receiveStreamRequest(box);
         sendStream(box, controller, parameterReport(read, 8));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("verified"));
-        QVERIFY(controller.requestCameraParameter("iso"));
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("verified"));
+        QVERIFY(controller.requestCameraParameter("whiteBalance"));
         receiveStreamRequest(box);
         sendStream(box, controller, parameterReport(read, 5));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 5);
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("mismatch"));
-        QVERIFY(controller.requestCameraParameter("iso"));
+        QCOMPARE(controller.cameraParameters().value("whiteBalance").toInt(), 5);
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("mismatch"));
+        QVERIFY(controller.requestCameraParameter("whiteBalance"));
         receiveStreamRequest(box);
-        send(box, controller, ack("lr1_iso", 1));
+        send(box, controller, ack("lr1_white_balance", 1));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 5);
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("unverified"));
-        QVERIFY(controller.requestCameraParameter("iso"));
+        QCOMPARE(controller.cameraParameters().value("whiteBalance").toInt(), 5);
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("unverified"));
+        QVERIFY(controller.requestCameraParameter("whiteBalance"));
         receiveStreamRequest(box);
         sendStream(box, controller, parameterReport(read, 8));
         QTRY_VERIFY(!controller.pending());
-        QCOMPARE(controller.cameraParameterVerification().value("iso").toString(), QString("verified"));
+        QCOMPARE(controller.cameraParameterVerification().value("whiteBalance").toString(), QString("verified"));
     }
 
     void recordingStopPrecedesQueuedVerificationAndReentrantEndpointReset()
@@ -1585,13 +1586,117 @@ private slots:
         QTest::addColumn<QJsonObject>("requestData");
         QTest::addColumn<QJsonObject>("responseData");
         QTest::newRow("iso") << QString("iso") << QString("lr1_iso")
-            << QJsonObject({{"action", 0}, {"value", 0}}) << QJsonObject({{"value", 12}});
+            << QJsonObject({{"action", 0}, {"value", 0}}) << QJsonObject({{"value", 1600}});
         QTest::newRow("white-balance") << QString("whiteBalance") << QString("lr1_white_balance")
             << QJsonObject({{"action", 0}, {"value", 0}}) << QJsonObject({{"value", 3}});
         QTest::newRow("focus-value") << QString("focusValue") << QString("lr1_focus_value_get")
             << QJsonObject{} << QJsonObject({{"value", 1200}});
         QTest::newRow("image-size") << QString("imageSize") << QString("lr1_image_size")
             << QJsonObject({{"operate", 0}, {"size", 0}}) << QJsonObject({{"size", 2}});
+    }
+
+    void isoPhysicalReportReassemblesAndContinuesInitialization()
+    {
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        controller.initializeCameraParameters();
+        QTRY_VERIFY(box.hasPendingDatagrams());
+        const auto request = receiveStreamRequest(box);
+        QCOMPARE(request.value("cmd").toString(), QString("lr1_iso"));
+        QCOMPARE(request.value("data").toObject().value("action").toInt(-1), 0);
+        auto response = ack("lr1_iso");
+        response["msg"] = QString::fromUtf8("\xe8\x8e\xb7\xe5\x8f\x96ISO"); // 获取ISO, as captured.
+        response["data"] = QJsonObject{{"action", 0}, {"value", 1600}};
+        const auto frame = rawFrame(response);
+        QCOMPARE(frame.size(), 129); // The field capture's 128-byte + 1-byte ACK.
+        sendFragment(box, controller, frame.left(128), 7, 255, 190, 106);
+        QTest::qWait(30);
+        QVERIFY(controller.pending());
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(!controller.cameraParameters().contains("iso"));
+        sendFragment(box, controller, frame.mid(128), 7, 255, 190, 107);
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(finished.last().at(1).toBool());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 1600);
+
+        const QStringList commands{"lr1_white_balance", "lr1_focus_value_get", "lr1_image_size"};
+        const QList<int> values{0, 3214, 0};
+        for (int i = 0; i < commands.size(); ++i) {
+            QTRY_VERIFY(box.hasPendingDatagrams());
+            const auto next = receiveStreamRequest(box);
+            QCOMPARE(next.value("cmd").toString(), commands.at(i));
+            sendStream(box, controller, parameterReport(next, values.at(i)));
+            QTRY_COMPARE(finished.count(), i + 2);
+            QVERIFY(finished.last().at(1).toBool());
+        }
+        QTRY_VERIFY(!controller.pending());
+        QCOMPARE(controller.cameraParameters().size(), 4);
+        QTest::qWait(50);
+        QVERIFY(!box.hasPendingDatagrams());
+    }
+
+    void isoReadAcceptsReportedIntegerDomain_data()
+    {
+        QTest::addColumn<int>("value");
+        QTest::newRow("zero") << 0;
+        QTest::newRow("above-write-index-range") << 35;
+        QTest::newRow("maximum-wire-integer") << std::numeric_limits<int>::max();
+    }
+
+    void isoReadAcceptsReportedIntegerDomain()
+    {
+        QFETCH(int, value);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        const auto request = receiveStreamRequest(box);
+        sendStream(box, controller, parameterReport(request, value));
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(finished.last().at(1).toBool());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), value);
+        QVERIFY(controller.lastError().isEmpty());
+    }
+
+    void isoReadIgnoresExplicitWriteOperation_data()
+    {
+        QTest::addColumn<int>("code");
+        QTest::addColumn<QJsonValue>("action");
+        QTest::newRow("successful-set") << 0 << QJsonValue(1);
+        QTest::newRow("rejected-set") << 1 << QJsonValue(1);
+        QTest::newRow("malformed-operation") << 0 << QJsonValue(QString("0"));
+    }
+
+    void isoReadIgnoresExplicitWriteOperation()
+    {
+        QFETCH(int, code);
+        QFETCH(QJsonValue, action);
+        QUdpSocket box;
+        QVERIFY(box.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
+        RoukePayloadController controller;
+        QSignalSpy finished(&controller, &RoukePayloadController::commandFinished);
+        controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
+        QVERIFY(controller.requestCameraParameter("iso"));
+        receiveStreamRequest(box);
+        auto response = ack("lr1_iso", code);
+        response["data"] = QJsonObject{{"action", action}, {"value", 1600}};
+        sendStream(box, controller, response);
+        QTRY_VERIFY(controller.responding());
+        QVERIFY(controller.pending());
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(!controller.cameraParameters().contains("iso"));
+
+        response["code"] = 0;
+        response["data"] = QJsonObject{{"action", 0}, {"value", 1600}};
+        sendStream(box, controller, response);
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(finished.last().at(1).toBool());
+        QCOMPARE(controller.cameraParameters().value("iso").toInt(), 1600);
     }
 
     void cameraParameterReads()
@@ -1700,11 +1805,12 @@ private slots:
         QCOMPARE(finished.count(), completionCount);
 
         auto report = ack(command);
-        report["data"] = QJsonObject{{field, 2}};
+        const int reportedValue = key == "iso" ? 1600 : 2;
+        report["data"] = QJsonObject{{field, reportedValue}};
         sendStream(box, controller, report);
         QTRY_VERIFY(!controller.pending());
         QVERIFY(finished.last().at(1).toBool());
-        QCOMPARE(controller.cameraParameters().value(key).toInt(), 2);
+        QCOMPARE(controller.cameraParameters().value(key).toInt(), reportedValue);
 
         // Reporting a value did not prove the timed-out write outcome. A new
         // same-command SET still cannot consume an ambiguous delayed ACK.
@@ -1843,7 +1949,7 @@ private slots:
         RoukePayloadController controller;
         controller.setConfiguration(true, "127.0.0.1", box.localPort(), 0, 7);
         const QList<QPair<QString, QVariant>> invalid = {
-            {"iso", -1}, {"iso", 35}, {"whiteBalance", 15}, {"focusMode", 5},
+            {"iso", -1}, {"iso", 35}, {"iso", 1600}, {"whiteBalance", 15}, {"focusMode", 5},
             {"imageQuality", 0}, {"imageQuality", 5}, {"imageSize", 4}, {"triggerPhoto", 2},
             {"shootingDistance", 19}, {"shootingDistance", 41},
             {"distanceThreshold", 29}, {"distanceThreshold", 15001},
@@ -1903,11 +2009,13 @@ private slots:
     void malformedParameterReadValuesAreNotConfirmed_data()
     {
         QTest::addColumn<QJsonValue>("value");
+        QTest::newRow("missing") << QJsonValue(QJsonValue::Undefined);
         QTest::newRow("null") << QJsonValue();
         QTest::newRow("string") << QJsonValue(QString("2"));
         QTest::newRow("bool") << QJsonValue(true);
         QTest::newRow("fractional") << QJsonValue(2.5);
-        QTest::newRow("out-of-range") << QJsonValue(35);
+        QTest::newRow("negative") << QJsonValue(-1);
+        QTest::newRow("integer-overflow") << QJsonValue(2147483648.0);
     }
 
     void ambiguousFocusWriteInvalidatesLaterRead()
