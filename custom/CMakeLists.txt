@@ -66,6 +66,15 @@ if(ANDROID)
             PATTERN "local.properties" EXCLUDE
         )
 
+        # file(COPY) may skip an override when both source timestamps match.
+        foreach(_qgc_custom_android_file IN LISTS _qgc_custom_android_files)
+            file(RELATIVE_PATH _qgc_android_relative_file "${_qgc_custom_android_dir}" "${_qgc_custom_android_file}")
+            if(EXISTS "${_qgc_default_android_dir}/${_qgc_android_relative_file}")
+                configure_file("${_qgc_custom_android_file}"
+                    "${_qgc_final_android_dir}/${_qgc_android_relative_file}" COPYONLY)
+            endif()
+        endforeach()
+
         # UniRC channel input uses the Android Bluetooth adapter as a Classic
         # RFCOMM client. Qt requests the runtime permission; the corresponding
         # platform declarations still have to be present in the APK manifest.
@@ -684,7 +693,7 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         ${mavlink_SOURCE_DIR}
         ${mavlink_SOURCE_DIR}/all
     )
-    target_link_libraries(FuelCellControllerManagerTest PRIVATE Qt6::Core Qt6::Test)
+    target_link_libraries(FuelCellControllerManagerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
     add_test(NAME FuelCellControllerManagerTest COMMAND $<TARGET_FILE:FuelCellControllerManagerTest>)
 
     qt_add_executable(SiyiModeQueryTest

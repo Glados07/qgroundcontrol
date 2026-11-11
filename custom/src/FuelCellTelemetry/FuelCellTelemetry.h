@@ -3,6 +3,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QTimer>
 #include <QtCore/QVariantMap>
+#include <QtNetwork/QUdpSocket>
 
 #include <optional>
 
@@ -16,6 +17,7 @@ class FuelCellTelemetry : public QObject
 
 public:
     explicit FuelCellTelemetry(QObject *parent = nullptr);
+    FuelCellTelemetry(const QHostAddress &boxAddress, quint16 boxPort, QObject *parent = nullptr);
 
     int systemId() const { return _systemId; }
     void setSystemId(int systemId);
@@ -26,9 +28,15 @@ signals:
     void valuesChanged();
 
 private:
+    void _requestSample();
+    void _readSamples();
     void _receive(const mavlink_message_t &message);
     void _clear();
 
+    const QHostAddress _boxAddress;
+    const quint16 _boxPort;
+    QUdpSocket _socket;
+    QTimer _poll;
     QTimer _expiry;
     QVariantMap _values;
     std::optional<uint32_t> _lastSampleTime;

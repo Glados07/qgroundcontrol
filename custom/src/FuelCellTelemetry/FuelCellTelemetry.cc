@@ -2,10 +2,15 @@
 
 #include "MAVLinkProtocol.h"
 
+#include <QtNetwork/QNetworkDatagram>
+
 #include <cmath>
 
 namespace {
+constexpr quint16 kBoxPort = 14602;
+constexpr int kPollIntervalMs = 500;
 constexpr int kTelemetryTimeoutMs = 2000;
+const QByteArray kRequest = QByteArrayLiteral("GET FUEL_CELL_TELEMETRY/1");
 constexpr uint32_t kValidSystemSubstate = 1u << 15;
 
 uint16_t systemSubstate(const mavlink_message_t &message)
@@ -27,8 +32,18 @@ uint16_t systemSubstate(const mavlink_message_t &message)
 }
 
 FuelCellTelemetry::FuelCellTelemetry(QObject *parent)
-    : QObject(parent)
+    : FuelCellTelemetry(QHostAddress(QStringLiteral("192.168.144.110")), kBoxPort, parent)
 {
+}
+
+FuelCellTelemetry::FuelCellTelemetry(const QHostAddress &boxAddress, quint16 boxPort, QObject *parent)
+    : QObject(parent)
+    , _boxAddress(boxAddress)
+    , _boxPort(boxPort)
+{
+    _poll.setInterval(kPollIntervalMs);
+    connect(&_poll, &QTimer::timeout, this, &FuelCellTelemetry::_requestSample);
+    connect(&_socket, &QUdpSocket::readyRead, this, &FuelCellTelemetry::_readSamples);
     _expiry.setSingleShot(true);
     _expiry.setInterval(kTelemetryTimeoutMs);
     _expiry.setTimerType(Qt::PreciseTimer);
@@ -42,11 +57,49 @@ void FuelCellTelemetry::setSystemId(int systemId)
     if (_systemId == systemId) {
         return;
     }
+    _poll.stop();
+    _socket.close();
     _systemId = systemId;
     _expiry.stop();
     _lastSampleTime.reset();
     _clear();
+    if (_systemId > 0) {
+        _requestSample();
+        _poll.start();
+    }
     emit systemIdChanged();
+}
+
+void FuelCellTelemetry::_requestSample()
+{
+    if (_socket.state() == QAbstractSocket::UnconnectedState
+        && !_socket.bind(QHostAddress(QHostAddress::AnyIPv4), 0)) {
+        return;
+    }
+    _socket.writeDatagram(kRequest, _boxAddress, _boxPort);
+}
+
+void FuelCellTelemetry::_readSamples()
+{
+    while (_socket.hasPendingDatagrams()) {
+        const QNetworkDatagram datagram = _socket.receiveDatagram(MAVLINK_MAX_PACKET_LEN + 1);
+        if (datagram.senderAddress() != _boxAddress || datagram.senderPort() != _boxPort) {
+            continue;
+        }
+        const QByteArray data = datagram.data();
+        if (data.size() > MAVLINK_MAX_PACKET_LEN) {
+            continue;
+        }
+        mavlink_message_t buffer{};
+        mavlink_status_t status{};
+        mavlink_message_t message{};
+        for (const auto byte : data) {
+            if (mavlink_frame_char_buffer(&buffer, &status, static_cast<uint8_t>(byte), &message, nullptr)
+                == MAVLINK_FRAMING_OK) {
+                _receive(message);
+            }
+        }
+    }
 }
 
 void FuelCellTelemetry::_clear()
