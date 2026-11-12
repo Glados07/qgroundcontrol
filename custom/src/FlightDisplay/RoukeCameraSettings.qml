@@ -68,16 +68,19 @@ QtControls.Popup {
         // Prevent a child combo popup outliving its parent page.
         root.resetSerial++
     }
-    background: Rectangle {
-        radius: ScreenTools.defaultFontPixelHeight * 0.6
-        color: "#172630"
-        border.color: "#48616e"
+    background: Item {
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 2
-            radius: parent.radius - 2
-            color: "transparent"
-            border.color: "#223844"
+            anchors.topMargin: 3
+            anchors.bottomMargin: -3
+            radius: ScreenTools.defaultFontPixelHeight * 0.75
+            color: "#180e2635"
+        }
+        Rectangle {
+            anchors.fill: parent
+            radius: ScreenTools.defaultFontPixelHeight * 0.75
+            color: "#edf2f6"
+            border.color: "#bbc9d3"
         }
     }
     enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
@@ -88,28 +91,34 @@ QtControls.Popup {
         property string text: ""
         property string iconName: "exposure"
         width: parent.width
-        implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.5,
+        implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.65,
                                  sectionText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.3)
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.65
             anchors.rightMargin: anchors.leftMargin
             spacing: ScreenTools.defaultFontPixelWidth * 0.8
-            CameraControlIcon {
-                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.9
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.9
-                kind: sectionRoot.iconName
-                color: "#72d9ef"
+            Rectangle {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.2
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.2
+                radius: ScreenTools.defaultFontPixelHeight * 0.35
+                color: "#e5f0f2"
+                CameraControlIcon {
+                    anchors.centerIn: parent
+                    width: ScreenTools.defaultFontPixelHeight * 0.8
+                    height: width
+                    kind: sectionRoot.iconName
+                    color: "#155b70"
+                }
             }
             Text {
                 id: sectionText
                 Layout.fillWidth: true
                 text: sectionRoot.text
-                color: "#8bc4d4"
+                color: "#213b4b"
                 font.family: ScreenTools.normalFontFamily
                 font.pointSize: ScreenTools.smallFontPointSize
-                font.weight: Font.DemiBold
-                font.letterSpacing: 0.4
+                font.weight: Font.Bold
                 wrapMode: Text.Wrap
             }
         }
@@ -119,24 +128,73 @@ QtControls.Popup {
         manager: root.manager
         resetSerial: root.resetSerial
     }
+    component ParameterGroup: Rectangle {
+        id: group
+        property string title: ""
+        property string iconName: "exposure"
+        default property alias parameters: parameterColumn.data
+        readonly property real innerInset: ScreenTools.defaultFontPixelHeight * 0.25
+        width: parent.width
+        implicitHeight: groupContent.implicitHeight + innerInset * 2
+        radius: ScreenTools.defaultFontPixelHeight * 0.6
+        color: "#ffffff"
+        border.color: "#d4dfe7"
+        data: [
+            Column {
+                id: groupContent
+                x: group.innerInset
+                y: group.innerInset
+                width: group.width - group.innerInset * 2
+                SectionTitle { text: group.title; iconName: group.iconName }
+                Column {
+                    id: parameterColumn
+                    width: parent.width
+                }
+            }
+        ]
+    }
+    component ParameterScrollBar: QtControls.ScrollBar {
+        id: scrollBar
+        policy: QtControls.ScrollBar.AsNeeded
+        visible: size < 1
+        padding: 1
+        contentItem: Rectangle {
+            implicitWidth: 5
+            implicitHeight: 30
+            radius: width / 2
+            color: scrollBar.pressed ? "#176b83" : scrollBar.hovered ? "#536777" : "#a5b4c1"
+        }
+        background: Rectangle {
+            implicitWidth: 7
+            radius: width / 2
+            color: "#e9eff4"
+        }
+    }
     contentItem: ColumnLayout {
         spacing: ScreenTools.defaultFontPixelHeight * 0.35
         RowLayout {
             Layout.fillWidth: true
             spacing: ScreenTools.defaultFontPixelHeight * 0.5
-            CameraControlIcon {
-                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.05
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.05
-                kind: "settings"
-                color: "#8fe4f3"
+            Rectangle {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.5
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                radius: ScreenTools.defaultFontPixelHeight * 0.45
+                color: "#d9e8ee"
+                CameraControlIcon {
+                    anchors.centerIn: parent
+                    width: ScreenTools.defaultFontPixelHeight * 0.95
+                    height: width
+                    kind: "settings"
+                    color: "#153f50"
+                }
             }
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Payload settings")
-                color: "#f1f7fa"
+                color: "#152733"
                 font.family: ScreenTools.normalFontFamily
                 font.pointSize: ScreenTools.defaultFontPointSize
-                font.weight: Font.DemiBold
+                font.weight: Font.Bold
                 wrapMode: Text.WordWrap
             }
             RoukeCameraButton {
@@ -152,8 +210,9 @@ QtControls.Popup {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: tabs.implicitHeight + 8
-            radius: ScreenTools.defaultFontPixelHeight * 0.55
-            color: "#111f29"
+            radius: ScreenTools.defaultFontPixelHeight * 0.6
+            color: "#dfe8ee"
+            border.color: "#d2dde5"
             RowLayout {
                 id: tabs
                 anchors.fill: parent
@@ -218,73 +277,81 @@ QtControls.Popup {
                 contentHeight: cameraColumn.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
-                QtControls.ScrollBar.vertical: QtControls.ScrollBar { policy: QtControls.ScrollBar.AsNeeded }
+                QtControls.ScrollBar.vertical: ParameterScrollBar {}
                 Column {
                     id: cameraColumn
                     width: parent.width - ScreenTools.defaultFontPixelWidth * 1.3
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.05
-                    SectionTitle { text: qsTr("EXPOSURE & COLOR"); iconName: "exposure" }
-                    Parameter {
-                        parameterKey: "iso"
-                        title: qsTr("ISO")
-                        minimum: 0; maximum: 34; readable: true
-                        syncReportedValueToDraft: false
-                        hint: qsTr("Set code 0–34; reported ISO is shown separately.")
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.45
+                    ParameterGroup {
+                        title: qsTr("EXPOSURE & COLOR")
+                        iconName: "exposure"
+                        Parameter {
+                            parameterKey: "iso"
+                            title: qsTr("ISO")
+                            minimum: 0; maximum: 34; readable: true
+                            syncReportedValueToDraft: false
+                            hint: qsTr("Set code 0–34; reported ISO is shown separately.")
+                        }
+                        Parameter {
+                            parameterKey: "whiteBalance"
+                            title: qsTr("White balance")
+                            minimum: 0; maximum: 14; readable: true
+                            hint: qsTr("Index 0–14")
+                        }
+                        Parameter {
+                            parameterKey: "shutterSpeed"
+                            title: qsTr("Shutter speed")
+                            inputPlaceholder: qsTr("Vendor index")
+                            hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
+                        }
+                        Parameter {
+                            parameterKey: "aperture"
+                            showSeparator: false
+                            title: qsTr("Aperture")
+                            inputPlaceholder: qsTr("Vendor index")
+                            hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
+                        }
                     }
-                    Parameter {
-                        parameterKey: "whiteBalance"
-                        title: qsTr("White balance")
-                        minimum: 0; maximum: 14; readable: true
-                        hint: qsTr("Index 0–14")
+                    ParameterGroup {
+                        title: qsTr("FOCUS & LENS")
+                        iconName: "lens"
+                        Parameter {
+                            parameterKey: "focusMode"
+                            title: qsTr("Focus mode")
+                            minimum: 0; maximum: 4
+                            options: [ { text: "0 · AF-S", value: 0 }, { text: "1 · AF-A", value: 1 },
+                                       { text: "2 · AF-C", value: 2 }, { text: "3 · DMF", value: 3 }, { text: "4 · MF", value: 4 } ]
+                            hint: qsTr("Codes 0–4; select a focus mode.")
+                        }
+                        Parameter {
+                            parameterKey: "focusValue"
+                            showSeparator: false
+                            title: qsTr("Focus value")
+                            readable: true
+                            hint: qsTr("Decimal raw value, e.g. 1200; device range not specified.")
+                        }
                     }
-                    Parameter {
-                        parameterKey: "shutterSpeed"
-                        title: qsTr("Shutter speed")
-                        inputPlaceholder: qsTr("Vendor index")
-                        hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
+                    ParameterGroup {
+                        title: qsTr("IMAGE OUTPUT")
+                        iconName: "image"
+                        Parameter {
+                            parameterKey: "imageQuality"
+                            title: qsTr("Image quality")
+                            minimum: 1; maximum: 4
+                            options: [ { text: "1 · " + qsTr("Light"), value: 1 }, { text: "2 · " + qsTr("Standard"), value: 2 },
+                                       { text: "3 · " + qsTr("Fine"), value: 3 }, { text: "4 · " + qsTr("Extra fine"), value: 4 } ]
+                            hint: qsTr("Codes 1–4; select an image quality.")
+                        }
+                        Parameter {
+                            parameterKey: "imageSize"
+                            showSeparator: false
+                            title: qsTr("Image size")
+                            minimum: 0; maximum: 3; readable: true
+                            options: [ { text: "0 · " + qsTr("L · Large"), value: 0 }, { text: "1 · " + qsTr("M · Medium"), value: 1 },
+                                       { text: "2 · " + qsTr("S · Small"), value: 2 }, { text: "3 · VGA", value: 3 } ]
+                            hint: qsTr("Codes 0–3; select an image size.")
+                        }
                     }
-                    Parameter {
-                        parameterKey: "aperture"
-                        showSeparator: false
-                        title: qsTr("Aperture")
-                        inputPlaceholder: qsTr("Vendor index")
-                        hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
-                    }
-                    SectionTitle { text: qsTr("FOCUS & LENS"); iconName: "lens" }
-                    Parameter {
-                        parameterKey: "focusMode"
-                        title: qsTr("Focus mode")
-                        minimum: 0; maximum: 4
-                        options: [ { text: "0 · AF-S", value: 0 }, { text: "1 · AF-A", value: 1 },
-                                   { text: "2 · AF-C", value: 2 }, { text: "3 · DMF", value: 3 }, { text: "4 · MF", value: 4 } ]
-                        hint: qsTr("Codes 0–4; select a focus mode.")
-                    }
-                    Parameter {
-                        parameterKey: "focusValue"
-                        showSeparator: false
-                        title: qsTr("Focus value")
-                        readable: true
-                        hint: qsTr("Decimal raw value, e.g. 1200; device range not specified.")
-                    }
-                    SectionTitle { text: qsTr("IMAGE OUTPUT"); iconName: "image" }
-                    Parameter {
-                        parameterKey: "imageQuality"
-                        title: qsTr("Image quality")
-                        minimum: 1; maximum: 4
-                        options: [ { text: "1 · " + qsTr("Light"), value: 1 }, { text: "2 · " + qsTr("Standard"), value: 2 },
-                                   { text: "3 · " + qsTr("Fine"), value: 3 }, { text: "4 · " + qsTr("Extra fine"), value: 4 } ]
-                        hint: qsTr("Codes 1–4; select an image quality.")
-                    }
-                    Parameter {
-                        parameterKey: "imageSize"
-                        showSeparator: false
-                        title: qsTr("Image size")
-                        minimum: 0; maximum: 3; readable: true
-                        options: [ { text: "0 · " + qsTr("L · Large"), value: 0 }, { text: "1 · " + qsTr("M · Medium"), value: 1 },
-                                   { text: "2 · " + qsTr("S · Small"), value: 2 }, { text: "3 · VGA", value: 3 } ]
-                        hint: qsTr("Codes 0–3; select an image size.")
-                    }
-                    Item { width: 1; height: ScreenTools.defaultFontPixelHeight * 0.4 }
                 }
             }
             Flickable {
@@ -304,54 +371,60 @@ QtControls.Popup {
                 contentHeight: rangeColumn.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
-                QtControls.ScrollBar.vertical: QtControls.ScrollBar { policy: QtControls.ScrollBar.AsNeeded }
+                QtControls.ScrollBar.vertical: ParameterScrollBar {}
                 Column {
                     id: rangeColumn
                     width: parent.width - ScreenTools.defaultFontPixelWidth * 1.3
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.05
-                    SectionTitle { text: qsTr("TRIGGER CONTROL"); iconName: "camera" }
-                    Parameter {
-                        parameterKey: "triggerPhoto"
-                        showSeparator: false
-                        title: qsTr("Trigger capture")
-                        minimum: 0; maximum: 1; defaultDraft: 0
-                        options: [ { text: "0 · " + qsTr("Off"), value: 0 }, { text: "1 · " + qsTr("On"), value: 1 } ]
-                        hint: qsTr("0 = Off, 1 = On. Off by default; apply to confirm.")
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.45
+                    ParameterGroup {
+                        title: qsTr("TRIGGER CONTROL")
+                        iconName: "camera"
+                        Parameter {
+                            parameterKey: "triggerPhoto"
+                            showSeparator: false
+                            title: qsTr("Trigger capture")
+                            minimum: 0; maximum: 1; defaultDraft: 0
+                            options: [ { text: "0 · " + qsTr("Off"), value: 0 }, { text: "1 · " + qsTr("On"), value: 1 } ]
+                            hint: qsTr("0 = Off, 1 = On. Off by default; apply to confirm.")
+                        }
                     }
-                    SectionTitle { text: qsTr("DISTANCE PARAMETERS"); iconName: "range" }
-                    Parameter {
-                        parameterKey: "shootingDistance"
-                        title: qsTr("Shooting distance")
-                        minimum: 20; maximum: 40; unit: "m"
-                        hint: qsTr("Integer: 20–40 m")
+                    ParameterGroup {
+                        title: qsTr("DISTANCE PARAMETERS")
+                        iconName: "range"
+                        Parameter {
+                            parameterKey: "shootingDistance"
+                            title: qsTr("Shooting distance")
+                            minimum: 20; maximum: 40; unit: "m"
+                            hint: qsTr("Integer: 20–40 m")
+                        }
+                        Parameter {
+                            parameterKey: "distanceThreshold"
+                            showSeparator: false
+                            title: qsTr("Trigger distance threshold")
+                            minimum: 30; maximum: 15000; unit: "cm"
+                            hint: qsTr("Integer: 30–15000 cm")
+                        }
                     }
-                    Parameter {
-                        parameterKey: "distanceThreshold"
-                        showSeparator: false
-                        title: qsTr("Trigger distance threshold")
-                        minimum: 30; maximum: 15000; unit: "cm"
-                        hint: qsTr("Integer: 30–15000 cm")
-                    }
-                    Item { width: 1; height: ScreenTools.defaultFontPixelHeight * 0.4 }
                 }
             }
         }
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#30424d" }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#dce3ea" }
         RowLayout {
             Layout.fillWidth: true
             spacing: ScreenTools.defaultFontPixelWidth
             Rectangle {
                 implicitWidth: 7; implicitHeight: 7; radius: 4
-                color: root.manager && root.manager.pending ? "#ffc77c" : root.connected ? "#65d9f4" : "#78909f"
+                color: root.manager && root.manager.pending ? "#96621d" : root.connected ? "#23835f" : "#8795a3"
             }
             Text {
                 Layout.fillWidth: true
                 text: root.manager && root.manager.lastError ? root.manager.lastError
                       : root.manager && root.manager.pending ? qsTr("Waiting for payload…")
                       : root.connected ? qsTr("Payload connected") : qsTr("Awaiting payload response")
-                color: root.manager && root.manager.lastError ? "#ffd098" : "#a9bfcc"
+                color: root.manager && root.manager.lastError ? "#855313" : "#3d5262"
                 font.family: ScreenTools.normalFontFamily
                 font.pointSize: ScreenTools.smallFontPointSize
+                font.weight: Font.Medium
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
                 elide: Text.ElideRight

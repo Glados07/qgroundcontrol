@@ -10,7 +10,7 @@ Item {
     property bool known: false
     property bool inserted: false
     readonly property bool available: known && inserted
-    readonly property color statusColor: available ? "#5ed39b" : "#ff6c80"
+    readonly property color statusColor: available ? "#23835f" : "#c73d4d"
     readonly property string statusText: !known ? qsTr("SD card status unknown")
                                                : inserted ? qsTr("SD card inserted") : qsTr("SD card not inserted")
     implicitWidth: contents.implicitWidth
@@ -37,12 +37,14 @@ Item {
             text: "SD"
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize * 0.85
-            color: "#9cb4c1"
+            font.weight: Font.DemiBold
+            color: "#3d5262"
         }
     }
-    QtControls.ToolTip.visible: helpMouse.containsMouse || helpMouse.pressed
-    QtControls.ToolTip.delay: 450
-    QtControls.ToolTip.text: statusText
+    CameraControlToolTip {
+        visible: helpMouse.containsMouse || helpMouse.pressed
+        text: statusText
+    }
     MouseArea {
         id: helpMouse
         anchors.fill: parent

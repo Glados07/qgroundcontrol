@@ -64,8 +64,8 @@ Rectangle {
     width: implicitWidth
     height: implicitHeight
     radius: ScreenTools.defaultFontPixelHeight * 0.55
-    color: "#f2172833"
-    border.color: "#355262"
+    color: "#f5f7fa"
+    border.color: "#cbd5df"
     visible: available
     function closeTransientUi() {
         if (settingsPopup) settingsPopup.close()
@@ -121,7 +121,7 @@ Rectangle {
             function onWidthChanged() { if (viewMenu.visible) viewMenu.reposition() }
             function onHeightChanged() { if (viewMenu.visible) viewMenu.reposition() }
         }
-        background: Rectangle { color: "#172833"; radius: 16; border.color: "#476878" }
+        background: Rectangle { color: "#f5f7fa"; radius: 16; border.color: "#cbd5df" }
         contentItem: RowLayout {
             id: viewOptions
             spacing: root.panelPadding
@@ -163,11 +163,13 @@ Rectangle {
             Rectangle {
                 anchors.centerIn: parent
                 width: 6; height: 6; radius: 3
-                color: !root.online ? "#7d8e99" : root.manager.pending ? "#ffcc80" : "#65d9f4"
+                color: !root.online ? "#8795a3" : root.manager.pending ? "#96621d" : "#176b83"
             }
-            QtControls.ToolTip.visible: stateMouse.containsMouse
-            QtControls.ToolTip.text: root.online && root.manager.pending ? qsTr("Waiting for payload")
+            CameraControlToolTip {
+                visible: stateMouse.containsMouse
+                text: root.online && root.manager.pending ? qsTr("Waiting for payload")
                                      : root.online ? qsTr("Rouke connected") : qsTr("Awaiting payload response")
+            }
             MouseArea { id: stateMouse; anchors.fill: parent; hoverEnabled: true }
         }
         CameraControlButton {
@@ -252,10 +254,10 @@ Rectangle {
             objectName: "recordButton"
             readonly property bool recording: root.recordingSessionCapturing
             readonly property string iconName: root.recordingSessionVisualActive ? "recordStop" : "record"
-            readonly property color iconColor: !enabled ? "#7d8e99" : videoMouseArea.pressed ? "#163744"
-                                               : root.recordingSessionCapturing ? "#ff6c80"
-                                               : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857"
-                                               : videoMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
+            readonly property color iconColor: !enabled ? "#8795a3" : videoMouseArea.pressed ? "#152733"
+                                               : root.recordingSessionCapturing ? "#c73d4d"
+                                               : root.recordingSessionFailed || root.recordingSessionPending ? "#96621d"
+                                               : videoMouseArea.containsMouse ? "#176b83" : "#152733"
             readonly property string text: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
             readonly property string statusText: root.recordingSessionPending && !root.recordingSessionCapturing
                                                  ? "..."
@@ -272,7 +274,6 @@ Rectangle {
             border.width: 0
             enabled: Boolean(root.manager && root.manager.videoRecordingAvailable
                              && (root.online || root.recordingSessionVisualActive))
-            opacity: enabled ? 1.0 : 0.32
 
             Column {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -283,7 +284,7 @@ Rectangle {
                     width: recordButton.width
                     height: root.recordingActionSize
                     radius: ScreenTools.defaultFontPixelHeight * 0.4
-                    color: videoMouseArea.pressed ? "#b8e7f2" : "transparent"
+                    color: videoMouseArea.pressed ? "#c5e1e9" : "transparent"
                     border.width: 0
                     Behavior on color { ColorAnimation { duration: 100 } }
                     CameraControlIcon {
@@ -302,8 +303,8 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: recordButton.width
                     text: recordButton.statusText
-                    color: root.recordingSessionCapturing ? "#ff9cab"
-                           : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857" : "#b4c9d4"
+                    color: root.recordingSessionCapturing ? "#c73d4d"
+                           : root.recordingSessionFailed || root.recordingSessionPending ? "#96621d" : "#3d5262"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize * 0.88
                     fontSizeMode: Text.HorizontalFit
@@ -313,9 +314,10 @@ Rectangle {
             }
             Accessible.role: Accessible.Button
             Accessible.name: text
-            QtControls.ToolTip.visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
-            QtControls.ToolTip.delay: 450
-            QtControls.ToolTip.text: text
+            CameraControlToolTip {
+                visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
+                text: recordButton.text
+            }
             MouseArea {
                 id: videoMouseArea
                 objectName: "videoMouseArea"

@@ -7,7 +7,7 @@ import QtQuick
 Canvas {
     id: root
     property string kind: "camera"
-    property color color: "#e9f4f8"
+    property color color: "#152733"
     implicitWidth: 24
     implicitHeight: 24
     antialiasing: true
@@ -21,7 +21,7 @@ Canvas {
         c.scale(width / 24, height / 24)
         c.strokeStyle = color
         c.fillStyle = color
-        c.lineWidth = 1.6
+        c.lineWidth = 1.7
         c.lineCap = "round"
         c.lineJoin = "round"
         function path(points, close, fill) {

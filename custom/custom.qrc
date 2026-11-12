@@ -8,6 +8,11 @@
         <file alias="Viewer3D/City3DMapIcon.svg">src/Viewer3D/Images/city_3d_map_icon.svg</file>
     </qresource>
 
+    <qresource prefix="/Custom/fonts">
+        <file alias="QGCCameraSans-SemiBold.ttf">resources/fonts/QGCCameraSans-SemiBold.ttf</file>
+        <file alias="OFL.txt">resources/fonts/OFL.txt</file>
+    </qresource>
+
     <qresource prefix="/Custom/qml">
         <!-- 只注册有二次开发差异的 QML；其余类型继续使用 QGC 原生模块。 -->
         <file alias="QGroundControl/Controls/BatteryIndicator.qml">src/QmlControls/BatteryIndicator.qml</file>
@@ -37,6 +42,8 @@
         <file alias="QGroundControl/FlightDisplay/GimbalCameraControl.qml">src/FlightDisplay/GimbalCameraControl.qml</file>
         <file alias="QGroundControl/FlightDisplay/CameraControlIcon.qml">src/FlightDisplay/CameraControlIcon.qml</file>
         <file alias="QGroundControl/FlightDisplay/CameraControlButton.qml">src/FlightDisplay/CameraControlButton.qml</file>
+        <file alias="QGroundControl/FlightDisplay/CameraControlToolTip.qml">src/FlightDisplay/CameraControlToolTip.qml</file>
+        <file alias="QGroundControl/FlightDisplay/CameraControlFont.qml">src/FlightDisplay/CameraControlFont.qml</file>
         <file alias="QGroundControl/FlightDisplay/CameraStorageStatus.qml">src/FlightDisplay/CameraStorageStatus.qml</file>
         <file alias="QGroundControl/FlightDisplay/CameraPayloadSelector.qml">src/FlightDisplay/CameraPayloadSelector.qml</file>
         <file alias="QGroundControl/FlightDisplay/RoukeCameraControl.qml">src/FlightDisplay/RoukeCameraControl.qml</file>

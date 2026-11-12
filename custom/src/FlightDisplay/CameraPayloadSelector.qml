@@ -15,8 +15,8 @@ Rectangle {
     implicitWidth: choices.implicitWidth + inset * 2
     implicitHeight: choices.implicitHeight + inset * 2
     radius: ScreenTools.defaultFontPixelHeight * 0.55
-    color: "#f2172833"
-    border.color: "#355262"
+    color: "#f5f7fa"
+    border.color: "#cbd5df"
     RowLayout {
         id: choices
         anchors.fill: parent
@@ -34,14 +34,14 @@ Rectangle {
                 iconName: modelData === 0 ? "payloadA8" : "payloadRouke"
                 checked: root.selectedCamera === modelData
                 muted: !payloadOnline
-                iconColor: checked ? "#9ce9fa" : "#9db2bf"
+                iconColor: checked ? "#176b83" : "#3d5262"
                 onClicked: root.cameraSelected(modelData)
                 Rectangle {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: 4
                     width: 4; height: 4; radius: 2
-                    color: (parent.modelData === 0 ? root.a8Online : root.roukeOnline) ? "#65d9f4" : "#617583"
+                    color: (parent.modelData === 0 ? root.a8Online : root.roukeOnline) ? "#176b83" : "#8795a3"
                 }
             }
         }

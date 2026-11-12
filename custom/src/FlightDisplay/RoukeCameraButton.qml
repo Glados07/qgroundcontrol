@@ -17,10 +17,8 @@ QtControls.Button {
     property bool iconAbove: false
     property string iconName: ""
     property string symbol: ""
-    readonly property color accent: "#72d9ef"
-    readonly property color foreground: down || primary ? "#102934"
-                                                       : destructive ? "#ffb5b8" : checked ? "#c0f1fb"
-                                                       : iconOnly && hovered ? "#a8eaf7" : "#dce8ef"
+    readonly property color accent: "#176b83"
+    readonly property color foreground: !enabled ? "#8b98a3" : destructive ? "#c73d4d" : "#152733"
     readonly property real iconSize: ScreenTools.defaultFontPixelHeight * (iconOnly ? 1.05 : 0.9)
     implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * (compact ? 2.1 : 2.45),
                              contentItem.implicitHeight + topPadding + bottomPadding,
@@ -31,10 +29,12 @@ QtControls.Button {
     topPadding: ScreenTools.defaultFontPixelHeight * 0.3
     bottomPadding: topPadding
     hoverEnabled: true
-    opacity: enabled ? 1 : 0.36
     font.pointSize: ScreenTools.defaultFontPointSize
-    font.family: ScreenTools.normalFontFamily
+    font.family: controlFont.status === FontLoader.Ready ? controlFont.name : ScreenTools.normalFontFamily
+    font.styleName: ""
+    font.weight: Font.DemiBold
     Accessible.name: text
+    CameraControlFont { id: controlFont }
     QtControls.ToolTip {
         id: helpTip
         visible: root.hovered && root.iconOnly && root.visible && root.enabled
@@ -42,35 +42,37 @@ QtControls.Button {
         delay: 550
         font.family: ScreenTools.normalFontFamily
         font.pointSize: ScreenTools.smallFontPointSize
+        font.weight: Font.Medium
         horizontalPadding: ScreenTools.defaultFontPixelWidth
         verticalPadding: ScreenTools.defaultFontPixelHeight * 0.4
         contentItem: Text {
             text: helpTip.text
             font: helpTip.font
-            color: "#e4f0f5"
+            color: "#152733"
             wrapMode: Text.Wrap
         }
         background: Rectangle {
             radius: ScreenTools.defaultFontPixelHeight * 0.3
-            color: "#1c2d39"
-            border.color: "#425e6d"
+            color: "#ffffff"
+            border.color: "#cbd5df"
         }
     }
     background: Rectangle {
-        radius: ScreenTools.defaultFontPixelHeight * (root.iconOnly ? 0.5 : 0.4)
-        color: root.down ? "#b8e7f2" : root.iconOnly ? "transparent" : root.primary ? "#8de0ef"
-               : root.checked ? "#203947" : root.hovered ? "#2b414f"
-               : root.subtle || root.tabStyle ? "transparent" : "#243744"
-        border.width: root.visualFocus ? 1 : 0
-        border.color: "#a2ecfb"
+        radius: root.iconOnly ? height / 2 : ScreenTools.defaultFontPixelHeight * 0.45
+        color: !root.enabled ? (root.tabStyle || (root.iconOnly && root.iconName !== "read") ? "#00ffffff" : "#f0f3f5")
+               : root.down ? "#bfdde6" : root.tabStyle && root.checked ? "#ffffff"
+               : root.hovered ? "#d3e0e8" : root.primary ? "#dfe8ee"
+               : root.iconOnly ? (root.iconName === "read" ? "#edf3f6" : "#00ffffff")
+               : root.subtle || root.tabStyle ? "#00ffffff" : "#dfe8ee"
+        border.width: root.visualFocus ? 2 : (root.tabStyle && root.checked) || (root.primary && root.enabled) ? 1 : 0
+        border.color: root.visualFocus ? root.accent : root.tabStyle ? "#b9cbd5" : "#b1ced9"
         Behavior on color { ColorAnimation { duration: 100 } }
         Rectangle {
             visible: root.tabStyle && root.checked
-            anchors.left: parent.left
-            anchors.right: parent.right
+            anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.5
-            anchors.rightMargin: anchors.leftMargin
+            anchors.bottomMargin: 3
+            width: ScreenTools.defaultFontPixelWidth * 2
             height: 2
             radius: 1
             color: root.accent

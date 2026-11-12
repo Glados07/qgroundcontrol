@@ -33,18 +33,18 @@ Rectangle {
                                                 ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     readonly property real panelPadding: ScreenTools.defaultFontPixelHeight * 0.22
     readonly property real itemSpacing: panelPadding
-    readonly property color accentColor: "#65d9f4"
-    readonly property color panelColor: "#172833"
-    readonly property color panelBorderColor: "#355262"
-    readonly property color innerBorderColor: "#203744"
+    readonly property color accentColor: "#176b83"
+    readonly property color panelColor: "#f5f7fa"
+    readonly property color panelBorderColor: "#cbd5df"
+    readonly property color innerBorderColor: "#ffffff"
     readonly property color controlBorderColor: "transparent"
-    readonly property color popupColor: "#192d39"
+    readonly property color popupColor: "#f5f7fa"
     readonly property color buttonColor: "transparent"
     readonly property color buttonHoverColor: "transparent"
-    readonly property color buttonPressedColor: "#b8e7f2"
-    readonly property color iconColor: "#dcecf4"
-    readonly property color hoveredIconColor: "#a8eaf7"
-    readonly property color pressedIconColor: "#163744"
+    readonly property color buttonPressedColor: "#c5e1e9"
+    readonly property color iconColor: "#152733"
+    readonly property color hoveredIconColor: "#176b83"
+    readonly property color pressedIconColor: "#152733"
     readonly property real actionIconSize: ScreenTools.defaultFontPixelHeight * 1.2
     readonly property real modeIconSize: actionIconSize
     readonly property bool recordingSessionActive: Boolean(manager && manager.recordingSessionActive)
@@ -188,7 +188,7 @@ Rectangle {
         width: Math.max(5, root.actionSize * 0.12)
         height: width
         radius: width / 2
-        color: root.online ? root.accentColor : "#708794"
+        color: root.online ? root.accentColor : "#8795a3"
         border.width: 0
         z: 2
     }
@@ -309,7 +309,7 @@ Rectangle {
         background: Rectangle {
             radius: Math.min(12, root.actionSize * 0.22)
             color: root.popupColor
-            border.color: root.videoModePending ? "#d8ffc857" : root.panelBorderColor
+            border.color: root.videoModePending ? "#96621d" : root.panelBorderColor
             border.width: 1
 
             Rectangle {
@@ -393,9 +393,11 @@ Rectangle {
                         height: width
                     }
 
-                    QtControls.ToolTip.visible: modeOptionMouse.containsMouse
-                    QtControls.ToolTip.delay: 350
-                    QtControls.ToolTip.text: root.videoModeName(modeOption.modeValue)
+                    CameraControlToolTip {
+                        visible: modeOptionMouse.containsMouse
+                        delay: 350
+                        text: root.videoModeName(modeOption.modeValue)
+                    }
 
                     MouseArea {
                         id: modeOptionMouse
@@ -458,7 +460,7 @@ Rectangle {
             Layout.leftMargin: root.itemSpacing
             Layout.rightMargin: root.itemSpacing
             Layout.alignment: Qt.AlignHCenter
-            color: "#304b5a"
+            color: "#dce3ea"
         }
 
         Rectangle {
@@ -477,7 +479,6 @@ Rectangle {
             color: modeMouseArea.pressed ? root.buttonPressedColor : "transparent"
             border.width: 0
             enabled: root.online && !root.videoModePending
-            opacity: enabled ? 1.0 : 0.32
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -488,7 +489,7 @@ Rectangle {
                 width: root.modeIconSize
                 height: width
                 kind: "switch"
-                color: !modeButton.enabled ? "#7d8e99" : modeMouseArea.pressed ? root.pressedIconColor
+                color: !modeButton.enabled ? "#8795a3" : modeMouseArea.pressed ? root.pressedIconColor
                        : modeMouseArea.containsMouse ? root.hoveredIconColor
                        : root.videoModeMenuOpen ? root.accentColor : root.iconColor
                 scale: modeMouseArea.pressed ? 0.94 : 1.0
@@ -500,7 +501,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: parent.height * 0.08
                 text: modeButton.statusText
-                color: !modeButton.enabled ? "#7d8e99" : modeMouseArea.pressed ? root.pressedIconColor : root.accentColor
+                color: !modeButton.enabled ? "#8795a3" : modeMouseArea.pressed ? root.pressedIconColor : root.accentColor
                 font.bold: true
                 font.pointSize: ScreenTools.smallFontPointSize * 0.58
             }
@@ -511,7 +512,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 kind: "chevronDown"
                 rotation: 90
-                color: !root.online ? "#7d8e99" : root.videoModeMenuOpen ? root.accentColor : "#b4c9d4"
+                color: !root.online ? "#8795a3" : root.videoModeMenuOpen ? root.accentColor : "#3d5262"
                 width: root.actionSize * 0.2
                 height: width
             }
@@ -523,10 +524,10 @@ Rectangle {
                 width: Math.max(5, parent.width * 0.12)
                 height: width
                 radius: width / 2
-                color: !root.online ? "#7d8e99" : root.videoModePending
-                       ? "#ffc857"
-                       : (root.videoModeKnown ? root.accentColor : "#8e9aa3")
-                border.color: "#b8ffffff"
+                color: !root.online ? "#8795a3" : root.videoModePending
+                       ? "#96621d"
+                       : (root.videoModeKnown ? root.accentColor : "#8795a3")
+                border.color: "#ffffff"
                 border.width: 1
             }
 
@@ -564,7 +565,6 @@ Rectangle {
             border.width: 0
             // Starting camera work requires a responding payload.
             enabled: root.online
-            opacity: enabled ? 1.0 : 0.32
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -573,7 +573,7 @@ Rectangle {
                 width: root.actionIconSize
                 height: width
                 kind: "camera"
-                color: !photoButton.enabled ? "#7d8e99" : photoMouseArea.pressed ? root.pressedIconColor
+                color: !photoButton.enabled ? "#8795a3" : photoMouseArea.pressed ? root.pressedIconColor
                        : photoMouseArea.containsMouse ? root.hoveredIconColor
                        : photoSuccessFlash.running ? root.accentColor : root.iconColor
                 scale: photoMouseArea.pressed ? 0.94 : 1.0
@@ -590,9 +590,10 @@ Rectangle {
 
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Take photo")
-            QtControls.ToolTip.visible: photoMouseArea.containsMouse && !photoMouseArea.pressed
-            QtControls.ToolTip.delay: 450
-            QtControls.ToolTip.text: qsTr("Take photo")
+            CameraControlToolTip {
+                visible: photoMouseArea.containsMouse && !photoMouseArea.pressed
+                text: qsTr("Take photo")
+            }
 
             MouseArea {
                 id: photoMouseArea
@@ -630,7 +631,6 @@ Rectangle {
             // The manager coordinates the independent SD and local recording branches.
             enabled: Boolean(root.manager && root.manager.videoRecordingAvailable
                              && (root.online || root.recordingSessionVisualActive))
-            opacity: enabled ? 1.0 : 0.32
 
             Column {
                 id: videoContent
@@ -652,9 +652,9 @@ Rectangle {
                         width: root.actionIconSize
                         height: width
                         kind: root.recordingSessionVisualActive ? "recordStop" : "record"
-                        color: !videoButton.enabled ? "#7d8e99" : videoMouseArea.pressed ? root.pressedIconColor
-                               : root.recordingSessionCapturing ? "#ff6c80"
-                               : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857"
+                        color: !videoButton.enabled ? "#8795a3" : videoMouseArea.pressed ? root.pressedIconColor
+                               : root.recordingSessionCapturing ? "#c73d4d"
+                               : root.recordingSessionFailed || root.recordingSessionPending ? "#96621d"
                                : videoMouseArea.containsMouse ? root.hoveredIconColor : root.iconColor
                         scale: videoMouseArea.pressed ? 0.94 : 1.0
                         Behavior on scale { NumberAnimation { duration: 90 } }
@@ -667,8 +667,8 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: videoButton.width
                     text: videoButton.statusText
-                    color: root.recordingSessionCapturing ? "#ff9cab"
-                           : root.recordingSessionFailed || root.recordingSessionPending ? "#ffc857" : "#b4c9d4"
+                    color: root.recordingSessionCapturing ? "#c73d4d"
+                           : root.recordingSessionFailed || root.recordingSessionPending ? "#96621d" : "#3d5262"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize * 0.88
                     fontSizeMode: Text.HorizontalFit
@@ -679,9 +679,10 @@ Rectangle {
 
             Accessible.role: Accessible.Button
             Accessible.name: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
-            QtControls.ToolTip.visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
-            QtControls.ToolTip.delay: 450
-            QtControls.ToolTip.text: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
+            CameraControlToolTip {
+                visible: videoMouseArea.containsMouse && !videoMouseArea.pressed
+                text: root.recordingSessionVisualActive ? qsTr("Stop recording") : qsTr("Start recording")
+            }
 
             MouseArea {
                 id: videoMouseArea

@@ -21,7 +21,7 @@ sys.path.insert(0, str(STUBS))
 import run as ui
 import PySide6
 from PySide6.QtCore import QObject, Property, Signal, Slot, QResource, QUrl, QPoint, QPointF, Qt, QTranslator, QMetaObject
-from PySide6.QtGui import QGuiApplication, QFontDatabase, QFontMetricsF
+from PySide6.QtGui import QGuiApplication, QFontDatabase, QFontMetricsF, QRawFont
 from PySide6.QtQml import qmlRegisterSingletonInstance
 from PySide6.QtQuick import QQuickItem, QQuickView
 from PySide6.QtTest import QTest
@@ -163,6 +163,43 @@ class Core(QObject):
     corePlugin = Property("QVariantMap", lambda self: {"roukeControlManager": self.manager}, constant=True)
 
 
+def assert_no_qml_warnings(warnings):
+    # The Anaconda Qt host probes an absent default directory even though this
+    # fixture explicitly registers its fonts. Keep every component/font-loader warning.
+    messages = [message for message in warnings if not (
+        message.startswith("QFontDatabase: Cannot find font directory ")
+        and "\nNote that Qt no longer ships fonts." in message)]
+    assert not messages, "\n".join(messages)
+
+
+def assert_control_fonts(named):
+    """Check actual bundled glyphs, including Chinese, without changing prose fonts."""
+    def assert_bundled(item):
+        font = item.property("font")
+        assert font.family() == "QGC Camera Sans", (item.objectName(), font.family())
+        raw = QRawFont.fromFont(font)
+        assert raw.isValid() and raw.familyName() == "QGC Camera Sans"
+        assert raw.weight() == 600, ("Use real semibold outlines", raw.familyName(), raw.weight())
+        text = str(item.property("text") or "") + "0123456789白平衡应用拍摄距离阈值"
+        assert all(raw.supportsCharacter(ord(character)) for character in text if not character.isspace()), text
+
+    for key in ("iso", "whiteBalance", "focusMode", "focusValue", "shutterSpeed", "aperture",
+                "imageQuality", "imageSize", "triggerPhoto", "shootingDistance", "distanceThreshold"):
+        parameter = named("parameter_" + key)
+        title = next(child for child in ui.descendants(parameter)
+                     if child.property("text") == parameter.property("title"))
+        assert_bundled(title)
+        editor = named(("choice_" if parameter.property("hasOptions") else "editor_") + key)
+        assert_bundled(editor)
+        assert_bundled(named("apply_" + key))
+        for name in ("hint_", "confirmed_"):
+            assert named(name + key).property("font").family() == "Microsoft YaHei", (name, key)
+        if parameter.property("unit"):
+            unit = next(child for child in ui.descendants(editor)
+                        if child.property("text") == parameter.property("unit"))
+            assert unit.property("font").family() == "Microsoft YaHei", key
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resource", help="Prebuilt Qt 6 custom resource; built automatically when omitted")
@@ -273,7 +310,9 @@ Rectangle {
     def assert_input_fits(item):
         usable_width = item.width() - item.property("leftPadding") - item.property("rightPadding")
         assert item.property("contentWidth") <= usable_width + 1, (
-            "Numeric value must remain fully visible", item.objectName(), item.property("text"), usable_width)
+            "Numeric value must remain fully visible", item.objectName(), item.property("text"),
+            view.width(), view.height(), style.scale_value, item.width(), usable_width,
+            item.property("contentWidth"))
         for child in ui.descendants(item):
             if child.isVisible() and child.property("text") in ("m", "cm"):
                 assert child.property("paintedWidth") <= child.width() + 1
@@ -323,6 +362,7 @@ Rectangle {
     assert manager.refresh_requests == 0, "Opening settings only presents cached values"
     offline_popup = named("settingsPopup")
     assert offline_popup.property("visible") and offline_popup.property("selectedPage") == 0
+    assert_control_fonts(named)
     assert_popup_layout(offline_popup)
     # Exercise a host-supplied anchor, including a low rail and a moved anchor
     # while the popup remains open. The form must shrink/scroll, not center
@@ -679,6 +719,7 @@ Rectangle {
         assert "已读回" in named("confirmed_iso").property("text")
         assert "上次确认：1600" in named("confirmed_iso").property("text")
         assert "设置编码 0–34" in named("hint_iso").property("text")
+        assert_control_fonts(named)
         manager.update(sdkResponding=True)
     view.grabWindow().save(str(output / "rouke-panel.png"))
     click_item(named("settingsButton"))
@@ -705,7 +746,8 @@ Rectangle {
     # page may escape the viewport or compress its editors to fit all cards.
     previous_actions = list(manager.actions)
     for width, height, scale in ((360, 640, 1.0), (800, 600, 1.0), (800, 700, 1.5),
-                                 (320, 640, 1.5), (731, 411, 1.0)):
+                                 (320, 640, 1.5), (731, 411, 1.0),
+                                 (731, 411, 1.5), (800, 480, 1.5)):
         style.scale_value = scale
         style.changed.emit()
         view.resize(width, height)
@@ -765,11 +807,9 @@ Rectangle {
     assert not popup.property("visible")
     view.setSource(QUrl())
     QTest.qWait(30)
-    errors = [message for message in warnings if any(token in message for token in
-              ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign"))]
-    assert not errors, "\n".join(errors)
+    assert_no_qml_warnings(warnings)
     print("PASS: camera actions, cache-only page lifecycle, offline GET-only probe, SET/readback states, separate ISO report/setting domains, retained drafts, explicit parameter dispatch, default-Off trigger, "
-          "range validation, explicit input codes/ranges, confirmed refresh hiding and recovery, set-only hints, scrolling, compact top-aligned popup/low-anchor fallback, popup lifecycle, resize/font layouts; no QML errors")
+          "range validation, explicit input codes/ranges, confirmed refresh hiding and recovery, set-only hints, scrolling, compact top-aligned popup/low-anchor fallback, popup lifecycle, resize/font layouts, bundled semibold glyphs; no QML warnings")
     view.close()
 
 

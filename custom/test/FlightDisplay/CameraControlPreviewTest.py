@@ -277,7 +277,9 @@ Rectangle {
         return item.property("background") if item.metaObject().indexOfProperty("background") >= 0 else item
 
     def is_recording_red(color):
-        return color.red() > color.green() * 1.3 and color.red() > color.blue() * 1.3
+        # Distinguish recording red from the darker amber waiting state.
+        hue = color.hsvHue()
+        return color.hsvSaturationF() > 0.4 and (0 <= hue <= 15 or hue >= 345)
 
     def ancestor_with_property(item, property_name):
         while item.metaObject().indexOfProperty(property_name) < 0:
@@ -501,6 +503,7 @@ Rectangle {
         QTest.qWait(160)
         popup = named("settingsPopup")
         assert popup.property("visible")
+        rouke.assert_control_fonts(named)
         assert_settings_anchor(popup)
         assert payload.actions == previous_actions + [5], "Opening settings must not send a write"
         assert payload.refresh_requests == refreshes_before, "Settings only displays the cache"
@@ -687,12 +690,14 @@ Rectangle {
             if scroll.property("contentHeight") > scroll.height() + 1:
                 touch_scroll(scroll)
             minimum_touch = max(20, 20 * scale * 2.25)
+            online_icon_colors = {}
             for name in action_names:
                 item = named(name)
                 assert item.width() + 1 >= minimum_touch and item.height() + 1 >= minimum_touch, (
                     "Mobile touch targets must not shrink", name, item.width(), item.height(), minimum_touch)
                 reveal(item)
                 assert item.isEnabled(), ("Online action disabled", name)
+                online_icon_colors[name] = icon_of(item).property("color")
             reveal(named("sdStatusRow"))  # Bottom status remains reachable above the compass.
             # At least the shutter must dispatch after genuine scrolling.
             before = list(manager.actions)
@@ -717,7 +722,11 @@ Rectangle {
                     assert item.isEnabled(), "Offline settings navigation remains available"
                     continue
                 assert not item.isEnabled(), ("Offline action remains enabled", name)
-                assert item.opacity() <= 0.5, ("Offline action must be visibly greyed", name, item.opacity())
+                disabled_color = icon_of(item).property("color")
+                channels = (disabled_color.red(), disabled_color.green(), disabled_color.blue())
+                assert max(channels) - min(channels) <= 40, ("Offline icons must be neutral grey", name, disabled_color.name())
+                assert disabled_color.lightnessF() > online_icon_colors[name].lightnessF(), (
+                    "Disabled grey must be lighter than the active dark icon", name, disabled_color.name())
                 point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
                 QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(int(point.x()), int(point.y())))
                 QTest.qWait(30)
@@ -748,11 +757,9 @@ Rectangle {
             capture(f"mobile-rouke-{width}x{height}-{scale}-scrolled")
     view.setSource(QUrl())
     QTest.qWait(60)
-    errors = [message for message in warnings if any(token in message for token in
-              ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign", "is not a type", "Cannot open"))]
-    assert not errors, "\n".join(errors)
+    rouke.assert_no_qml_warnings(warnings)
     scope = "mobile cases only" if args.mobile_only else "desktop actions/settings and mobile cases"
-    print(f"PASS: native QRC module entry, {scope}, dual columns at 731x411/800x480 and 100/150%, compass bounds, wheel/touch scrolling, offline grey disabled actions/no dispatch, disconnected recording STOP; no QML errors")
+    print(f"PASS: native QRC module entry, {scope}, dual columns at 731x411/800x480 and 100/150%, compass bounds, wheel/touch scrolling, offline grey disabled actions/no dispatch, disconnected recording STOP, bundled semibold glyphs; no QML warnings")
     view.close()
 
 

@@ -29,10 +29,10 @@ Item {
                                       ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0)
     property real iconSize: ScreenTools.defaultFontPixelHeight * 1.2
     property real controlSpacing: ScreenTools.defaultFontPixelHeight * 0.22
-    property color accentColor: "#65d9f4"
+    property color accentColor: "#176b83"
     property color buttonColor: "transparent"
     property color buttonHoverColor: "transparent"
-    property color buttonPressedColor: "#b8e7f2"
+    property color buttonPressedColor: "#c5e1e9"
     property color buttonBorderColor: "transparent"
     property real buttonCornerRadius: ScreenTools.defaultFontPixelHeight * 0.4
     property var _previousManager: null
@@ -199,7 +199,6 @@ Item {
             border.width: 0
             enabled: root.endpointReachable && (zoomOutMouseArea.gestureState !== root.gestureIdle
                                                    || (root.canSend && root.canZoomOut))
-            opacity: enabled ? 1.0 : 0.32
             Behavior on color { ColorAnimation { duration: 100 } }
 
             CameraControlIcon {
@@ -207,17 +206,18 @@ Item {
                 width: root.iconSize
                 height: width
                 kind: "zoomOut"
-                color: !zoomOutButton.enabled ? "#7d8e99" : zoomOutMouseArea.pressed ? "#163744"
-                       : zoomOutMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
+                color: !zoomOutButton.enabled ? "#8795a3" : zoomOutMouseArea.pressed ? "#152733"
+                       : zoomOutMouseArea.containsMouse ? "#176b83" : "#152733"
                 scale: zoomOutMouseArea.pressed ? 0.94 : 1.0
                 Behavior on scale { NumberAnimation { duration: 90 } }
             }
 
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Zoom out")
-            QtControls.ToolTip.visible: zoomOutMouseArea.containsMouse && !zoomOutMouseArea.pressed
-            QtControls.ToolTip.delay: 450
-            QtControls.ToolTip.text: qsTr("Zoom out · hold for continuous zoom")
+            CameraControlToolTip {
+                visible: zoomOutMouseArea.containsMouse && !zoomOutMouseArea.pressed
+                text: qsTr("Zoom out · hold for continuous zoom")
+            }
 
             MouseArea {
                 id: zoomOutMouseArea
@@ -383,7 +383,7 @@ Item {
                                     * (root.showActualZoom ? 1.08 : 0.65)
             Layout.alignment: Qt.AlignHCenter
             radius: ScreenTools.defaultFontPixelHeight * 0.35
-            color: "#12212b"
+            color: "#e9eff4"
             border.width: 0
 
             QGCLabel {
@@ -393,7 +393,7 @@ Item {
                 text: root.online && root.zoomKnown
                       ? root.zoomValue.toFixed(1) + "x"
                       : "--"
-                color: root.online && root.zoomKnown ? root.accentColor : "#728b9a"
+                color: root.online && root.zoomKnown ? root.accentColor : "#8795a3"
                 font.bold: true
                 font.pointSize: ScreenTools.defaultFontPointSize * 0.9
             }
@@ -413,7 +413,7 @@ Item {
                           + (root.online && root.zoomKnown
                              ? root.zoomValue.toFixed(1) + "x"
                              : "--")
-                    color: root.online && root.zoomKnown ? root.accentColor : "#9dabb3b9"
+                    color: root.online && root.zoomKnown ? root.accentColor : "#8795a3"
                     font.bold: true
                     font.pointSize: ScreenTools.smallFontPointSize * 0.82
                 }
@@ -426,7 +426,7 @@ Item {
                           + (root.online && root.actualZoomKnown
                              ? root.actualZoomValue.toFixed(1) + "x"
                              : "--")
-                    color: "#ced9dfe3"
+                    color: "#3d5262"
                     font.pointSize: ScreenTools.smallFontPointSize * 0.74
                 }
             }
@@ -446,7 +446,6 @@ Item {
             border.width: 0
             enabled: root.endpointReachable && (zoomInMouseArea.gestureState !== root.gestureIdle
                                                    || (root.canSend && root.canZoomIn))
-            opacity: enabled ? 1.0 : 0.32
             Behavior on color { ColorAnimation { duration: 100 } }
 
             CameraControlIcon {
@@ -454,17 +453,18 @@ Item {
                 width: root.iconSize
                 height: width
                 kind: "zoomIn"
-                color: !zoomInButton.enabled ? "#7d8e99" : zoomInMouseArea.pressed ? "#163744"
-                       : zoomInMouseArea.containsMouse ? "#a8eaf7" : "#dcecf4"
+                color: !zoomInButton.enabled ? "#8795a3" : zoomInMouseArea.pressed ? "#152733"
+                       : zoomInMouseArea.containsMouse ? "#176b83" : "#152733"
                 scale: zoomInMouseArea.pressed ? 0.94 : 1.0
                 Behavior on scale { NumberAnimation { duration: 90 } }
             }
 
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Zoom in")
-            QtControls.ToolTip.visible: zoomInMouseArea.containsMouse && !zoomInMouseArea.pressed
-            QtControls.ToolTip.delay: 450
-            QtControls.ToolTip.text: qsTr("Zoom in · hold for continuous zoom")
+            CameraControlToolTip {
+                visible: zoomInMouseArea.containsMouse && !zoomInMouseArea.pressed
+                text: qsTr("Zoom in · hold for continuous zoom")
+            }
 
             MouseArea {
                 id: zoomInMouseArea

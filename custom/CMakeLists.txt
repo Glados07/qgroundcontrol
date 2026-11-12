@@ -339,6 +339,10 @@ set_source_files_properties(
     src/FlightDisplay/CameraControlIcon.qml
     PROPERTIES QT_RESOURCE_ALIAS CameraControlIcon.qml
 )
+set_source_files_properties(
+    src/FlightDisplay/CameraControlToolTip.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlToolTip.qml
+)
 qt_add_qml_module(CustomFlightDisplayModule
     URI Custom.FlightDisplay
     VERSION 1.0
@@ -350,6 +354,7 @@ qt_add_qml_module(CustomFlightDisplayModule
         src/FlightDisplay/CameraPayloadSelector.qml
         src/FlightDisplay/CameraControlButton.qml
         src/FlightDisplay/CameraControlIcon.qml
+        src/FlightDisplay/CameraControlToolTip.qml
     NO_PLUGIN
 )
 

@@ -62,13 +62,14 @@ Rectangle {
     // Keep the edit group compact while reserving enough room for the full
     // protocol integer and unit at the current application font size.
     readonly property real numericEditorWidth: Math.max(ScreenTools.defaultFontPixelWidth * 13,
-                                                        numericMetrics.advanceWidth("2147483647")
+                                                        numericMetrics.advanceWidth
                                                         + numeric.leftPadding
                                                         + Math.max(numeric.rightPadding,
-                                                                   unitMetrics.advanceWidth("cm") + ScreenTools.defaultFontPixelWidth * 2.0)
+                                                                   unitMetrics.advanceWidth + ScreenTools.defaultFontPixelWidth * 2.0)
                                                         + 4)
-    readonly property real preferredEditorWidth: hasOptions ? ScreenTools.defaultFontPixelWidth * 18
-                                                            : numericEditorWidth
+    readonly property real preferredEditorWidth: Math.max(ScreenTools.defaultFontPixelWidth * 18,
+                                                           numericEditorWidth)
+    readonly property real editorFontPointSize: ScreenTools.defaultFontPointSize * 1.08
     readonly property bool inlineEditorLayout: wideLayout
             && layout.width >= preferredEditorWidth + actionRow.implicitWidth + ScreenTools.defaultFontPixelWidth * 0.65
     readonly property real inset: ScreenTools.defaultFontPixelHeight * 0.32
@@ -76,10 +77,24 @@ Rectangle {
     objectName: "parameter_" + parameterKey
     implicitHeight: layout.implicitHeight + inset * 2
     radius: ScreenTools.defaultFontPixelHeight * 0.4
-    color: pending ? "#142d3a" : "transparent"
+    color: pending ? "#e9f2f5" : "transparent"
 
-    FontMetrics { id: numericMetrics; font: numeric.font }
-    FontMetrics { id: unitMetrics; font: unitLabel.font }
+    CameraControlFont { id: controlFont }
+    // Property-based metrics update after the resource font loads and whenever
+    // application font scaling changes, so long values remain fully visible.
+    TextMetrics { id: numericMetrics; font: numeric.font; text: "2147483647" }
+    TextMetrics { id: unitMetrics; font: unitLabel.font; text: "cm" }
+    component EditorSurface: Rectangle {
+        property bool controlEnabled: true
+        property bool focused: false
+        property bool pointerOver: false
+        radius: ScreenTools.defaultFontPixelHeight * 0.35
+        color: controlEnabled ? "#dfe8ee" : "#f3f5f7"
+        border.width: 1
+        border.color: !controlEnabled ? "#dce3e9" : focused ? "#6f9eaf"
+                      : pointerOver ? "#a7bfce" : "#c5d3df"
+        Behavior on border.color { ColorAnimation { duration: 100 } }
+    }
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
@@ -88,7 +103,7 @@ Rectangle {
         anchors.rightMargin: root.horizontalInset
         height: 1
         visible: root.showSeparator
-        color: "#2a3b46"
+        color: "#dce3ea"
     }
 
     function valueText(value) {
@@ -141,10 +156,11 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.title
-                color: "#e6eff4"
-                font.family: ScreenTools.normalFontFamily
-                font.pointSize: ScreenTools.defaultFontPointSize * 0.95
-                font.weight: Font.Medium
+                color: "#152733"
+                font.family: controlFont.status === FontLoader.Ready ? controlFont.name : ScreenTools.normalFontFamily
+                font.styleName: ""
+                font.pointSize: ScreenTools.defaultFontPointSize
+                font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
             }
             Rectangle {
@@ -153,16 +169,16 @@ Rectangle {
                 implicitWidth: badgeText.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.6
                 implicitHeight: badgeText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.25
                 radius: implicitHeight * 0.5
-                color: root.verificationFailed ? "#403727" : root.pending || root.verifying ? "#244451"
-                       : root.known && root.online ? "#1b3640" : "#24313a"
+                color: root.verificationFailed ? "#fff1d9" : root.pending || root.verifying ? "#dcecf1"
+                       : root.known && root.online ? "#e1efe9" : "#e9eff4"
                 Rectangle {
                     x: ScreenTools.defaultFontPixelWidth * 0.65
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(4, ScreenTools.defaultFontPixelHeight * 0.22)
                     height: width
                     radius: width * 0.5
-                    color: root.verificationFailed ? "#e3b66d" : root.pending || root.verifying ? "#72d9ef"
-                           : root.known && root.online ? "#72bdbd" : "#78909e"
+                    color: root.verificationFailed ? "#96621d" : root.pending || root.verifying ? "#176b83"
+                           : root.known && root.online ? "#23835f" : "#8b98a3"
                 }
                 Text {
                     id: badgeText
@@ -171,10 +187,11 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - x - ScreenTools.defaultFontPixelWidth * 0.65
                     text: (root.statusText.length ? root.statusText + "\n" : "") + root.valueStatusText
-                    color: root.verificationFailed ? "#ecc791" : root.pending || root.verifying ? "#a3e5f3"
-                           : root.known && root.online ? "#a9d5d7" : "#9db0bb"
+                    color: root.verificationFailed ? "#96621d" : root.pending || root.verifying ? "#176b83"
+                           : root.known && root.online ? "#236548" : "#3d5262"
                     font.family: ScreenTools.normalFontFamily
                     font.pointSize: ScreenTools.smallFontPointSize
+                    font.weight: Font.Medium
                     wrapMode: Text.Wrap
                 }
             }
@@ -200,12 +217,16 @@ Rectangle {
                     visible: !root.hasOptions
                     enabled: !root.busy
                     placeholderText: root.inputPlaceholder
-                    color: "#edf5f8"
-                    placeholderTextColor: "#8fa9b8"
-                    selectionColor: "#376c80"
-                    font.family: ScreenTools.normalFontFamily
-                    font.pointSize: ScreenTools.defaultFontPointSize
-                    leftPadding: ScreenTools.defaultFontPixelWidth
+                    color: enabled ? "#152733" : "#8b98a3"
+                    placeholderTextColor: "#3d5262"
+                    selectionColor: "#c5e1e9"
+                    selectedTextColor: "#152733"
+                    font.family: controlFont.status === FontLoader.Ready ? controlFont.name : ScreenTools.normalFontFamily
+                    font.styleName: ""
+                    font.pointSize: root.editorFontPointSize
+                    font.weight: Font.DemiBold
+                    hoverEnabled: true
+                    leftPadding: ScreenTools.defaultFontPixelWidth * 1.2
                     rightPadding: root.unit.length ? unitLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.0
                                                   : ScreenTools.defaultFontPixelWidth
                     Text {
@@ -215,17 +236,18 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root.unit.length > 0
                         text: root.unit
-                        color: "#9db3c0"
+                        color: "#3d5262"
                         font.family: ScreenTools.normalFontFamily
                         font.pointSize: ScreenTools.smallFontPointSize
+                        font.weight: Font.Medium
                     }
                     inputMethodHints: Qt.ImhDigitsOnly
                     validator: IntValidator { bottom: root.minimum; top: root.maximum }
                     onTextEdited: root.dirty = true
-                    background: Rectangle {
-                        radius: ScreenTools.defaultFontPixelHeight * 0.35
-                        color: "#0f1d27"
-                        border.color: numeric.activeFocus ? "#72d9ef" : "#334b5a"
+                    background: EditorSurface {
+                        controlEnabled: numeric.enabled
+                        focused: numeric.activeFocus
+                        pointerOver: numeric.hovered
                     }
                 }
                 QtControls.ComboBox {
@@ -239,13 +261,16 @@ Rectangle {
                     textRole: "text"
                     currentIndex: -1
                     onActivated: root.dirty = true
-                    font.family: ScreenTools.normalFontFamily
-                    font.pointSize: ScreenTools.defaultFontPointSize
+                    font.family: controlFont.status === FontLoader.Ready ? controlFont.name : ScreenTools.normalFontFamily
+                    font.styleName: ""
+                    font.pointSize: root.editorFontPointSize
+                    font.weight: Font.DemiBold
+                    hoverEnabled: true
                     contentItem: Text {
-                        leftPadding: ScreenTools.defaultFontPixelWidth
+                        leftPadding: ScreenTools.defaultFontPixelWidth * 1.2
                         rightPadding: ScreenTools.defaultFontPixelHeight * 1.4
                         text: choices.currentIndex < 0 ? qsTr("Select…") : choices.displayText
-                        color: choices.currentIndex < 0 ? "#8fa9b8" : "#edf5f8"
+                        color: !choices.enabled ? "#8b98a3" : choices.currentIndex < 0 ? "#3d5262" : "#152733"
                         font: choices.font
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
@@ -256,12 +281,12 @@ Rectangle {
                         x: choices.width - width - ScreenTools.defaultFontPixelWidth
                         anchors.verticalCenter: parent.verticalCenter
                         kind: "chevronDown"
-                        color: "#9ac3d1"
+                        color: choices.enabled ? "#3d5262" : "#8b98a3"
                     }
-                    background: Rectangle {
-                        radius: ScreenTools.defaultFontPixelHeight * 0.35
-                        color: "#0f1d27"
-                        border.color: choices.activeFocus ? "#72d9ef" : "#334b5a"
+                    background: EditorSurface {
+                        controlEnabled: choices.enabled
+                        focused: choices.activeFocus
+                        pointerOver: choices.hovered
                     }
                     delegate: QtControls.ItemDelegate {
                         required property var modelData
@@ -271,12 +296,15 @@ Rectangle {
                         highlighted: choices.highlightedIndex === index
                         contentItem: Text {
                             text: modelData.text
-                            color: "#edf5f8"
+                            color: "#152733"
                             font: choices.font
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
-                        background: Rectangle { color: parent.highlighted ? "#315a6b" : "#213440" }
+                        background: Rectangle {
+                            radius: ScreenTools.defaultFontPixelHeight * 0.25
+                            color: parent.highlighted ? "#dcecf1" : "#ffffff"
+                        }
                     }
                     popup: QtControls.Popup {
                         y: choices.height + 4
@@ -288,9 +316,16 @@ Rectangle {
                             implicitHeight: contentHeight
                             model: choices.popup.visible ? choices.delegateModel : null
                             currentIndex: choices.highlightedIndex
-                            QtControls.ScrollIndicator.vertical: QtControls.ScrollIndicator {}
+                            QtControls.ScrollIndicator.vertical: QtControls.ScrollIndicator {
+                                contentItem: Rectangle {
+                                    implicitWidth: 4
+                                    implicitHeight: 20
+                                    radius: 2
+                                    color: "#8b98a3"
+                                }
+                            }
                         }
-                        background: Rectangle { color: "#213440"; radius: 6; border.color: "#65d9f4" }
+                        background: Rectangle { color: "#ffffff"; radius: 6; border.color: "#176b83" }
                     }
                 }
             }
@@ -339,9 +374,10 @@ Rectangle {
             text: root.hint + (!root.readable
                               ? (root.hint.length ? " · " : "") + qsTr("Set only; no read command.")
                               : "")
-            color: "#8da6b4"
+            color: "#3d5262"
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize
+            font.weight: Font.Medium
             wrapMode: Text.WordWrap
         }
     }
