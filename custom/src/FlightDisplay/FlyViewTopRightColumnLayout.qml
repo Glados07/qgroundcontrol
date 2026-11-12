@@ -143,6 +143,9 @@ ColumnLayout {
                     // Its teardown can still cancel A8 continuous zoom after the
                     // selected camera has already changed to Rouke.
                     const loadedCameraIndex = root._selectedCamera
+                    if (loadedCameraIndex === 1) {
+                        item.settingsAnchorItem = privateCameraControlLayout
+                    }
                     item.manager = Qt.binding(function() {
                         return loadedCameraIndex === 1 ? root._roukeManager : root._gimbalManager
                     })

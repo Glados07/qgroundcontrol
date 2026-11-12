@@ -206,11 +206,13 @@ import QtQuick
 Rectangle {
     width: 1200; height: 850
     color: "#17232d"
+    property real railTop: 16
     Loader {
         objectName: "cameraLoader"
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 16
+        anchors.topMargin: parent.railTop
         source: "qrc:/Custom/qml/QGroundControl/FlightDisplay/RoukeCameraControl.qml"
     }
 }
@@ -281,6 +283,21 @@ Rectangle {
                     view.width(), style.scale_value, item.width(), usable_width,
                     QFontMetricsF(item.property("font")).horizontalAdvance("2147483647"))
 
+    def assert_popup_layout(popup):
+        x, y = popup.property("x"), popup.property("y")
+        width, height = popup.property("width"), popup.property("height")
+        assert x >= 0 and y >= 0
+        assert x + width <= view.width() + 1 and y + height <= view.height() + 1
+        assert width <= 480 * style.scale_value + 1, "Settings should retain the compact width"
+        assert height <= 600 * style.scale_value + 1, "Long forms scroll inside the compact panel"
+        anchor = root.property("settingsAnchorItem")
+        anchor_top = anchor.mapToScene(QPointF()).y()
+        margin = popup.property("edgeMargin")
+        if anchor_top >= margin and view.height() - anchor_top - margin >= popup.property("minimumUsableHeight"):
+            assert abs(y - anchor_top) <= 1, ("Settings must align with the primary control top", y, anchor_top)
+        else:
+            assert y <= max(margin, anchor_top) + 1, "Constrained pages may shift upward to stay usable"
+
     assert not button("Focus").isEnabled() and not named("viewButton").isEnabled()
     assert not button("Take Photo").isEnabled(), "Offline UI must not offer local-only photography"
     assert manager.actions == []
@@ -306,12 +323,38 @@ Rectangle {
     assert manager.refresh_requests == 0, "Opening settings only presents cached values"
     offline_popup = named("settingsPopup")
     assert offline_popup.property("visible") and offline_popup.property("selectedPage") == 0
+    assert_popup_layout(offline_popup)
+    # Exercise a host-supplied anchor, including a low rail and a moved anchor
+    # while the popup remains open. The form must shrink/scroll, not center
+    # vertically around the rail or escape the window.
+    root.setProperty("settingsAnchorItem", loader)
+    for rail_top in (120, 620, 16):
+        host.setProperty("railTop", rail_top)
+        QTest.qWait(100)
+        assert_popup_layout(offline_popup)
+        assert named("cameraSettingsScroll").height() > 80
+    root.setProperty("settingsAnchorItem", root)
     set_only_keys = ("focusMode", "shutterSpeed", "aperture", "imageQuality",
                      "triggerPhoto", "shootingDistance", "distanceThreshold")
     for key in set_only_keys:
         assert "Set only; no read command." in named("hint_" + key).property("text"), key
     for key in ("iso", "whiteBalance", "focusValue", "imageSize"):
         assert "Set only; no read command." not in named("hint_" + key).property("text"), key
+    for key, bounds in (("iso", "0–34"), ("whiteBalance", "0–14"),
+                        ("focusMode", "0–4"), ("imageQuality", "1–4"), ("imageSize", "0–3"),
+                        ("shootingDistance", "20–40 m"), ("distanceThreshold", "30–15000 cm")):
+        assert bounds in named("hint_" + key).property("text"), (key, bounds)
+    for key in ("shutterSpeed", "aperture"):
+        assert "valid range awaits vendor confirmation" in named("hint_" + key).property("text")
+        assert named("editor_" + key).property("placeholderText") == "Vendor index"
+        assert "2147483647" not in named("hint_" + key).property("text"), "Software int bounds are not device ranges"
+    for key in ("focusMode", "imageQuality", "imageSize", "triggerPhoto"):
+        options = named("parameter_" + key).property("options")
+        if hasattr(options, "toVariant"):
+            options = options.toVariant()
+        for option in options:
+            assert option["text"].startswith(str(option["value"]) + " · "), (key, option)
+    assert named("read_iso").isVisible(), "Unknown parameters retain a read action"
     # Reported ISO and its setting code are independent domains, even when
     # the reported number happens to fit the editor's 0..34 range.
     assert named("editor_iso").property("text") == ""
@@ -447,8 +490,10 @@ Rectangle {
     click_item(named("apply_iso"))
     assert manager.actions[-1] == ("set", "iso", 20)
     assert "Applying" in named("confirmed_iso").property("text")
+    assert named("read_iso").isVisible() and not named("read_iso").isEnabled()
     manager.accept_write("iso")
     assert "Verifying" in named("confirmed_iso").property("text")
+    apply_position = named("apply_iso").mapToScene(QPointF()).x()
     manager.acknowledge("iso", 1600, "reported")
     assert named("parameter_iso").property("confirmedValue") == 1600
     assert named("parameter_iso").property("draftValue") == 20
@@ -456,11 +501,18 @@ Rectangle {
     assert named("parameter_iso").property("statusText") == "Read back"
     assert not named("parameter_iso").property("verificationFailed")
     assert named("confirmed_iso").property("text") == "Read back\nConfirmed: 1600"
+    assert not named("read_iso").isVisible(), "Confirmed online reports hide their refresh button"
+    assert abs(named("apply_iso").mapToScene(QPointF()).x() - apply_position) <= 1, "Hiding refresh must not shift Apply"
+    manager.update(sdkResponding=False)
+    assert named("read_iso").isVisible(), "A stale offline report must permit an explicit read probe"
     click_item(named("read_iso"))
     assert "Waiting for payload" in named("confirmed_iso").property("text")
     manager.acknowledge("iso", 20, "reported")
     assert named("parameter_iso").property("draftValue") == 20
     assert named("parameter_iso").property("dirty"), "Equal digits do not make an ISO value a setting code"
+    manager.update(sdkResponding=True)
+    assert not named("read_iso").isVisible()
+    manager.update(sdkResponding=False)
     click_item(named("read_iso"))
     manager.acknowledge("iso", 1600, "reported")
     manager.update(sdkResponding=False)
@@ -485,6 +537,7 @@ Rectangle {
     assert named("parameter_whiteBalance").property("confirmedValue") == 10
     assert named("parameter_whiteBalance").property("draftValue") == 12
     assert "Value differs" in named("confirmed_whiteBalance").property("text")
+    assert named("read_whiteBalance").isVisible(), "A mismatched readback retains its retry action"
     type_value(named("editor_whiteBalance"), "14")
     manager.update(photoCount=3)
     assert named("parameter_whiteBalance").property("draftValue") == 14
@@ -506,6 +559,7 @@ Rectangle {
     assert named("parameter_whiteBalance").property("draftValue") == 12
     assert named("parameter_whiteBalance").property("confirmedValue") == 6
     assert "Not verified" in named("confirmed_whiteBalance").property("text")
+    assert named("read_whiteBalance").isVisible(), "A failed readback retains its retry action"
     manager.update(sdkResponding=False)
     assert "Last confirmed: 6" in named("confirmed_whiteBalance").property("text")
     assert not named("apply_whiteBalance").isEnabled()
@@ -514,11 +568,14 @@ Rectangle {
     manager.acknowledge("whiteBalance", 12, "verified")
     assert named("parameter_whiteBalance").property("draftValue") == 12
     assert not named("parameter_whiteBalance").property("dirty"), "Matching GET completes the submitted draft"
+    assert not named("read_whiteBalance").isVisible(), "Verified readback hides refresh"
     manager.update(sdkResponding=False)
     assert named("confirmed_whiteBalance").property("text") == "Last confirmed: 12"
+    assert named("read_whiteBalance").isVisible()
     manager.update(sdkResponding=True)
     type_value(named("editor_whiteBalance"), "12")
     click_item(named("apply_whiteBalance"))
+    assert named("read_whiteBalance").isVisible() and not named("read_whiteBalance").isEnabled()
     manager.update(pending=False, pendingParameter="", cameraParameterVerification={"iso": "reported", "whiteBalance": "unverified"},
                    lastError="Payload rejected white balance")
     assert named("parameter_whiteBalance").property("draftValue") == 12, "Rejected input remains editable"
@@ -653,10 +710,7 @@ Rectangle {
         style.changed.emit()
         view.resize(width, height)
         QTest.qWait(160)
-        x, y = popup.property("x"), popup.property("y")
-        assert x >= 0 and y >= 0
-        assert x + popup.property("width") <= width + 1
-        assert y + popup.property("height") <= height + 1
+        assert_popup_layout(popup)
         assert abs(named("cameraTab").height() - named("rangeTab").height()) < 1, "Page tabs must align"
         for name in ("cameraTab", "rangeTab"):
             content = named(name).property("contentItem")
@@ -715,7 +769,7 @@ Rectangle {
               ("TypeError", "ReferenceError", "Binding loop", "Unable to assign", "Cannot assign"))]
     assert not errors, "\n".join(errors)
     print("PASS: camera actions, cache-only page lifecycle, offline GET-only probe, SET/readback states, separate ISO report/setting domains, retained drafts, explicit parameter dispatch, default-Off trigger, "
-          "range validation, set-only hints, scrolling, popup lifecycle, resize/font layouts; no QML errors")
+          "range validation, explicit input codes/ranges, confirmed refresh hiding and recovery, set-only hints, scrolling, compact top-aligned popup/low-anchor fallback, popup lifecycle, resize/font layouts; no QML errors")
     view.close()
 
 

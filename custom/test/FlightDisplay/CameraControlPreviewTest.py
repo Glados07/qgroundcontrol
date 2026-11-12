@@ -293,6 +293,29 @@ Rectangle {
         # The former rail was 134 px at the fixture's 20 px base font.
         assert panel.width() < 134 * style.scale_value, "Lower action panel should be narrower"
 
+    def assert_settings_anchor(popup):
+        viewport = named("cameraColumnScroll")
+        panel = ancestor_with_property(named("settingsButton"), "settingsOpen")
+        assert panel.property("settingsAnchorItem") == viewport, (
+            "Settings must anchor to the visible column, including its selector")
+        top = viewport.mapToScene(QPointF()).y()
+        margin = popup.property("edgeMargin")
+        popup_top = popup.property("y")
+        assert popup.property("width") <= 480 * style.scale_value + 1
+        assert popup.property("height") <= 600 * style.scale_value + 1
+        assert popup.property("x") >= 0 and popup_top >= 0
+        assert popup.property("x") + popup.property("width") <= view.width() + 1
+        assert popup_top + popup.property("height") <= view.height() + 1
+        if top >= margin and view.height() - top - margin >= popup.property("minimumUsableHeight"):
+            assert abs(popup_top - top) <= 1, ("Popup and entire camera column must share a top edge", popup_top, top)
+        if viewport.property("contentHeight") > viewport.height() + 1:
+            original = viewport.property("contentY")
+            viewport.setProperty("contentY", viewport.property("contentHeight") - viewport.height())
+            QTest.qWait(50)
+            assert abs(popup.property("y") - popup_top) <= 1, "Scrolling the rail must not move its settings popup"
+            viewport.setProperty("contentY", original)
+            QTest.qWait(50)
+
     def sd_snapshot():
         row = named("sdStatusRow")
         return (row.property("known"), row.property("inserted"), row.property("statusText"),
@@ -478,6 +501,7 @@ Rectangle {
         QTest.qWait(160)
         popup = named("settingsPopup")
         assert popup.property("visible")
+        assert_settings_anchor(popup)
         assert payload.actions == previous_actions + [5], "Opening settings must not send a write"
         assert payload.refresh_requests == refreshes_before, "Settings only displays the cache"
         camera = named("cameraSettingsScroll")
@@ -557,6 +581,7 @@ Rectangle {
         assert payload.refresh_requests == refreshes_before
         popup = named("settingsPopup")
         assert popup.property("visible") and popup.property("selectedPage") == 0
+        assert_settings_anchor(popup)
         camera_form = named("cameraSettingsScroll")
         iso_position = named("editor_iso").mapToItem(camera_form.property("contentItem"), QPointF())
         camera_form.setProperty("contentY", max(0, min(iso_position.y() - 10,

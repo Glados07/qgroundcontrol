@@ -1660,6 +1660,42 @@
         <source>Range</source>
         <translation>测距</translation>
     </message>
+    <message>
+        <source>Vendor index</source>
+        <translation>厂家索引</translation>
+    </message>
+    <message>
+        <source>Vendor index; valid range awaits vendor confirmation.</source>
+        <translation>填写厂家索引；有效范围待厂家确认。</translation>
+    </message>
+    <message>
+        <source>Codes 0–4; select a focus mode.</source>
+        <translation>编码 0–4，请选择对焦模式。</translation>
+    </message>
+    <message>
+        <source>Decimal raw value, e.g. 1200; device range not specified.</source>
+        <translation>填写十进制原始值，如 1200；设备范围未注明。</translation>
+    </message>
+    <message>
+        <source>Codes 1–4; select an image quality.</source>
+        <translation>编码 1–4，请选择成像质量。</translation>
+    </message>
+    <message>
+        <source>Codes 0–3; select an image size.</source>
+        <translation>编码 0–3，请选择图片大小。</translation>
+    </message>
+    <message>
+        <source>0 = Off, 1 = On. Off by default; apply to confirm.</source>
+        <translation>0=关闭，1=开启。默认关闭，点击应用后确认。</translation>
+    </message>
+    <message>
+        <source>Integer: 20–40 m</source>
+        <translation>整数范围：20–40 m</translation>
+    </message>
+    <message>
+        <source>Integer: 30–15000 cm</source>
+        <translation>整数范围：30–15000 cm</translation>
+    </message>
 </context>
 <context>
     <name>CameraPayloadSelector</name>

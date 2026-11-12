@@ -12,6 +12,7 @@ Rectangle {
     required property string parameterKey
     required property string title
     property string hint: ""
+    property string inputPlaceholder: qsTr("Enter value")
     property string unit: ""
     property int minimum: 0
     property int maximum: 2147483647
@@ -43,6 +44,7 @@ Rectangle {
           : qsTr("Confirmed: %1").arg(valueText(confirmedValue))
     readonly property bool busy: Boolean(manager && manager.pending)
     readonly property bool pending: Boolean(busy && manager.pendingParameter === parameterKey)
+    readonly property bool showRead: readable && (!known || !online || pending || verifying || verificationFailed)
     // A read can establish the first payload response. Writes still require
     // a responding endpoint, while offline drafts remain editable.
     readonly property bool canRead: Boolean(manager && manager.enabled
@@ -59,17 +61,17 @@ Rectangle {
     readonly property bool wideLayout: width >= ScreenTools.defaultFontPixelWidth * 39
     // Keep the edit group compact while reserving enough room for the full
     // protocol integer and unit at the current application font size.
-    readonly property real numericEditorWidth: Math.max(ScreenTools.defaultFontPixelWidth * 15,
+    readonly property real numericEditorWidth: Math.max(ScreenTools.defaultFontPixelWidth * 13,
                                                         numericMetrics.advanceWidth("2147483647")
                                                         + numeric.leftPadding
                                                         + Math.max(numeric.rightPadding,
                                                                    unitMetrics.advanceWidth("cm") + ScreenTools.defaultFontPixelWidth * 2.0)
                                                         + 4)
-    readonly property real preferredEditorWidth: hasOptions ? ScreenTools.defaultFontPixelWidth * 20
+    readonly property real preferredEditorWidth: hasOptions ? ScreenTools.defaultFontPixelWidth * 18
                                                             : numericEditorWidth
     readonly property bool inlineEditorLayout: wideLayout
-            && layout.width >= preferredEditorWidth + actionRow.implicitWidth + ScreenTools.defaultFontPixelWidth * 0.8
-    readonly property real inset: ScreenTools.defaultFontPixelHeight * 0.65
+            && layout.width >= preferredEditorWidth + actionRow.implicitWidth + ScreenTools.defaultFontPixelWidth * 0.65
+    readonly property real inset: ScreenTools.defaultFontPixelHeight * 0.32
     readonly property real horizontalInset: ScreenTools.defaultFontPixelWidth * 0.65
     objectName: "parameter_" + parameterKey
     implicitHeight: layout.implicitHeight + inset * 2
@@ -130,31 +132,31 @@ Rectangle {
         anchors.leftMargin: root.horizontalInset
         anchors.rightMargin: root.horizontalInset
         anchors.topMargin: root.inset
-        spacing: ScreenTools.defaultFontPixelHeight * 0.45
+        spacing: ScreenTools.defaultFontPixelHeight * 0.22
         GridLayout {
             Layout.fillWidth: true
             columns: root.wideLayout ? 2 : 1
-            columnSpacing: ScreenTools.defaultFontPixelWidth
-            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.4
+            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.75
+            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.22
             Text {
                 Layout.fillWidth: true
                 text: root.title
                 color: "#e6eff4"
                 font.family: ScreenTools.normalFontFamily
-                font.pointSize: ScreenTools.defaultFontPointSize
+                font.pointSize: ScreenTools.defaultFontPointSize * 0.95
                 font.weight: Font.Medium
                 wrapMode: Text.Wrap
             }
             Rectangle {
                 Layout.maximumWidth: root.wideLayout ? root.width * 0.58 : layout.width
                 Layout.preferredWidth: Math.min(implicitWidth, root.wideLayout ? root.width * 0.58 : layout.width)
-                implicitWidth: badgeText.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
-                implicitHeight: badgeText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.45
+                implicitWidth: badgeText.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.6
+                implicitHeight: badgeText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.25
                 radius: implicitHeight * 0.5
                 color: root.verificationFailed ? "#403727" : root.pending || root.verifying ? "#244451"
                        : root.known && root.online ? "#1b3640" : "#24313a"
                 Rectangle {
-                    x: ScreenTools.defaultFontPixelWidth * 0.8
+                    x: ScreenTools.defaultFontPixelWidth * 0.65
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(4, ScreenTools.defaultFontPixelHeight * 0.22)
                     height: width
@@ -165,9 +167,9 @@ Rectangle {
                 Text {
                     id: badgeText
                     objectName: "confirmed_" + root.parameterKey
-                    x: ScreenTools.defaultFontPixelWidth * 1.9
+                    x: ScreenTools.defaultFontPixelWidth * 1.65
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - x - ScreenTools.defaultFontPixelWidth * 0.8
+                    width: parent.width - x - ScreenTools.defaultFontPixelWidth * 0.65
                     text: (root.statusText.length ? root.statusText + "\n" : "") + root.valueStatusText
                     color: root.verificationFailed ? "#ecc791" : root.pending || root.verifying ? "#a3e5f3"
                            : root.known && root.online ? "#a9d5d7" : "#9db0bb"
@@ -182,8 +184,8 @@ Rectangle {
             Layout.fillWidth: false
             Layout.maximumWidth: layout.width
             columns: root.inlineEditorLayout ? 2 : 1
-            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.8
-            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.45
+            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.65
+            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.22
             Item {
                 Layout.alignment: Qt.AlignLeft
                 Layout.preferredWidth: Math.min(root.preferredEditorWidth, layout.width)
@@ -197,13 +199,13 @@ Rectangle {
                     anchors.fill: parent
                     visible: !root.hasOptions
                     enabled: !root.busy
-                    placeholderText: qsTr("Enter value")
+                    placeholderText: root.inputPlaceholder
                     color: "#edf5f8"
                     placeholderTextColor: "#8fa9b8"
                     selectionColor: "#376c80"
                     font.family: ScreenTools.normalFontFamily
                     font.pointSize: ScreenTools.defaultFontPointSize
-                    leftPadding: ScreenTools.defaultFontPixelWidth * 1.2
+                    leftPadding: ScreenTools.defaultFontPixelWidth
                     rightPadding: root.unit.length ? unitLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.0
                                                   : ScreenTools.defaultFontPixelWidth
                     Text {
@@ -295,16 +297,16 @@ Rectangle {
             RowLayout {
                 id: actionRow
                 Layout.alignment: Qt.AlignLeft
-                spacing: ScreenTools.defaultFontPixelWidth * 0.8
-                // The fixed read slot keeps Apply aligned for write-only
-                // parameters without stretching either the field or buttons.
+                spacing: ScreenTools.defaultFontPixelWidth * 0.65
+                // Keep Apply aligned when a confirmed or write-only parameter
+                // has no read action, without stretching the field or buttons.
                 Item {
                     Layout.preferredWidth: applyButton.implicitHeight
                     Layout.preferredHeight: applyButton.implicitHeight
                     RoukeCameraButton {
                         objectName: "read_" + root.parameterKey
                         anchors.fill: parent
-                        visible: root.readable
+                        visible: root.showRead
                         compact: true
                         text: qsTr("Read")
                         iconName: "read"

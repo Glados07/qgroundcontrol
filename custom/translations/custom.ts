@@ -1636,6 +1636,42 @@
         <source>Range</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Vendor index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vendor index; valid range awaits vendor confirmation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Codes 0–4; select a focus mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decimal raw value, e.g. 1200; device range not specified.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Codes 1–4; select an image quality.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Codes 0–3; select an image size.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 = Off, 1 = On. Off by default; apply to confirm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Integer: 20–40 m</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Integer: 30–15000 cm</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>CameraPayloadSelector</name>

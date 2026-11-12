@@ -12,15 +12,26 @@ QtControls.Popup {
     property Item anchorItem
     property int selectedPage: 0
     property int resetSerial: 0
-    readonly property real edgeMargin: ScreenTools.defaultFontPixelHeight * 0.8
+    readonly property real edgeMargin: ScreenTools.defaultFontPixelHeight * 0.6
     readonly property bool narrowLayout: width < ScreenTools.defaultFontPixelWidth * 48
     readonly property bool compactLayout: height < ScreenTools.defaultFontPixelHeight * 27
-    readonly property real inset: ScreenTools.defaultFontPixelHeight * (compactLayout ? 0.7 : 1.1)
+    readonly property real inset: ScreenTools.defaultFontPixelHeight * (compactLayout ? 0.5 : 0.65)
+    property point anchorPosition: Qt.point(0, 0)
+    readonly property real minimumUsableHeight: Math.min(ScreenTools.defaultFontPixelHeight * 18,
+                                                        parent ? Math.max(0, parent.height - edgeMargin * 2) : 360)
+    readonly property real popupTop: Math.max(edgeMargin, Math.min(anchorPosition.y,
+                                            parent ? parent.height - minimumUsableHeight - edgeMargin : edgeMargin))
     readonly property bool connected: Boolean(manager && manager.sdkResponding)
     objectName: "settingsPopup"
     parent: QtControls.Overlay.overlay
-    width: Math.min(ScreenTools.defaultFontPixelWidth * 66, parent ? parent.width - edgeMargin * 2 : 560)
-    height: Math.min(ScreenTools.defaultFontPixelHeight * 39, parent ? parent.height - edgeMargin * 2 : 720)
+    width: Math.min(ScreenTools.defaultFontPixelWidth * 60, parent ? Math.max(0, parent.width - edgeMargin * 2) : 480)
+    // Prefer the rail's top edge. Use the remaining height below it and scroll
+    // the pages; shift upward only when that would leave an unusable viewport.
+    y: popupTop
+    height: Math.min(ScreenTools.defaultFontPixelHeight * 30,
+                     parent ? Math.max(0, parent.height - popupTop - edgeMargin) : 600)
+    x: Math.max(edgeMargin, Math.min(parent ? parent.width - width - edgeMargin : edgeMargin,
+                                    anchorPosition.x - width - edgeMargin))
     padding: inset
     z: 100
     modal: false
@@ -30,10 +41,7 @@ QtControls.Popup {
 
     function reposition() {
         if (!parent) return
-        const p = anchorItem ? anchorItem.mapToItem(parent, 0, 0) : Qt.point(parent.width, 0)
-        x = Math.max(edgeMargin, Math.min(parent.width - width - edgeMargin, p.x - width - edgeMargin))
-        y = Math.max(edgeMargin, Math.min(parent.height - height - edgeMargin,
-                                          p.y + (anchorItem ? anchorItem.height / 2 : 0) - height / 2))
+        anchorPosition = anchorItem ? anchorItem.mapToItem(parent, 0, 0) : Qt.point(parent.width, edgeMargin)
     }
     function showSettings() {
         selectedPage = 0
@@ -54,15 +62,14 @@ QtControls.Popup {
         function onYChanged() { if (root.visible) root.reposition() }
         function onHeightChanged() { if (root.visible) root.reposition() }
     }
-    onWidthChanged: if (visible) reposition()
-    onHeightChanged: if (visible) reposition()
+    onAnchorItemChanged: if (visible) reposition()
     onOpened: reposition()
     onClosed: {
         // Prevent a child combo popup outliving its parent page.
         root.resetSerial++
     }
     background: Rectangle {
-        radius: ScreenTools.defaultFontPixelHeight * 0.85
+        radius: ScreenTools.defaultFontPixelHeight * 0.6
         color: "#172630"
         border.color: "#48616e"
         Rectangle {
@@ -81,16 +88,16 @@ QtControls.Popup {
         property string text: ""
         property string iconName: "exposure"
         width: parent.width
-        implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2,
-                                 sectionText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.65)
+        implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.5,
+                                 sectionText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.3)
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.65
             anchors.rightMargin: anchors.leftMargin
-            spacing: ScreenTools.defaultFontPixelWidth * 1.1
+            spacing: ScreenTools.defaultFontPixelWidth * 0.8
             CameraControlIcon {
-                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.05
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.05
+                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.9
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.9
                 kind: sectionRoot.iconName
                 color: "#72d9ef"
             }
@@ -113,44 +120,24 @@ QtControls.Popup {
         resetSerial: root.resetSerial
     }
     contentItem: ColumnLayout {
-        spacing: ScreenTools.defaultFontPixelHeight * (root.compactLayout ? 0.45 : 0.85)
+        spacing: ScreenTools.defaultFontPixelHeight * 0.35
         RowLayout {
             Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelHeight * 0.75
-            Rectangle {
-                visible: !root.compactLayout
-                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 2.4
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.4
-                radius: ScreenTools.defaultFontPixelHeight * 0.75
-                color: "#233e4c"
-                CameraControlIcon {
-                    anchors.centerIn: parent
-                    width: ScreenTools.defaultFontPixelHeight * 1.3
-                    height: width
-                    kind: "settings"
-                    color: "#8fe4f3"
-                }
+            spacing: ScreenTools.defaultFontPixelHeight * 0.5
+            CameraControlIcon {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.05
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.05
+                kind: "settings"
+                color: "#8fe4f3"
             }
-            ColumnLayout {
+            Text {
                 Layout.fillWidth: true
-                spacing: ScreenTools.defaultFontPixelHeight * 0.25
-                Text {
-                    visible: !root.compactLayout
-                    text: "ROUKE  /  LR1"
-                    color: "#86adbd"
-                    font.family: ScreenTools.normalFontFamily
-                    font.pointSize: ScreenTools.smallFontPointSize
-                    font.letterSpacing: 1.4
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Payload settings")
-                    color: "#f1f7fa"
-                    font.family: ScreenTools.normalFontFamily
-                    font.pointSize: ScreenTools.defaultFontPointSize * 1.3
-                    font.weight: Font.DemiBold
-                    wrapMode: Text.WordWrap
-                }
+                text: qsTr("Payload settings")
+                color: "#f1f7fa"
+                font.family: ScreenTools.normalFontFamily
+                font.pointSize: ScreenTools.defaultFontPointSize
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
             }
             RoukeCameraButton {
                 objectName: "closeSettingsButton"
@@ -158,6 +145,7 @@ QtControls.Popup {
                 iconName: "close"
                 iconOnly: true
                 subtle: true
+                compact: true
                 onClicked: root.close()
             }
         }
@@ -173,15 +161,15 @@ QtControls.Popup {
                 spacing: 4
                 RoukeCameraButton {
                     objectName: "cameraTab"
-                    iconName: "camera"
-                    iconAbove: root.narrowLayout
+                    iconName: root.width < ScreenTools.defaultFontPixelWidth * 30 ? "" : "camera"
+                    iconAbove: false
                     tabStyle: true
-                    leftPadding: ScreenTools.defaultFontPixelWidth * (root.compactLayout ? 0.5 : 1.4)
+                    leftPadding: ScreenTools.defaultFontPixelWidth * 0.65
                     rightPadding: leftPadding
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredWidth: 1
-                    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * (root.compactLayout ? 2.5 : 3),
+                    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2,
                                             ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0,
                                             contentItem.implicitHeight + topPadding + bottomPadding)
                     text: root.narrowLayout ? qsTr("Camera") : qsTr("Camera parameters")
@@ -191,15 +179,15 @@ QtControls.Popup {
                 }
                 RoukeCameraButton {
                     objectName: "rangeTab"
-                    iconName: "range"
-                    iconAbove: root.narrowLayout
+                    iconName: root.width < ScreenTools.defaultFontPixelWidth * 30 ? "" : "range"
+                    iconAbove: false
                     tabStyle: true
-                    leftPadding: ScreenTools.defaultFontPixelWidth * (root.compactLayout ? 0.5 : 1.4)
+                    leftPadding: ScreenTools.defaultFontPixelWidth * 0.65
                     rightPadding: leftPadding
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredWidth: 1
-                    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * (root.compactLayout ? 2.5 : 3),
+                    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2,
                                             ScreenTools.isMobile ? ScreenTools.minTouchPixels : 0,
                                             contentItem.implicitHeight + topPadding + bottomPadding)
                     text: root.narrowLayout ? qsTr("Range") : qsTr("Range capture")
@@ -208,16 +196,6 @@ QtControls.Popup {
                     onClicked: root.selectedPage = 1
                 }
             }
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: !root.compactLayout
-            text: root.selectedPage === 0 ? qsTr("Adjust the camera, then apply each parameter.")
-                                         : qsTr("Set capture distance and trigger conditions.")
-            color: "#a9bfcc"
-            font.family: ScreenTools.normalFontFamily
-            font.pointSize: ScreenTools.smallFontPointSize
-            wrapMode: Text.WordWrap
         }
         StackLayout {
             Layout.fillWidth: true
@@ -244,7 +222,7 @@ QtControls.Popup {
                 Column {
                     id: cameraColumn
                     width: parent.width - ScreenTools.defaultFontPixelWidth * 1.3
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.15
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.05
                     SectionTitle { text: qsTr("EXPOSURE & COLOR"); iconName: "exposure" }
                     Parameter {
                         parameterKey: "iso"
@@ -262,44 +240,49 @@ QtControls.Popup {
                     Parameter {
                         parameterKey: "shutterSpeed"
                         title: qsTr("Shutter speed")
-                        hint: qsTr("Camera index")
+                        inputPlaceholder: qsTr("Vendor index")
+                        hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
                     }
                     Parameter {
                         parameterKey: "aperture"
                         showSeparator: false
                         title: qsTr("Aperture")
-                        hint: qsTr("Camera index")
+                        inputPlaceholder: qsTr("Vendor index")
+                        hint: qsTr("Vendor index; valid range awaits vendor confirmation.")
                     }
                     SectionTitle { text: qsTr("FOCUS & LENS"); iconName: "lens" }
                     Parameter {
                         parameterKey: "focusMode"
                         title: qsTr("Focus mode")
                         minimum: 0; maximum: 4
-                        options: [ { text: "AF-S", value: 0 }, { text: "AF-A", value: 1 },
-                                   { text: "AF-C", value: 2 }, { text: "DMF", value: 3 }, { text: "MF", value: 4 } ]
+                        options: [ { text: "0 · AF-S", value: 0 }, { text: "1 · AF-A", value: 1 },
+                                   { text: "2 · AF-C", value: 2 }, { text: "3 · DMF", value: 3 }, { text: "4 · MF", value: 4 } ]
+                        hint: qsTr("Codes 0–4; select a focus mode.")
                     }
                     Parameter {
                         parameterKey: "focusValue"
                         showSeparator: false
                         title: qsTr("Focus value")
                         readable: true
-                        hint: qsTr("Raw value · decimal")
+                        hint: qsTr("Decimal raw value, e.g. 1200; device range not specified.")
                     }
                     SectionTitle { text: qsTr("IMAGE OUTPUT"); iconName: "image" }
                     Parameter {
                         parameterKey: "imageQuality"
                         title: qsTr("Image quality")
                         minimum: 1; maximum: 4
-                        options: [ { text: qsTr("Light"), value: 1 }, { text: qsTr("Standard"), value: 2 },
-                                   { text: qsTr("Fine"), value: 3 }, { text: qsTr("Extra fine"), value: 4 } ]
+                        options: [ { text: "1 · " + qsTr("Light"), value: 1 }, { text: "2 · " + qsTr("Standard"), value: 2 },
+                                   { text: "3 · " + qsTr("Fine"), value: 3 }, { text: "4 · " + qsTr("Extra fine"), value: 4 } ]
+                        hint: qsTr("Codes 1–4; select an image quality.")
                     }
                     Parameter {
                         parameterKey: "imageSize"
                         showSeparator: false
                         title: qsTr("Image size")
                         minimum: 0; maximum: 3; readable: true
-                        options: [ { text: qsTr("L · Large"), value: 0 }, { text: qsTr("M · Medium"), value: 1 },
-                                   { text: qsTr("S · Small"), value: 2 }, { text: "VGA", value: 3 } ]
+                        options: [ { text: "0 · " + qsTr("L · Large"), value: 0 }, { text: "1 · " + qsTr("M · Medium"), value: 1 },
+                                   { text: "2 · " + qsTr("S · Small"), value: 2 }, { text: "3 · VGA", value: 3 } ]
+                        hint: qsTr("Codes 0–3; select an image size.")
                     }
                     Item { width: 1; height: ScreenTools.defaultFontPixelHeight * 0.4 }
                 }
@@ -325,29 +308,29 @@ QtControls.Popup {
                 Column {
                     id: rangeColumn
                     width: parent.width - ScreenTools.defaultFontPixelWidth * 1.3
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.15
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.05
                     SectionTitle { text: qsTr("TRIGGER CONTROL"); iconName: "camera" }
                     Parameter {
                         parameterKey: "triggerPhoto"
                         showSeparator: false
                         title: qsTr("Trigger capture")
                         minimum: 0; maximum: 1; defaultDraft: 0
-                        options: [ { text: qsTr("Off"), value: 0 }, { text: qsTr("On"), value: 1 } ]
-                        hint: qsTr("Off by default. Apply to confirm the device setting.")
+                        options: [ { text: "0 · " + qsTr("Off"), value: 0 }, { text: "1 · " + qsTr("On"), value: 1 } ]
+                        hint: qsTr("0 = Off, 1 = On. Off by default; apply to confirm.")
                     }
                     SectionTitle { text: qsTr("DISTANCE PARAMETERS"); iconName: "range" }
                     Parameter {
                         parameterKey: "shootingDistance"
                         title: qsTr("Shooting distance")
                         minimum: 20; maximum: 40; unit: "m"
-                        hint: qsTr("20–40 m")
+                        hint: qsTr("Integer: 20–40 m")
                     }
                     Parameter {
                         parameterKey: "distanceThreshold"
                         showSeparator: false
                         title: qsTr("Trigger distance threshold")
                         minimum: 30; maximum: 15000; unit: "cm"
-                        hint: qsTr("30–15000 cm")
+                        hint: qsTr("Integer: 30–15000 cm")
                     }
                     Item { width: 1; height: ScreenTools.defaultFontPixelHeight * 0.4 }
                 }
@@ -370,7 +353,7 @@ QtControls.Popup {
                 font.family: ScreenTools.normalFontFamily
                 font.pointSize: ScreenTools.smallFontPointSize
                 wrapMode: Text.WordWrap
-                maximumLineCount: 3
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
         }

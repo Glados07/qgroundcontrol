@@ -12,6 +12,8 @@ import QGroundControl.ScreenTools
 Rectangle {
     id: root
     property var manager: QGroundControl.corePlugin ? QGroundControl.corePlugin.roukeControlManager : null
+    // The flight-view host supplies the visible primary rail, including its selector.
+    property Item settingsAnchorItem: root
     readonly property bool available: Boolean(manager && manager.enabled)
     readonly property bool canControl: Boolean(online && manager.controlAvailable && !manager.pending)
     readonly property bool canSaveLocally: Boolean(online && manager.localMediaStorageEnabled)
@@ -92,7 +94,7 @@ Rectangle {
         preventStealing: false
         onWheel: function(wheel) { wheel.accepted = false }
     }
-    RoukeCameraSettings { id: settingsPopup; manager: root.manager; anchorItem: root }
+    RoukeCameraSettings { id: settingsPopup; manager: root.manager; anchorItem: root.settingsAnchorItem }
     Connections {
         target: settingsPopup
         function onClosed() { root.settingsClosedAt = Date.now() }
