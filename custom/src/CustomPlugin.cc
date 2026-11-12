@@ -22,6 +22,7 @@
 #include "Gimbal/Mt11ControlManager.h"
 #include "QGCLoggingCategory.h"
 #include "Settings/FlyViewCustomSettings.h"
+#include "Settings/FuelCellTelemetrySettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoManager/VideoReceiver/GStreamer/A8RtspStreamRecovery.h"
@@ -190,6 +191,8 @@ void CustomPlugin::init()
     _ensureFlyViewCustomSettings();
 
     qmlRegisterType<FuelCellTelemetry>("Custom.FuelCell", 1, 0, "FuelCellTelemetry");
+    qmlRegisterSingletonType<FuelCellTelemetrySettings>("Custom.FuelCell", 1, 0, "FuelCellTelemetrySettings",
+        [](QQmlEngine *, QJSEngine *) { return new FuelCellTelemetrySettings(); });
     qmlRegisterUncreatableType<FuelCellControllerManager>(
         "Custom.FuelCell", 1, 0, "FuelCellControllerManager",
         "Use QGroundControl.corePlugin.fuelCellController");

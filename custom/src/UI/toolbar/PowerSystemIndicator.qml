@@ -21,6 +21,8 @@ Item {
     FuelCellTelemetry {
         id: directTelemetry
         systemId: batteryModel.vehicleAvailable ? batteryModel.vehicle.id : 0
+        boxAddress: FuelCellTelemetrySettings.boxAddress.rawValue
+        boxPort: FuelCellTelemetrySettings.boxPort.rawValue
     }
 
     readonly property QtObject batteryModel: QtObject {

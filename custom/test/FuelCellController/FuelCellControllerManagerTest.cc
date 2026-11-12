@@ -183,6 +183,27 @@ private slots:
 
         QCOMPARE(send(box, packet), packet.size());
         QTRY_COMPARE(telemetry.values().value(QStringLiteral("inletTemperature")).toDouble(), 25.0);
+        telemetry.setBoxAddress(QStringLiteral("not-an-ip"));
+        telemetry.setBoxPort(0);
+        QCOMPARE(telemetry.boxAddress(), localAddress.toString());
+        QCOMPARE(telemetry.boxPort(), int(box.localPort()));
+
+        QUdpSocket newBox;
+        const QHostAddress newAddress(QStringLiteral("127.0.0.2"));
+        QVERIFY(newBox.bind(newAddress, 0));
+        telemetry.setBoxAddress(newAddress.toString());
+        telemetry.setBoxPort(newBox.localPort());
+        QVERIFY(telemetry.values().isEmpty());
+        QTRY_VERIFY(newBox.hasPendingDatagrams());
+        const auto newRequest = newBox.receiveDatagram();
+        QCOMPARE(newRequest.data(), request.data());
+
+        QCOMPARE(box.writeDatagram(packet, newRequest.senderAddress(), newRequest.senderPort()), packet.size());
+        QTest::qWait(50);
+        QVERIFY(telemetry.values().isEmpty());
+        QCOMPARE(newBox.writeDatagram(packet, newRequest.senderAddress(), newRequest.senderPort()), packet.size());
+        QTRY_COMPARE(telemetry.values().value(QStringLiteral("inletTemperature")).toDouble(), 25.0);
+
         telemetry.setSystemId(0);
         QVERIFY(telemetry.values().isEmpty());
     }

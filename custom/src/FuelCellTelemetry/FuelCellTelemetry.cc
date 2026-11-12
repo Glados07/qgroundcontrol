@@ -57,9 +57,46 @@ void FuelCellTelemetry::setSystemId(int systemId)
     if (_systemId == systemId) {
         return;
     }
+    _systemId = systemId;
+    _restartPolling();
+    emit systemIdChanged();
+}
+
+bool FuelCellTelemetry::isValidBoxAddress(const QString &address)
+{
+    const QString text = address.trimmed();
+    const QHostAddress host(text);
+    return host.protocol() == QAbstractSocket::IPv4Protocol && host.toString() == text
+        && host != QHostAddress(QHostAddress::AnyIPv4)
+        && host != QHostAddress(QHostAddress::Broadcast) && !host.isMulticast();
+}
+
+void FuelCellTelemetry::setBoxAddress(const QString &address)
+{
+    if (!isValidBoxAddress(address)) {
+        return;
+    }
+    const QHostAddress host(address.trimmed());
+    if (_boxAddress != host) {
+        _boxAddress = host;
+        _restartPolling();
+        emit endpointChanged();
+    }
+}
+
+void FuelCellTelemetry::setBoxPort(int port)
+{
+    if (port > 0 && port <= 65535 && port != _boxPort) {
+        _boxPort = static_cast<quint16>(port);
+        _restartPolling();
+        emit endpointChanged();
+    }
+}
+
+void FuelCellTelemetry::_restartPolling()
+{
     _poll.stop();
     _socket.close();
-    _systemId = systemId;
     _expiry.stop();
     _lastSampleTime.reset();
     _clear();
@@ -67,7 +104,6 @@ void FuelCellTelemetry::setSystemId(int systemId)
         _requestSample();
         _poll.start();
     }
-    emit systemIdChanged();
 }
 
 void FuelCellTelemetry::_requestSample()

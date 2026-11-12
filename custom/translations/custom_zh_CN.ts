@@ -1522,4 +1522,27 @@
         <translation>弱</translation>
     </message>
 </context>
+<context>
+    <name>FuelCellTelemetrySettingsGroup</name>
+    <message>
+        <source>Fuel Cell Telemetry</source>
+        <translation>燃料电池遥测</translation>
+    </message>
+    <message>
+        <source>Address and port for requesting fuel cell data from the AI box.</source>
+        <translation>QGC 使用此地址和端口向 AI 盒子请求燃料电池数据。</translation>
+    </message>
+    <message>
+        <source>AI box IPv4 address</source>
+        <translation>AI 盒子 IPv4 地址</translation>
+    </message>
+    <message>
+        <source>Enter a valid unicast IPv4 address.</source>
+        <translation>请输入有效的单播 IPv4 地址。</translation>
+    </message>
+    <message>
+        <source>AI box UDP port</source>
+        <translation>AI 盒子 UDP 端口</translation>
+    </message>
+</context>
 </TS>
