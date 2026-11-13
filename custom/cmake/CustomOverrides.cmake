@@ -18,6 +18,6 @@ set(QGC_MAVLINK_GIT_REPO
 )
 
 set(QGC_MAVLINK_GIT_TAG
-    "18f16c9e6f7da2dbd97112329c1564ed241ef4fb"
+    "f9b8da31e4d2718e88822f61ff7bdfee242e431d"
     CACHE STRING "Tag of MAVLink Git Repo" FORCE
 )
