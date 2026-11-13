@@ -28,6 +28,17 @@ public:
     static QString activeAdapterFactoryName(VideoReceiver *receiver,
                                             const QString &uri);
 
+    /// Prepare only the one-time hvc1 -> byte-stream retry on a native source
+    /// timeout with confirmed H.265 CAPS but no source/decoder/sink frame.
+    /// The owner retains responsibility for the already-pending native stop.
+    static bool prepareCapsOnlyTimeoutRetry(VideoReceiver *receiver,
+                                            const QString &uri,
+                                            quint64 generation,
+                                            int videoCodec,
+                                            bool sourceFrameReceived,
+                                            bool decoderFrameReceived,
+                                            bool sinkFrameReceived);
+
     /// Advance this receiver/URI to its next compatible vendor MediaCodec
     /// route. Alternative normalization adapters and packetization-compatible
     /// direct factories are each tried once; after the last one fails, the

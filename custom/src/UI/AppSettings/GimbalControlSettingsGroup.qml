@@ -58,13 +58,7 @@ ColumnLayout {
                     enabled: root.gimbalControlSettings.enabled.rawValue
                 }
 
-                FlyViewFactTextField {
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 1
-                    label: qsTr("MT11")
-                    fact: root.gimbalControlSettings.mt11ZoomStep
-                    enabled: root.gimbalControlSettings.mt11Enabled.rawValue
-                }
+
             }
         }
     }
@@ -226,26 +220,89 @@ ColumnLayout {
         FlyViewSettingsSection {
             Layout.preferredWidth: 1
             Layout.alignment: Qt.AlignTop
-            heading: qsTr("UniPod MT11 Gimbal Camera")
+            heading: qsTr("Rouke")
 
             FlyViewFactSwitch {
                 Layout.fillWidth: true
                 text: qsTr("Enabled")
-                fact: root.gimbalControlSettings.mt11Enabled
+                fact: root.gimbalControlSettings.roukeEnabled
             }
 
             FlyViewFactTextField {
                 Layout.fillWidth: true
-                label: qsTr("SDK Host")
-                fact: root.gimbalControlSettings.mt11SdkHost
-                enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+                label: qsTr("AI Box UDP Host")
+                fact: root.gimbalControlSettings.roukeUdpHost
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
             }
 
             FlyViewFactTextField {
                 Layout.fillWidth: true
-                label: qsTr("SDK Port")
-                fact: root.gimbalControlSettings.mt11SdkPort
-                enabled: root.gimbalControlSettings.mt11Enabled.rawValue
+                label: qsTr("AI Box UDP Port")
+                fact: root.gimbalControlSettings.roukeUdpPort
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            FlyViewFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("Local UDP Port (0: automatic)")
+                fact: root.gimbalControlSettings.roukeLocalPort
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            FlyViewFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("Payload Address")
+                fact: root.gimbalControlSettings.roukePayloadAddress
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                wrapMode: Text.Wrap
+                text: qsTr("Payload address defaults to 0. Set -1 to disable commands. Configure the Rouke stream under Video settings, RTSP URL 2.")
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                wrapMode: Text.Wrap
+                text: qsTr("CH11 controls yaw, CH12 controls pitch, and CH14 centers the Rouke gimbal. Center both sticks before operating; release CH14 before pressing it again.")
+            }
+
+            FlyViewFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("Maximum Yaw Speed (protocol value)")
+                fact: root.gimbalControlSettings.roukeYawSpeedLimit
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            FlyViewFactTextField {
+                Layout.fillWidth: true
+                label: qsTr("Maximum Pitch Speed (protocol value)")
+                fact: root.gimbalControlSettings.roukePitchSpeedLimit
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            FlyViewFactSwitch {
+                Layout.fillWidth: true
+                text: qsTr("Reverse CH11 yaw direction")
+                fact: root.gimbalControlSettings.roukeYawReversed
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            FlyViewFactSwitch {
+                Layout.fillWidth: true
+                text: qsTr("Reverse CH12 pitch direction")
+                fact: root.gimbalControlSettings.roukePitchReversed
+                enabled: root.gimbalControlSettings.roukeEnabled.rawValue
+            }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                wrapMode: Text.Wrap
+                text: qsTr("Speed limits: 35–525 in steps of 35 (levels 1–15). Stick direction sets the sign; centering sends 0 to stop.")
             }
         }
     }

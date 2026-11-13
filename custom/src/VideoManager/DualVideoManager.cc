@@ -21,7 +21,9 @@
 #include <QtCore/QUrl>
 
 #include <algorithm>
+#include <functional>
 #include <limits>
+#include <utility>
 
 QGC_LOGGING_CATEGORY(DualVideoManagerLog, "gcs.custom.videomanager.dualvideo")
 
@@ -72,8 +74,10 @@ bool isAdapterFactoryForRoute(VideoReceiver *receiver,
 class FinishSecondaryVideoInitialization final : public QRunnable
 {
 public:
-    explicit FinishSecondaryVideoInitialization(DualVideoManager *manager)
+    FinishSecondaryVideoInitialization(DualVideoManager *manager,
+                                       std::function<void()> finish)
         : _manager(manager)
+        , _finish(std::move(finish))
     {
     }
 
@@ -82,13 +86,14 @@ public:
         if (_manager) {
             QMetaObject::invokeMethod(
                 _manager.data(),
-                "_finishRenderInitialization",
+                _finish,
                 Qt::QueuedConnection);
         }
     }
 
 private:
     QPointer<DualVideoManager> _manager;
+    std::function<void()> _finish;
 };
 }
 
@@ -141,6 +146,25 @@ DualVideoManager::DualVideoManager(VideoCustomSettings *settings, QObject *paren
                 &Fact::rawValueChanged,
                 this,
                 [this](const QVariant &) { _refreshSettings(); });
+        connect(videoSettings->lowLatencyMode(),
+                &Fact::rawValueChanged,
+                this,
+                [this](const QVariant &value) {
+                    if (!_receiver || _receiver->lowLatency() == value.toBool()) {
+                        return;
+                    }
+                    _receiver->setLowLatency(value.toBool());
+                    if (_receiver->started() || _starting || _stopping) {
+                        // start() freezes lowLatency for its pipeline. Use the
+                        // existing stop-completion path, including when a
+                        // start is still in flight, to apply the new value.
+                        _restartRequested = true;
+                        _requestStop();
+                    } else {
+                        // Preserve an existing restart backoff while idle.
+                        _applyDesiredState();
+                    }
+                });
     }
 
     _refreshSettings();
@@ -301,6 +325,7 @@ void DualVideoManager::init(QQuickWindow *window)
     }
 
     _window = window;
+    _observeRenderWindow(window);
     _ensureReceiver();
     _applyDesiredState();
 }
@@ -315,6 +340,7 @@ void DualVideoManager::initVideoItem(QQuickWindow *window, QQuickItem *videoItem
 
     _window = window;
     _requestedVideoItem = videoItem;
+    _observeRenderWindow(videoItem->window() ? videoItem->window() : window);
 
     if (_receiver && (_videoItem != videoItem)) {
         _restartTimer.stop();
@@ -354,6 +380,8 @@ void DualVideoManager::stopVideo()
 void DualVideoManager::cleanup()
 {
     _cleaningUp = true;
+    _observeRenderWindow(nullptr);
+    _renderRecoveryPending = false;
     _restartTimer.stop();
     _decodeStartupTimer.stop();
     _primaryActiveUriClearTimer.stop();
@@ -489,7 +517,8 @@ void DualVideoManager::_refreshSettings()
 
 void DualVideoManager::_ensureReceiver()
 {
-    if (_cleaningUp || _receiver || !hasVideo() || !_window) {
+    if (_cleaningUp || _receiver || !hasVideo() || !_window
+        || _renderRecoveryPending || !_renderItemEnabled) {
         return;
     }
 
@@ -498,12 +527,17 @@ void DualVideoManager::_ensureReceiver()
         videoItem = _window->findChild<QQuickItem *>(
             QString::fromLatin1(kSecondaryVideoObjectName));
     }
-    if (!videoItem) {
+    if (!videoItem || !videoItem->window()) {
         // The secondary video surface does not instantiate an OpenGL video item
         // while the URL is empty. Its Loader calls init again once the item is
         // available, so absence here is an expected ordering condition.
+        // Loader deactivation removes parentItem immediately but defers QObject
+        // deletion. findChild can still return that retired item until the next
+        // event turn; wait for onLoaded's explicit item instead of reusing it.
         return;
     }
+
+    _observeRenderWindow(videoItem->window() ? videoItem->window() : _window.data());
 
     VideoReceiver *const receiver = QGCCorePlugin::instance()->createVideoReceiver(this);
     if (!receiver) {
@@ -570,6 +604,7 @@ void DualVideoManager::_ensureReceiver()
 
                     guardedThis->_renderReady = false;
                     guardedThis->_decodeStartupTimer.stop();
+                    guardedThis->_observeRenderWindow(window);
                     if (guardedReceiver->started() || guardedThis->_starting) {
                         guardedThis->_restartRequested = true;
                         guardedThis->_requestStop();
@@ -998,10 +1033,23 @@ void DualVideoManager::_ensureReceiver()
     connect(receiver,
             &VideoReceiver::timeout,
             this,
-            [guardedThis]() {
-                if (guardedThis) {
+            [guardedThis, guardedReceiver]() {
+                if (guardedThis && guardedReceiver
+                    && guardedThis->_receiver == guardedReceiver) {
+                    if (guardedReceiver->started() && !guardedThis->_stopping) {
+                        AndroidH265DecoderFallback::prepareCapsOnlyTimeoutRetry(
+                            guardedReceiver.data(),
+                            guardedThis->_videoPipelineUri,
+                            guardedThis->_videoPipelineGeneration,
+                            guardedThis->_videoCodec,
+                            guardedThis->_sourceFrameReceived,
+                            guardedThis->_decoderFrameReceived,
+                            guardedThis->_sinkFrameReceived);
+                    }
                     // GstVideoReceiver emits timeout before stopping its own
                     // pipeline. onStopComplete serializes the restart.
+                    guardedThis->_decodeStartupTimer.stop();
+                    guardedThis->_stopping = true;
                     guardedThis->_consecutiveDecodeFailures = qMin(
                         guardedThis->_consecutiveDecodeFailures + 1,
                         4);
@@ -1066,9 +1114,103 @@ void DualVideoManager::_ensureReceiver()
                                       : _window.data());
 }
 
+void DualVideoManager::_observeRenderWindow(QQuickWindow *window)
+{
+    if (_renderWindow == window) {
+        return;
+    }
+
+    disconnect(_sceneGraphInitializedConnection);
+    disconnect(_sceneGraphInvalidatedConnection);
+    _sceneGraphInitializedConnection = {};
+    _sceneGraphInvalidatedConnection = {};
+    _renderWindow = window;
+    const quint64 generation = ++_renderWindowGeneration;
+    ++_renderInitializationGeneration;
+    _renderReady = false;
+    _sceneGraphReady = window && window->isSceneGraphInitialized();
+
+    if (window) {
+        const QPointer<QQuickWindow> guardedWindow(window);
+        // These signals originate on the render thread. Only enqueue GUI-side
+        // lifecycle work; never mutate the Loader or wait for its worker there.
+        _sceneGraphInvalidatedConnection = connect(
+            window, &QQuickWindow::sceneGraphInvalidated, this,
+            [this, guardedWindow, generation]() {
+                if (_cleaningUp || !guardedWindow || _renderWindow != guardedWindow
+                    || generation != _renderWindowGeneration) {
+                    return;
+                }
+                _handleSceneGraphInvalidated();
+            }, Qt::QueuedConnection);
+        _sceneGraphInitializedConnection = connect(
+            window, &QQuickWindow::sceneGraphInitialized, this,
+            [this, guardedWindow, generation]() {
+                if (_cleaningUp || !guardedWindow || _renderWindow != guardedWindow
+                    || generation != _renderWindowGeneration) {
+                    return;
+                }
+                _sceneGraphReady = true;
+                _finishRenderRecovery();
+            }, Qt::QueuedConnection);
+    }
+    _finishRenderRecovery();
+}
+
+void DualVideoManager::_handleSceneGraphInvalidated()
+{
+    _sceneGraphReady = false;
+    _renderReady = false;
+    ++_renderInitializationGeneration;
+    _renderRecoveryPending = true;
+    _restartTimer.stop();
+    _decodeStartupTimer.stop();
+    qCInfo(DualVideoManagerLog)
+        << "Secondary scene graph invalidated; rebuilding receiver and render item";
+
+    if (_receiver) {
+        // Preserve the user's pause state. The existing asynchronous stop path
+        // drains recording/decoding before releasing the sink and its GL item.
+        _releaseAfterStop = true;
+        _requestStop();
+    } else {
+        _completeRenderItemRelease();
+    }
+}
+
+void DualVideoManager::_completeRenderItemRelease()
+{
+    if (!_renderRecoveryPending || _receiver || _cleaningUp) {
+        return;
+    }
+
+    _requestedVideoItem.clear();
+    if (_renderItemEnabled) {
+        _renderItemEnabled = false;
+        emit renderItemEnabledChanged();
+    }
+    _finishRenderRecovery();
+}
+
+void DualVideoManager::_finishRenderRecovery()
+{
+    if (!_renderRecoveryPending || _receiver || _renderItemEnabled
+        || !_sceneGraphReady || !_renderWindow || _cleaningUp) {
+        return;
+    }
+
+    // The old Loader item has been unloaded after its sink was released.
+    // A fresh item is necessary: qml6gl's invalidation handler retains its
+    // initialized flag and wrapped context. Restarting only Gst is insufficient.
+    _renderRecoveryPending = false;
+    _renderItemEnabled = true;
+    emit renderItemEnabledChanged();
+}
+
 void DualVideoManager::_finishRenderInitialization()
 {
-    if (!_receiver || !_videoItem || _renderReady) {
+    if (!_receiver || !_videoItem || _renderReady || _renderRecoveryPending
+        || !_renderItemEnabled || _cleaningUp) {
         return;
     }
 
@@ -1087,9 +1229,21 @@ void DualVideoManager::_scheduleRenderInitialization(QQuickWindow *window)
         return;
     }
 
-    window->scheduleRenderJob(
-        new FinishSecondaryVideoInitialization(this),
-        QQuickWindow::BeforeSynchronizingStage);
+    const QPointer<QQuickWindow> guardedWindow(window);
+    const QPointer<QQuickItem> guardedItem(_videoItem);
+    const quint64 windowGeneration = _renderWindowGeneration;
+    const quint64 initializationGeneration = _renderInitializationGeneration;
+    window->scheduleRenderJob(new FinishSecondaryVideoInitialization(
+        this, [this, guardedWindow, guardedItem, windowGeneration,
+               initializationGeneration]() {
+            if (!guardedWindow || !guardedItem || _renderWindow != guardedWindow
+                || _videoItem != guardedItem
+                || windowGeneration != _renderWindowGeneration
+                || initializationGeneration != _renderInitializationGeneration) {
+                return;
+            }
+            _finishRenderInitialization();
+        }), QQuickWindow::BeforeSynchronizingStage);
 }
 
 void DualVideoManager::_armDecodeStartupWatchdog()
@@ -1210,7 +1364,7 @@ void DualVideoManager::_applyDesiredState()
 
     // Rendering readiness only gates starting. A disabled/changed stream must
     // always be allowed to stop and release even while the GL item is pending.
-    if (!_renderReady) {
+    if (!_renderReady || _renderRecoveryPending || !_renderItemEnabled) {
         return;
     }
 
@@ -1276,6 +1430,7 @@ void DualVideoManager::_releaseReceiver()
     if (!receiver) {
         _resetVideoPipelineGeneration();
         _lastVideoPipelineGeneration = 0;
+        _completeRenderItemRelease();
         return;
     }
 
@@ -1301,6 +1456,7 @@ void DualVideoManager::_releaseReceiver()
     _receiver.clear();
     _videoItem.clear();
     _renderReady = false;
+    ++_renderInitializationGeneration;
     _restartRequested = false;
     _consecutiveDecodeFailures = 0;
     _resetVideoPipelineGeneration();
@@ -1332,6 +1488,7 @@ void DualVideoManager::_releaseReceiver()
         emit decodingChanged();
     }
     emit videoSizeChanged();
+    _completeRenderItemRelease();
 }
 
 void DualVideoManager::_scheduleRestart()

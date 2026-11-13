@@ -19,15 +19,15 @@
 #include "Gimbal/GimbalControlManager.h"
 #include "Gimbal/GimbalControlSettings.h"
 #include "Gimbal/GimbalVideoStreamSupport.h"
-#include "Gimbal/Mt11ControlManager.h"
+#include "Gimbal/RoukeControlManager.h"
 #include "QGCLoggingCategory.h"
+#include "MAVLinkProtocol.h"
+#include "UDPLink.h"
 #include "Settings/FlyViewCustomSettings.h"
 #include "Settings/FuelCellTelemetrySettings.h"
 #include "Settings/VideoCustomSettings.h"
 #include "VideoManager/VideoReceiver/VideoReceiver.h"
 #include "VideoManager/VideoReceiver/GStreamer/A8RtspStreamRecovery.h"
-#include "VideoManager/VideoReceiver/GStreamer/AndroidH265DecoderFallback.h"
-#include "VideoManager/VideoReceiver/GStreamer/AndroidH265StreamFormatPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderRecovery.h"
 #include "VideoManager/VideoReceiver/GStreamer/AndroidVideoDecoderPolicy.h"
 #include "VideoManager/VideoReceiver/GStreamer/PulledVideoResolutionProbe.h"
@@ -45,11 +45,16 @@
 #include <QtCore/QPointer>
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
+#include <QtCore/QThread>
+#include <QtCore/QTimer>
 #include <QtCore/QtMath>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickItem>
+#include <atomic>
 
 QGC_LOGGING_CATEGORY(CustomLog, "gcs.custom.customplugin")
+Q_LOGGING_CATEGORY(RoukeNativeTraceLog, "gcs.custom.gimbal.rouke.native", QtInfoMsg)
+Q_LOGGING_CATEGORY(RoukeNativeRawLog, "gcs.custom.gimbal.rouke.raw", QtInfoMsg)
 
 namespace {
 
@@ -89,61 +94,6 @@ void configureGStreamerNetworkPolicy()
 }
 #endif
 
-#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
-void installMt11NativeH265InputRoute(VideoReceiver *receiver,
-                                     GimbalControlSettings *settings)
-{
-    static constexpr const char *kInstalledProperty =
-        "customAndroidH265StreamFormatPolicyInstalled";
-    if (!receiver || !settings
-        || receiver->property(kInstalledProperty).toBool()) {
-        return;
-    }
-
-    receiver->setProperty(kInstalledProperty, true);
-    const auto applyPolicy =
-        [guardedReceiver = QPointer<VideoReceiver>(receiver),
-         guardedSettings = QPointer<GimbalControlSettings>(settings)]() {
-            if (!guardedReceiver || !guardedSettings) {
-                return;
-            }
-
-            const QString parserOutputFormat =
-                AndroidH265StreamFormatPolicy::parserOutputFormatForUri(
-                    guardedReceiver->uri(),
-                    guardedSettings->mt11SdkHost()->rawValue().toString());
-            const char *const propertyName =
-                AndroidH265StreamFormatPolicy::receiverPropertyName();
-            if (guardedReceiver->property(propertyName).toString()
-                == parserOutputFormat) {
-                return;
-            }
-
-            guardedReceiver->setProperty(propertyName, parserOutputFormat);
-            AndroidH265DecoderFallback::resetForCurrentInputFormat(
-                guardedReceiver.data());
-            qCInfo(CustomLog)
-                << "Selected receiver-specific Android H.265 parser route"
-                << "receiver" << guardedReceiver.data()
-                << "uri" << guardedReceiver->uri()
-                << "format"
-                << (parserOutputFormat.isEmpty()
-                        ? QStringLiteral("hvc1 (established A8/QGC route)")
-                        : QStringLiteral("byte-stream/AU (native MT11 route)"));
-        };
-
-    applyPolicy();
-    QObject::connect(receiver,
-                     &VideoReceiver::uriChanged,
-                     receiver,
-                     [applyPolicy](const QString &) { applyPolicy(); });
-    QObject::connect(settings->mt11SdkHost(),
-                     &Fact::rawValueChanged,
-                     receiver,
-                     [applyPolicy](const QVariant &) { applyPolicy(); });
-}
-#endif
-
 } // namespace
 
 Q_APPLICATION_STATIC(CustomPlugin, _customPluginInstance);
@@ -170,6 +120,7 @@ CustomPlugin *CustomPlugin::customInstance()
 
 void CustomPlugin::init()
 {
+    _observeNativeRoukeMessages();
     // Install the missing project default before LinkManager reads settings.
     DefaultCommunicationLinkInstaller::ensureInstalled();
 
@@ -204,7 +155,7 @@ void CustomPlugin::init()
     _ensureGimbalCenterCoordinator();
     _ensureGimbalModeController();
     _ensureUniRcChannelController();
-    _ensureMt11ControlManager();
+    _ensureRoukeControlManager();
     _ensureVideoCustomSettings();
     _ensureDualVideoManager();
     if (!_aboutToQuitConnection) {
@@ -222,7 +173,7 @@ void CustomPlugin::init()
                         if (_uniRcChannelController) {
                             _uniRcChannelController->shutdown();
                         }
-                        _shutdownMt11Video();
+                        _shutdownRoukeVideo();
                         if (_gimbalControlManager) {
                             _gimbalControlManager->shutdownLocalMedia(true);
                         }
@@ -236,6 +187,11 @@ void CustomPlugin::init()
 
 void CustomPlugin::cleanup()
 {
+    disconnect(_roukeNativeObservationConnection);
+    _roukeNativeObservationConnection = {};
+    if (_roukeRawObservationTimer) _roukeRawObservationTimer->stop();
+    _roukeNativeTrace.reset();
+    _roukeNativeObservationClock.invalidate();
     if (_fuelCellController) {
         _fuelCellController->shutdown();
     }
@@ -245,7 +201,7 @@ void CustomPlugin::cleanup()
     if (_uniRcChannelController) {
         _uniRcChannelController->shutdown();
     }
-    _shutdownMt11Video();
+    _shutdownRoukeVideo();
     if (_gimbalControlManager) {
         _gimbalControlManager->shutdownLocalMedia(true);
     }
@@ -368,15 +324,15 @@ UniRcChannelController *CustomPlugin::uniRcChannelControllerObject()
     return _uniRcChannelController;
 }
 
-QObject *CustomPlugin::mt11ControlManager()
+QObject *CustomPlugin::roukeControlManager()
 {
-    return mt11ControlManagerObject();
+    return roukeControlManagerObject();
 }
 
-Mt11ControlManager *CustomPlugin::mt11ControlManagerObject()
+RoukeControlManager *CustomPlugin::roukeControlManagerObject()
 {
-    _ensureMt11ControlManager();
-    return _mt11ControlManager;
+    _ensureRoukeControlManager();
+    return _roukeControlManager;
 }
 
 QObject *CustomPlugin::videoCustomSettings()
@@ -409,6 +365,74 @@ bool CustomPlugin::mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const m
     _gimbalAzimuthProvider->handleMavlinkMessage(vehicle, message);
 
     return !GimbalVideoStreamSupport::shouldFilterMavlinkMessage(_gimbalControlSettings, message);
+}
+
+void CustomPlugin::_observeNativeRoukeMessages()
+{
+    static_assert(RoukeNativeMavlinkTrace::ChannelCount == MAVLINK_COMM_NUM_BUFFERS,
+                  "Native Rouke trace must cover every QGC MAVLink channel");
+    if (_roukeNativeObservationConnection) return;
+    _roukeNativeObservationClock.start();
+    ++_roukeRawObservationSession;
+    if (!_roukeRawObservationTimer) {
+        _roukeRawObservationTimer = new QTimer(this);
+        _roukeRawObservationTimer->setInterval(1000);
+        connect(_roukeRawObservationTimer, &QTimer::timeout, this, [this]() {
+            if (RoukeNativeRawLog().isDebugEnabled()) {
+                qCDebug(RoukeNativeRawLog).noquote()
+                    << _roukeNativeTrace.raw().summary(QStringLiteral("native"), _roukeRawObservationSession)
+                           + QStringLiteral(" liveOnly=1");
+            }
+        });
+    }
+    _roukeRawObservationTimer->start();
+    _roukeNativeObservationConnection = connect(
+        MAVLinkProtocol::instance(), &MAVLinkProtocol::messageReceived, this,
+        [this](LinkInterface *link, const mavlink_message_t &message) {
+            if ((!RoukeNativeTraceLog().isDebugEnabled() && !RoukeNativeRawLog().isDebugEnabled())
+                || message.msgid != MAVLINK_MSG_ID_VK_PAYLOAD_DATA_RELAY) return;
+            // Native receiveBytes holds a shared link while emitting. Observe
+            // it synchronously; never queue a raw link or retain packet bytes.
+            // The native path runs on the application thread. Do not inspect
+            // QObject/configuration state if a future caller violates that.
+            if (QThread::currentThread() != thread() || !link
+                || link->thread() != QThread::currentThread()) {
+                static std::atomic_bool reported{false};
+                if (!reported.exchange(true)) {
+                    qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_OBSERVER skipped unsafe-thread-or-null-link";
+                    qCDebug(RoukeNativeRawLog) << "ROUKE_NATIVE_OBSERVER skipped unsafe-thread-or-null-link";
+                }
+                return;
+            }
+            if (!link->mavlinkChannelIsSet()) return;
+            const int channel = link->mavlinkChannel();
+            const auto sample = _roukeNativeTrace.observe(link, channel, _roukeNativeObservationClock.elapsed());
+            // Replayed telemetry is not live arrival evidence. Keep it only
+            // in the legacy metadata observer with its explicit logReplay flag.
+            const auto rawSample = RoukeNativeRawLog().isDebugEnabled() && !link->isLogReplay()
+                ? _roukeNativeTrace.raw().observe(message, _roukeNativeObservationClock.elapsed())
+                : RoukeRawMavlinkTrace::Sample{};
+            if ((!RoukeNativeTraceLog().isDebugEnabled() || !sample.log) && !rawSample.log) return;
+            const auto configuration = link->linkConfiguration();
+            const auto *udp = configuration ? qobject_cast<const UDPConfiguration *>(configuration.get()) : nullptr;
+            if (rawSample.log) {
+                const QString context = QStringLiteral(" channel=%1 linkType=%2 udpConfiguredLocalPort=%3 logReplay=%4 decision=observe-only")
+                    .arg(channel).arg(configuration ? int(configuration->type()) : -1)
+                    .arg(udp ? int(udp->localPort()) : -1).arg(link->isLogReplay());
+                for (const QString &line : _roukeNativeTrace.raw().sampleLines(rawSample, message,
+                            QStringLiteral("native"), _roukeRawObservationSession, context)) {
+                    qCDebug(RoukeNativeRawLog).noquote() << line;
+                }
+            }
+            if (sample.log) qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_RX msgid" << message.msgid
+                << "magic" << message.magic << "sys" << message.sysid << "comp" << message.compid
+                << "seq" << message.seq << "len" << message.len << "channel" << channel
+                << "linkClass" << link->metaObject()->className()
+                << "linkType" << (configuration ? int(configuration->type()) : -1)
+                << "udpConfiguredLocalPort" << (udp ? int(udp->localPort()) : -1)
+                << "logReplay" << link->isLogReplay() << "channelCount" << sample.count;
+        }, Qt::DirectConnection);
+    qCDebug(RoukeNativeTraceLog) << "ROUKE_NATIVE_OBSERVER installed observation-only";
 }
 
 bool CustomPlugin::adjustSettingMetaData(const QString &settingsGroup, FactMetaData &metaData)
@@ -508,23 +532,23 @@ void CustomPlugin::_ensureUniRcChannelController()
     _ensureGimbalControlSettings();
     _ensureGimbalControlManager();
     _ensureGimbalCenterCoordinator();
-    _ensureMt11ControlManager();
+    _ensureRoukeControlManager();
     if (!_uniRcChannelController) {
         _uniRcChannelController =
             new UniRcChannelController(_gimbalControlSettings,
                                        _gimbalControlManager,
                                        _gimbalCenterCoordinator,
-                                       _mt11ControlManager,
+                                       _roukeControlManager,
                                        this);
     }
 #endif
 }
 
-void CustomPlugin::_ensureMt11ControlManager()
+void CustomPlugin::_ensureRoukeControlManager()
 {
     _ensureGimbalControlSettings();
-    if (!_mt11ControlManager) {
-        _mt11ControlManager = new Mt11ControlManager(_gimbalControlSettings, this);
+    if (!_roukeControlManager) {
+        _roukeControlManager = new RoukeControlManager(_gimbalControlSettings, this);
     }
 }
 
@@ -538,7 +562,7 @@ void CustomPlugin::_ensureVideoCustomSettings()
 void CustomPlugin::_ensureDualVideoManager()
 {
     _ensureVideoCustomSettings();
-    _ensureMt11ControlManager();
+    _ensureRoukeControlManager();
     if (_dualVideoManager) {
         return;
     }
@@ -546,8 +570,8 @@ void CustomPlugin::_ensureDualVideoManager()
     _dualVideoManager = new DualVideoManager(_videoCustomSettings, this);
     connect(_dualVideoManager,
             &DualVideoManager::videoObjectsAboutToBeReleased,
-            _mt11ControlManager,
-            [manager = QPointer<Mt11ControlManager>(_mt11ControlManager)]() {
+            _roukeControlManager,
+            [manager = QPointer<RoukeControlManager>(_roukeControlManager)]() {
                 if (!manager) {
                     return;
                 }
@@ -558,15 +582,15 @@ void CustomPlugin::_ensureDualVideoManager()
             Qt::DirectConnection);
     connect(_dualVideoManager,
             &DualVideoManager::videoObjectsReleased,
-            _mt11ControlManager,
-            [manager = QPointer<Mt11ControlManager>(_mt11ControlManager)]() {
+            _roukeControlManager,
+            [manager = QPointer<RoukeControlManager>(_roukeControlManager)]() {
                 if (manager) {
                     manager->finalizeDetachedLocalMedia();
                 }
             },
             Qt::DirectConnection);
     const auto syncVideoObjects =
-        [manager = QPointer<Mt11ControlManager>(_mt11ControlManager),
+        [manager = QPointer<RoukeControlManager>(_roukeControlManager),
          dual = QPointer<DualVideoManager>(_dualVideoManager)]() {
             if (!manager || !dual) {
                 return;
@@ -576,15 +600,15 @@ void CustomPlugin::_ensureDualVideoManager()
         };
     connect(_dualVideoManager,
             &DualVideoManager::videoReceiverChanged,
-            _mt11ControlManager,
+            _roukeControlManager,
             syncVideoObjects);
     connect(_dualVideoManager,
             &DualVideoManager::videoItemChanged,
-            _mt11ControlManager,
+            _roukeControlManager,
             syncVideoObjects);
 }
 
-void CustomPlugin::_shutdownMt11Video()
+void CustomPlugin::_shutdownRoukeVideo()
 {
     // Receiver release has the authoritative stop/detach/finalize sequence.
     // If no receiver exists, run the manager fallback exactly once so a local
@@ -594,8 +618,8 @@ void CustomPlugin::_shutdownMt11Video()
     if (_dualVideoManager) {
         _dualVideoManager->cleanup();
     }
-    if (!hasReceiver && _mt11ControlManager) {
-        _mt11ControlManager->shutdownLocalMedia(true);
+    if (!hasReceiver && _roukeControlManager) {
+        _roukeControlManager->shutdownLocalMedia(true);
     }
 }
 
@@ -616,12 +640,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
 {
     _ensureVideoCustomSettings();
     auto *receiver = qobject_cast<VideoReceiver *>(parent);
-#if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
-    _ensureGimbalControlSettings();
-    installMt11NativeH265InputRoute(receiver, _gimbalControlSettings);
-#endif
     void *sink = QGCCorePlugin::createVideoSink(widget, parent);
 #if defined(Q_OS_ANDROID) && defined(QGC_GST_STREAMING)
+    _ensureGimbalControlSettings();
     A8RtspStreamRecovery::install(receiver, sink, _gimbalControlSettings);
 #endif
 
@@ -642,9 +663,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
         isMainVideoReceiver ? gimbalControlManagerObject() : nullptr;
     // Camera-control SDKs remain independent from the generic video layout.
     // The current product profile associates Video 1 with A8 and Video 2 with
-    // MT11 for local photo/recording capture.
-    Mt11ControlManager *mt11Manager = isSecondaryVideoReceiver
-        ? mt11ControlManagerObject() : nullptr;
+    // Rouke for local photo/recording capture.
+    RoukeControlManager *roukeManager = isSecondaryVideoReceiver
+        ? roukeControlManagerObject() : nullptr;
 
     if (widget && manager) {
         manager->setMainVideoItem(widget);
@@ -652,11 +673,11 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     if (receiver && manager) {
         manager->setMainVideoReceiver(receiver);
     }
-    if (widget && mt11Manager) {
-        mt11Manager->setVideoItem(widget);
+    if (widget && roukeManager) {
+        roukeManager->setVideoItem(widget);
     }
-    if (receiver && mt11Manager) {
-        mt11Manager->setVideoReceiver(receiver);
+    if (receiver && roukeManager) {
+        roukeManager->setVideoReceiver(receiver);
     }
 
     static constexpr const char* kLocalMediaSignalsConnected =
@@ -678,17 +699,17 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
                 });
     }
 
-    static constexpr const char* kMt11LocalMediaSignalsConnected =
-        "customMt11LocalMediaSignalsConnected";
+    static constexpr const char* kRoukeLocalMediaSignalsConnected =
+        "customRoukeLocalMediaSignalsConnected";
     if (receiver
-        && mt11Manager
-        && !receiver->property(kMt11LocalMediaSignalsConnected).toBool()) {
-        receiver->setProperty(kMt11LocalMediaSignalsConnected, true);
+        && roukeManager
+        && !receiver->property(kRoukeLocalMediaSignalsConnected).toBool()) {
+        receiver->setProperty(kRoukeLocalMediaSignalsConnected, true);
         QPointer<VideoReceiver> guardedReceiver(receiver);
-        QPointer<Mt11ControlManager> guardedManager(mt11Manager);
+        QPointer<RoukeControlManager> guardedManager(roukeManager);
         connect(receiver,
                 &VideoReceiver::onStartRecordingComplete,
-                mt11Manager,
+                roukeManager,
                 [guardedManager, guardedReceiver](VideoReceiver::STATUS status) {
                     if (!guardedManager) {
                         return;
@@ -753,9 +774,9 @@ void *CustomPlugin::createVideoSink(QQuickItem *widget, QObject *parent)
         }
     }
 
-    if (isSecondaryVideoReceiver && mt11Manager) {
+    if (isSecondaryVideoReceiver && roukeManager) {
         // The probe publishes only after a real decoded buffer has arrived.
-        // Mt11ControlManager consumes the receiver's videoSizeChanged signal
+        // RoukeControlManager consumes the receiver's videoSizeChanged signal
         // and rejects callbacks which belong to a detached receiver.
         (void) PulledVideoResolutionProbe::install(sink, parent);
     }

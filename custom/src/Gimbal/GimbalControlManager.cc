@@ -431,6 +431,12 @@ GimbalControlManager::GimbalControlManager(GimbalControlSettings* settings, QObj
     _sdkResponseTimer.setSingleShot(true);
     // 倍率和相机状态每 2 秒轮询一次；响应超时必须短于轮询周期。
     _sdkResponseTimer.setInterval(1500);
+    // Other SDK traffic must not keep an old storage observation alive.
+    _sdCardStatusTimer.setSingleShot(true);
+    _sdCardStatusTimer.setInterval(5000);
+    connect(&_sdCardStatusTimer, &QTimer::timeout, this, [this]() {
+        _setSdCardStatus(false, false);
+    });
     _zoomOperationTimer.setSingleShot(true);
     // 这是完整缩放操作的截止时间，不是单个UDP查询的超时。绝对缩放可能
     // 需要数秒才能到达目标，不能在中途清除pending并把1.8x等过程值当结果。
@@ -2706,6 +2712,13 @@ void GimbalControlManager::_handleCameraSystemStatus(quint8 hdrStatus,
     Q_UNUSED(videoOutputStatus);
     Q_UNUSED(zoomLinkage);
 
+    // Keep storage presence separate from the recording bool. Status 2 is an
+    // explicit no-card report; 1 confirms active card recording. A stopped
+    // camera (0) or video-data-loss report (3) does not prove card insertion.
+    // Update this telemetry even when a stale recording poll cannot complete
+    // the current start/stop transaction below.
+    _setSdCardStatus(recordingStatus == 1 || recordingStatus == 2, recordingStatus == 1);
+
     if (_recordingCommandPending) {
         if (recordingStatus == 0 || recordingStatus == 1) {
             // 0/1 可能来自命令前的旧轮询。延迟查询尚未发出，或状态与目标不一致时继续等待。
@@ -3863,6 +3876,7 @@ void GimbalControlManager::_setVideoStreamAvailable(bool available)
 
 void GimbalControlManager::_setSdkResponding(bool responding)
 {
+    if (!responding) _setSdCardStatus(false, false);
     if (_sdkResponding != responding) {
         _sdkResponding = responding;
         emit sdkRespondingChanged();
@@ -3890,6 +3904,17 @@ void GimbalControlManager::_setCameraStatusKnown(bool known)
         emit cameraStatusKnownChanged();
         _notifyRecordingSessionStateChanged();
     }
+}
+
+void GimbalControlManager::_setSdCardStatus(bool known, bool inserted)
+{
+    inserted = known && inserted;
+    if (known) _sdCardStatusTimer.start();
+    else _sdCardStatusTimer.stop();
+    if (_sdCardStatusKnown == known && _sdCardInserted == inserted) return;
+    _sdCardStatusKnown = known;
+    _sdCardInserted = inserted;
+    emit sdCardStatusChanged();
 }
 
 void GimbalControlManager::_setRecording(bool recording)

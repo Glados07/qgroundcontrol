@@ -9,7 +9,7 @@
 #include "GimbalCenterCoordinator.h"
 #include "GimbalControlManager.h"
 #include "GimbalControlSettings.h"
-#include "Mt11ControlManager.h"
+#include "RoukeControlManager.h"
 #include "QGCLoggingCategory.h"
 #include "UniRcSerialPort.h"
 
@@ -24,24 +24,25 @@
 #include <QtGui/QGuiApplication>
 
 QGC_LOGGING_CATEGORY(UniRcChannelLog, "gcs.custom.android.unircchannel")
+Q_LOGGING_CATEGORY(UniRcRoukeTraceLog, "gcs.custom.android.unircchannel.trace", QtInfoMsg)
 
 UniRcChannelController::UniRcChannelController(
     GimbalControlSettings *settings,
     GimbalControlManager *gimbalControlManager,
     GimbalCenterCoordinator *gimbalCenterCoordinator,
-    Mt11ControlManager *mt11ControlManager,
+    RoukeControlManager *roukeControlManager,
     QObject *parent)
     : QObject(parent)
     , _settings(settings)
     , _gimbalControlManager(gimbalControlManager)
     , _gimbalCenterCoordinator(gimbalCenterCoordinator)
-    , _mt11ControlManager(mt11ControlManager)
+    , _roukeControlManager(roukeControlManager)
     , _linkStatus(this)
 {
     Q_ASSERT(_settings);
     Q_ASSERT(_gimbalControlManager);
     Q_ASSERT(_gimbalCenterCoordinator);
-    Q_ASSERT(_mt11ControlManager);
+    Q_ASSERT(_roukeControlManager);
 
     _reconnectTimer.setSingleShot(true);
     _reconnectTimer.setInterval(kReconnectDelayMs);
@@ -145,8 +146,8 @@ void UniRcChannelController::_zoomDirectionSettingChanged()
 
     // Changing the mapping while the wheel is deflected must not reverse the
     // lens without a neutral transition. Stop the current action and re-arm
-    // A8 channel controls from their safe positions; the SDK session,
-    // 0x42 stream and independent MT11 rotation remain active.
+    // A8 channel controls from their safe positions. The SDK session, channel
+    // display and independent Rouke controls remain active.
     _resetA8Input(false);
     qCInfo(UniRcChannelLog)
         << "UniRC CH9 zoom direction mapping changed"
@@ -841,10 +842,28 @@ void UniRcChannelController::_handleChannelPacket(
         emit channelsChanged();
     }
 
-    // Channel numbers are one-based; the protocol array is zero-based.
-    // MT11 validates its own axes, independently of A8 channel validity.
-    if (_mt11ControlManager) {
-        _mt11ControlManager->updateUniRcGimbalChannels(channels.at(10), channels.at(11));
+    // Rouke uses an independent channel policy and MAVLink UDP endpoint.
+    // Route it before A8 validation so invalid CH9/CH10 cannot suppress a
+    // Rouke stop or center. Channel numbers are one-based in the SDK manual.
+    if (UniRcRoukeTraceLog().isDebugEnabled()) {
+        const auto axisGate = [](qint16 value) {
+            return value < 900 || value > 2100 ? 0 : value >= 1400 && value <= 1600 ? 1 : 2;
+        };
+        const qint16 center = channels.at(13);
+        const int buttonGate = center < 900 || center > 2100 ? 0 : center <= 1250 ? 1 : center >= 1750 ? 3 : 2;
+        const int gate = axisGate(channels.at(10)) | (axisGate(channels.at(11)) << 2)
+            | (buttonGate << 4) | (_roukeControlManager ? 0x100 : 0);
+        if (gate != _roukeTraceGate || !_roukeTraceElapsed.isValid() || _roukeTraceElapsed.hasExpired(1000)) {
+            _roukeTraceGate = gate;
+            _roukeTraceElapsed.start();
+            qCDebug(UniRcRoukeTraceLog) << "ROUKE_RC_SDK attempt" << _connectionAttempt
+                << "frame" << _channelFrameCount << "sequence" << packet.sequence
+                << "CH11" << channels.at(10) << "CH12" << channels.at(11) << "CH14" << center
+                << "managerPresent" << bool(_roukeControlManager);
+        }
+    }
+    if (_roukeControlManager) {
+        _roukeControlManager->updateUniRcGimbalChannels(channels.at(10), channels.at(11), channels.at(13));
     }
 
     const UniRcChannelPolicy::Result result =
@@ -943,10 +962,8 @@ void UniRcChannelController::_tryStartZoom(int direction)
 
 void UniRcChannelController::_resetInput(bool normalZoomStop)
 {
-    if (_mt11ControlManager) {
-        _mt11ControlManager->cancelUniRcGimbal();
-    }
     _resetA8Input(normalZoomStop);
+    if (_roukeControlManager) _roukeControlManager->cancelUniRcGimbal();
 }
 
 void UniRcChannelController::_resetA8Input(bool normalZoomStop)
@@ -1157,6 +1174,8 @@ void UniRcChannelController::_resetReceiveDiagnostics()
     _requestAwaitingTransmission = false;
     _requestElapsed.invalidate();
     _diagnosticRefreshElapsed.invalidate();
+    _roukeTraceElapsed.invalidate();
+    _roukeTraceGate = -1;
     _invalidChannelWarningActive = false;
     _lastFrameControl = 0;
     _lastFrameCommand = 0;

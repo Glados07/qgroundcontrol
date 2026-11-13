@@ -8,6 +8,7 @@
 
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtCore/QtGlobal>
 
 class AndroidH265DecoderRoutePolicy final
 {
@@ -30,4 +31,16 @@ public:
     static RouteSelection nextRoute(const QStringList &orderedFactories,
                                     const QString &previousFactory,
                                     int previousCandidateIndex);
+
+    /// A native source timeout can precede the first compressed buffer even
+    /// after H.265 CAPS selected a decoder. Permit one packetization retry,
+    /// never a decoder-factory rotation based only on missing network data.
+    static bool canRetryCapsOnlyTimeout(const QString &currentUri,
+                                        const QString &pipelineUri,
+                                        quint64 generation,
+                                        bool h265Confirmed,
+                                        bool nativeByteStream,
+                                        bool sourceFrameReceived,
+                                        bool decoderFrameReceived,
+                                        bool sinkFrameReceived);
 };

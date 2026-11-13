@@ -17,13 +17,21 @@ palette, file dialogs and text-field chrome are test doubles; the palette colors
 match the current native QGC definitions. This is not a full
 QGC or Android test. `showUniRcSettings` enables Android-only layout in the test
 without changing the application's platform default. A small preview translator
-provides Chinese screenshot labels; production translations are unchanged.
+provides fallback Chinese screenshot labels. Pass `--translation` with the
+production Chinese QM file to verify the shipped Rouke labels and settings text.
 
 From the repository root, with PySide6 installed:
 
 ```text
 rcc --binary custom/custom.qrc -o debug/flyview-settings-layout/custom.rcc
 python custom/test/UI/FlyViewSettingsLayout/run.py --resource debug/flyview-settings-layout/custom.rcc --output debug/flyview-settings-layout/screenshots
+```
+
+To include the production translations, compile them with Qt 6 `lrelease` and
+append `--translation debug/flyview-settings-layout/custom_zh_CN.qm` to the command:
+
+```text
+lrelease custom/translations/custom_zh_CN.ts -qm debug/flyview-settings-layout/custom_zh_CN.qm
 ```
 
 Create the output parent directory first and use the Qt 6 `rcc` executable. The

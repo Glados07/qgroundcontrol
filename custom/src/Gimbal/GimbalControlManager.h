@@ -46,6 +46,8 @@ class GimbalControlManager : public QObject
     Q_PROPERTY(bool zoomValueUncertain READ zoomValueUncertain NOTIFY zoomAvailabilityChanged)
     Q_PROPERTY(bool continuousZoomActive READ continuousZoomActive NOTIFY continuousZoomActiveChanged)
     Q_PROPERTY(bool cameraStatusKnown READ cameraStatusKnown NOTIFY cameraStatusKnownChanged)
+    Q_PROPERTY(bool sdCardStatusKnown READ sdCardStatusKnown NOTIFY sdCardStatusChanged)
+    Q_PROPERTY(bool sdCardInserted READ sdCardInserted NOTIFY sdCardStatusChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
     Q_PROPERTY(bool recordingCommandPending READ recordingCommandPending NOTIFY recordingCommandPendingChanged)
     Q_PROPERTY(bool cameraRecordingPending READ cameraRecordingPending NOTIFY recordingSessionStateChanged)
@@ -88,6 +90,8 @@ public:
     bool zoomValueUncertain() const { return _zoomValueUncertain; }
     bool continuousZoomActive() const { return _continuousZoomActive; }
     bool cameraStatusKnown() const { return _cameraStatusKnown; }
+    bool sdCardStatusKnown() const { return _sdCardStatusKnown; }
+    bool sdCardInserted() const { return _sdCardInserted; }
     bool recording() const { return _recording; }
     bool recordingCommandPending() const { return _recordingCommandPending; }
     bool cameraRecordingPending() const;
@@ -157,6 +161,7 @@ signals:
     void zoomAvailabilityChanged();
     void continuousZoomActiveChanged();
     void cameraStatusKnownChanged();
+    void sdCardStatusChanged();
     void recordingChanged();
     void recordingCommandPendingChanged();
     void localMediaStorageEnabledChanged();
@@ -270,6 +275,7 @@ private:
     void _setZoomValueUncertain(bool uncertain);
     void _setContinuousZoomState(bool active, int direction = 0);
     void _setCameraStatusKnown(bool known);
+    void _setSdCardStatus(bool known, bool inserted);
     void _setRecording(bool recording);
     void _setRecordingCommandPending(bool pending);
     void _finishRecordingCommand();
@@ -309,6 +315,7 @@ private:
     SiyiSdk* _sdk = nullptr;
     VideoManager* _videoManager = nullptr;
     QTimer _sdkResponseTimer;
+    QTimer _sdCardStatusTimer;
     QTimer _zoomOperationTimer;
     QTimer _zoomQueryTimeoutTimer;
     QTimer _sdkPollTimer;
@@ -390,6 +397,8 @@ private:
     quint16 _manualZoomSessionPort = 0;
     int _manualZoomStopRetryAttemptsRemaining = 0;
     bool _cameraStatusKnown = false;
+    bool _sdCardStatusKnown = false;
+    bool _sdCardInserted = false;
     bool _recording = false;
     bool _recordingCommandPending = false;
     bool _recordingCommandTarget = false;

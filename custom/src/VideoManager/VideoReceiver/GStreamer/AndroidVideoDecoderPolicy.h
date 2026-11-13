@@ -12,6 +12,7 @@ class AndroidVideoDecoderPolicy
 {
 public:
     /// Require compatible vendor MediaCodec decoders for Android H.264/H.265.
+    /// H.264 uses an AVC-to-Annex-B adapter when vendor decoders require it.
     /// H.265 reuses the A8 Mini hvc1-to-Annex-B adapter before bounded
     /// receiver-specific adapter/direct retry routes. This must run after
     /// GStreamer initialization and before either decodebin3 is created.

@@ -7,12 +7,14 @@
 #pragma once
 
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QTranslator>
 #include <QtCore/QUrl>
 #include <QtCore/QMetaObject>
 #include <QtQml/QQmlAbstractUrlInterceptor>
 
 #include "QGCCorePlugin.h"
+#include "Gimbal/RoukeNativeMavlinkTrace.h"
 
 class External3DMapManager;
 class UniRcChannelController;
@@ -22,9 +24,10 @@ class FuelCellControllerManager;
 class GimbalAzimuthProvider;
 class GimbalCenterCoordinator;
 class GimbalModeController;
+class QTimer;
 class GimbalControlManager;
 class GimbalControlSettings;
-class Mt11ControlManager;
+class RoukeControlManager;
 class QQmlApplicationEngine;
 class VideoCustomSettings;
 class Viewer3DSettings;
@@ -44,7 +47,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalCenterCoordinator.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalModeController.h")
     Q_MOC_INCLUDE("custom/src/Gimbal/GimbalControlSettings.h")
-    Q_MOC_INCLUDE("custom/src/Gimbal/Mt11ControlManager.h")
+    Q_MOC_INCLUDE("custom/src/Gimbal/RoukeControlManager.h")
     Q_MOC_INCLUDE("custom/src/Settings/VideoCustomSettings.h")
     Q_MOC_INCLUDE("custom/src/VideoManager/DualVideoManager.h")
 
@@ -58,7 +61,7 @@ class CustomPlugin : public QGCCorePlugin
     Q_PROPERTY(QObject *gimbalControlManager READ gimbalControlManager CONSTANT)
     Q_PROPERTY(QObject *gimbalCenterCoordinator READ gimbalCenterCoordinator CONSTANT)
     Q_PROPERTY(QObject *gimbalModeController READ gimbalModeController CONSTANT)
-    Q_PROPERTY(QObject *mt11ControlManager READ mt11ControlManager CONSTANT)
+    Q_PROPERTY(QObject *roukeControlManager READ roukeControlManager CONSTANT)
     Q_PROPERTY(QObject *videoCustomSettings READ videoCustomSettings CONSTANT)
     Q_PROPERTY(QObject *dualVideoManager READ dualVideoManager CONSTANT)
     Q_PROPERTY(bool google3DMapsAvailable READ google3DMapsAvailable CONSTANT)
@@ -99,8 +102,8 @@ public:
     QObject *gimbalCenterCoordinator();
     GimbalCenterCoordinator *gimbalCenterCoordinatorObject();
     QObject *gimbalModeController();
-    QObject *mt11ControlManager();
-    Mt11ControlManager *mt11ControlManagerObject();
+    QObject *roukeControlManager();
+    RoukeControlManager *roukeControlManagerObject();
     QObject *videoCustomSettings();
     VideoCustomSettings *videoCustomSettingsFactGroup();
     QObject *dualVideoManager();
@@ -117,10 +120,11 @@ private:
     void _ensureGimbalControlManager();
     void _ensureGimbalCenterCoordinator();
     void _ensureGimbalModeController();
-    void _ensureMt11ControlManager();
+    void _ensureRoukeControlManager();
     void _ensureVideoCustomSettings();
     void _ensureDualVideoManager();
-    void _shutdownMt11Video();
+    void _shutdownRoukeVideo();
+    void _observeNativeRoukeMessages();
 
     QQmlApplicationEngine *_qmlEngine = nullptr;
     class CustomOverrideInterceptor *_selector = nullptr;
@@ -136,10 +140,15 @@ private:
     GimbalControlManager *_gimbalControlManager = nullptr;
     GimbalCenterCoordinator *_gimbalCenterCoordinator = nullptr;
     GimbalModeController *_gimbalModeController = nullptr;
-    Mt11ControlManager *_mt11ControlManager = nullptr;
+    RoukeControlManager *_roukeControlManager = nullptr;
     VideoCustomSettings *_videoCustomSettings = nullptr;
     DualVideoManager *_dualVideoManager = nullptr;
     QMetaObject::Connection _aboutToQuitConnection;
+    QMetaObject::Connection _roukeNativeObservationConnection;
+    QElapsedTimer _roukeNativeObservationClock;
+    RoukeNativeMavlinkTrace _roukeNativeTrace;
+    QTimer *_roukeRawObservationTimer = nullptr;
+    quint64 _roukeRawObservationSession = 0;
 };
 
 class CustomOverrideInterceptor : public QQmlAbstractUrlInterceptor

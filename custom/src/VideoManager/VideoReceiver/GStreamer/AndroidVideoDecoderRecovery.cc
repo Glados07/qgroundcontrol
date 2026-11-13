@@ -171,6 +171,23 @@ AndroidVideoDecoderRecovery::AndroidVideoDecoderRecovery(
                                      sinkFrameReceived);
             });
     connect(receiver,
+            &VideoReceiver::timeout,
+            this,
+            [this]() {
+                if (!_receiver || !_startAccepted || _stopping) {
+                    return;
+                }
+                // The core has already queued its stop. Freeze only the next
+                // packetization here; do not race it with another stop or
+                // infer a decoder failure from an unknown/no-data stream.
+                AndroidH265DecoderFallback::prepareCapsOnlyTimeoutRetry(
+                    _receiver.data(), _activeUri, _activeGeneration,
+                    _videoCodec, _sourceFrameReceived,
+                    _decoderFrameReceived, _sinkFrameReceived);
+                _firstFrameTimer.stop();
+                _stopping = true;
+            });
+    connect(receiver,
             &VideoReceiver::onStopComplete,
             this,
             [this](VideoReceiver::STATUS) { _handleStopComplete(); });

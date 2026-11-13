@@ -42,8 +42,13 @@ Item {
     }
 
     function initVideoItem() {
-        if (root.manager && root._renderWindow && videoLoader.item) {
-            root.manager.initVideoItem(root._renderWindow, videoLoader.item)
+        if (root.manager && root._renderWindow) {
+            // Keep observing window replacements even while context recovery
+            // has unloaded the old video item.
+            root.manager.init(root._renderWindow)
+            if (videoLoader.item) {
+                root.manager.initVideoItem(root._renderWindow, videoLoader.item)
+            }
         }
     }
 
@@ -160,6 +165,7 @@ Item {
             anchors.centerIn: parent
             visible: active
             active: root.manager
+                    && root.manager.renderItemEnabled
                     && (root.manager.hasVideo || root.manager.initialized)
             sourceComponent: videoBackgroundComponent
 

@@ -24,6 +24,8 @@ private slots:
     void byteStreamDecoderCapsSupplyUnknownFrameRate();
     void mt11HostSelectsNativeByteStream();
     void nonMt11UrisPreserveTheEstablishedRoute();
+    void capsOnlyTimeoutRetry_data();
+    void capsOnlyTimeoutRetry();
 };
 
 void AndroidH265DecoderRoutePolicyTest::adaptersPrecedeDirectFactories()
@@ -175,6 +177,64 @@ void AndroidH265DecoderRoutePolicyTest::nonMt11UrisPreserveTheEstablishedRoute()
                 QStringLiteral("rtsp://192.168.144.24:8554/video1"),
                 QString())
                 .isEmpty());
+}
+
+void AndroidH265DecoderRoutePolicyTest::capsOnlyTimeoutRetry_data()
+{
+    QTest::addColumn<QString>("currentUri");
+    QTest::addColumn<QString>("pipelineUri");
+    QTest::addColumn<quint64>("generation");
+    QTest::addColumn<bool>("h265Confirmed");
+    QTest::addColumn<bool>("nativeByteStream");
+    QTest::addColumn<bool>("sourceFrameReceived");
+    QTest::addColumn<bool>("decoderFrameReceived");
+    QTest::addColumn<bool>("sinkFrameReceived");
+    QTest::addColumn<bool>("expected");
+
+    const QString uri = QStringLiteral("rtsp://192.168.144.100/live");
+    QTest::newRow("confirmed-h265-caps-before-first-buffer")
+        << uri << uri << quint64(7) << true << false << false << false << false << true;
+    QTest::newRow("network-silent-codec-unknown")
+        << uri << uri << quint64(7) << false << false << false << false << false << false;
+    QTest::newRow("stopped-generation")
+        << uri << uri << quint64(0) << true << false << false << false << false << false;
+    QTest::newRow("late-timeout-after-uri-change")
+        << QStringLiteral("rtsp://192.168.144.25/main.264") << uri << quint64(7)
+        << true << false << false << false << false << false;
+    QTest::newRow("retry-already-consumed-next-generation")
+        << uri << uri << quint64(8) << true << true << false << false << false << false;
+    QTest::newRow("compressed-buffer-uses-existing-first-frame-watchdog")
+        << uri << uri << quint64(7) << true << false << true << false << false << false;
+    QTest::newRow("decoder-output-without-presentation")
+        << uri << uri << quint64(7) << true << false << false << true << false << false;
+    QTest::newRow("sink-already-produced-frame")
+        << uri << uri << quint64(7) << true << false << false << false << true << false;
+    QTest::newRow("udp-stream-keeps-its-existing-route")
+        << QStringLiteral("udp265://0.0.0.0:5600") << QStringLiteral("udp265://0.0.0.0:5600")
+        << quint64(7) << true << false << false << false << false << false;
+    QTest::newRow("empty-uri")
+        << QString() << QString() << quint64(7) << true << false << false << false << false << false;
+    QTest::newRow("secure-rtsp")
+        << QStringLiteral("rtsps://camera/live") << QStringLiteral("rtsps://camera/live")
+        << quint64(7) << true << false << false << false << false << true;
+}
+
+void AndroidH265DecoderRoutePolicyTest::capsOnlyTimeoutRetry()
+{
+    QFETCH(QString, currentUri);
+    QFETCH(QString, pipelineUri);
+    QFETCH(quint64, generation);
+    QFETCH(bool, h265Confirmed);
+    QFETCH(bool, nativeByteStream);
+    QFETCH(bool, sourceFrameReceived);
+    QFETCH(bool, decoderFrameReceived);
+    QFETCH(bool, sinkFrameReceived);
+    QFETCH(bool, expected);
+    QCOMPARE(AndroidH265DecoderRoutePolicy::canRetryCapsOnlyTimeout(
+                 currentUri, pipelineUri, generation, h265Confirmed,
+                 nativeByteStream, sourceFrameReceived, decoderFrameReceived,
+                 sinkFrameReceived),
+             expected);
 }
 
 QTEST_APPLESS_MAIN(AndroidH265DecoderRoutePolicyTest)

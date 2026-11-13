@@ -5,6 +5,7 @@
  ****************************************************************************/
 
 #include "GimbalControlSettings.h"
+#include "RoukeGimbalSpeed.h"
 
 #include <QtCore/QSettings>
 #include <QtQml/QQmlEngine>
@@ -57,6 +58,17 @@ DECLARE_SETTINGGROUP(GimbalControl, "GimbalControl")
             QLatin1String(kUniRcBluetoothAddressMigrationVersionKey),
             kUniRcBluetoothAddressMigrationVersion);
     }
+    // Normalize stored raw limits before SettingsFact loads them. SettingsFact
+    // converts the type but does not enforce metadata bounds on saved values.
+    const auto normalizeSpeedLimit = [&settings](const char *name, int fallback) {
+        const QString key = QString::fromLatin1(name);
+        if (!settings.contains(key)) return;
+        const int stored = settings.value(key).toInt();
+        const int normalized = RoukeGimbalSpeed::normalizeLimit(stored, fallback);
+        if (stored != normalized) settings.setValue(key, normalized);
+    };
+    normalizeSpeedLimit(roukeYawSpeedLimitName, RoukeGimbalSpeed::DefaultYaw);
+    normalizeSpeedLimit(roukePitchSpeedLimitName, RoukeGimbalSpeed::DefaultPitch);
     settings.endGroup();
 
     qmlRegisterUncreatableType<GimbalControlSettings>("QGroundControl.GimbalControl", 1, 0, "GimbalControlSettings", "Reference only");
@@ -68,6 +80,15 @@ DECLARE_SETTINGSFACT(GimbalControlSettings, sdkHost)
 DECLARE_SETTINGSFACT(GimbalControlSettings, sdkPort)
 DECLARE_SETTINGSFACT(GimbalControlSettings, zoomStep)
 DECLARE_SETTINGSFACT(GimbalControlSettings, uniRcZoomDirectionReversed)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeEnabled)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukePayloadAddress)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeUdpHost)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeUdpPort)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeLocalPort)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeYawSpeedLimit)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukePitchSpeedLimit)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukeYawReversed)
+DECLARE_SETTINGSFACT(GimbalControlSettings, roukePitchReversed)
 DECLARE_SETTINGSFACT(GimbalControlSettings, mt11Enabled)
 DECLARE_SETTINGSFACT(GimbalControlSettings, mt11SdkHost)
 DECLARE_SETTINGSFACT(GimbalControlSettings, mt11SdkPort)

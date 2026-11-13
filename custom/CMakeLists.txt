@@ -338,6 +338,25 @@ set_source_files_properties(
     src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
     PROPERTIES QT_RESOURCE_ALIAS FlightDisplayViewSecondaryVideo.qml
 )
+# Native FlightDisplay overrides retain their original module base URL. Export
+# the selector and its dependencies explicitly; custom.qrc alone only packages
+# files and does not make new types visible from the native module.
+set_source_files_properties(
+    src/FlightDisplay/CameraPayloadSelector.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraPayloadSelector.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/CameraControlButton.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlButton.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/CameraControlIcon.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlIcon.qml
+)
+set_source_files_properties(
+    src/FlightDisplay/CameraControlToolTip.qml
+    PROPERTIES QT_RESOURCE_ALIAS CameraControlToolTip.qml
+)
 qt_add_qml_module(CustomFlightDisplayModule
     URI Custom.FlightDisplay
     VERSION 1.0
@@ -346,6 +365,10 @@ qt_add_qml_module(CustomFlightDisplayModule
         src/FlightDisplay/DualPipView.qml
         src/FlightDisplay/FlyViewSecondaryVideo.qml
         src/FlightDisplay/FlightDisplayViewSecondaryVideo.qml
+        src/FlightDisplay/CameraPayloadSelector.qml
+        src/FlightDisplay/CameraControlButton.qml
+        src/FlightDisplay/CameraControlIcon.qml
+        src/FlightDisplay/CameraControlToolTip.qml
     NO_PLUGIN
 )
 
@@ -379,6 +402,10 @@ file(GLOB_RECURSE GIMBAL_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal/*.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal/*.h
 )
+
+# This product profile uses Rouke over MAVLink. Keep the previous backend and
+# its regression fixtures in source history without linking its UDP SDK.
+list(FILTER GIMBAL_SOURCES EXCLUDE REGEX "/Mt11[^/]*\\.(cc|h)$")
 
 file(GLOB_RECURSE COMMS_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Comms/*.cc
@@ -423,9 +450,12 @@ set(CUSTOM_SOURCES
     CACHE INTERNAL "" FORCE
 )
 
+add_subdirectory(src/MAVLink)
+
 set(CUSTOM_LIBRARIES
     CustomModule
     CustomFlightDisplayModule
+    CustomMAVLink
     Qt6::Bluetooth
     Qt6::Quick3D
     Qt6::Quick3DAssetUtils
@@ -452,6 +482,75 @@ set(CUSTOM_INCLUDE_DIRECTORIES
 if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     enable_testing()
+
+    qt_add_executable(RoukeProtocolTest
+        test/Gimbal/RoukeProtocolTest.cc
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukeProtocolTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal)
+    target_link_libraries(RoukeProtocolTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME RoukeProtocolTest COMMAND $<TARGET_FILE:RoukeProtocolTest>)
+    add_custom_target(check_rouke_protocol
+        COMMAND $<TARGET_FILE:RoukeProtocolTest>
+        DEPENDS RoukeProtocolTest
+    )
+
+    # custom is configured before src/MAVLink. Request the same pinned CPM
+    # package here for real wire-message tests; CPM reuses it for the app.
+    CPMAddPackage(
+        NAME mavlink
+        GIT_REPOSITORY ${QGC_MAVLINK_GIT_REPO}
+        GIT_TAG ${QGC_MAVLINK_GIT_TAG}
+    )
+    set(_mavlink_test_include_dirs "${mavlink_SOURCE_DIR}" "${mavlink_SOURCE_DIR}/all")
+
+    add_executable(RoukeMavlinkTest test/MAVLink/RoukeMavlinkTest.cc)
+    target_include_directories(RoukeMavlinkTest BEFORE PRIVATE
+        ${_mavlink_test_include_dirs}
+        ${CMAKE_SOURCE_DIR}/src/MAVLink
+    )
+    target_link_libraries(RoukeMavlinkTest PRIVATE CustomMAVLink)
+    add_test(NAME RoukeMavlinkTest COMMAND $<TARGET_FILE:RoukeMavlinkTest>)
+
+    qt_add_executable(RoukePayloadControllerTest
+        test/Gimbal/RoukePayloadControllerTest.cc
+        src/Gimbal/RoukePayloadController.cc
+        src/Gimbal/RoukePayloadController.h
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukePayloadControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/RoukeStubs
+        ${_mavlink_test_include_dirs}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(RoukePayloadControllerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME RoukePayloadControllerTest COMMAND $<TARGET_FILE:RoukePayloadControllerTest>)
+    qt_add_executable(RoukeGimbalControllerTest
+        test/Gimbal/RoukeGimbalControllerTest.cc
+        src/Gimbal/RoukeGimbalController.cc
+        src/Gimbal/RoukeGimbalController.h
+        src/Gimbal/RoukeGimbalSpeed.h
+        src/Gimbal/RoukePayloadController.cc
+        src/Gimbal/RoukePayloadController.h
+        src/Gimbal/RoukeProtocol.cc
+        src/Gimbal/RoukeProtocol.h
+    )
+    target_include_directories(RoukeGimbalControllerTest BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/Gimbal/RoukeStubs
+        ${_mavlink_test_include_dirs}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Gimbal
+    )
+    target_link_libraries(RoukeGimbalControllerTest PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME RoukeGimbalControllerTest COMMAND $<TARGET_FILE:RoukeGimbalControllerTest>)
+    add_custom_target(check_rouke_payload
+        COMMAND $<TARGET_FILE:RoukeMavlinkTest>
+        COMMAND $<TARGET_FILE:RoukeProtocolTest>
+        COMMAND $<TARGET_FILE:RoukePayloadControllerTest>
+        COMMAND $<TARGET_FILE:RoukeGimbalControllerTest>
+        DEPENDS RoukeMavlinkTest RoukeProtocolTest RoukePayloadControllerTest RoukeGimbalControllerTest
+    )
     qt_add_executable(A8RtspRecoveryPolicyTest
         test/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicyTest.cc
         src/VideoManager/VideoReceiver/GStreamer/A8RtspRecoveryPolicy.cc
@@ -632,13 +731,6 @@ if(QGC_BUILD_TESTING AND NOT ANDROID AND NOT IOS)
         USES_TERMINAL
     )
 
-    # custom is configured before src/MAVLink. Request the same pinned CPM
-    # package here for real wire-message tests; CPM reuses it for the app.
-    CPMAddPackage(
-        NAME mavlink
-        GIT_REPOSITORY ${QGC_MAVLINK_GIT_REPO}
-        GIT_TAG ${QGC_MAVLINK_GIT_TAG}
-    )
     qt_add_executable(GimbalAzimuthProviderTest
         test/Gimbal/GimbalAzimuthProviderTest.cc
         test/Gimbal/AzimuthStubs/TestDoubles.h
