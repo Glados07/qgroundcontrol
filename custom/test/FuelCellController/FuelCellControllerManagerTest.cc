@@ -3,6 +3,7 @@
 #include "TestDoubles.h"
 
 #include <QtCore/QMetaProperty>
+#include <QtNetwork/QNetworkDatagram>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <cmath>
@@ -144,6 +145,66 @@ private slots:
         QVERIFY(publish(42, MAV_COMP_ID_ONBOARD_COMPUTER, 12, 1));
         QVERIFY(!telemetry.values().isEmpty());
         telemetry.setSystemId(43);
+        QVERIFY(telemetry.values().isEmpty());
+    }
+
+    void requestsTelemetryAndAcceptsOnlyValidBoxReplies()
+    {
+        const QHostAddress localAddress(QHostAddress::LocalHost);
+        QUdpSocket box;
+        QVERIFY(box.bind(localAddress, 0));
+        FuelCellTelemetry telemetry(localAddress, box.localPort());
+        telemetry.setSystemId(42);
+
+        QTRY_VERIFY(box.hasPendingDatagrams());
+        const auto request = box.receiveDatagram();
+        QCOMPARE(request.data(), QByteArrayLiteral("GET FUEL_CELL_TELEMETRY/1"));
+
+        mavlink_fuel_cell_telemetry_t sample{};
+        sample.time_boot_ms = 100;
+        sample.inlet_temperature = 25.0f;
+        sample.valid_flags = FUEL_CELL_VALID_INLET_TEMPERATURE;
+        mavlink_message_t message{};
+        mavlink_msg_fuel_cell_telemetry_encode(42, MAV_COMP_ID_ONBOARD_COMPUTER, &message, &sample);
+        uint8_t wire[MAVLINK_MAX_PACKET_LEN]{};
+        const auto length = mavlink_msg_to_send_buffer(wire, &message);
+        const QByteArray packet(reinterpret_cast<const char *>(wire), length);
+        const auto send = [&request](QUdpSocket &socket, const QByteArray &reply) {
+            return socket.writeDatagram(reply, request.senderAddress(), request.senderPort());
+        };
+
+        QUdpSocket other;
+        QCOMPARE(send(other, packet), packet.size());
+        QByteArray corrupted = packet;
+        corrupted[corrupted.size() - 1] = corrupted.back() ^ 0x01;
+        QCOMPARE(send(box, corrupted), corrupted.size());
+        QTest::qWait(50);
+        QVERIFY(telemetry.values().isEmpty());
+
+        QCOMPARE(send(box, packet), packet.size());
+        QTRY_COMPARE(telemetry.values().value(QStringLiteral("inletTemperature")).toDouble(), 25.0);
+        telemetry.setBoxAddress(QStringLiteral("not-an-ip"));
+        telemetry.setBoxPort(0);
+        QCOMPARE(telemetry.boxAddress(), localAddress.toString());
+        QCOMPARE(telemetry.boxPort(), int(box.localPort()));
+
+        QUdpSocket newBox;
+        const QHostAddress newAddress(QStringLiteral("127.0.0.2"));
+        QVERIFY(newBox.bind(newAddress, 0));
+        telemetry.setBoxAddress(newAddress.toString());
+        telemetry.setBoxPort(newBox.localPort());
+        QVERIFY(telemetry.values().isEmpty());
+        QTRY_VERIFY(newBox.hasPendingDatagrams());
+        const auto newRequest = newBox.receiveDatagram();
+        QCOMPARE(newRequest.data(), request.data());
+
+        QCOMPARE(box.writeDatagram(packet, newRequest.senderAddress(), newRequest.senderPort()), packet.size());
+        QTest::qWait(50);
+        QVERIFY(telemetry.values().isEmpty());
+        QCOMPARE(newBox.writeDatagram(packet, newRequest.senderAddress(), newRequest.senderPort()), packet.size());
+        QTRY_COMPARE(telemetry.values().value(QStringLiteral("inletTemperature")).toDouble(), 25.0);
+
+        telemetry.setSystemId(0);
         QVERIFY(telemetry.values().isEmpty());
     }
 

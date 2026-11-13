@@ -113,6 +113,13 @@ SettingsPage {
         }
     }
 
+    Loader {
+        Layout.fillWidth: true
+        active: !!QGroundControl.corePlugin["fuelCellController"]
+        visible: active
+        source: active ? "qrc:/Custom/qml/QGroundControl/AppSettings/FuelCellTelemetrySettingsGroup.qml" : ""
+    }
+
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Logging")
