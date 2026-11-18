@@ -19,21 +19,12 @@ import QGroundControl.ScreenTools
 ToolIndicatorPage {
     showExpand: false
 
+    required property string fuelUnitSuffix
+
     property var  _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var  _fuelStatus:    _activeVehicle ? _activeVehicle.fuelStatus : null
     property bool _hasFuel:       _fuelStatus && _fuelStatus.telemetryAvailable
     property real _pctRemaining:  _hasFuel ? _fuelStatus.percentRemaining.rawValue : NaN
-    property int  _fuelType:      _hasFuel ? _fuelStatus.fuelType.rawValue : 0
-
-    function getFuelUnit() {
-        // fuelType: 0=未知，1=液体，2=气体。
-        if (_fuelType === 1) {
-            return "ml"
-        } else if (_fuelType === 2) {
-            return "MPa"
-        }
-        return ""
-    }
 
     contentComponent: Component {
         ColumnLayout {
@@ -51,19 +42,19 @@ ToolIndicatorPage {
 
                 LabelledLabel {
                     label:     qsTr("Remaining Fuel")
-                    labelText: _hasFuel && !isNaN(_fuelStatus.remainingFuel.rawValue) ? (_fuelStatus.remainingFuel.valueString + (getFuelUnit() !== "" ? " " + getFuelUnit() : "")) : qsTr("n/a")
+                    labelText: _hasFuel && !isNaN(_fuelStatus.remainingFuel.rawValue) ? _fuelStatus.remainingFuel.valueString + fuelUnitSuffix : qsTr("n/a")
                     visible:   _hasFuel && !isNaN(_fuelStatus.remainingFuel.rawValue)
                 }
 
                 LabelledLabel {
                     label:     qsTr("Maximum Fuel")
-                    labelText: _hasFuel && !isNaN(_fuelStatus.maximumFuel.rawValue) ? (_fuelStatus.maximumFuel.valueString + (getFuelUnit() !== "" ? " " + getFuelUnit() : "")) : qsTr("n/a")
+                    labelText: _hasFuel && !isNaN(_fuelStatus.maximumFuel.rawValue) ? _fuelStatus.maximumFuel.valueString + fuelUnitSuffix : qsTr("n/a")
                     visible:   _hasFuel && !isNaN(_fuelStatus.maximumFuel.rawValue)
                 }
 
                 LabelledLabel {
                     label:     qsTr("Consumed Fuel")
-                    labelText: _hasFuel && !isNaN(_fuelStatus.consumedFuel.rawValue) ? (_fuelStatus.consumedFuel.valueString + (getFuelUnit() !== "" ? " " + getFuelUnit() : "")) : qsTr("n/a")
+                    labelText: _hasFuel && !isNaN(_fuelStatus.consumedFuel.rawValue) ? _fuelStatus.consumedFuel.valueString + fuelUnitSuffix : qsTr("n/a")
                     visible:   _hasFuel && !isNaN(_fuelStatus.consumedFuel.rawValue)
                 }
 

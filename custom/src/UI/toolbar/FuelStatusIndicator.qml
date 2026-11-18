@@ -17,7 +17,7 @@ import QGroundControl.ScreenTools
 
 import Custom.Widgets
 
-// 顶部工具栏只显示 Fuel 图标和剩余百分比，详细数据由独立页面承载。
+// 顶部工具栏在 Fuel 图标右侧显示剩余百分比和剩余燃料。
 Item {
     id: control
 
@@ -30,8 +30,17 @@ Item {
 
     property var  _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var  _fuelStatus:    _activeVehicle ? _activeVehicle.fuelStatus : null
-    property bool _hasFuel:       _fuelStatus && _fuelStatus.telemetryAvailable
+    property bool _hasFuel:       !!_fuelStatus && _fuelStatus.telemetryAvailable
     property real _pctRemaining:  _hasFuel ? _fuelStatus.percentRemaining.rawValue : NaN
+    readonly property string _fuelUnitSuffix: {
+        if (!_hasFuel) return ""
+
+        switch (_fuelStatus.fuelType.rawValue) {
+        case 1: return " ml"
+        case 2: return " MPa"
+        default: return ""
+        }
+    }
 
     function getFuelColor() {
         if (isNaN(_pctRemaining)) {
@@ -50,9 +59,9 @@ Item {
     }
 
     TextMetrics {
-        id: fuelTextMetrics
+        id: fuelPercentMetrics
 
-        font: fuelValueLabel.font
+        font: fuelPercentLabel.font
         text: "-100%"
     }
 
@@ -74,14 +83,25 @@ Item {
             color:              getFuelColor()
         }
 
-        QGCLabel {
-            id: fuelValueLabel
-
+        Column {
             anchors.verticalCenter: parent.verticalCenter
-            width:                  fuelTextMetrics.width
-            text:                   getFuelText()
-            font.pointSize:         ScreenTools.mediumFontPointSize
-            color:                  getFuelColor()
+
+            QGCLabel {
+                id: fuelPercentLabel
+
+                width:          Math.max(fuelPercentMetrics.width, implicitWidth)
+                text:           getFuelText()
+                font.pointSize: ScreenTools.mediumFontPointSize
+                color:          getFuelColor()
+            }
+
+            QGCLabel {
+                visible: text.length > 0
+                text: {
+                    const fuel = control._hasFuel ? control._fuelStatus.remainingFuel : null
+                    return fuel && Number.isFinite(fuel.rawValue) ? fuel.valueString + control._fuelUnitSuffix : ""
+                }
+            }
         }
     }
 
@@ -95,6 +115,7 @@ Item {
 
         FuelStatusIndicatorPage {
             waitForParameters: control.waitForParameters
+            fuelUnitSuffix:    control._fuelUnitSuffix
         }
     }
 }

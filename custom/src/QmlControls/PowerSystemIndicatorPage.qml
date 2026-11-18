@@ -377,7 +377,7 @@ ToolIndicatorPage {
                         { label: qsTr("Stack current"), key: "stackCurrent", decimals: 2, unit: "A" },
                         { label: qsTr("DCDC state"), key: "dcdcState", decimals: 0, unit: "" },
                         { label: qsTr("DCDC fault"), key: "dcdcFault", decimals: 0, unit: "" },
-                        { label: qsTr("DCDC temp."), key: "dcdcTemperature", decimals: 0, unit: "" },
+                        { label: qsTr("DCDC temp."), key: "dcdcTemperature", decimals: 0, unit: "°C" },
                         { label: qsTr("System substate"), key: "systemSubstate", decimals: 0, unit: "" }
                     ]
 
