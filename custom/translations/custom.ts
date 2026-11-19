@@ -2052,4 +2052,32 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>FuelCellTelemetrySettingsGroup</name>
+    <message>
+        <location filename="../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml" line="10"/>
+        <source>Fuel Cell Telemetry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml" line="11"/>
+        <source>Address and port for requesting fuel cell data from the onboard computer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml" line="19"/>
+        <source>Onboard computer IPv4 address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml" line="30"/>
+        <source>Enter a valid unicast IPv4 address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml" line="40"/>
+        <source>Onboard computer UDP port</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

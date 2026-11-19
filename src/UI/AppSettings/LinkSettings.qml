@@ -198,6 +198,13 @@ SettingsPage {
         }
     }
 
+    Loader {
+        Layout.fillWidth: true
+        active: !!QGroundControl.corePlugin["fuelCellController"]
+        visible: active
+        source: active ? "qrc:/Custom/qml/QGroundControl/AppSettings/FuelCellTelemetrySettingsGroup.qml" : ""
+    }
+
     Component {
         id: linkDialogComponent
 

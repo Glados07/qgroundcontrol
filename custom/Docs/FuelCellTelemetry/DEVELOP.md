@@ -36,8 +36,8 @@ QGC 通过地面网络向 AI 盒子请求燃料电池遥测，盒子从控制器
 | [FuelCellTelemetry.cc](../../src/FuelCellTelemetry/FuelCellTelemetry.cc) | 轮询、回包校验、字段解码和超时 |
 | [FuelCellTelemetrySettings.cc](../../src/Settings/FuelCellTelemetrySettings.cc) | 配置 Fact 和地址校验 |
 | [FuelCellTelemetry.SettingsGroup.json](../../src/Settings/FuelCellTelemetry.SettingsGroup.json) | 默认值和端口范围 |
-| [FuelCellTelemetrySettingsGroup.qml](../../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml) | 遥测页的 IPv4 地址和端口控件 |
-| [TelemetrySettings.qml](../../../src/UI/AppSettings/TelemetrySettings.qml) | 在遥测页加载定制设置区 |
+| [FuelCellTelemetrySettingsGroup.qml](../../src/UI/AppSettings/FuelCellTelemetrySettingsGroup.qml) | 机载计算机的 IPv4 地址和 UDP 端口控件 |
+| [LinkSettings.qml](../../../src/UI/AppSettings/LinkSettings.qml) | 在通信链路页加载定制设置区 |
 | [PowerSystemIndicator.qml](../../src/UI/toolbar/PowerSystemIndicator.qml) | 将活动车辆和配置传给接收模块 |
 | [FuelCellControllerManagerTest.cc](../../test/FuelCellController/FuelCellControllerManagerTest.cc) | 回包校验、切换端点和超时回归 |
 

@@ -4,13 +4,13 @@
     "QGC.MetaData.Facts": [
         {
             "name": "boxAddress",
-            "shortDesc": "AI box IPv4 address",
+            "shortDesc": "Onboard computer IPv4 address",
             "type": "string",
             "default": "192.168.144.110"
         },
         {
             "name": "boxPort",
-            "shortDesc": "AI box UDP port",
+            "shortDesc": "Onboard computer UDP port",
             "type": "uint16",
             "min": 1,
             "max": 65535,

@@ -8,7 +8,7 @@ import QGroundControl.ScreenTools
 
 SettingsGroupLayout {
     heading: qsTr("Fuel Cell Telemetry")
-    headingDescription: qsTr("Address and port for requesting fuel cell data from the AI box.")
+    headingDescription: qsTr("Address and port for requesting fuel cell data from the onboard computer.")
 
     RowLayout {
         Layout.fillWidth: true
@@ -16,7 +16,7 @@ SettingsGroupLayout {
 
         QGCLabel {
             Layout.fillWidth: true
-            text: qsTr("AI box IPv4 address")
+            text: qsTr("Onboard computer IPv4 address")
         }
 
         QGCTextField {
@@ -37,7 +37,7 @@ SettingsGroupLayout {
     LabelledFactTextField {
         Layout.fillWidth: true
         textFieldPreferredWidth: ScreenTools.defaultFontPixelWidth * 20
-        label: qsTr("AI box UDP port")
+        label: qsTr("Onboard computer UDP port")
         fact: FuelCellTelemetrySettings.boxPort
     }
 }
